@@ -2,7 +2,7 @@
 
 # InkWeaver / 织墨
 
-InkWeaver is a local-first desktop workspace for long-form fiction. It turns project settings, characters, worldbuilding, chapter blueprints, prose, review, revision, and finalization into one traceable writing chain while keeping the author in control of every durable change.
+InkWeaver is a local-first desktop workspace for long-form fiction. It brings project settings, characters, worldbuilding, chapter blueprints, prose, review, revision, and finalization into a traceable writing chain while keeping the author in control of every durable change.
 
 Current version: **v0.9.2**
 

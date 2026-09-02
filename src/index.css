@@ -403,14 +403,14 @@
   /* 星空主题 — Logo 深邃星空（直接取自 Logo 背景色 #0A1628） */
   .galaxy {
     /* 背景层次 — 深空半透明面板：透出 html 层星云与 body 层星尘（配合 backdrop-filter 玻璃化） */
-    --color-bg: rgba(10, 22, 40, 0.86);
-    --color-sidebar: rgba(13, 26, 46, 0.84);
-    --color-panel: rgba(13, 26, 46, 0.84);
-    --color-titlebar: rgba(9, 20, 36, 0.8);
-    --color-activity-bar: rgba(7, 18, 32, 0.88);
-    --color-raised: rgba(18, 34, 58, 0.92);
-    --color-hover: rgba(126, 200, 227, 0.09);
-    --color-active: rgba(30, 56, 94, 0.85);
+    --color-bg: #0A1628;
+    --color-sidebar: #0D1A2E;
+    --color-panel: #0D1A2E;
+    --color-titlebar: #091424;
+    --color-activity-bar: #071220;
+    --color-raised: #12223A;
+    --color-hover: #0D1A2E;
+    --color-active: #1A3358;
 
     /* 文字层次 — 冰蓝色阶梯，与Logo蓝色调和谐 */
     --color-text: #E0ECF4;
