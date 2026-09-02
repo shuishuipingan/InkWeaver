@@ -1,0 +1,176 @@
+name: Windows cloud package qualification
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_sha:
+        description: Full immutable commit SHA to qualify
+        required: true
+        type: string
+      release_tag:
+        description: Intended tag; qualification does not create it
+        required: true
+        type: string
+      release_version:
+        description: Frozen application version
+        required: true
+        type: string
+      profile_path:
+        description: Repository-relative frozen release profile
+        required: true
+        default: .release/release-profile.json
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-cloud-build-test-${{ inputs.expected_sha }}-${{ inputs.release_version }}
+  cancel-in-progress: false
+
+jobs:
+  package-and-qualify:
+    runs-on: windows-2022
+    timeout-minutes: 60
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ inputs.expected_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda
+        with:
+          version: 11.11.0
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22.23.1
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Initialize frozen Windows release evidence
+        shell: pwsh
+        env:
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          RELEASE_VERSION: ${{ inputs.release_version }}
+          PROFILE_PATH: ${{ inputs.profile_path }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $checkedOutSha = (git rev-parse HEAD).Trim().ToLowerInvariant()
+          if ($env:EXPECTED_SHA -notmatch '^[a-f0-9]{40}$' -or $checkedOutSha -ne $env:EXPECTED_SHA) {
+            throw "Checked-out SHA mismatch: expected $env:EXPECTED_SHA, got $checkedOutSha"
+          }
+          if ($env:RELEASE_TAG -ne "v$env:RELEASE_VERSION") { throw 'release_tag must equal v<release_version>' }
+          if ($env:PROFILE_PATH -ne '.release/release-profile.json') { throw 'profile_path must use the project release profile' }
+          & git ls-files --error-unmatch -- $env:PROFILE_PATH | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw 'release profile must be committed at the qualified SHA' }
+          $evidenceRoot = Join-Path $env:RUNNER_TEMP "ai-novel-release-evidence-$env:GITHUB_RUN_ID"
+          node scripts/release-evidence-v2.mjs init --platform windows --evidence-root "$evidenceRoot" --repository "$env:GITHUB_REPOSITORY" --commit "$env:EXPECTED_SHA" --run-id "$env:GITHUB_RUN_ID" --run-attempt "$env:GITHUB_RUN_ATTEMPT" --runner-label 'windows-2022' --image-os "$env:ImageOS" --image-version "$env:ImageVersion" --expected-node-version 22.23.1 --expected-pnpm-version 11.11.0 --workflow-path '.github/workflows/windows-cloud-build-test.yml' --workflow-name 'Windows cloud package qualification' --actor "$env:GITHUB_ACTOR" --event "$env:GITHUB_EVENT_NAME" --dispatch-inputs-json '{}'
+          $commonRoot = Join-Path $env:RUNNER_TEMP 'windows-qualified'
+          node .release/scripts/freeze-release-contract.mjs --repository "$env:GITHUB_REPOSITORY" --expected-sha "$env:EXPECTED_SHA" --tag "$env:RELEASE_TAG" --version "$env:RELEASE_VERSION" --profile "$env:PROFILE_PATH" --output-root "$commonRoot" --platform windows --run-id "$env:GITHUB_RUN_ID" --run-attempt "$env:GITHUB_RUN_ATTEMPT" --workflow '.github/workflows/windows-cloud-build-test.yml' --actor "$env:GITHUB_ACTOR" --event "$env:GITHUB_EVENT_NAME"
+          "AI_NOVEL_RELEASE_EVIDENCE_ROOT=$evidenceRoot" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "AI_NOVEL_COMMON_EVIDENCE_ROOT=$commonRoot" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Install locked dependencies
+        shell: pwsh
+        run: node scripts/release-evidence-v2.mjs record --evidence-root "$env:AI_NOVEL_RELEASE_EVIDENCE_ROOT" --step install-locked-dependencies -- "$env:ComSpec" /d /s /c "pnpm install --frozen-lockfile"
+
+      - name: Install Playwright Chromium
+        shell: pwsh
+        run: node scripts/release-evidence-v2.mjs record --evidence-root "$env:AI_NOVEL_RELEASE_EVIDENCE_ROOT" --step install-playwright-chromium -- "$env:ComSpec" /d /s /c "pnpm exec playwright install chromium"
+
+      - name: Run renderer browser tests
+        shell: pwsh
+        run: node scripts/release-evidence-v2.mjs record --evidence-root "$env:AI_NOVEL_RELEASE_EVIDENCE_ROOT" --step renderer-browser-tests -- "$env:ComSpec" /d /s /c "pnpm run test:browser"
+
+      - name: Download verified v0.2.5 portable migration input
+        shell: pwsh
+        run: |
+          $portableUrl = 'https://github.com/EthanYoQ/AI-Novel-Writer/releases/download/v0.2.5/AI-Novel-Writer-0.2.5-windows-x64.zip'
+          $expectedSha256 = '22b38b7337a456882bf130ccb898f17616fffb85d6c8b8b3d0ee431409f18531'
+          $portableZip = Join-Path $env:RUNNER_TEMP 'AI-Novel-Writer-0.2.5-windows-x64.zip'
+          Invoke-WebRequest -Uri $portableUrl -OutFile $portableZip
+          $actualSha256 = (Get-FileHash -LiteralPath $portableZip -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actualSha256 -ne $expectedSha256) {
+            throw "v0.2.5 portable ZIP SHA-256 mismatch: expected $expectedSha256, got $actualSha256"
+          }
+          "AI_NOVEL_PREVIOUS_PORTABLE_ZIP=$portableZip" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Run complete Windows release gate
+        shell: pwsh
+        env:
+          AI_NOVEL_RELEASE_EVIDENCE_COMMAND_TIMEOUT_MS: '2700000'
+        run: node scripts/release-evidence-v2.mjs record --evidence-root "$env:AI_NOVEL_RELEASE_EVIDENCE_ROOT" --step complete-windows-release-gate -- "$env:ComSpec" /d /s /c "pnpm run build:win"
+
+      - name: Finalize Windows release evidence
+        if: ${{ success() }}
+        shell: pwsh
+        run: |
+          $version = '${{ inputs.release_version }}'
+          node scripts/release-evidence-v2.mjs finalize --platform windows --evidence-root "$env:AI_NOVEL_RELEASE_EVIDENCE_ROOT" --release-root "release/$version"
+          $rawHash = (Get-FileHash -LiteralPath pnpm-lock.yaml -Algorithm SHA256).Hash.ToLowerInvariant()
+          $canonicalHash = node --input-type=module -e "import{canonicalPnpmLockfileSha256}from'./scripts/canonical-pnpm-lockfile-hash.mjs';process.stdout.write(canonicalPnpmLockfileSha256('./pnpm-lock.yaml'))"
+          node scripts/release-evidence-v2.mjs verify-bundle --platform windows --bundle-root "release/$version" --expected-commit '${{ inputs.expected_sha }}' --expected-lockfile-sha256 "$canonicalHash" --expected-lockfile-raw-sha256 "$rawHash" --version "$version" --repository "$env:GITHUB_REPOSITORY" --run-id "$env:GITHUB_RUN_ID" --run-attempt "$env:GITHUB_RUN_ATTEMPT" --expected-workflow-path '.github/workflows/windows-cloud-build-test.yml' --expected-workflow-name 'Windows cloud package qualification' --expected-actor "$env:GITHUB_ACTOR" --expected-event "$env:GITHUB_EVENT_NAME"
+          node .release/scripts/finalize-legacy-qualification.mjs --platform windows --legacy-root "release/$version" --output-root "$env:AI_NOVEL_COMMON_EVIDENCE_ROOT" --profile '${{ inputs.profile_path }}' --expected-sha '${{ inputs.expected_sha }}' --version "$version"
+
+      - name: Upload runtime-verified Windows package
+        if: ${{ success() }}
+        id: upload-qualified
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: qualified-windows
+          retention-days: 14
+          compression-level: 0
+          if-no-files-found: error
+          path: ${{ runner.temp }}\windows-qualified
+
+      - name: Collect Windows build diagnostics
+        if: ${{ failure() }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $diagnosticsRoot = Join-Path $env:RUNNER_TEMP 'ai-novel-cloud-build-diagnostics'
+          New-Item -ItemType Directory -Path $diagnosticsRoot -Force | Out-Null
+          @(
+            "commit=$env:GITHUB_SHA"
+            "node=$(node --version)"
+            "pnpm=$(pnpm --version)"
+            "runnerImage=$env:ImageOS $env:ImageVersion"
+          ) | Set-Content -LiteralPath (Join-Path $diagnosticsRoot 'environment.txt') -Encoding utf8
+          if (-not [string]::IsNullOrWhiteSpace($env:AI_NOVEL_RELEASE_EVIDENCE_ROOT)) {
+            foreach ($name in @('release-contract.json', 'run-ledger.json')) {
+              $source = Join-Path $env:AI_NOVEL_RELEASE_EVIDENCE_ROOT $name
+              if (Test-Path -LiteralPath $source -PathType Leaf) {
+                Copy-Item -LiteralPath $source -Destination (Join-Path $diagnosticsRoot $name) -Force
+              }
+            }
+            $acceptanceRoot = Join-Path $env:AI_NOVEL_RELEASE_EVIDENCE_ROOT 'acceptance'
+            foreach ($name in @('install.json', 'launch.json', 'quiet-window.json', 'error-dialogs.json', 'uninstall.json', 'upgrade-data.json', 'native-abi.json', 'packaged-smoke.json', 'signing.json')) {
+              $source = Join-Path $acceptanceRoot $name
+              if (Test-Path -LiteralPath $source -PathType Leaf) {
+                Copy-Item -LiteralPath $source -Destination (Join-Path $diagnosticsRoot "acceptance-$name") -Force
+              }
+            }
+          }
+          Get-ChildItem -Path ([System.IO.Path]::GetTempPath()) -Directory -Filter 'ai-novel-release-gate-*' -ErrorAction SilentlyContinue | ForEach-Object {
+            foreach ($name in @('orchestrator-failures.jsonl', 'monitor-status.json')) {
+              $source = Join-Path $_.FullName "evidence\$name"
+              if (Test-Path -LiteralPath $source -PathType Leaf) {
+                Copy-Item -LiteralPath $source -Destination (Join-Path $diagnosticsRoot "$($_.Name)-$name") -Force -ErrorAction Continue
+              }
+            }
+          }
+
+      - name: Upload Windows build diagnostics
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: windows-cloud-build-diagnostics
+          retention-days: 7
+          if-no-files-found: warn
+          path: ${{ runner.temp }}\ai-novel-cloud-build-diagnostics
