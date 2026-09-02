@@ -25,11 +25,11 @@ describe('installable AI novel bundle', () => {
     expect(manifest.publishConfig).toEqual({ access: 'public' })
     expect(manifest.repository).toEqual({
       type: 'git',
-      url: 'git+https://github.com/EthanYoQ/AI-Novel-Writer.git',
+      url: 'git+https://github.com/shuishuipingan/InkWeaver.git',
       directory: 'plugins/dsh-ai-novel-writer',
     })
-    expect(manifest.bugs).toEqual({ url: 'https://github.com/EthanYoQ/AI-Novel-Writer/issues' })
-    expect(manifest.homepage).toBe('https://github.com/EthanYoQ/AI-Novel-Writer/tree/master/plugins/dsh-ai-novel-writer#readme')
+    expect(manifest.bugs).toEqual({ url: 'https://github.com/shuishuipingan/InkWeaver/issues' })
+    expect(manifest.homepage).toBe('https://github.com/shuishuipingan/InkWeaver/tree/main/plugins/dsh-ai-novel-writer#readme')
     for (const packagedFile of ['LICENSE', 'THIRD_PARTY_NOTICES.md']) {
       await expect(readFile(join(root, packagedFile), 'utf8')).resolves.toContain('MIT')
     }

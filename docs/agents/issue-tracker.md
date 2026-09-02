@@ -4,7 +4,7 @@
 
 ## 约定
 
-- 创建、读取、评论、加标签和关闭任务时，以 `EthanYoQ/AI-Novel-Writer` 为目标仓库。
+- 创建、读取、评论、加标签和关闭任务时，以 `shuishuipingan/InkWeaver` 为目标仓库。
 - 当工程 Skill 要求“发布到 issue tracker”时，创建 GitHub Issue。
 - 当工程 Skill 要求“读取 ticket”时，读取对应 Issue 的正文、评论和标签。
 - GitHub PR 不作为外部需求分流入口；只有用户明确指定的 PR 才进入审查流程。

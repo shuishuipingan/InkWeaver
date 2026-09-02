@@ -9,8 +9,8 @@ const scriptPath = fileURLToPath(import.meta.url)
 const repositoryRoot = path.resolve(path.dirname(scriptPath), '..')
 const expectedGithubSource = Object.freeze({
   provider: 'github',
-  owner: 'EthanYoQ',
-  repo: 'AI-Novel-Writer',
+  owner: 'shuishuipingan',
+  repo: 'InkWeaver',
   releaseType: 'release',
   channel: 'latest',
   tagNamePrefix: 'v',

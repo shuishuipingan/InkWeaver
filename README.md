@@ -6,7 +6,7 @@
 
 当前版本：**v0.9.2**
 
-[下载 Windows / macOS 桌面版](https://github.com/EthanYoQ/AI-Novel-Writer/releases/latest) · [查看源代码](https://github.com/EthanYoQ/AI-Novel-Writer) · [安装 DeepSeek Harness 插件](https://www.npmjs.com/package/@ethanyoq/dsh-ai-novel-writer)
+[下载 Windows / macOS 桌面版](https://github.com/shuishuipingan/InkWeaver/releases/latest) · [查看源代码](https://github.com/shuishuipingan/InkWeaver) · [安装 DeepSeek Harness 插件](https://www.npmjs.com/package/@ethanyoq/dsh-ai-novel-writer)
 
 ## 织墨解决什么问题
 
@@ -77,7 +77,7 @@ NovelAI 目前属于最小兼容支持。请使用自己的 Persistent API Token
 
 ### Windows x64
 
-从 [GitHub Releases](https://github.com/EthanYoQ/AI-Novel-Writer/releases/latest) 下载：
+从 [GitHub Releases](https://github.com/shuishuipingan/InkWeaver/releases/latest) 下载：
 
 ```text
 inkweaver-setup-<版本号>.exe

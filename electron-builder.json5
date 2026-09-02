@@ -42,8 +42,8 @@
     "publish": [
       {
         "provider": "github",
-        "owner": "EthanYoQ",
-        "repo": "AI-Novel-Writer",
+        "owner": "shuishuipingan",
+        "repo": "InkWeaver",
         "channel": "latest",
         "releaseType": "release",
         "publishAutoUpdate": true,

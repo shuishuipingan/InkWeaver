@@ -6,7 +6,7 @@ InkWeaver is a local-first desktop workspace for long-form fiction. It turns pro
 
 Current version: **v0.9.2**
 
-[Download for Windows or macOS](https://github.com/EthanYoQ/AI-Novel-Writer/releases/latest) · [View source](https://github.com/EthanYoQ/AI-Novel-Writer) · [Install the DeepSeek Harness plugin](https://www.npmjs.com/package/@ethanyoq/dsh-ai-novel-writer)
+[Download for Windows or macOS](https://github.com/shuishuipingan/InkWeaver/releases/latest) · [View source](https://github.com/shuishuipingan/InkWeaver) · [Install the DeepSeek Harness plugin](https://www.npmjs.com/package/@ethanyoq/dsh-ai-novel-writer)
 
 ## What InkWeaver is for
 
@@ -77,7 +77,7 @@ The renderer cannot directly read API keys. Electron's main process owns model c
 
 ### Windows x64
 
-Download the installer from [GitHub Releases](https://github.com/EthanYoQ/AI-Novel-Writer/releases/latest):
+Download the installer from [GitHub Releases](https://github.com/shuishuipingan/InkWeaver/releases/latest):
 
 ```text
 inkweaver-setup-<version>.exe

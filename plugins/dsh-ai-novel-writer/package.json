@@ -4,13 +4,13 @@
   "description": "The reviewed local-first InkWeaver novel workspace for DeepSeek Harness",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/EthanYoQ/AI-Novel-Writer.git",
+    "url": "git+https://github.com/shuishuipingan/InkWeaver.git",
     "directory": "plugins/dsh-ai-novel-writer"
   },
   "bugs": {
-    "url": "https://github.com/EthanYoQ/AI-Novel-Writer/issues"
+    "url": "https://github.com/shuishuipingan/InkWeaver/issues"
   },
-  "homepage": "https://github.com/EthanYoQ/AI-Novel-Writer/tree/master/plugins/dsh-ai-novel-writer#readme",
+  "homepage": "https://github.com/shuishuipingan/InkWeaver/tree/main/plugins/dsh-ai-novel-writer#readme",
   "publishConfig": {
     "access": "public"
   },

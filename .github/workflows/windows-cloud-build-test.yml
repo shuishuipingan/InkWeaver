@@ -91,7 +91,7 @@ jobs:
       - name: Download verified v0.2.5 portable migration input
         shell: pwsh
         run: |
-          $portableUrl = 'https://github.com/EthanYoQ/AI-Novel-Writer/releases/download/v0.2.5/AI-Novel-Writer-0.2.5-windows-x64.zip'
+          $portableUrl = 'https://github.com/shuishuipingan/InkWeaver/releases/download/v0.2.5/AI-Novel-Writer-0.2.5-windows-x64.zip'
           $expectedSha256 = '22b38b7337a456882bf130ccb898f17616fffb85d6c8b8b3d0ee431409f18531'
           $portableZip = Join-Path $env:RUNNER_TEMP 'AI-Novel-Writer-0.2.5-windows-x64.zip'
           Invoke-WebRequest -Uri $portableUrl -OutFile $portableZip
