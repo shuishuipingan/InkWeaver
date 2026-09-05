@@ -1,0 +1,136 @@
+[English](README_en.md) | **中文**
+
+# 织墨 / InkWeaver
+
+织墨 InkWeaver 是一款面向长篇小说创作的本地优先桌面工作台。它把项目设定、角色、世界观、章节蓝图、正文、审稿、修订与定稿组织成可追溯的创作链，让作者在保留最终决定权的前提下使用自己选择的 AI 模型。
+
+当前版本：**v1.0.0**
+
+[下载 Windows / macOS 桌面版](https://github.com/shuishuipingan/InkWeaver/releases/latest) · [查看源代码](https://github.com/shuishuipingan/InkWeaver)
+
+## 可选 DSH 扩展
+
+织墨同时提供一个可选的 InkWeaver DSH Extension，用于外部 DeepSeek Harness 主机。它把长篇小说的项目设定、角色、章节规划、正文与修订建议组织成作者可审核的创作链；它与桌面版使用独立的 \`.inkweaver\` 工作区，不会读取或替换桌面版项目。
+
+在 DSH Web profile 中安装 v1.0.0：
+
+运行 `dsh plugin --profile web add https://github.com/shuishuipingan/InkWeaver/releases/download/v1.0.0/shuishuipingan-inkweaver-dsh-1.0.0.tgz`。
+
+扩展说明、两个 preset（\`inkweaver\` / \`inkweaver-v2\`）和迁移边界见 [DSH 扩展说明](plugins/inkweaver-dsh/README.md)。
+
+## 织墨解决什么问题
+
+普通聊天工具擅长生成一段文字，却很难长期维护小说中的角色状态、世界规则、章节计划和前后因果。织墨提供的是创作编排层：项目资料有明确归属，生成任务有上下文和状态，审稿意见由作者确认，定稿结果会继续成为后续章节的事实来源。
+
+它不是模型服务，也不是在线小说平台。软件不附带模型额度；你可以连接本地模型或自己拥有权限的云端模型。项目数据默认保存在本机。
+
+## 创作流程
+
+1. 建立故事前提、题材、写作语言和创作策略。
+2. 生成或编辑角色、人物关系、世界观和故事架构。
+3. 规划全书目录与逐章蓝图。
+4. 按章节选择模型和目标字数生成草稿。
+5. 让 AI 提交结构化审稿意见，由作者编辑、忽略、补充并确认。
+6. 根据人工确认的清单修稿，通过差异对比决定是否合并。
+7. 定稿章节，更新连续性事实、人物状态和伏笔进度，再进入下一章。
+
+## 核心能力
+
+- **长篇一致性上下文继承**：故事前提、角色、世界观、蓝图与已定稿事实会进入后续创作，减少设定遗失和前后矛盾。
+- **伏笔与叙事线索系统**：记录计划、埋设、推进、回收与超期线索，让长线悬念可以检查和兑现。
+- **章节模型与字数控制**：单章和连续写作都使用本次选择的模型与目标字数；相同目标的重复任务会被阻止。
+- **人工审稿闭环**：AI 审稿不是自动改稿。作者先确认问题清单，再修稿、检查差异并决定最终文本。
+- **参考资料与知识库**：支持 TXT、Markdown 和 EPUB 导入；可使用向量检索，也可在未配置 Embedding 时使用全文检索。
+- **角色卡与关系图**：维护结构化人物事实，关系图支持缩放、平移和一键清空。
+- **可恢复任务**：长时间生成、批量章节、导入、定稿和后处理具有状态记录，失败时尽量从安全节点继续。
+- **中英文界面**：界面语言与小说写作语言相互独立。
+- **更准确的失败提示**：内容限制、模型调用失败、上下文预算不足和资源冲突不会被伪装成成功结果。
+
+## 模型连接
+
+织墨支持两类请求协议：
+
+- **OpenAI-compatible**：用于 OpenAI、DeepSeek、Ollama、NovelAI 预设及其他兼容 Chat Completions 的服务。
+- **Gemini 原生协议**：用于 Google Gemini 兼容端点。
+
+模型高级设置会根据已知能力提供推理强度、温度、结构化输出和最大输出长度等选项。填写 API Key 与 Base URL 后可以获取模型列表。自定义地址仍需符合以上协议之一，不能把任意 HTTP 接口直接当作模型服务。
+
+### Ollama
+
+推荐使用 Ollama 的 OpenAI-compatible 地址：
+
+```text
+Provider:  Ollama（本地）或自定义
+Protocol:  OpenAI-compatible
+Base URL:  http://127.0.0.1:11434/v1
+Model:     你的 Ollama 模型名，例如 qwen3:14b
+```
+
+### NovelAI
+
+NovelAI 目前属于最小兼容支持。请使用自己的 Persistent API Token 和账户实际可用的模型标识。项目不会向该端点发送标准 `response_format`；由于维护者无法使用用户账户完成资格验证，模型权限和接口差异请以 NovelAI 官方资料为准。
+
+## 数据与隐私
+
+| 数据 | 默认位置或去向 |
+| --- | --- |
+| 小说设定、角色、蓝图、草稿、审稿和定稿 | 项目目录内的本地 SQLite 数据库与定稿文本 |
+| 知识库索引 | 项目目录内的本地 LanceDB 数据 |
+| 模型和 API Key 配置 | 本机用户目录 `~/.vela/models.json` |
+| 应用偏好 | 本机用户目录 `~/.vela/config.json` |
+| 本地模型请求 | 你配置的本机或局域网推理服务 |
+| 云端模型请求 | 你主动选择的模型供应商 |
+
+渲染界面不能直接读取 API Key。文件、数据库和模型请求由 Electron 主进程执行；访问项目外文件必须由用户通过系统选择器授权。
+
+## 安装与更新
+
+### Windows x64
+
+从 [GitHub Releases](https://github.com/shuishuipingan/InkWeaver/releases/latest) 下载：
+
+```text
+inkweaver-setup-<版本号>.exe
+```
+
+Windows 版本支持应用内检查、下载和安装更新。当前安装包未代码签名，系统可能显示发布者或信誉提示；继续前请确认下载来自项目官方 Release。
+
+### macOS
+
+Apple Silicon 与 Intel 分别使用：
+
+```text
+inkweaver-mac-arm64-<版本号>-installer.dmg
+inkweaver-mac-x64-<版本号>-installer.dmg
+```
+
+当前 macOS 安装包未使用 Developer ID 签名且未公证。请只从官方 Release 下载，并按系统安全提示确认首次打开。正式 Release 的八项资产同时校验 Windows 安装与更新文件、macOS Apple Silicon 与 macOS Intel 安装包及校验和，以及 InkWeaver DSH 扩展包。
+
+## 本地开发
+
+需要 Node.js 20+ 和 pnpm 11：
+
+```sh
+pnpm install
+pnpm dev
+```
+
+常用验证命令：
+
+```sh
+pnpm typecheck
+pnpm test
+pnpm test:browser
+pnpm build
+```
+
+## 当前边界
+
+- 不提供模型账号、云端额度、在线发布或阅读社区。
+- 不保证所有第三方接口只修改 URL 和 Key 就能接入。
+- AI 输出仍需作者进行事实、质量和版权判断。
+- 重要作品在升级和迁移前应自行备份。
+
+## 许可证
+
+本项目使用 [GPL-3.0](LICENSE) 许可证。
