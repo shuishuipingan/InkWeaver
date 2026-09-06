@@ -1,4 +1,4 @@
-import type { FinalizedContinuityProjection } from './finalized-continuity'
+import { factAppliesAtChapter, type FinalizedContinuityProjection } from './finalized-continuity'
 
 export interface ConsistencyExemption {
   stableFactKey: string
@@ -130,6 +130,7 @@ export function findBlueprintContinuityRisks(
   const characters = new Set(blueprint.characters.map(normalizedKeyPart))
 
   return projections.flatMap(projection => (projection.facts ?? []).flatMap((fact) => {
+    if (!factAppliesAtChapter(fact, blueprint.chapterNumber)) return []
     if (fact.category !== 'character-state' && fact.category !== 'timeline') return []
     const stableFactKey = continuityStableFactKey(fact)
     if (activeExemptions.has(stableFactKey)) return []

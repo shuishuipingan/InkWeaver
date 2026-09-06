@@ -25,7 +25,7 @@ import type {
   GenerationSession,
 } from '../../generation/generation-harness'
 import type { WritingLanguage } from '../../../shared/writing-language'
-import type { FinalizedContinuityProjection } from '../../../shared/finalized-continuity'
+import { factAppliesAtChapter, type FinalizedContinuityProjection } from '../../../shared/finalized-continuity'
 import type { NarrativeThreadView } from '../../../shared/narrative-thread'
 import { promptLanguageText } from '../../prompt-language'
 import { countDraftUnits } from '../../../shared/draft-units'
@@ -844,6 +844,7 @@ ${visibleTail}`,
         const title = projection?.chapterTitle || bp?.title || ''
         const notes = projection?.chapterNotes || bp?.notes || ''
         for (const fact of projection?.facts ?? []) {
+          if (!factAppliesAtChapter(fact, currentChapter)) continue
           const entityRelevant = fact.entities.some(entity => currentEntities.includes(entity))
             || currentEntities.some(entity => (
               fact.statement.includes(entity) || fact.evidence.includes(entity)

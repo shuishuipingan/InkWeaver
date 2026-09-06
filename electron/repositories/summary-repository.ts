@@ -17,6 +17,13 @@ function normalizedFacts(value: unknown, chapterNumber: number): FinalizedContin
       : []
     const statement = typeof fact.statement === 'string' ? fact.statement.trim() : ''
     const evidence = typeof fact.evidence === 'string' ? fact.evidence.trim() : ''
+    const validFromChapter = fact.validFromChapter === undefined
+      ? chapterNumber
+      : fact.validFromChapter
+    const hasExplicitValidFrom = fact.validFromChapter !== undefined
+    const validUntilChapter = fact.validUntilChapter === undefined
+      ? undefined
+      : fact.validUntilChapter
     if (
       !FACT_CATEGORIES.has(String(fact.category))
       || fact.sourceChapter !== chapterNumber
@@ -26,12 +33,18 @@ function normalizedFacts(value: unknown, chapterNumber: number): FinalizedContin
       || statement.length > 280
       || !evidence
       || evidence.length > 240
+      || !Number.isSafeInteger(validFromChapter)
+      || (validFromChapter as number) < 1
+      || (validUntilChapter !== undefined
+        && (!Number.isSafeInteger(validUntilChapter) || (validUntilChapter as number) < (validFromChapter as number)))
     ) throw new Error('连续性事实参数无效')
     return {
       category: fact.category as FinalizedContinuityFact['category'],
       entities: [...new Set(entities)],
       statement,
       sourceChapter: chapterNumber,
+      ...(hasExplicitValidFrom ? { validFromChapter: validFromChapter as number } : {}),
+      ...(validUntilChapter === undefined ? {} : { validUntilChapter: validUntilChapter as number }),
       evidence,
     }
   })
