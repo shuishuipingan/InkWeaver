@@ -108,6 +108,7 @@ export type WorkflowType =
   | 'batch_generate'          // 批量生成
   | 'config_generation'       // 智能配置生成
   | 'post_process'            // 后处理任务（角色卡提取等）
+  | 'character_extraction'    // 从正文提取带证据的人物候选
   | 'novel_import'            // 导入已有小说（逆向推演全流程）
 
 /** 工作流步骤执行器 */

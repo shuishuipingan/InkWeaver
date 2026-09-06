@@ -11,6 +11,7 @@ import { BaseWorkflowCommand, type CommandExecuteParams, type WorkflowGeneration
 import { ipc } from '../ipc-client'
 import { requireIpcSuccess } from '../ipc-result'
 import { requireWorkflowProjectSession, workflowWritingLanguage } from './workflow-project-session'
+import { workflowResourceKey, type WorkflowContext, type WorkflowDefinition, type StepCallbacks } from '../../stores/workflow-store'
 
 export interface CharacterExtractionWorkflowParams {
   projectPath: string
@@ -95,5 +96,29 @@ export class CharacterExtractionWorkflowCommand extends BaseWorkflowCommand<Char
       context.data.characterExtractionCandidates = merged
       return merged
     })
+  }
+}
+
+export function createCharacterExtractionWorkflow(
+  params: CharacterExtractionWorkflowParams,
+): WorkflowDefinition {
+  return {
+    type: 'character_extraction',
+    projectPath: params.projectPath,
+    projectSession: params.projectSession,
+    resourceKeys: [],
+    readResourceKeys: [
+      workflowResourceKey('character-roster'),
+      ...params.source.chapterNumbers.map(chapter => workflowResourceKey('chapter', chapter)),
+    ],
+    title: '从正文提取人物候选',
+    steps: [{
+      name: '提取人物候选',
+      description: '逐块读取正文并生成带证据的人物资料候选',
+      executor: async (step: unknown, context: WorkflowContext, callbacks: StepCallbacks) => {
+        const candidates = await new CharacterExtractionWorkflowCommand(params).execute({ step, context, callbacks })
+        return `已生成 ${candidates.length} 个待审核人物候选`
+      },
+    }],
   }
 }
