@@ -34,7 +34,7 @@ export interface ChapterHandoffRecord extends SaveChapterHandoffRequest {
   confirmedAt?: string
 }
 
-interface ChapterHandoffSourceIdentity {
+export interface ChapterHandoffSourceIdentity {
   handoffId: string
   draftId: number
   chapterNumber: number
