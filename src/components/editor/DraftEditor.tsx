@@ -29,8 +29,12 @@ import { DRAFT_STATUS_LABEL, DRAFT_STATUS_COLOR } from '../../shared/draft-statu
 import { countDraftUnits } from '../../shared/draft-units'
 import { PostProcessStatusPanel } from '../ui/PostProcessStatusPanel'
 import { getChapterFinalizeScope } from '../../services/workflows/workflow-utils'
+import { planCharacterExtractionChunks, textFingerprint } from '../../shared/character-extraction'
+import { createCharacterExtractionWorkflow } from '../../services/workflows/character-extraction-workflow'
 import ChapterHandoffPanel from './ChapterHandoffPanel'
 import type { ChapterHandoffRecord } from '../../shared/chapter-handoff'
+import CharacterExtractionCandidatesPanel from './CharacterExtractionCandidatesPanel'
+import type { CharacterExtractionCandidate } from '../../shared/character-extraction'
 import { guardRepairPostProcess } from '../../services/workflow-guards'
 import {
   captureProjectSession,
@@ -95,6 +99,9 @@ function DraftEditorSession({ tabId, filePath, content, projectKey }: Props) {
   const [chapterHandoffs, setChapterHandoffs] = useState<ChapterHandoffRecord[]>([])
   const [handoffLoading, setHandoffLoading] = useState(false)
   const [handoffConfirming, setHandoffConfirming] = useState<string | null>(null)
+  const [characterCandidates, setCharacterCandidates] = useState<CharacterExtractionCandidate[]>([])
+  const [characterCandidatesLoading, setCharacterCandidatesLoading] = useState(false)
+  const [characterCandidateUpdating, setCharacterCandidateUpdating] = useState<string | null>(null)
   const status: DraftStatus = tabDraftStatus ?? meta?.status ?? 'draft'
 
   useEffect(() => {
@@ -156,6 +163,35 @@ function DraftEditorSession({ tabId, filePath, content, projectKey }: Props) {
     void loadHandoffs()
     return () => { cancelled = true }
   }, [currentProject?.sessionLease, meta?.chapterNumber, projectKey, status])
+
+  const loadCharacterCandidates = useCallback(async () => {
+    const session = captureProjectSession(currentProject)
+    if (!session || !meta || status !== 'finalized' || !isProjectSessionPath(session, projectKey)) {
+      setCharacterCandidates([])
+      return
+    }
+    setCharacterCandidatesLoading(true)
+    try {
+      const sourceText = editorTab?.content ?? content
+      const sourceId = `chapter:${meta.chapterNumber}:draft:${meta.id}`
+      const records = await ipc.invokeWithProjectSession(
+        session,
+        'db:character-extraction-candidates-list',
+        sourceId,
+        textFingerprint(sourceText),
+        projectKey,
+      )
+      if (isProjectSessionCurrent(session)) setCharacterCandidates(records)
+    } catch {
+      setCharacterCandidates([])
+    } finally {
+      setCharacterCandidatesLoading(false)
+    }
+  }, [content, currentProject, editorTab?.content, meta, projectKey, status])
+
+  useEffect(() => {
+    void loadCharacterCandidates()
+  }, [loadCharacterCandidates])
 
   const isReadonly = status === 'finalized' || status === 'archived'
 
@@ -233,6 +269,34 @@ function DraftEditorSession({ tabId, filePath, content, projectKey }: Props) {
       toast.error(String(error))
     } finally {
       setHandoffConfirming(null)
+    }
+  }
+
+  const updateCharacterCandidateStatus = async (
+    candidateId: string,
+    candidateStatus: 'accepted' | 'rejected',
+  ) => {
+    const session = captureProjectSession(currentProject)
+    if (!session || !isProjectSessionPath(session, projectKey)) return
+    setCharacterCandidateUpdating(candidateId)
+    try {
+      const result = await ipc.invokeWithProjectSession(
+        session,
+        'db:character-extraction-candidate-status',
+        candidateId,
+        candidateStatus,
+        projectKey,
+      )
+      requireIpcSuccess(result, text('更新人物候选', 'Update character candidate'))
+      if (result.candidate) {
+        setCharacterCandidates(records => records.map(record => (
+          record.candidateId === candidateId ? result.candidate! : record
+        )))
+      }
+    } catch (error) {
+      toast.error(String(error))
+    } finally {
+      setCharacterCandidateUpdating(null)
     }
   }
 
@@ -462,6 +526,46 @@ function DraftEditorSession({ tabId, filePath, content, projectKey }: Props) {
       toast.error(text(`修复启动失败：${e}`, 'Could not start the repair.'))
     }
   }, [currentProject, isChapterBusy, locale, meta, projectKey, projectMatches, text])
+
+  const doExtractCharacterCandidates = useCallback(async () => {
+    const projectSession = captureProjectSession(currentProject)
+    if (!projectMatches || !currentProject || !meta || status !== 'finalized' || isChapterBusy
+      || !projectSession || !isProjectSessionPath(projectSession, projectKey)) return
+    try {
+      const roster = await ipc.invokeWithProjectSession(
+        projectSession,
+        'db:character-roster-read',
+        projectSession.projectPath,
+      )
+      if (!isProjectSessionCurrent(projectSession)) return
+      const sourceText = editorTab?.content ?? content
+      const sourceId = `chapter:${meta.chapterNumber}:draft:${meta.id}`
+      const source = {
+        sourceId,
+        sourceHash: textFingerprint(sourceText),
+        kind: 'chapter' as const,
+        chapterNumbers: [meta.chapterNumber],
+      }
+      const chunks = planCharacterExtractionChunks(sourceText, {
+        sourceId,
+        kind: source.kind,
+        chapterNumbers: source.chapterNumbers,
+      })
+      const workflow = createCharacterExtractionWorkflow({
+        projectPath: projectSession.projectPath,
+        projectSession,
+        source,
+        chunks,
+        existingNames: roster.entries.map(entry => entry.name),
+        persistCandidates: true,
+      })
+      useWorkflowStore.getState().startWorkflow(workflow, false)
+      toast.success(text('人物候选提取已启动', 'Character candidate extraction started'))
+    } catch (error) {
+      if (!isProjectSessionCurrent(projectSession)) return
+      toast.error(text(`人物提取启动失败：${error}`, `Could not start character extraction: ${error}`))
+    }
+  }, [content, currentProject, editorTab?.content, isChapterBusy, meta, projectKey, projectMatches, status, text])
 
   /** 打开待合并修稿 —— 弹出式合并视图，不占用原草稿 Tab */
   const openPendingRevision = async (rev: RevisionEntry) => {
@@ -747,6 +851,18 @@ function DraftEditorSession({ tabId, filePath, content, projectKey }: Props) {
                 {text('修复定稿', 'Repair finalization')}
               </Button>
             )}
+            {status === 'finalized' && meta && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={doExtractCharacterCandidates}
+                disabled={isChapterBusy}
+                title={text('从本章全文提取带证据的人物候选', 'Extract evidence-backed character candidates from this chapter')}
+              >
+                <Sparkles size={11} />
+                {text('提取人物', 'Extract characters')}
+              </Button>
+            )}
           </div>
         )}
       </div>
@@ -764,6 +880,14 @@ function DraftEditorSession({ tabId, filePath, content, projectKey }: Props) {
             loading={handoffLoading}
             confirmingId={handoffConfirming}
             onConfirm={confirmChapterHandoff}
+            text={text}
+          />
+          <CharacterExtractionCandidatesPanel
+            candidates={characterCandidates}
+            loading={characterCandidatesLoading}
+            updatingId={characterCandidateUpdating}
+            onRefresh={() => void loadCharacterCandidates()}
+            onStatus={updateCharacterCandidateStatus}
             text={text}
           />
         </div>
