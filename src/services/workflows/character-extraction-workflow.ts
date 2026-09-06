@@ -38,8 +38,8 @@ export function buildCharacterExtractionPrompt(
     promptLanguage(language, `来源 ${source.sourceId}，分块 ${chunk.index + 1}，已知角色：${existing}`, `Source ${source.sourceId}, chunk ${chunk.index + 1}, known characters: ${existing}`),
     promptLanguage(
       language,
-      '只返回 {"characters":[...]}。每个角色包含 name、aliases、role、fields、currentState、evidence。fields 只填写正文明确支持的稳定资料；currentState 只填写正文明确支持的当前状态；每个填写的字段必须在 evidence 中有逐字证据。未知字段留空，不要推测，不要把传闻、梦境或回忆当成已确认事实。',
-      'Return only {"characters":[...]}. Each character contains name, aliases, role, fields, currentState, and evidence. Fill stable fields and currentState only when the text explicitly supports them; every filled field must have a verbatim evidence item. Leave unknown fields empty, do not infer, and do not treat rumors, dreams, or flashbacks as confirmed facts.',
+      '只返回 {"characters":[...]}。每个角色包含 name、aliases、role、fields、currentState、relationships、evidence。fields、currentState 和 relationships 只填写正文明确支持的内容；每个填写的字段或关系必须在 evidence 中有逐字证据。未知字段留空，不要推测，不要把传闻、梦境或回忆当成已确认事实。',
+      'Return only {"characters":[...]}. Each character contains name, aliases, role, fields, currentState, relationships, and evidence. Fill stable fields, currentState, and relationships only when the text explicitly supports them; every filled field or relationship must have a verbatim evidence item. Leave unknown fields empty, do not infer, and do not treat rumors, dreams, or flashbacks as confirmed facts.',
     ),
     promptLanguage(language, '章节正文分块：', 'Chapter text chunk:'),
     chunk.text,

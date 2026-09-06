@@ -1,4 +1,4 @@
-import type { CharacterRosterRole } from './character-roster'
+import type { CharacterRosterRelationship, CharacterRosterRole } from './character-roster'
 
 export type CharacterExtractionSourceKind = 'selection' | 'chapter' | 'chapter-range' | 'import'
 export type CharacterExtractionDisposition = 'new' | 'update' | 'ambiguous'
@@ -28,6 +28,7 @@ export interface CharacterExtractionCandidate {
   status: CharacterExtractionCandidateStatus
   role?: CharacterRosterRole
   fields: Partial<Record<'gender' | 'age' | 'appearance' | 'personality' | 'background' | 'abilities' | 'motivation' | 'arc' | 'notes', string>>
+  relationships?: CharacterRosterRelationship[]
   currentState?: Partial<Record<'location' | 'powerLevel' | 'physicalState' | 'mentalState' | 'keyItems' | 'recentEvents', string>>
   fieldEvidence: CharacterFieldEvidence[]
 }
@@ -128,6 +129,20 @@ export function parseCharacterExtractionResponse(
     const role = ['protagonist', 'antagonist', 'supporting', 'minor'].includes(String(raw.role))
       ? raw.role as CharacterRosterRole
       : undefined
+    const relationships = Array.isArray(raw.relationships)
+      ? raw.relationships.flatMap((item) => {
+          if (!isRecord(item)) return []
+          const target = textValue(item.target)
+          const relation = textValue(item.relation)
+          if (!target || !relation) return []
+          const evidenceSupported = evidence.some(candidate => (
+            (candidate.field === 'relationship' || candidate.field.startsWith('relationship.'))
+            && candidate.value.includes(target)
+            && candidate.excerpt
+          ))
+          return evidenceSupported ? [{ target, relation }] : []
+        })
+      : []
     const matchedName = [name, ...aliases].find(item => known.has(normalizedName(item)))
     return [{
       candidateId: `${source.sourceId}:${source.sourceHash.slice(0, 16)}:${index}:${normalizedName(name)}`,
@@ -139,6 +154,7 @@ export function parseCharacterExtractionResponse(
       status: 'pending',
       ...(role ? { role } : {}),
       fields,
+      ...(relationships.length > 0 ? { relationships } : {}),
       ...(Object.keys(currentState).length > 0 ? { currentState } : {}),
       fieldEvidence: evidence,
     }]
@@ -175,6 +191,12 @@ export function mergeCharacterExtractionCandidates(
     }
     if (candidate.currentState) {
       existing.currentState = { ...existing.currentState, ...candidate.currentState }
+    }
+    if (candidate.relationships && candidate.relationships.length > 0) {
+      const relationships = [...(existing.relationships ?? []), ...candidate.relationships]
+      existing.relationships = relationships.filter((relationship, index) => (
+        relationships.findIndex(item => item.target === relationship.target && item.relation === relationship.relation) === index
+      ))
     }
     if (candidate.disposition === 'ambiguous') existing.disposition = 'ambiguous'
   }

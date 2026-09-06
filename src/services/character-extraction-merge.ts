@@ -21,7 +21,7 @@ function emptyEntry(candidate: CharacterExtractionCandidate): CharacterRosterEnt
     background: candidate.fields.background ?? '',
     abilities: candidate.fields.abilities ?? '',
     motivation: candidate.fields.motivation ?? '',
-    relationships: [],
+    relationships: candidate.relationships ?? [],
     arc: candidate.fields.arc ?? '',
     notes: candidate.fields.notes ?? '',
     ...(candidate.currentState ? {
@@ -79,5 +79,13 @@ export function mergeAcceptedCharacterCandidates(
     entries[index] = merged
   }
 
-  return entries
+  const names = new Set(entries.map(entry => entry.name))
+  return entries.map(entry => ({
+    ...entry,
+    relationships: (entry.relationships ?? []).filter(relationship => (
+      names.has(relationship.target) && relationship.target !== entry.name
+    )).filter((relationship, index, relationships) => (
+      relationships.findIndex(item => item.target === relationship.target && item.relation === relationship.relation) === index
+    )),
+  }))
 }

@@ -51,7 +51,11 @@ describe('character extraction chunk planning', () => {
         aliases: ['月儿'],
         role: 'supporting',
         fields: { personality: '谨慎' },
-        evidence: [{ field: 'personality', value: '谨慎', excerpt: '沈月没有立刻回答，先观察了四周。' }],
+        relationships: [{ target: '林舟', relation: '互相警惕' }],
+        evidence: [
+          { field: 'personality', value: '谨慎', excerpt: '沈月没有立刻回答，先观察了四周。' },
+          { field: 'relationship', value: '林舟互相警惕', excerpt: '沈月和林舟彼此防备。' },
+        ],
       }],
     }), source)
     const second = parseCharacterExtractionResponse(JSON.stringify({
@@ -66,7 +70,8 @@ describe('character extraction chunk planning', () => {
     expect(merged).toHaveLength(1)
     expect(merged[0]).toMatchObject({ name: '沈月', aliases: ['月儿'] })
     expect(merged[0]?.fields).toMatchObject({ personality: '谨慎', background: '来自北境' })
-    expect(merged[0]?.fieldEvidence).toHaveLength(2)
+    expect(merged[0]?.fieldEvidence).toHaveLength(3)
+    expect(merged[0]?.relationships).toEqual([{ target: '林舟', relation: '互相警惕' }])
   })
 
   it('marks conflicting evidence as ambiguous instead of overwriting a field', () => {
