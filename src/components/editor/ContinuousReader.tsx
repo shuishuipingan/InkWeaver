@@ -5,6 +5,7 @@ import { useLocaleStore } from '../../stores/locale-store'
 import { useProjectStore } from '../../stores/project-store'
 import { useEditorStore } from '../../stores/editor-store'
 import { captureProjectSession, isProjectSessionCurrent, isProjectSessionPath } from '../project-session-gate'
+import { detectNarrativeQualityFindings } from '../../shared/narrative-quality'
 
 interface ReaderChapter {
   id: number
@@ -28,6 +29,7 @@ export default function ContinuousReader({ projectKey }: ContinuousReaderProps) 
   const [query, setQuery] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [dismissedQuality, setDismissedQuality] = useState<Set<string>>(new Set())
   const chapterRefs = useRef(new Map<number, HTMLElement>())
 
   const load = async () => {
@@ -61,11 +63,22 @@ export default function ContinuousReader({ projectKey }: ContinuousReaderProps) 
 
   useEffect(() => { void load() }, [projectKey, currentProject?.sessionLease])
 
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(`inkweaver.reader.quality-dismissed:${projectKey}`) ?? '[]')
+      setDismissedQuality(new Set(Array.isArray(saved) ? saved.filter((item): item is string => typeof item === 'string') : []))
+    } catch { setDismissedQuality(new Set()) }
+  }, [projectKey])
+
   const filtered = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase('en-US')
     if (!needle) return chapters
     return chapters.filter(chapter => `${chapter.chapterNumber} ${chapter.title} ${chapter.content}`.toLocaleLowerCase('en-US').includes(needle))
   }, [chapters, query])
+  const qualityFindings = useMemo(
+    () => detectNarrativeQualityFindings(chapters).filter(finding => !dismissedQuality.has(finding.id)),
+    [chapters, dismissedQuality],
+  )
 
   const currentIndex = chapters.findIndex(chapter => chapter.chapterNumber === selectedChapter)
   const jumpTo = (chapterNumber: number) => {
@@ -98,6 +111,14 @@ export default function ContinuousReader({ projectKey }: ContinuousReaderProps) 
           <button type="button" className="rounded border p-1.5" style={{ borderColor: 'var(--color-border)' }} onClick={() => void load()} disabled={loading} aria-label={text('刷新连读', 'Refresh reader')}><RefreshCw size={13} className={loading ? 'animate-spin' : ''} /></button>
         </div>
       </div>
+      {qualityFindings.length > 0 && (
+        <details className="border-b px-3 py-2 text-xs" data-reader-quality="true" style={{ borderColor: 'var(--color-border)' }}>
+          <summary className="cursor-pointer text-[var(--color-text-secondary)]">{text(`连读提示 · ${qualityFindings.length} 项（仅建议）`, `Reading notes · ${qualityFindings.length} suggestion(s)`)}</summary>
+          <div className="mt-2 space-y-1.5">
+            {qualityFindings.map(finding => <div key={finding.id} className="flex items-start gap-2 rounded border px-2 py-1.5" style={{ borderColor: 'var(--color-border)' }}><span className="min-w-0 flex-1 text-[var(--color-text-muted)]">{text(`第${finding.chapterNumbers.join('、')}章可能重复开头或结尾：${finding.evidence}`, `Chapters ${finding.chapterNumbers.join(', ')} may repeat an opening or ending: ${finding.evidence}`)}</span><button type="button" className="shrink-0 text-[var(--color-accent)]" onClick={() => { const next = new Set(dismissedQuality); next.add(finding.id); setDismissedQuality(next); localStorage.setItem(`inkweaver.reader.quality-dismissed:${projectKey}`, JSON.stringify([...next])) }}>{text('保留刻意复沓', 'Keep repetition')}</button></div>)}
+          </div>
+        </details>
+      )}
       {error && <div className="border-b px-3 py-2 text-xs text-[var(--color-error-text)]" style={{ borderColor: 'var(--color-border)' }}>{error}</div>}
       <div className="flex flex-1 overflow-hidden">
         <aside className="hidden w-48 shrink-0 overflow-y-auto border-r p-2 md:block" style={{ borderColor: 'var(--color-border)' }}>
