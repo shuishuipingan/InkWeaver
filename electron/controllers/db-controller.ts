@@ -48,6 +48,7 @@ import { CharacterExtractionCandidateRepository } from '../repositories/characte
 import { ConsistencyExemptionRepository } from '../repositories/consistency-exemption-repository'
 import { NarrativeThreadRepository } from '../repositories/narrative-thread-repository'
 import { StoryContinuityRepository } from '../repositories/story-continuity-repository'
+import { KnowledgeEventRepository } from '../repositories/knowledge-event-repository'
 import { safeConsole } from '../utils/safe-console'
 
 type ProjectDatabaseHandler = (event: unknown, ...args: never[]) => unknown
@@ -101,6 +102,8 @@ const MUTATING_DATABASE_CHANNELS = new Set([
   'db:narrative-thread-plan-delete',
   'db:narrative-thread-event-confirm',
   'db:story-continuity-save',
+  'db:knowledge-event-save-candidate',
+  'db:knowledge-event-status',
   'db:chapter-handoff-save-candidate',
   'db:chapter-handoff-confirm',
   'db:character-extraction-candidates-save',
@@ -845,6 +848,29 @@ export function registerDatabaseController() {
     try {
       assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
       return { success: true, document: StoryContinuityRepository.save(request) }
+    } catch (error) {
+      return { success: false, error: String(error) }
+    }
+  })
+
+  ipcMain.handle('db:knowledge-event-list-for-chapter', async (_event, characters: string[], chapterNumber: number, expectedProjectPath: string) => {
+    assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+    return KnowledgeEventRepository.listForChapter(characters, chapterNumber)
+  })
+
+  ipcMain.handle('db:knowledge-event-save-candidate', async (_event, event, expectedProjectPath: string) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      return { success: true, event: KnowledgeEventRepository.saveCandidate(event) }
+    } catch (error) {
+      return { success: false, error: String(error) }
+    }
+  })
+
+  ipcMain.handle('db:knowledge-event-status', async (_event, eventId: string, status, expectedProjectPath: string) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      return { success: true, event: KnowledgeEventRepository.setStatus(eventId, status) }
     } catch (error) {
       return { success: false, error: String(error) }
     }

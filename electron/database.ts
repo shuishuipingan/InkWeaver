@@ -376,6 +376,17 @@ function createTables(db: BetterSqlite3.Database, importSourceSecret?: Buffer) {
     CREATE INDEX IF NOT EXISTS idx_character_extraction_candidates_source
       ON character_extraction_candidates(source_id, source_hash, status, updated_at);
 
+    CREATE TABLE IF NOT EXISTS knowledge_events (
+      event_id TEXT PRIMARY KEY,
+      character_name TEXT NOT NULL,
+      source_chapter INTEGER NOT NULL CHECK(source_chapter > 0),
+      status TEXT NOT NULL CHECK(status IN ('candidate', 'confirmed', 'rejected', 'stale')),
+      payload_json TEXT NOT NULL,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_knowledge_events_character_chapter
+      ON knowledge_events(character_name, source_chapter, status);
+
     CREATE TABLE IF NOT EXISTS narrative_thread_plans (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       title TEXT NOT NULL,

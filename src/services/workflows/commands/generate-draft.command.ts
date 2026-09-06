@@ -31,6 +31,7 @@ import { promptLanguageText } from '../../prompt-language'
 import { countDraftUnits } from '../../../shared/draft-units'
 import { formatChapterHandoff } from '../../chapter-handoff-context'
 import type { ChapterHandoffRecord } from '../../../shared/chapter-handoff'
+import { formatKnowledgeEventForPrompt, type KnowledgeEvent } from '../../../shared/knowledge-event'
 import {
   selectContextEntries,
   type ContextReceipt,
@@ -323,6 +324,12 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
         writingLanguage,
       )
       callbacks.log(`  已加载相关活跃叙事线索（${activeThreads.count} 条）`)
+      const knowledgeEvents = await this.readKnowledgeEvents(
+        expectedProjectPath,
+        projectSession,
+        writingLanguage,
+      )
+      callbacks.log(`  已加载当前角色知情范围（${knowledgeEvents.count} 条）`)
 
       let chapterHandoff: ChapterHandoffRecord | null = null
       try {
@@ -378,7 +385,7 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
 
       promptBuilder
         // ---- 缓存命中区续（要点时间线按序追加，前缀对齐）----
-        .withGlobalSummary([chapterTimeline.text, activeThreads.text].filter(Boolean).join('\n\n'))
+        .withGlobalSummary([chapterTimeline.text, activeThreads.text, knowledgeEvents.text].filter(Boolean).join('\n\n'))
         .withCharacterStates(characterState)
         .withChapterHandoff(formatChapterHandoff(chapterHandoff, writingLanguage))
         // ---- 缓存失效区（逐章变化）----
@@ -991,6 +998,35 @@ ${visibleTail}`,
     return {
       text: `${header}\n${lines.join('\n')}`,
       count: lines.length,
+    }
+  }
+
+  private async readKnowledgeEvents(
+    projectPath: string,
+    projectSession: ProjectSessionContext,
+    writingLanguage: WritingLanguage,
+  ): Promise<{ text: string; count: number }> {
+    if (this.chapterInfo.characters.length === 0) return { text: '', count: 0 }
+    try {
+      const events = await ipc.invokeWithProjectSession(
+        projectSession,
+        'db:knowledge-event-list-for-chapter',
+        [...this.chapterInfo.characters],
+        this.chapterInfo.chapterNumber,
+        projectPath,
+      ) as KnowledgeEvent[]
+      if (!Array.isArray(events) || events.length === 0) return { text: '', count: 0 }
+      const header = promptLanguageText(
+        writingLanguage,
+        '【当前角色知情范围（已确认）】',
+        '[Confirmed character knowledge boundaries]',
+      )
+      return {
+        text: `${header}\n${events.slice(0, 12).map(event => formatKnowledgeEventForPrompt(event, writingLanguage)).join('\n')}`,
+        count: Math.min(events.length, 12),
+      }
+    } catch {
+      return { text: '', count: 0 }
     }
   }
 }

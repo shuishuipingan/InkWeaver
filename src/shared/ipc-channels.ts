@@ -32,6 +32,7 @@ import type {
 } from './narrative-thread'
 import type { StoryContinuityDocument } from './story-continuity'
 import type { SaveStoryContinuityRequest } from '../../electron/repositories/story-continuity-repository'
+import type { KnowledgeEvent } from './knowledge-event'
 import type {
   UpdateActionResponse,
   UpdateCheckResponse,
@@ -912,6 +913,18 @@ export interface DatabaseChannels {
   'db:story-continuity-save': {
     args: [request: SaveStoryContinuityRequest, expectedProjectPath: string]
     return: { success: boolean; document?: StoryContinuityDocument; error?: string }
+  }
+  'db:knowledge-event-list-for-chapter': {
+    args: [characters: string[], chapterNumber: number, expectedProjectPath: string]
+    return: KnowledgeEvent[]
+  }
+  'db:knowledge-event-save-candidate': {
+    args: [event: KnowledgeEvent, expectedProjectPath: string]
+    return: { success: boolean; event?: KnowledgeEvent; error?: string }
+  }
+  'db:knowledge-event-status': {
+    args: [eventId: string, status: KnowledgeEvent['status'], expectedProjectPath: string]
+    return: { success: boolean; event?: KnowledgeEvent; error?: string }
   }
   'db:draft-next-version': { args: [chapterNumber: number, expectedProjectPath: string]; return: number }
   'db:draft-update-status': { args: [id: number, status: string, wordCount: number | undefined, expectedProjectPath: string]; return: { success: boolean; error?: string } }
