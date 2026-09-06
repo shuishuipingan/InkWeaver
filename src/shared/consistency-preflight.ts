@@ -55,6 +55,15 @@ function isExplicitTerminalSubject(statement: string, entity: string): boolean {
   return chinese.test(statement) || english.test(statement)
 }
 
+function explicitLocation(statement: string, entity: string): string | undefined {
+  const subject = escapeRegExp(entity)
+  const match = new RegExp(
+    `${subject}.{0,24}?(?:位于|在|处于)\s*([^，。；,.;\\n]+)`,
+    'u',
+  ).exec(statement)
+  return match?.[1]?.trim() || undefined
+}
+
 export function continuityStableFactKey(fact: {
   category: string
   sourceChapter: number
@@ -98,21 +107,48 @@ export function findBlueprintContinuityRisks(
     const subject = fact.entities
       .map(normalizedKeyPart)
       .find(entity => characters.has(entity) && isExplicitTerminalSubject(fact.statement, entity))
-    if (!subject) return []
-    return [{
-      stableFactKey,
-      severity: 'warning' as const,
-      sourceChapter: fact.sourceChapter,
-      evidence: fact.evidence,
-      issue: {
-        zhCN: `已定稿事实记录“${subject}”处于死亡终态，但当前蓝图仍将其列为出场角色。`,
-        enUS: `Finalized facts record “${subject}” as dead, but the current blueprint still schedules the character to appear.`,
-      },
-      suggestion: {
-        zhCN: '调整蓝图，或说明这是回忆、幻象等刻意安排。',
-        enUS: 'Adjust the blueprint, or record an intentional device such as a flashback or vision.',
-      },
-    }]
+    if (subject) {
+      return [{
+        stableFactKey,
+        severity: 'warning' as const,
+        sourceChapter: fact.sourceChapter,
+        evidence: fact.evidence,
+        issue: {
+          zhCN: `已定稿事实记录“${subject}”处于死亡终态，但当前蓝图仍将其列为出场角色。`,
+          enUS: `Finalized facts record “${subject}” as dead, but the current blueprint still schedules the character to appear.`,
+        },
+        suggestion: {
+          zhCN: '调整蓝图，或说明这是回忆、幻象等刻意安排。',
+          enUS: 'Adjust the blueprint, or record an intentional device such as a flashback or vision.',
+        },
+      }]
+    }
+
+    for (const entity of fact.entities.map(normalizedKeyPart).filter(name => characters.has(name))) {
+      const finalizedLocation = explicitLocation(fact.statement, entity)
+      const blueprintLocation = explicitLocation(
+        `${blueprint.purpose}。${blueprint.keyEvents}`,
+        entity,
+      )
+      if (!finalizedLocation || !blueprintLocation || finalizedLocation === blueprintLocation) continue
+      const locationKey = `${stableFactKey}:location:${entity}`
+      if (activeExemptions.has(locationKey)) continue
+      return [{
+        stableFactKey: locationKey,
+        severity: 'warning' as const,
+        sourceChapter: fact.sourceChapter,
+        evidence: fact.evidence,
+        issue: {
+          zhCN: `地点冲突：已定稿事实记录“${entity}”位于“${finalizedLocation}”，但当前蓝图将其安排在“${blueprintLocation}”。`,
+          enUS: `Finalized facts place “${entity}” at “${finalizedLocation}”, but the current blueprint places the character at “${blueprintLocation}”.`,
+        },
+        suggestion: {
+          zhCN: '补充移动或转场依据，或调整蓝图中的地点。',
+          enUS: 'Add the missing movement or transition, or adjust the blueprint location.',
+        },
+      }]
+    }
+    return []
   }))
 }
 

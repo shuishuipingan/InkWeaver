@@ -103,6 +103,33 @@ describe('findBlueprintContinuityRisks', () => {
     expect(ignored).toEqual([])
   })
 
+  it('reports an explicit finalized location that conflicts with the current blueprint', () => {
+    const findings = findBlueprintContinuityRisks([{
+      ...projection[0]!,
+      facts: [{
+        category: 'character-state' as const,
+        entities: ['顾舟'],
+        statement: '顾舟位于旧码头，正在等待接头人。',
+        sourceChapter: 1,
+        evidence: '顾舟站在旧码头的雨棚下。',
+      }],
+    }], {
+      chapterNumber: 2,
+      title: '车站重逢',
+      role: '发展',
+      purpose: '顾舟等待接头',
+      keyEvents: '顾舟在中央车站等待接头人。',
+      characters: ['顾舟'],
+      suspenseHook: '',
+      userGuidance: '',
+      notes: '',
+    }, [])
+
+    expect(findings).toHaveLength(1)
+    expect(findings[0]?.issue.zhCN).toContain('地点')
+    expect(findings[0]?.evidence).toContain('旧码头')
+  })
+
   it('maps deterministic findings into the existing review item shape', () => {
     const finding = findBlueprintContinuityRisks(projection, {
       chapterNumber: 2, title: '重逢', role: '发展', purpose: '顾舟归来', keyEvents: '顾舟敲门',
