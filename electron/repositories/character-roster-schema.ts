@@ -1,4 +1,5 @@
 import type BetterSqlite3 from 'better-sqlite3'
+import { createHash } from 'node:crypto'
 import type { CharacterRosterMigrationState } from '../../src/shared/character-roster'
 
 /**
@@ -32,6 +33,14 @@ export function ensureCharacterRosterSchema(db: BetterSqlite3.Database): void {
       projection_hash TEXT NOT NULL,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
+
+    CREATE TABLE IF NOT EXISTS character_identity_map (
+      character_id TEXT PRIMARY KEY,
+      current_name TEXT NOT NULL UNIQUE,
+      aliases_json TEXT NOT NULL DEFAULT '[]',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
   `)
 
   // SQLite 旧项目已经有第一版 roster 元数据时，补上完整事实哈希。不能依赖
@@ -44,24 +53,34 @@ export function ensureCharacterRosterSchema(db: BetterSqlite3.Database): void {
   const hasMeta = db.prepare(
     "SELECT 1 FROM character_roster_meta WHERE id = 'main'",
   ).get()
-  if (hasMeta) return
+  if (!hasMeta) {
+    const characterCount = (db.prepare(
+      'SELECT COUNT(*) AS count FROM characters',
+    ).get() as { count: number }).count
+    const legacyMarkdown = (db.prepare(
+      "SELECT COALESCE(characters_arch, '') AS characters_arch FROM project_core WHERE id = 'main'",
+    ).get() as { characters_arch?: string } | undefined)?.characters_arch ?? ''
 
-  const characterCount = (db.prepare(
-    'SELECT COUNT(*) AS count FROM characters',
-  ).get() as { count: number }).count
-  const legacyMarkdown = (db.prepare(
-    "SELECT COALESCE(characters_arch, '') AS characters_arch FROM project_core WHERE id = 'main'",
-  ).get() as { characters_arch?: string } | undefined)?.characters_arch ?? ''
+    const migrationState: CharacterRosterMigrationState = characterCount > 0
+      ? 'legacy_cards_preserved'
+      : legacyMarkdown.trim()
+        ? 'legacy_markdown_pending'
+        : 'empty'
 
-  const migrationState: CharacterRosterMigrationState = characterCount > 0
-    ? 'legacy_cards_preserved'
-    : legacyMarkdown.trim()
-      ? 'legacy_markdown_pending'
-      : 'empty'
+    db.prepare(`
+      INSERT INTO character_roster_meta (
+        id, schema_version, revision, migration_state, legacy_markdown, projection_hash, fact_hash
+      ) VALUES ('main', 1, 0, ?, ?, '', '')
+    `).run(migrationState, legacyMarkdown)
+  }
 
-  db.prepare(`
-    INSERT INTO character_roster_meta (
-      id, schema_version, revision, migration_state, legacy_markdown, projection_hash, fact_hash
-    ) VALUES ('main', 1, 0, ?, ?, '', '')
-  `).run(migrationState, legacyMarkdown)
+  const insertIdentity = db.prepare(`
+    INSERT OR IGNORE INTO character_identity_map (character_id, current_name, aliases_json)
+    VALUES (?, ?, '[]')
+  `)
+  const characterNames = db.prepare('SELECT name FROM characters ORDER BY name').all() as Array<{ name: string }>
+  for (const character of characterNames) {
+    const characterId = `char_${createHash('sha256').update(character.name, 'utf8').digest('hex').slice(0, 32)}`
+    insertIdentity.run(characterId, character.name)
+  }
 }

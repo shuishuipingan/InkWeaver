@@ -44,11 +44,14 @@ export interface CharacterRosterCharacterState {
 }
 
 /**
- * 角色名单中的一个结构化事实条目。关系以 names 为临时稳定标识；本轮不
- * 引入 UUID，后续收口 ticket 会处理手工写入和长期身份演进。
+ * 角色名单中的一个结构化事实条目。`characterId` 是跨改名保持不变的
+ * 本地身份；关系仍以 display name 读写以兼容旧项目，迁移映射由主进程
+ * 保存并校验引用闭合。
  */
 export interface CharacterRosterEntry {
+  characterId?: string
   name: string
+  aliases?: string[]
   role: CharacterRosterRole
   gender: string
   age: string

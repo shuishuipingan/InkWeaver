@@ -13,6 +13,7 @@ function key(value: string): string {
 function emptyEntry(candidate: CharacterExtractionCandidate): CharacterRosterEntry {
   return {
     name: candidate.name.trim(),
+    ...(candidate.aliases.length > 0 ? { aliases: [...new Set(candidate.aliases)] } : {}),
     role: candidate.role ?? 'supporting',
     gender: candidate.fields.gender ?? '',
     age: candidate.fields.age ?? '',
@@ -62,6 +63,11 @@ export function mergeAcceptedCharacterCandidates(
 
     const current = entries[index]!
     const merged: CharacterRosterEntry = { ...current }
+    merged.aliases = [...new Set([
+      ...(current.aliases ?? []),
+      ...candidate.aliases,
+      ...(candidate.name.trim() !== current.name.trim() ? [candidate.name.trim()] : []),
+    ].filter(alias => key(alias) !== key(current.name)))]
     if (candidate.role) merged.role = candidate.role
     for (const field of TEXT_FIELDS) {
       const value = candidate.fields[field]
