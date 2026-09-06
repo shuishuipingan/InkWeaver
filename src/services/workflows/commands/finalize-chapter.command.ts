@@ -27,6 +27,10 @@ import { readWorkflowDraftMeta } from '../workflow-draft-meta'
 import { requireWorkflowProjectSession, workflowWritingLanguage } from '../workflow-project-session'
 import type { CharacterRosterEntry, CharacterRosterRole } from '../../../shared/character-roster'
 import { writingLanguageText } from '../../../shared/writing-language'
+import {
+  buildChapterHandoffPrompt,
+  parseChapterHandoffCompletion,
+} from './chapter-handoff.command'
 
 export interface FinalizeChapterParams {
   draftPath: string
@@ -39,6 +43,8 @@ export interface FinalizeChapterParams {
   eventSource?: 'manual' | 'batch'
   /** 手动定稿由 DraftEditor 在确认时冻结；batch 则在 workflow session 内构造同等快照。 */
   snapshot?: FinalizationSnapshot
+  /** Generate an author-reviewable handoff candidate after a successful finalization. */
+  enableChapterHandoff?: boolean
 }
 
 export interface FinalizePostProcessGeneration {
@@ -166,6 +172,10 @@ export function buildFinalizePostProcessSteps(
   generation: FinalizePostProcessGeneration,
   finalizedDraftId?: number,
   chapterEntities: readonly string[] = [],
+  options: {
+    enableChapterHandoff?: boolean
+    sourceContentHash?: string
+  } = {},
 ): PostProcessStep[] {
   const steps: PostProcessStep[] = []
 
@@ -268,6 +278,56 @@ export function buildFinalizePostProcessSteps(
         )
       },
     })
+
+  if (options.enableChapterHandoff && finalizedDraftId !== undefined && options.sourceContentHash) {
+    steps.push({
+      key: 'chapter_handoff',
+      label: '章节交接候选',
+      critical: false,
+      executor: async (callbacks, context) => {
+        if (!context) throw new Error('章节交接提取缺少冻结工作流上下文')
+        if (context.cancelled) throw new Error('工作流已取消')
+        const projectSession = requireWorkflowProjectSession(context)
+        const writingLanguage = workflowWritingLanguage(context)
+        const source = {
+          handoffId: `chapter-handoff-${context.runId}-${chapterNumber}`,
+          draftId: finalizedDraftId,
+          chapterNumber,
+          sourceContentHash: options.sourceContentHash!,
+        }
+        const raw = await generation.complete(
+          {
+            build: () => buildChapterHandoffPrompt({
+              chapterNumber,
+              chapterTitle,
+              content: draftContent,
+              chapterEntities,
+              writingLanguage,
+            }),
+            getSystemRole: () => writingLanguage === 'en-US'
+              ? 'You extract evidence-backed chapter handoffs for a long-form fiction editor. Return only the requested JSON object.'
+              : '你负责为长篇小说编辑器提取有正文证据的章节交接记录。只返回要求的 JSON 对象。',
+          },
+          callbacks,
+          'structured-data',
+          context,
+        )
+        const candidate = parseChapterHandoffCompletion(raw, source)
+        const result = await ipc.invokeWithProjectSession(
+          projectSession,
+          'db:chapter-handoff-save-candidate',
+          candidate,
+          _project.path,
+        )
+        requireIpcSuccess(result, '保存章节交接候选')
+        callbacks.log(
+          writingLanguage === 'en-US'
+            ? 'Chapter handoff candidate saved for author confirmation.'
+            : '章节交接候选已保存，等待作者确认。',
+        )
+      },
+    })
+  }
 
   // ─── 步骤 3: 角色状态更新 ────────────────────────────────────────
   steps.push({
@@ -445,6 +505,8 @@ export interface RunFinalizePostProcessParams {
   stopOnFailure?: boolean
   onlyFailed?: boolean
   chapterEntities?: readonly string[]
+  enableChapterHandoff?: boolean
+  sourceContentHash?: string
 }
 
 /** One post-process run freezes one model and one budget across notes/cards. */
@@ -480,6 +542,10 @@ export class RunFinalizePostProcessCommand extends BaseWorkflowCommand<PostProce
       generation,
       this.params.draftId,
       this.params.chapterEntities,
+      {
+        enableChapterHandoff: this.params.enableChapterHandoff,
+        sourceContentHash: this.params.sourceContentHash,
+      },
     )
     return runPostProcessPipeline(
       this.params.project.path,
@@ -576,6 +642,8 @@ export class FinalizeChapterCommand extends BaseWorkflowCommand<void> {
       sourceLabel,
       stopOnFailure: this.params.stopOnPostProcessFailure,
       chapterEntities,
+      enableChapterHandoff: this.params.enableChapterHandoff,
+      sourceContentHash: commit.contentHash,
     }).execute({ step: {}, context, callbacks })
     this.assertNotCancelled(context)
 

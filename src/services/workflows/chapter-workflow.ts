@@ -80,6 +80,8 @@ export interface FinalizeOnlyParams {
   draftPath: string
   draftContent: string
   snapshot?: import('../finalization-snapshot').FinalizationSnapshot
+  /** Generate a source-bound chapter handoff candidate after finalization. */
+  enableChapterHandoff?: boolean
 }
 
 // ==========================================
@@ -350,6 +352,7 @@ export function createFinalizeWorkflow(
             chapterNumber: params.chapterNumber,
             chapterInfo,
             snapshot: params.snapshot,
+            enableChapterHandoff: params.enableChapterHandoff ?? true,
           })
           return cmd.execute({ step, context, callbacks })
         },

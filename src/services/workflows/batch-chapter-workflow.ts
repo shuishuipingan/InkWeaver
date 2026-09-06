@@ -254,6 +254,7 @@ async function runOneBatchChapter(
     chapterInfo,
     stopOnPostProcessFailure: true,
     eventSource: 'batch',
+    enableChapterHandoff: true,
     ...(snapshot ? { snapshot } : {}),
   }).execute({ step, context, callbacks })
 
