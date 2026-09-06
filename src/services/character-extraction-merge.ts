@@ -91,7 +91,7 @@ export function mergeAcceptedCharacterCandidates(
     relationships: (entry.relationships ?? []).filter(relationship => (
       names.has(relationship.target) && relationship.target !== entry.name
     )).filter((relationship, index, relationships) => (
-      relationships.findIndex(item => item.target === relationship.target && item.relation === relationship.relation) === index
+      relationships.findIndex(item => item.target === relationship.target && item.relation === relationship.relation && item.direction === relationship.direction) === index
     )),
   }))
 }

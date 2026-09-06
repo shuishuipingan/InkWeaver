@@ -148,7 +148,7 @@ function normalizeRelationships(value: unknown, ownerName: string): CharacterRos
     if (!target) throw new Error(`角色「${ownerName}」的关系目标不能为空`)
     if (!relation) throw new Error(`角色「${ownerName}」的关系说明不能为空`)
     if (target === ownerName) throw new Error(`角色「${ownerName}」不能建立自指关系`)
-    const key = `${target}\u0000${relation}`
+    const key = `${target}\u0000${relation}\u0000${String(relationship.direction ?? '')}`
     if (seen.has(key)) throw new Error(`角色「${ownerName}」存在重复关系`)
     seen.add(key)
     const direction = relationship.direction === undefined ? undefined : relationship.direction
@@ -508,7 +508,7 @@ function assertRelationshipClosure(entries: readonly CharacterRosterEntry[]): vo
       if (!relationship.target.trim() || !relationship.relation.trim() || relationship.target === entry.name || !names.has(relationship.target)) {
         throw new Error('已有角色关系不完整，已拒绝合并')
       }
-      const key = `${relationship.target}\u0000${relationship.relation}`
+      const key = `${relationship.target}\u0000${relationship.relation}\u0000${String(relationship.direction ?? '')}`
       if (relationshipKeys.has(key)) throw new Error('已有角色关系存在重复，已拒绝合并')
       relationshipKeys.add(key)
     }
