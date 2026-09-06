@@ -31,6 +31,9 @@ export type CharacterRosterStatus =
 export interface CharacterRosterRelationship {
   target: string
   relation: string
+  direction?: 'outgoing' | 'incoming' | 'mutual'
+  sourceChapter?: number
+  evidence?: string
 }
 
 export interface CharacterRosterCharacterState {

@@ -151,7 +151,26 @@ function normalizeRelationships(value: unknown, ownerName: string): CharacterRos
     const key = `${target}\u0000${relation}`
     if (seen.has(key)) throw new Error(`角色「${ownerName}」存在重复关系`)
     seen.add(key)
-    return { target, relation }
+    const direction = relationship.direction === undefined ? undefined : relationship.direction
+    if (direction !== undefined && !['outgoing', 'incoming', 'mutual'].includes(String(direction))) {
+      throw new Error(`角色「${ownerName}」的关系方向无效`)
+    }
+    const rawSourceChapter = relationship.sourceChapter
+    const sourceChapter = rawSourceChapter === undefined
+      ? undefined
+      : typeof rawSourceChapter === 'number' ? rawSourceChapter : NaN
+    if (sourceChapter !== undefined && (!Number.isSafeInteger(sourceChapter) || sourceChapter < 1)) {
+      throw new Error(`角色「${ownerName}」的关系来源章节无效`)
+    }
+    const evidence = relationship.evidence === undefined ? undefined : requiredText(relationship.evidence, '关系证据')
+    if (evidence !== undefined && evidence.length > 300) throw new Error('关系证据过长')
+    return {
+      target,
+      relation,
+      ...(direction === undefined ? {} : { direction: direction as 'outgoing' | 'incoming' | 'mutual' }),
+      ...(sourceChapter === undefined ? {} : { sourceChapter: sourceChapter as number }),
+      ...(evidence === undefined ? {} : { evidence }),
+    }
   }).sort((left, right) => (
     compareText(left.target, right.target) || compareText(left.relation, right.relation)
   ))

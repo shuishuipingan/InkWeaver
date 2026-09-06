@@ -27,7 +27,15 @@ interface GraphEdge {
   a: string
   b: string
   kind: RelationKind
-  items: Array<{ label: string; kind: RelationKind }>
+  items: Array<{
+    label: string
+    kind: RelationKind
+    from: string
+    to: string
+    direction?: 'outgoing' | 'incoming' | 'mutual'
+    sourceChapter?: number
+    evidence?: string
+  }>
 }
 
 interface ResolvedEdge {
@@ -36,6 +44,7 @@ interface ResolvedEdge {
   label: string
   kind: RelationKind
   ideal: number
+  directedItems: GraphEdge['items']
 }
 
 interface RelationshipGraphProps {
@@ -105,7 +114,7 @@ export default function RelationshipGraph({ characters }: RelationshipGraphProps
     name: string
     role: string
     degree: number
-    items: Array<{ other: string; label: string; kind: RelationKind }>
+    items: Array<{ other: string; label: string; kind: RelationKind; from: string; direction?: GraphEdge['items'][number]['direction']; sourceChapter?: number; evidence?: string }>
     more: number
   } | null>(null)
   const text = useLocaleStore(state => state.text)
@@ -130,7 +139,15 @@ export default function RelationshipGraph({ characters }: RelationshipGraphProps
         }
         const label = relationShortLabel(parsed.relation)
         if (!label || entry.items.some((item) => item.label === label)) continue
-        entry.items.push({ label, kind: classifyRelation(parsed.relation) })
+        entry.items.push({
+          label,
+          kind: classifyRelation(parsed.relation),
+          from: character.name,
+          to: parsed.target,
+          ...(parsed.direction === undefined ? {} : { direction: parsed.direction }),
+          ...(parsed.sourceChapter === undefined ? {} : { sourceChapter: parsed.sourceChapter }),
+          ...(parsed.evidence === undefined ? {} : { evidence: parsed.evidence }),
+        })
       }
     }
     const list = [...map.values()]
@@ -175,12 +192,20 @@ export default function RelationshipGraph({ characters }: RelationshipGraphProps
 
   // 提示条的关系明细：每条原始描述一行（对象 + 短标签 + 类型）
   const relationsOf = (name: string) => {
-    const items: Array<{ other: string; label: string; kind: RelationKind }> = []
+    const items: Array<{ other: string; label: string; kind: RelationKind; from: string; direction?: GraphEdge['items'][number]['direction']; sourceChapter?: number; evidence?: string }> = []
     for (const edge of visibleGraph.edges) {
       const other = edge.a === name ? edge.b : edge.b === name ? edge.a : null
       if (!other) continue
       for (const item of edge.items) {
-        if (item.label) items.push({ other, label: item.label, kind: item.kind })
+        if (item.label) items.push({
+          other,
+          label: item.label,
+          kind: item.kind,
+          from: item.from,
+          ...(item.direction === undefined ? {} : { direction: item.direction }),
+          ...(item.sourceChapter === undefined ? {} : { sourceChapter: item.sourceChapter }),
+          ...(item.evidence === undefined ? {} : { evidence: item.evidence }),
+        })
       }
     }
     return items
@@ -274,6 +299,7 @@ export default function RelationshipGraph({ characters }: RelationshipGraphProps
             + (edge.items.length > 3 ? '…' : ''),
           kind: edge.kind,
           ideal: 150,
+          directedItems: edge.items,
         }))
         .filter(
           (e): e is ResolvedEdge => !!e.a && !!e.b && e.a !== e.b,
@@ -388,6 +414,26 @@ export default function RelationshipGraph({ characters }: RelationshipGraphProps
           ctx.moveTo(edge.a.x, edge.a.y)
           ctx.lineTo(edge.b.x, edge.b.y)
           ctx.stroke()
+          const directed = edge.directedItems.filter(item => item.direction && item.direction !== 'mutual')
+          for (const item of directed.slice(0, 3)) {
+            const from = item.from === edge.a.name ? edge.a : item.from === edge.b.name ? edge.b : null
+            const to = item.to === edge.a.name ? edge.a : item.to === edge.b.name ? edge.b : null
+            if (!from || !to) continue
+            const dx = to.x - from.x
+            const dy = to.y - from.y
+            const length = Math.max(Math.hypot(dx, dy), 1)
+            const tipX = to.x - (dx / length) * (dense ? 10 : 24)
+            const tipY = to.y - (dy / length) * (dense ? 10 : 24)
+            const size = dense ? 5 : 8
+            const angle = Math.atan2(dy, dx)
+            ctx.beginPath()
+            ctx.moveTo(tipX, tipY)
+            ctx.lineTo(tipX - size * Math.cos(angle - Math.PI / 6), tipY - size * Math.sin(angle - Math.PI / 6))
+            ctx.lineTo(tipX - size * Math.cos(angle + Math.PI / 6), tipY - size * Math.sin(angle + Math.PI / 6))
+            if (typeof ctx.closePath === 'function') ctx.closePath()
+            ctx.fillStyle = withAlpha(base, connected ? 'ee' : '99')
+            ctx.fill()
+          }
         }
         if (typeof ctx.setLineDash === 'function') ctx.setLineDash([])
 
@@ -1080,10 +1126,16 @@ export default function RelationshipGraph({ characters }: RelationshipGraphProps
                     className="inline-block h-1.5 w-1.5 shrink-0 rounded-full"
                     style={{ backgroundColor: `var(--color-rel-${item.kind})` }}
                   />
-                  <span>{item.other}</span>
+                  <span>{item.direction === 'mutual' ? '↔' : item.from === tooltip.name ? '→' : '←'} {item.other}</span>
                   <span className="truncate text-[var(--color-text-secondary)]">{item.label}</span>
+                  {item.sourceChapter && <span className="text-[var(--color-text-muted)]">· {text(`第${item.sourceChapter}章`, `Ch. ${item.sourceChapter}`)}</span>}
                 </div>
               ))}
+              {tooltip.items.some(item => item.evidence) && (
+                <div className="mt-1 space-y-0.5 border-t pt-1 text-[var(--color-text-muted)]" style={{ borderColor: 'var(--color-border)' }}>
+                  {tooltip.items.filter(item => item.evidence).slice(0, 3).map((item, index) => <div key={`evidence-${index}`} className="truncate">{item.evidence}</div>)}
+                </div>
+              )}
               {tooltip.more > 0 && (
                 <div className="text-[var(--color-text-muted)]">
                   {text(`还有 ${tooltip.more} 条…`, `+${tooltip.more} more…`)}

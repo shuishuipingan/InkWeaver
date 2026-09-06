@@ -20,6 +20,23 @@ describe('relationship presentation', () => {
     )
   })
 
+  it('retains optional direction and source evidence for graph details', () => {
+    const persisted = JSON.stringify([{
+      target: '陆云飞',
+      relation: '信任',
+      direction: 'outgoing',
+      sourceChapter: 7,
+      evidence: '沈砺把钥匙交给了陆云飞。',
+    }])
+    expect(parseRelationshipEdges(persisted, { knownNames: ['沈砺', '陆云飞'], selfName: '沈砺' })).toEqual([{
+      target: '陆云飞',
+      relation: '信任',
+      direction: 'outgoing',
+      sourceChapter: 7,
+      evidence: '沈砺把钥匙交给了陆云飞。',
+    }])
+  })
+
   it('stores unambiguous natural-language editor lines as graph-readable edges', () => {
     const stored = relationshipStorageFromEditor(
       '陆云飞：竞争对手（权力斗争）\n苏璃：盟友',
