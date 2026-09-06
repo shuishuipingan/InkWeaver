@@ -84,6 +84,15 @@ function explicitStoryDay(statement: string, entity: string): number | undefined
   return Number.isSafeInteger(day) && day > 0 ? day : undefined
 }
 
+function explicitKnowledge(statement: string, entity: string): string | undefined {
+  const subject = escapeRegExp(entity)
+  const match = new RegExp(
+    `${subject}.{0,20}?(?:知道|得知|获悉|听说)\s*[“"「]?([^，。；,.;”"」\\n]+)`,
+    'u',
+  ).exec(statement)
+  return match?.[1]?.trim() || undefined
+}
+
 export function continuityStableFactKey(fact: {
   category: string
   sourceChapter: number
@@ -170,6 +179,30 @@ export function findBlueprintContinuityRisks(
           }
         }
         continue
+      }
+      const knownSecret = explicitKnowledge(`${fact.statement}。${fact.evidence}`, entity)
+      if (knownSecret) {
+        for (const other of blueprint.characters.map(normalizedKeyPart)) {
+          if (other === entity || fact.entities.map(normalizedKeyPart).includes(other)) continue
+          const blueprintSecret = explicitKnowledge(`${blueprint.purpose}。${blueprint.keyEvents}`, other)
+          if (!blueprintSecret || normalizedKeyPart(blueprintSecret) !== normalizedKeyPart(knownSecret)) continue
+          const knowledgeKey = `${stableFactKey}:knowledge:${entity}:${other}`
+          if (activeExemptions.has(knowledgeKey)) continue
+          return [{
+            stableFactKey: knowledgeKey,
+            severity: 'warning' as const,
+            sourceChapter: fact.sourceChapter,
+            evidence: fact.evidence,
+            issue: {
+              zhCN: `知情范围冲突：当前证据只证明“${entity}”得知“${knownSecret}”，但蓝图直接让“${other}”知情。`,
+              enUS: `Knowledge-boundary conflict: evidence only proves “${entity}” learned “${knownSecret}”, but the blueprint gives that knowledge to “${other}”.`,
+            },
+            suggestion: {
+              zhCN: '补充该角色获知秘密的事件，或调整蓝图中的信息状态。',
+              enUS: 'Add how this character learned the secret, or adjust the blueprint knowledge state.',
+            },
+          }]
+        }
       }
       const finalizedLocation = explicitLocation(fact.statement, entity)
       const blueprintLocation = explicitLocation(

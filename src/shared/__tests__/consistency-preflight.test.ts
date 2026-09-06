@@ -183,6 +183,32 @@ describe('findBlueprintContinuityRisks', () => {
     expect(findings[0]?.issue.zhCN).toContain('时间线')
   })
 
+  it('reports a knowledge leak when a blueprint gives a secret to an unproven character', () => {
+    const findings = findBlueprintContinuityRisks([{
+      ...projection[0]!,
+      facts: [{
+        category: 'character-state' as const,
+        entities: ['林舟'],
+        statement: '林舟得知红门在旧码头。',
+        sourceChapter: 1,
+        evidence: '林舟从密信中得知红门在旧码头。',
+      }],
+    }], {
+      chapterNumber: 2,
+      title: '秘密扩散',
+      role: '发展',
+      purpose: '沈月已经知道红门在旧码头',
+      keyEvents: '沈月得知红门在旧码头，并改变了行动路线。',
+      characters: ['林舟', '沈月'],
+      suspenseHook: '',
+      userGuidance: '',
+      notes: '',
+    }, [])
+
+    expect(findings).toHaveLength(1)
+    expect(findings[0]?.issue.zhCN).toContain('知情')
+  })
+
   it('maps deterministic findings into the existing review item shape', () => {
     const finding = findBlueprintContinuityRisks(projection, {
       chapterNumber: 2, title: '重逢', role: '发展', purpose: '顾舟归来', keyEvents: '顾舟敲门',
