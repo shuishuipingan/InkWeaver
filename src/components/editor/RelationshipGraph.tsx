@@ -91,6 +91,8 @@ export default function RelationshipGraph({ characters }: RelationshipGraphProps
   const showEdgeLabelsRef = useRef<boolean | null>(null)
   const [zoomPercent, setZoomPercent] = useState(100)
   const [edgeLabelsOn, setEdgeLabelsOn] = useState<boolean | null>(null)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [relationFilter, setRelationFilter] = useState<RelationKind | 'all'>('all')
   const [tooltip, setTooltip] = useState<{
     x: number
     y: number
@@ -136,19 +138,57 @@ export default function RelationshipGraph({ characters }: RelationshipGraphProps
     return list
   }, [characters])
 
+  const visibleGraph = useMemo(() => {
+    const query = searchQuery.trim().toLocaleLowerCase('en-US')
+    const matchingNames = new Set(
+      characters
+        .filter(character => !!query && character.name.toLocaleLowerCase('en-US').includes(query))
+        .map(character => character.name),
+    )
+    const focusNames = new Set(
+      query || relationFilter !== 'all'
+        ? matchingNames
+        : characters.map(character => character.name),
+    )
+    if (query) {
+      for (const edge of graphEdges) {
+        if (matchingNames.has(edge.a)) focusNames.add(edge.b)
+        if (matchingNames.has(edge.b)) focusNames.add(edge.a)
+      }
+    }
+    const edges = graphEdges.filter(edge => (
+      (relationFilter === 'all' || edge.kind === relationFilter)
+      && (!query || (focusNames.has(edge.a) && focusNames.has(edge.b)))
+    ))
+    if (relationFilter !== 'all') {
+      for (const edge of edges) {
+        focusNames.add(edge.a)
+        focusNames.add(edge.b)
+      }
+    }
+    const displayNames = query || relationFilter !== 'all'
+      ? focusNames
+      : new Set(characters.map(character => character.name))
+    return {
+      characters: characters.filter(character => displayNames.has(character.name)),
+      edges,
+      matchingNames,
+    }
+  }, [characters, graphEdges, relationFilter, searchQuery])
+
   // 用于悬停邻域高亮和提示条的关系数（合并后 = 不同邻居数）
   const degreeByName = useMemo(() => {
     const map = new Map<string, number>()
-    for (const edge of graphEdges) {
+    for (const edge of visibleGraph.edges) {
       map.set(edge.a, (map.get(edge.a) ?? 0) + 1)
       map.set(edge.b, (map.get(edge.b) ?? 0) + 1)
     }
     return map
-  }, [graphEdges])
+  }, [visibleGraph.edges])
 
   const buildNeighbors = (name: string) => {
     const neighbors = new Set<string>()
-    for (const edge of graphEdges) {
+    for (const edge of visibleGraph.edges) {
       if (edge.a === name) neighbors.add(edge.b)
       else if (edge.b === name) neighbors.add(edge.a)
     }
@@ -158,7 +198,7 @@ export default function RelationshipGraph({ characters }: RelationshipGraphProps
   // 提示条的关系明细：每条原始描述一行（对象 + 短标签 + 类型）
   const relationsOf = (name: string) => {
     const items: Array<{ other: string; label: string; kind: RelationKind }> = []
-    for (const edge of graphEdges) {
+    for (const edge of visibleGraph.edges) {
       const other = edge.a === name ? edge.b : edge.b === name ? edge.a : null
       if (!other) continue
       for (const item of edge.items) {
@@ -169,11 +209,11 @@ export default function RelationshipGraph({ characters }: RelationshipGraphProps
   }
 
   const legendKinds = useMemo(
-    () => RELATION_KIND_PRIORITY.filter((kind) => graphEdges.some((edge) => edge.kind === kind)),
-    [graphEdges],
+    () => RELATION_KIND_PRIORITY.filter((kind) => visibleGraph.edges.some((edge) => edge.kind === kind)),
+    [visibleGraph.edges],
   )
 
-  const effectiveEdgeLabels = edgeLabelsOn ?? graphEdges.length <= EDGE_LABEL_AUTO_LIMIT
+  const effectiveEdgeLabels = edgeLabelsOn ?? visibleGraph.edges.length <= EDGE_LABEL_AUTO_LIMIT
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -200,10 +240,10 @@ export default function RelationshipGraph({ characters }: RelationshipGraphProps
 
     const initialize = (w: number, h: number) => {
       // 尺寸与角色数据都没变时才跳过；否则角色编辑后图谱会停留在旧数据
-      if (w === lastWidth && h === lastHeight && layoutKey === characters && drawRef.current) return
+      if (w === lastWidth && h === lastHeight && layoutKey === visibleGraph.characters && drawRef.current) return
       lastWidth = w
       lastHeight = h
-      layoutKey = characters
+      layoutKey = visibleGraph.characters
       userInteractedRef.current = false
       hoverRef.current = null
       pinnedRef.current = null
@@ -214,14 +254,14 @@ export default function RelationshipGraph({ characters }: RelationshipGraphProps
       canvas.width = w * 2
       canvas.height = h * 2
 
-      const nodeCount = characters.length
+      const nodeCount = visibleGraph.characters.length
       const dense = nodeCount > 80
       const centerX = w
       const centerY = h
       const nodeNames = new Map<string, CharacterNode>()
 
       // 初始布局：黄金角螺旋/圆环铺满整个画布（内容空间 = 2 × CSS，半轴 w/h 即铺满 CSS 全宽高）
-      nodesRef.current = characters.map((c, i) => {
+      nodesRef.current = visibleGraph.characters.map((c, i) => {
         let x: number
         let y: number
         if (dense) {
@@ -244,7 +284,7 @@ export default function RelationshipGraph({ characters }: RelationshipGraphProps
 
       // 连线只解析一次；后续每帧直接使用引用，避免 O(E·N) 的 nodes.find
       const degree = new Map<CharacterNode, number>()
-      const resolvedEdges: ResolvedEdge[] = graphEdges
+      const resolvedEdges: ResolvedEdge[] = visibleGraph.edges
         .map((edge) => ({
           a: nodeNames.get(edge.a),
           b: nodeNames.get(edge.b),
@@ -639,7 +679,7 @@ export default function RelationshipGraph({ characters }: RelationshipGraphProps
       cancelAnimationFrame(animRef.current)
       drawRef.current = null
     }
-  }, [characters, graphEdges])
+  }, [visibleGraph.characters, visibleGraph.edges])
 
   // 屏幕 CSS 坐标 → 内容坐标（见文件头注释的反解公式）
   const screenToContent = (screenX: number, screenY: number, w: number, h: number) => {
@@ -876,6 +916,40 @@ export default function RelationshipGraph({ characters }: RelationshipGraphProps
   return (
     <div className="relative h-full overflow-hidden">
       <div
+        className="absolute left-3 top-3 z-10 flex items-center gap-1 rounded-md border px-1 py-1"
+        style={{
+          borderColor: 'var(--color-border)',
+          backgroundColor: 'var(--color-panel)',
+          color: 'var(--color-text)',
+        }}
+      >
+        <input
+          value={searchQuery}
+          onChange={event => setSearchQuery(event.target.value)}
+          className="w-28 rounded border bg-transparent px-1.5 py-1 text-[11px] outline-none"
+          style={{ borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+          placeholder={text('搜索角色', 'Search')}
+          aria-label={text('搜索角色', 'Search characters')}
+        />
+        <select
+          value={relationFilter}
+          onChange={event => setRelationFilter(event.target.value as RelationKind | 'all')}
+          className="max-w-20 rounded border bg-transparent px-1 py-1 text-[11px] outline-none"
+          style={{ borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+          aria-label={text('按关系类型筛选', 'Filter by relationship type')}
+        >
+          <option value="all">{text('全部', 'All')}</option>
+          {RELATION_KIND_PRIORITY.map(kind => (
+            <option key={kind} value={kind}>{text(RELATION_META[kind].zh, RELATION_META[kind].en)}</option>
+          ))}
+        </select>
+        {(searchQuery || relationFilter !== 'all') && (
+          <span className="px-1 text-[10px] tabular-nums" style={{ color: 'var(--color-text-muted)' }}>
+            {visibleGraph.characters.length}
+          </span>
+        )}
+      </div>
+      <div
         className="absolute right-3 top-3 z-10 flex items-center gap-1 rounded-md border px-1 py-1"
         style={{
           borderColor: 'var(--color-border)',
@@ -926,6 +1000,7 @@ export default function RelationshipGraph({ characters }: RelationshipGraphProps
       </div>
       {legendKinds.length > 0 && (
         <div
+          data-relationship-legend="true"
           className="pointer-events-none absolute bottom-3 left-3 z-10 flex max-w-[calc(100%-24px)] flex-wrap items-center gap-x-3 gap-y-1 rounded-md border px-2 py-1.5 text-[11px]"
           style={{
             borderColor: 'var(--color-border)',

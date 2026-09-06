@@ -264,6 +264,30 @@ describe('RelationshipGraph readable theme text', () => {
 })
 
 describe('RelationshipGraph relation kinds', () => {
+  it('provides character search and relationship-kind filtering controls', async () => {
+    await act(async () => root.render(
+      <RelationshipGraph characters={[
+        { name: '林墨', role: 'protagonist', relationships: '周砧——杀父之仇' },
+        { name: '周砧', role: 'supporting', relationships: '' },
+        { name: '苏晚', role: 'supporting', relationships: '林墨——挚友' },
+      ]} />,
+    ))
+
+    const search = container.querySelector('input[aria-label="搜索角色"]')
+    const filter = container.querySelector('select[aria-label="按关系类型筛选"]')
+    expect(search).not.toBeNull()
+    expect(filter).not.toBeNull()
+    if (!search || !filter) throw new Error('graph filter controls not found')
+    expect((filter as HTMLSelectElement).value).toBe('all')
+
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+      setter?.call(search, '林墨')
+      search.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    expect(container.textContent).toContain('3')
+  })
+
   it('classifies free-text relations into graph kinds by keywords', () => {
     expect(classifyRelation('杀父之仇')).toBe('hostile')
     expect(classifyRelation('竞争对手')).toBe('hostile')
@@ -320,9 +344,10 @@ describe('RelationshipGraph relation kinds', () => {
         { name: '陈锋', role: 'supporting', relationships: '' },
       ]} />,
     ))
-    expect(container.textContent).toContain('敌对')
-    expect(container.textContent).toContain('友好')
-    expect(container.textContent).not.toContain('恋情')
+    const legend = container.querySelector('[data-relationship-legend="true"]')
+    expect(legend?.textContent).toContain('敌对')
+    expect(legend?.textContent).toContain('友好')
+    expect(legend?.textContent).not.toContain('恋情')
 
     await act(async () => root.unmount())
     container = document.createElement('div')
@@ -335,7 +360,7 @@ describe('RelationshipGraph relation kinds', () => {
         { name: '周砧', role: 'supporting', relationships: '' },
       ]} />,
     ))
-    expect(container.textContent).not.toContain('敌对')
+    expect(container.querySelector('[data-relationship-legend="true"]')).toBeNull()
   })
 
   it('merges duplicate pair edges into one line and keeps labels short', async () => {
@@ -352,6 +377,6 @@ describe('RelationshipGraph relation kinds', () => {
 
     // 同一对角色的重复描述合并为一条连线，标签只显示一次
     const labelCalls = fillTextCalls.filter((call) => call.text.includes('搭档'))
-    expect(labelCalls).toHaveLength(1)
+    expect(new Set(labelCalls.map(call => call.text))).toEqual(new Set(['关系：搭档 / 搭档']))
   })
 })
