@@ -27,6 +27,7 @@ import {
   workflowResourceClaimsConflict,
   type WorkflowResourceKind,
 } from '../shared/workflow-resource-claims'
+import type { ContextReceipt } from '../shared/context-receipt'
 
 // ===== 工作流数据模型 =====
 
@@ -95,6 +96,8 @@ export interface WorkflowRun {
   failureCode?: WorkflowFailureCode
   /** Safe structured byte attribution mirrored from the failed current step. */
   promptBudgetReport?: PromptBudgetReport
+  /** Privacy-safe explanation of which complete context entries were selected. */
+  contextReceipt?: ContextReceipt
   /** 已请求在当前步骤完成后的安全边界暂停 */
   pauseRequested?: boolean
 }
@@ -683,6 +686,8 @@ export const useWorkflowStore = create<WorkflowState>()((set, get) => ({
           progress: 100,
           result: result || get().activeRuns.find(r => r.id === run.id)?.steps[i].result,
         })
+        const contextReceipt = context.data.contextReceipt as ContextReceipt | undefined
+        if (contextReceipt) updateRunById(set, run.id, { contextReceipt })
         get().addLog('info', uiText(
           context.uiLocale,
           `[完成] [${definition.title}] 步骤: ${stepDef.name}`,

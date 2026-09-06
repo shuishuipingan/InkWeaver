@@ -16,6 +16,7 @@ import {
 } from '../../shared/project-session-context'
 import type { ProjectSessionContext } from '../../shared/ipc-channels'
 import type { PromptBudgetReport } from '../../services/generation/generation-harness'
+import type { ContextReceipt } from '../../shared/context-receipt'
 import MarkdownContent from '../ui/MarkdownContent'
 import { PanelHeader } from '../ui/PanelHeader'
 import { presentWorkflowFailure } from './ai-output-failure-presentation'
@@ -212,6 +213,8 @@ function ActiveRunView({
         />
       </div>
 
+      {run.contextReceipt && <ContextReceiptSummary receipt={run.contextReceipt} locale={locale} />}
+
       {/* 滚动内容区 */}
       <div
         ref={scrollRef}
@@ -279,6 +282,32 @@ function ActiveRunView({
   )
 }
 
+
+function ContextReceiptSummary({ receipt, locale }: { receipt: ContextReceipt; locale: 'zh-CN' | 'en-US' }) {
+  const included = receipt.entries.filter(entry => entry.included).length
+  const omitted = receipt.entries.length - included
+  if (receipt.entries.length === 0) return null
+  return (
+    <details
+      className="mx-2 mb-2 rounded-md border px-2 py-1.5 text-[0.68rem]"
+      style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }}
+    >
+      <summary className="cursor-pointer select-none">
+        {locale === 'en-US' ? 'Context receipt' : '写前上下文收据'} · {included} {locale === 'en-US' ? 'included' : '项已纳入'}
+        {omitted > 0 ? ` · ${omitted} ${locale === 'en-US' ? 'omitted' : '项省略'}` : ''}
+      </summary>
+      <div className="mt-1 space-y-0.5" data-context-receipt="true">
+        {receipt.entries.map(entry => (
+          <div key={`${entry.id}:${entry.included ? 'in' : 'out'}`} className="flex gap-1.5">
+            <span aria-hidden="true">{entry.included ? '✓' : '—'}</span>
+            <span className="truncate">{entry.label}</span>
+            {!entry.included && <span className="shrink-0 text-[var(--color-text-muted)]">{entry.reason}</span>}
+          </div>
+        ))}
+      </div>
+    </details>
+  )
+}
 
 // ===== 新版渲染单步结果（支持查看所有历史步骤数据） =====
 function StepOutputBlock({ step, index, total, isActiveRun, isCurrentStep }: { step: WorkflowStep; index: number; total: number; isActiveRun: boolean; isCurrentStep: boolean }) {

@@ -31,6 +31,11 @@ import { promptLanguageText } from '../../prompt-language'
 import { countDraftUnits } from '../../../shared/draft-units'
 import { formatChapterHandoff } from '../../chapter-handoff-context'
 import type { ChapterHandoffRecord } from '../../../shared/chapter-handoff'
+import {
+  selectContextEntries,
+  type ContextReceipt,
+  type ContextSelectionEntry,
+} from '../../../shared/context-receipt'
 
 export { countDraftUnits } from '../../../shared/draft-units'
 
@@ -286,6 +291,17 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
         '(no author guidance)',
       ))
 
+    // Even a first chapter gets an explicit empty receipt so the UI can tell
+    // the difference between “no history exists” and “history was omitted”.
+    const emptyContextReceipt: ContextReceipt = {
+      version: 1,
+      chapterNumber: this.chapterInfo.chapterNumber,
+      budgetChars: 0,
+      selectedChars: 0,
+      entries: [],
+    }
+    context.data.contextReceipt = emptyContextReceipt
+
     if (!isFirstChapter) {
       // 从蓝图 JSON 的 notes 字段读取章节要点时间线（按序拼装，利于前缀缓存）
       const chapterTimeline = await this.readChapterNotesTimeline(
@@ -296,6 +312,11 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
         this.chapterInfo.characters,
       )
       callbacks.log(`  已加载章节要点与连续性事实（${chapterTimeline.factCount} 条）`)
+      context.data.contextReceipt = chapterTimeline.receipt
+      const omittedContextCount = chapterTimeline.receipt.entries.filter(entry => !entry.included).length
+      if (omittedContextCount > 0) {
+        callbacks.log(`  上下文预算省略 ${omittedContextCount} 个完整条目（详见 ContextReceipt）`)
+      }
       const activeThreads = await this.readActiveNarrativeThreads(
         expectedProjectPath,
         projectSession,
@@ -814,12 +835,10 @@ ${visibleTail}`,
     projectSession: ProjectSessionContext,
     writingLanguage: WritingLanguage,
     currentEntities: readonly string[],
-  ): Promise<{ text: string; factCount: number }> {
+  ): Promise<{ text: string; factCount: number; receipt: ContextReceipt }> {
     const FULL_WINDOW = 5  // 近 N 章完整收录
     const MAX_CHARS = 3000 // 总量上限
-    const FACT_BUDGET = 1500
-    const lines: string[] = []
-    const factCandidates: Array<{ text: string; entityRelevant: boolean; sourceChapter: number }> = []
+    const entries: ContextSelectionEntry[] = []
     let finalizedContinuity: FinalizedContinuityProjection[] = []
     try {
       finalizedContinuity = await ipc.invokeWithProjectSession(
@@ -843,66 +862,87 @@ ${visibleTail}`,
         const isRecent = i >= currentChapter - FULL_WINDOW
         const title = projection?.chapterTitle || bp?.title || ''
         const notes = projection?.chapterNotes || bp?.notes || ''
-        for (const fact of projection?.facts ?? []) {
+        for (const [factIndex, fact] of (projection?.facts ?? []).entries()) {
           if (!factAppliesAtChapter(fact, currentChapter)) continue
           const entityRelevant = fact.entities.some(entity => currentEntities.includes(entity))
             || currentEntities.some(entity => (
               fact.statement.includes(entity) || fact.evidence.includes(entity)
             ))
-          if (!isRecent && !entityRelevant) continue
-          factCandidates.push({
-            text: promptLanguageText(
+          if (!isRecent && !entityRelevant) {
+            entries.push({
+              id: `fact:${fact.sourceChapter}:${factIndex}`,
+              layer: 'historical-fact',
+              label: `第${fact.sourceChapter}章${fact.category}事实`,
+              content: promptLanguageText(
+                writingLanguage,
+                `- [${fact.category}] ${fact.statement}（来源第${fact.sourceChapter}章；证据：${fact.evidence}）`,
+                `- [${fact.category}] ${fact.statement} (source: Chapter ${fact.sourceChapter}; evidence: ${fact.evidence})`,
+              ),
+              priority: 0,
+              order: i * 100 + factIndex,
+              sourceChapter: fact.sourceChapter,
+              excludedReason: 'not-relevant',
+            })
+            continue
+          }
+          entries.push({
+            id: `fact:${fact.sourceChapter}:${factIndex}`,
+            layer: 'historical-fact',
+            label: `第${fact.sourceChapter}章${fact.category}事实`,
+            content: promptLanguageText(
               writingLanguage,
               `- [${fact.category}] ${fact.statement}（来源第${fact.sourceChapter}章；证据：${fact.evidence}）`,
               `- [${fact.category}] ${fact.statement} (source: Chapter ${fact.sourceChapter}; evidence: ${fact.evidence})`,
             ),
-            entityRelevant,
+            priority: entityRelevant ? 100 : isRecent ? 70 : 35,
+            order: i * 100 + factIndex,
             sourceChapter: fact.sourceChapter,
           })
         }
 
         if (isRecent && notes.trim()) {
           // 近 N 章：完整收录要点
-          lines.push(promptLanguageText(
+          entries.push({
+            id: `chapter-notes:${i}`,
+            layer: 'current-arc',
+            label: `第${i}章章节要点`,
+            content: promptLanguageText(
             writingLanguage,
             `【第${i}章 ${title}】\n${notes.trim()}`,
             `[Chapter ${i}: ${title}]\n${notes.trim()}`,
-          ))
+            ),
+            priority: 80,
+            order: i * 100,
+            sourceChapter: i,
+          })
         } else {
           // 远期章节：仅保留标题行（节省 Token）
-          lines.push(promptLanguageText(
+          entries.push({
+            id: `chapter-title:${i}`,
+            layer: 'historical-fact',
+            label: `第${i}章标题`,
+            content: promptLanguageText(
             writingLanguage,
             `【第${i}章 ${title}】`,
             `[Chapter ${i}: ${title}]`,
-          ))
+            ),
+            priority: 20,
+            order: i * 100,
+            sourceChapter: i,
+          })
         }
       } catch { /* 忽略单章读取失败 */ }
     }
 
-    const selectedFacts: string[] = []
-    let usedFactChars = 0
-    for (const candidate of factCandidates
-      .sort((a, b) => Number(b.entityRelevant) - Number(a.entityRelevant) || b.sourceChapter - a.sourceChapter)
-      .slice(0, 12)) {
-      const nextLength = candidate.text.length + (selectedFacts.length > 0 ? 1 : 0)
-      if (usedFactChars + nextLength > FACT_BUDGET) continue
-      selectedFacts.push(candidate.text)
-      usedFactChars += nextLength
-    }
-    const factBlock = selectedFacts.length > 0
-      ? promptLanguageText(
-          writingLanguage,
-          `【已定稿连续性事实】\n${selectedFacts.join('\n')}`,
-          `[Finalized continuity facts]\n${selectedFacts.join('\n')}`,
-        )
-      : ''
-    const notesBudget = Math.max(MAX_CHARS - factBlock.length - (factBlock ? 2 : 0), 0)
-    const notesText = lines.join('\n\n').slice(-notesBudget)
-    const result = [notesText, factBlock].filter(Boolean).join('\n\n')
+    const selection = selectContextEntries(currentChapter, entries, { maxChars: MAX_CHARS })
+    const selectedFactIds = new Set(
+      selection.selectedIds.filter(id => id.startsWith('fact:')),
+    )
 
     return {
-      text: result || promptLanguageText(writingLanguage, '（无章节要点）', '(no chapter notes)'),
-      factCount: selectedFacts.length,
+      text: selection.text || promptLanguageText(writingLanguage, '（无章节要点）', '(no chapter notes)'),
+      factCount: selectedFactIds.size,
+      receipt: selection.receipt,
     }
   }
 

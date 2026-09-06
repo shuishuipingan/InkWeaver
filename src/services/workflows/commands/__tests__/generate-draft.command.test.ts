@@ -554,6 +554,16 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
     expect(prompt).toContain('早期事实哨兵')
     expect(prompt).not.toContain('无关事实哨兵')
     expect(callbacks.log).toHaveBeenCalledWith(expect.stringContaining('连续性事实（1 条）'))
+    const receipt = context.data.contextReceipt as {
+      chapterNumber: number
+      budgetChars: number
+      entries: Array<{ id: string; included: boolean; reason?: string }>
+    }
+    expect(receipt).toMatchObject({ chapterNumber: 8, budgetChars: 3000 })
+    expect(receipt.entries).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'fact:1:1', included: false, reason: 'not-relevant' }),
+    ]))
+    expect(JSON.stringify(receipt)).not.toContain('早期事实哨兵')
   })
 
   it('keeps an older relevant fact when newer chapter notes exhaust the context budget', async () => {
