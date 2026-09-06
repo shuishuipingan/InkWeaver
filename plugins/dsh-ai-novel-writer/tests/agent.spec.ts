@@ -2,7 +2,7 @@ import { access } from 'node:fs/promises'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import AgentRegistry from '@deepseek-ai/dsh-agent'
-import { CallId } from '@deepseek-ai/dsh-llm'
+import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { defineTool } from '@deepseek-ai/dsh-tools'
 import { describe, expect, it, vi } from 'vitest'
@@ -221,7 +221,7 @@ describe('AI novel agent tools', () => {
     }))
 
     await expect(ctx.tools.execute({
-      callId: CallId('after-unload'), name: 'novel_apply_change', arguments: {},
+      callId: ToolCallId('after-unload'), name: 'novel_apply_change', arguments: {},
       signal: new AbortController().signal,
     })).resolves.toMatchObject({ isError: false, value: 'unloaded' })
     await ctx.fiber.dispose()

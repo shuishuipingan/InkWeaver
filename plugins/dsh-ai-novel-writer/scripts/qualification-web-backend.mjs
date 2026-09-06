@@ -2,7 +2,7 @@
 
 import { appendFile } from 'node:fs/promises'
 import process from 'node:process'
-import { CallId, LlmAdapter } from '@deepseek-ai/dsh-llm'
+import { ToolCallId, LlmAdapter } from '@deepseek-ai/dsh-llm'
 
 function fail(message) {
   throw new Error(message)
@@ -50,7 +50,7 @@ export function proposalFromMessages(messages) {
 }
 
 function toolCall(callId, name, args) {
-  const id = CallId(callId)
+  const id = ToolCallId(callId)
   const argumentsJson = JSON.stringify(args)
   return [
     { type: 'block-start', index: 0, blockType: 'tool-call' },

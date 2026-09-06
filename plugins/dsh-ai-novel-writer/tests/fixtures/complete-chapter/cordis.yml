@@ -4,6 +4,9 @@
 - id: sessions
   name: '@deepseek-ai/dsh-session'
 
+- id: session-projection
+  name: '@deepseek-ai/dsh-session-projection'
+
 - id: system-prompt
   name: '@deepseek-ai/dsh-system-prompt'
   config:
@@ -32,6 +35,7 @@
     roots:
       - path: !!js process.env.DSH_NOVEL_PRESET_ROOT
         trust: user
+    includeShippedRoot: false
     includeUserRoot: false
 
 - id: snapshot-backend

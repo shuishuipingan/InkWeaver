@@ -2,7 +2,7 @@
 import { createHash } from 'node:crypto'
 import { access, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { CallId, LlmAdapter } from '@deepseek-ai/dsh-llm'
+import { ToolCallId, LlmAdapter } from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
 
 const PROJECT_ID = '123e4567-e89b-42d3-a456-426614174000'
@@ -314,7 +314,7 @@ function toolCall(callId, request) {
 }
 
 function rawToolCall(callId, name, args) {
-  const id = CallId(callId)
+  const id = ToolCallId(callId)
   const argumentsJson = JSON.stringify(args)
   return [
     { type: 'block-start', index: 0, blockType: 'tool-call' },

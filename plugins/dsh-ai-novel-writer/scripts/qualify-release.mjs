@@ -809,7 +809,7 @@ async function qualifyPresetTools(logRoot, profileRoot, installedRoot, env) {
     "- id: approval\n  name: '@deepseek-ai/dsh-user-approval'\n  config:\n    policy: ask",
     "- id: agents\n  name: '@deepseek-ai/dsh-agent'",
     "- id: agent-loop\n  name: '@deepseek-ai/dsh-agent-loop'\n  config:\n    agents: []",
-    `- id: presets\n  name: '@deepseek-ai/dsh-agent-presets'\n  config:\n    default: ${qualificationPresetId}\n    roots:\n      - path: !!js process.env.DSH_NOVEL_PRESET_ROOT\n        trust: user\n    includeUserRoot: false`,
+    `- id: presets\n  name: '@deepseek-ai/dsh-agent-presets'\n  config:\n    default: ${qualificationPresetId}\n    roots:\n      - path: !!js process.env.DSH_NOVEL_PRESET_ROOT\n        trust: user\n    includeShippedRoot: false\n    includeUserRoot: false`,
     '',
   ].join('\n\n'), 'utf8')
   const result = await recordCommand(logRoot, 'installed-preset-tools', process.execPath, [
@@ -897,6 +897,7 @@ async function writeQualificationOverlay(path) {
     '- id: agent-presets',
     '  config:',
     `    default: ${qualificationPresetId}`,
+    '    includeShippedRoot: true',
     '    includeUserRoot: true',
     '',
     '- id: directory-picker',

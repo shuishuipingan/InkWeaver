@@ -323,6 +323,8 @@ describe('complete chapter keyless snapshot', () => {
       await mkdir(dirname(expectedPath), { recursive: true })
       await writeFile(expectedPath, snapshot, 'utf8')
     }
-    expect(snapshot).toBe(await readFile(expectedPath, 'utf8'))
+    // Keep the semantic snapshot stable across Windows checkout line endings
+    // and the LF output emitted by the current DSH runtime.
+    expect(snapshot).toBe((await readFile(expectedPath, 'utf8')).replace(/\r\n/gu, '\n'))
   }, 45_000)
 })

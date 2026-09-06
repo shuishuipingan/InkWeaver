@@ -6,8 +6,9 @@ import Loader from '@deepseek-ai/cordis-plugin-loader'
 import AgentRegistry, { assembleContextFor } from '@deepseek-ai/dsh-agent'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import AgentPresets, { standingMountFor } from '@deepseek-ai/dsh-agent-presets'
+import SessionProjection from '@deepseek-ai/dsh-session-projection'
 import LlmRuntime from '@deepseek-ai/dsh-llm'
-import { CallId } from '@deepseek-ai/dsh-llm'
+import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { defineTool } from '@deepseek-ai/dsh-tools'
@@ -42,9 +43,11 @@ describe('installed 织墨 preset session', () => {
     }
     await ctx.plugin(AgentRegistry)
     await ctx.plugin(AgentLoop, { agents: [] })
+    await ctx.plugin(SessionProjection)
     await ctx.plugin(AgentPresets, {
       default: 'ai-novel-writer',
       roots: [{ path: presetRoot, trust: 'user' }],
+      includeShippedRoot: false,
       includeUserRoot: false,
     })
 
@@ -72,7 +75,7 @@ describe('installed 织墨 preset session', () => {
     const assembly = await ctx.systemPrompt.assemble(assembleContextFor(handle.agent))
     expect(assembly.tools.map(tool => tool.name).sort()).toEqual(['novel_apply_change', 'novel_read'])
     await expect(ctx.tools.execute({
-      callId: CallId('late-global'), name: 'late_global', arguments: {}, agent: handle.agent,
+      callId: ToolCallId('late-global'), name: 'late_global', arguments: {}, agent: handle.agent,
       signal: new AbortController().signal,
     })).resolves.toMatchObject({ isError: true, error: { message: expect.stringContaining('dedicated') } })
 
@@ -82,7 +85,7 @@ describe('installed 织墨 preset session', () => {
     expect((await ctx.systemPrompt.assemble(assembleContextFor(handle.agent))).tools.map(tool => tool.name).sort())
       .toEqual(['describe_image', 'late_global', 'late_global', 'ssh_exec'])
     await expect(ctx.tools.execute({
-      callId: CallId('late-global-after-preset-unload'), name: 'late_global', arguments: {}, agent: handle.agent,
+      callId: ToolCallId('late-global-after-preset-unload'), name: 'late_global', arguments: {}, agent: handle.agent,
       signal: new AbortController().signal,
     })).resolves.toMatchObject({ isError: false, value: 'leaked' })
     await ctx.fiber.dispose()
@@ -109,9 +112,11 @@ describe('installed 织墨 preset session', () => {
     }))
     await ctx.plugin(AgentRegistry)
     await ctx.plugin(AgentLoop, { agents: [] })
+    await ctx.plugin(SessionProjection)
     await ctx.plugin(AgentPresets, {
       default: 'ai-novel-writer',
       roots: [{ path: presetRoot, trust: 'user' }],
+      includeShippedRoot: false,
       includeUserRoot: false,
     })
 
@@ -123,7 +128,7 @@ describe('installed 织墨 preset session', () => {
     const assembly = await ctx.systemPrompt.assemble(assembleContextFor(handle.agent))
     expect(assembly.tools.map(tool => tool.name).sort()).toEqual(['novel_apply_change', 'novel_read'])
     await expect(ctx.tools.execute({
-      callId: CallId('recomposed-before-selection-event'), name: 'ssh_exec', arguments: {}, agent: handle.agent,
+      callId: ToolCallId('recomposed-before-selection-event'), name: 'ssh_exec', arguments: {}, agent: handle.agent,
       signal: new AbortController().signal,
     })).resolves.toMatchObject({ isError: true, error: { message: expect.stringContaining('dedicated') } })
 
@@ -132,7 +137,7 @@ describe('installed 织墨 preset session', () => {
     expect(ctx.tools.schemas(handle.agent).map(tool => tool.name).sort())
       .toEqual(['novel_apply_change', 'novel_read'])
     await expect(ctx.tools.execute({
-      callId: CallId('recomposed-global'), name: 'ssh_exec', arguments: {}, agent: handle.agent,
+      callId: ToolCallId('recomposed-global'), name: 'ssh_exec', arguments: {}, agent: handle.agent,
       signal: new AbortController().signal,
     })).resolves.toMatchObject({ isError: true, error: { message: expect.stringContaining('dedicated') } })
     await ctx.fiber.dispose()
@@ -155,9 +160,11 @@ describe('installed 织墨 preset session', () => {
     } as never)
     await ctx.plugin(AgentRegistry)
     await ctx.plugin(AgentLoop, { agents: [] })
+    await ctx.plugin(SessionProjection)
     await ctx.plugin(AgentPresets, {
       default: 'ai-novel-writer-v2',
       roots: [{ path: presetRoot, trust: 'user' }],
+      includeShippedRoot: false,
       includeUserRoot: false,
     })
 

@@ -2,7 +2,7 @@ import { access, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import { CallId } from '@deepseek-ai/dsh-llm'
+import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import ApprovalService from '@deepseek-ai/dsh-user-approval'
@@ -27,7 +27,9 @@ function fakeAgent(root: string): Agent {
   return {
     session: {
       header: { cwd: root },
-      events: [{ type: 'turn/start' }],
+      events: [{ type: 'turn/start', data: { turn: 1 } }],
+      seq: 1,
+      eventAt: () => ({ type: 'turn/start', data: { turn: 1 } }),
       append: () => ({}),
     },
   } as unknown as Agent
@@ -44,7 +46,7 @@ async function setup(policy: 'ask' | 'never' = 'ask'): Promise<Context> {
 
 async function executeInitialize(ctx: Context, root: string) {
   return ctx.tools.execute({
-    callId: CallId('novel-init'),
+    callId: ToolCallId('novel-init'),
     name: 'novel_apply_change',
     arguments: initialize,
     agent: fakeAgent(root),
@@ -123,7 +125,7 @@ describe('AI novel native approval integration', () => {
     })
     const filename = join(root, 'chapters', '0001.md')
     const pending = ctx.tools.execute({
-      callId: CallId('novel-race'),
+      callId: ToolCallId('novel-race'),
       name: 'novel_apply_change',
       arguments: {
         kind: 'replace', targetKind: 'chapter-draft', chapter: 1,

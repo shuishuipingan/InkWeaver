@@ -5,7 +5,6 @@ import type {} from '@deepseek-ai/dsh-agent-presets'
 import type { Workspace } from '@deepseek-ai/dsh-workspace'
 import { defineTool, ToolArgsError } from '@deepseek-ai/dsh-tools'
 import type { PreToolDecision, ToolDefinition } from '@deepseek-ai/dsh-tools'
-import type { JsonValue } from '@deepseek-ai/dsh-session'
 import z from '@deepseek-ai/schemastery'
 import {
   canonicalNovelAssetText, canonicalNovelInitialization, novelAssetSource, openNovelProject,
@@ -24,6 +23,8 @@ import type {
 
 const DEFAULT_ASSET_BYTES = 512 * 1024
 const DEFAULT_WORKING_SET_BYTES = 512 * 1024
+
+type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue }
 const DEFAULT_QUERY_MATCHES = 20
 const NOVEL_PRESET_ID = 'ai-novel-writer'
 const NOVEL_TOOL_NAMES: ReadonlySet<string> = new Set(['novel_read', 'novel_apply_change'])

@@ -721,20 +721,27 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(() => {
     let stopped = false
     let refreshScheduled = false
+    const generation = connection.generation
+      ?? (connection as unknown as {
+        readonly hostDescription?: { getSnapshot(): unknown; subscribe(listener: () => void): () => void }
+      }).hostDescription
+    if (generation === undefined) {
+      throw new Error('AI novel Client requires the DSH connection generation source')
+    }
     const refreshConnectedState = (): void => {
       if (stopped || refreshScheduled) return
       refreshScheduled = true
       queueMicrotask(() => {
         refreshScheduled = false
-        if (stopped || connection.hostDescription.getSnapshot() === undefined) return
+        if (stopped || generation.getSnapshot() === undefined) return
         if (controller.getSnapshot().status !== 'idle') void controller.load()
         if (workbenchController.getSnapshot().open) void workbenchController.refresh()
         else void workbenchController.inspect()
         if (v2WorkbenchController.getSnapshot().open) void v2WorkbenchController.refresh()
       })
     }
-    const stopDescription = connection.hostDescription.subscribe(() => {
-      if (connection.hostDescription.getSnapshot() === undefined) {
+    const stopDescription = generation.subscribe(() => {
+      if (generation.getSnapshot() === undefined) {
         controller.disconnected()
         workbenchController.disconnected()
         v2WorkbenchController.disconnected()
@@ -772,8 +779,12 @@ export function apply(ctx: ClientContext): void {
   }, NovelWorkbenchOverlay))
   ctx.slots.inject('settings.plugin.item', () => ctx.slots.register({
     name: 'settings.plugin.item',
+    // dsh-client-runtime@0.1.1-rc.2 (the official runtime paired with
+    // dsh@0.1.2-rc.1) still dispatches this slot as a list at runtime. Keep
+    // the stable id/order contract and cast only this compatibility seam;
+    // newer keyed hosts ignore the extra list metadata when they remount it.
     id: 'ai-novel-writer',
     order: 90,
     inject: workbenchInjected,
-  }, NovelPluginStatusCard))
+  } as never, NovelPluginStatusCard))
 }

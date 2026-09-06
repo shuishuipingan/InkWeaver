@@ -321,7 +321,7 @@ export function apply(ctx: Context, config: Config): void {
         workspaces,
         error => { ctx.logger.error('dsh-ai-novel-writer: request failed: %o', error) },
       ))
-      const unregister = connection.rpc.handle('/ai-novel', lifecycle.handler, { authority: 'loopback' })
+      const unregister = connection.rpc.handle('/ai-novel', lifecycle.handler)
       return async () => {
         await lifecycle.dispose()
         await unregister()

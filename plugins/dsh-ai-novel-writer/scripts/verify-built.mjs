@@ -7,6 +7,7 @@ import { Context } from '@deepseek-ai/cordis'
 import Include, { entryListSchema } from '@deepseek-ai/cordis-plugin-include'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
 import AgentPresets from '@deepseek-ai/dsh-agent-presets'
+import SessionProjection from '@deepseek-ai/dsh-session-projection'
 import yaml from 'js-yaml'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
@@ -53,8 +54,8 @@ host.baseUrl = pathToFileURL(root).href + '/'
 let setupRegistered = false
 host.provide('connection', {
   rpc: {
-    handle(channel, _handler, options) {
-      if (channel !== '/ai-novel' || options.authority !== 'loopback') {
+    handle(channel, _handler) {
+      if (channel !== '/ai-novel') {
         throw new Error('The emitted Host entry registered an unexpected setup channel')
       }
       setupRegistered = true
@@ -100,9 +101,11 @@ const roster = new Context()
 roster.baseUrl = pathToFileURL(root).href + '/'
 await roster.plugin(Loader)
 roster.loader.builtins.include = Include
+await roster.plugin(SessionProjection)
 await roster.plugin(AgentPresets, {
   default: 'ai-novel-writer',
   roots: [{ path: join(root, 'presets'), trust: 'system' }],
+  includeShippedRoot: false,
   includeUserRoot: false,
 })
 

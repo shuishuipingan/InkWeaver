@@ -5,6 +5,7 @@ import { Context } from '@deepseek-ai/cordis'
 import Include, { entryListSchema } from '@deepseek-ai/cordis-plugin-include'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
 import AgentPresets from '@deepseek-ai/dsh-agent-presets'
+import SessionProjection from '@deepseek-ai/dsh-session-projection'
 import * as yaml from 'js-yaml'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -60,6 +61,7 @@ describe('installable AI novel bundle', () => {
     ctx.provide('workspaceRegistry' as never, { get: () => undefined } as never)
     await ctx.plugin(Loader)
     ctx.loader.builtins.include = Include
+    await ctx.plugin(SessionProjection)
     try {
       await ctx.loader.create({
         name: 'cordis:include',
@@ -72,7 +74,7 @@ describe('installable AI novel bundle', () => {
       const entry = [...ctx.loader.entries()].find(candidate => candidate.options.id === 'ai-novel-writer')
       expect(entry?.options.name).toBe('@ethanyoq/dsh-ai-novel-writer')
       expect(entry?.fiber).toBeDefined()
-      expect(handle).toHaveBeenCalledWith('/ai-novel', expect.any(Function), { authority: 'loopback' })
+      expect(handle).toHaveBeenCalledWith('/ai-novel', expect.any(Function))
     } finally {
       await ctx.fiber.dispose()
     }
@@ -84,9 +86,11 @@ describe('installable AI novel bundle', () => {
     ctx.baseUrl = pathToFileURL(root).href + '/'
     await ctx.plugin(Loader)
     ctx.loader.builtins.include = Include
+    await ctx.plugin(SessionProjection)
     await ctx.plugin(AgentPresets, {
       default: 'ai-novel-writer',
       roots: [{ path: join(root, 'presets'), trust: 'system' }],
+      includeShippedRoot: false,
       includeUserRoot: false,
     })
 

@@ -24,6 +24,16 @@ dsh --profile web
 
 The desktop application at the repository root is separate and is not an activatable DSH bundle.
 
+## DSH compatibility
+
+The current plugin line is qualified against the official npm default channel
+`@deepseek-ai/dsh@0.1.2-rc.1` (the channel is still an official release
+candidate, not a stable semver release). The exact dependency pins, API
+migrations, and qualification status are recorded in
+[the DSH compatibility receipt](docs/dsh-0.1.2-rc.1-compatibility.md). Do not
+replace the pins with an unverified GitHub `main` checkout or a floating
+`next` range.
+
 ## Configuration
 
 The Host entry accepts `presetRoot`, an absolute path to the user preset root. It defaults to `$DSH_HOME/.agent-presets` (normally `~/.dsh/.agent-presets`). The agent entry accepts `surface`, whose default `v1` preserves the original approval-gated file surface and whose `v2` value is set by the V2 Preset. V1 also accepts `assetBytes`, `workingSetBytes`, and `queryMatches`, with defaults of 512 KiB per asset, 512 KiB per working set, and 20 query matches. V2 accepts `maxProposalBytes` and `maxPendingProposals`, with defaults of 2 MiB and 20 pending proposals. Invalid paths or limits fail during plugin loading.

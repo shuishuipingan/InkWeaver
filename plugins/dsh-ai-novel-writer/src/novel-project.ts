@@ -2,7 +2,6 @@ import { createHash } from 'node:crypto'
 import { lstat, mkdir, readFile, readdir, realpath } from 'node:fs/promises'
 import { isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { withFileLock, writeFileAtomic } from '@deepseek-ai/dsh-atomic-write'
-import { assertNever } from '@deepseek-ai/dsh-llm'
 import type {
   AssetRef,
   CommitReceipt,
@@ -16,6 +15,10 @@ import type {
   NovelReadResult,
   Revision,
 } from './types.ts'
+
+function assertNever(value: never): never {
+  throw new Error(`Unexpected novel project value: ${String(value)}`)
+}
 import { NovelProjectError } from './types.ts'
 
 const PROJECT_DIR = '.ai-novel'

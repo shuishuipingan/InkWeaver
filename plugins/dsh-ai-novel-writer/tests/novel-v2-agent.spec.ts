@@ -1,13 +1,14 @@
 import { createHash } from 'node:crypto'
-import { writeFile } from 'node:fs/promises'
+import { rm, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { Context } from '@deepseek-ai/cordis'
 import Include from '@deepseek-ai/cordis-plugin-include'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
 import AgentRegistry from '@deepseek-ai/dsh-agent'
-import { CallId } from '@deepseek-ai/dsh-llm'
-import { isJsonValue, SessionId } from '@deepseek-ai/dsh-session'
+import { ToolCallId } from '@deepseek-ai/dsh-llm'
+import { SessionId } from '@deepseek-ai/dsh-session'
+import { isJsonValue } from '@deepseek-ai/dsh-util-values'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { defineTool } from '@deepseek-ai/dsh-tools'
 import type {} from '@deepseek-ai/dsh-agent-presets'
@@ -69,7 +70,7 @@ async function executeV2ReadThroughToolRuntime(root: string): Promise<unknown> {
   await ctx.plugin(NovelAgentV2)
   try {
     return await ctx.tools.execute({
-      callId: CallId('novel-read-json-boundary'),
+      callId: ToolCallId('novel-read-json-boundary'),
       name: 'novel_read',
       arguments: { kind: 'state' },
       signal,
@@ -82,25 +83,32 @@ async function executeV2ReadThroughToolRuntime(root: string): Promise<unknown> {
 
 /** Build a real preset recompose path, including one unrelated inherited Host tool. */
 async function createV1ToV2RecomposeHarness(root: string): Promise<{ readonly ctx: Context; readonly agent: NonNullable<ReturnType<Context['agents']['roots']>[number]> }> {
-  const configPath = join(root, 'cordis.yml')
+  // dsh-agent-presets@0.1.2-rc.1 validates package rows relative to the
+  // Loader composition base. Keep this temporary composition beside the
+  // installed package dependencies; the novel workspace remains isolated.
+  const configPath = join(PLUGIN_ROOT, `.runtime-v2-recompose-${Date.now()}.cordis.yml`)
   await writeFile(configPath, [
     "- id: llm\n  name: '@deepseek-ai/dsh-llm'",
     "- id: sessions\n  name: '@deepseek-ai/dsh-session'",
+    "- id: session-projection\n  name: '@deepseek-ai/dsh-session-projection'",
     "- id: system-prompt\n  name: '@deepseek-ai/dsh-system-prompt'\n  config:\n    persona: ''",
     "- id: tools\n  name: '@deepseek-ai/dsh-tools'",
     "- id: approval\n  name: '@deepseek-ai/dsh-user-approval'\n  config:\n    policy: ask",
     "- id: agents\n  name: '@deepseek-ai/dsh-agent'",
     "- id: agent-loop\n  name: '@deepseek-ai/dsh-agent-loop'\n  config:\n    agents: []",
-    `- id: presets\n  name: '@deepseek-ai/dsh-agent-presets'\n  config:\n    default: ai-novel-writer\n    roots:\n      - path: ${JSON.stringify(PRESET_ROOT)}\n        trust: user\n    includeUserRoot: false`,
+    `- id: presets\n  name: '@deepseek-ai/dsh-agent-presets'\n  config:\n    default: ai-novel-writer\n    roots:\n      - path: ${JSON.stringify(PRESET_ROOT)}\n        trust: user\n    includeShippedRoot: false\n    includeUserRoot: false`,
     '',
   ].join('\n\n'), 'utf8')
   const ctx = new Context()
-  ctx.baseUrl = `${pathToFileURL(dirname(configPath)).href}/`
+  // The composition is temporary, but package rows resolve from the installed
+  // Harness/package base, not from the isolated novel workspace directory.
+  ctx.baseUrl = `${pathToFileURL(PLUGIN_ROOT).href}/`
   ctx.provide('workspaceRegistry' as never, { resolveByPath: async () => undefined } as never)
   await ctx.plugin(Loader)
   ctx.loader.builtins.include = Include
   await ctx.loader.create({ name: 'cordis:include', config: { path: pathToFileURL(configPath).href } })
   await ctx.loader.await()
+  await rm(configPath, { force: true })
   ctx.tools.register(defineTool({
     name: 'host_extra',
     description: 'Unrelated Host tool that must never reach the V2 model request.',

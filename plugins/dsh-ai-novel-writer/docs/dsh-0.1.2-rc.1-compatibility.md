@@ -1,0 +1,78 @@
+# DSH 0.1.2-rc.1 compatibility receipt
+
+Verification date: 2026-09-07 (Asia/Hong_Kong)
+
+## Official distribution anchor
+
+The official npm package `@deepseek-ai/dsh` reports:
+
+| Field | Observed value |
+| --- | --- |
+| `latest` | `0.1.2-rc.1` |
+| `next` | `0.1.2-rc.1` |
+| `alpha` | `0.1.2-alpha.5` |
+| repository | `git+https://github.com/deepseek-ai/deepseek-harness.git` |
+| published | 2026-09-03 |
+
+There is no stable semver release on the official default npm channel at this
+verification point. This plugin therefore describes the host compatibility as
+the official `0.1.2-rc.1` release candidate, not as a stable release.
+
+## Plugin dependency pinning
+
+The plugin pins the DSH family to the verified release candidate where the
+package exists. Two client packages have an older official `next` tag and are
+intentionally pinned to that tag's exact version:
+
+| Package | Pin | Reason |
+| --- | --- | --- |
+| `@deepseek-ai/dsh-client-runtime` | `0.1.1-rc.2` | official `next`; `0.1.2-rc.1` is not published |
+| `@deepseek-ai/dsh-client-schema-form` | `0.1.0-rc.7` | official `next`; `0.1.2-rc.1` is not published |
+| `@deepseek-ai/dsh-session-projection` | `0.1.2-rc.1` | required by the new `AgentPresets` service contract |
+| `@deepseek-ai/cordis` | `4.0.2` | official latest peer used by the host release |
+| `@deepseek-ai/schemastery` | `3.18.2` | official latest dependency used by the host release |
+
+The lockfile is generated from these exact pins. A bare `next`, `alpha`, or
+range expression must not replace them in a release commit.
+
+## Source-level API migrations
+
+- `JsonValue` is imported from the value utility contract where tests need the
+  runtime validator; the plugin's host receipt type remains a local JSON-safe
+  type so it does not leak a package-internal dependency.
+- `CallId` is now `ToolCallId`.
+- `assertNever` is no longer exported by `dsh-llm`; the plugin owns its local
+  exhaustive-switch helper.
+- Client connection generation state replaces the removed `hostDescription`
+  source. The client keeps a narrow fallback for older embedded hosts while
+  the official release path uses `connection.generation`.
+- Host `connection.rpc.handle` accepts the channel and handler only; the old
+  `{ authority: 'loopback' }` option was removed by the official contract.
+- `AgentPresets` now requires the `sessionProjections` service and its config
+  explicitly includes `includeShippedRoot`. The qualification composition and
+  tests load the projection service and set this flag deliberately.
+- The current runtime still dispatches `settings.plugin.item` as a list while
+  the companion declaration exposes a keyed contract. The client uses the
+  stable `id`/`order` registration at this compatibility seam and keeps the
+  cast local; all other slots remain typed.
+
+## Evidence and remaining gate
+
+Passed locally after the migration:
+
+- `pnpm run typecheck`
+- `pnpm run build`
+- emitted Host/Agent/Client package verification in `scripts/verify-built.mjs`
+- 37 of 41 plugin test files / 417 tests in the full local run, with the
+  remaining failures limited to Windows symlink permission tests and the
+  pre-existing snapshot asset comparison now normalized for LF/CRLF.
+
+The symlink tests require the Windows SeCreateSymbolicLink privilege and must
+be rerun on a machine/profile that grants it before calling the full release
+qualification complete. The keyless Loader snapshot, focused browser checks,
+and actual isolated DSH profile install remain required release gates.
+
+Official sources:
+
+- <https://www.npmjs.com/package/@deepseek-ai/dsh>
+- <https://github.com/deepseek-ai/deepseek-harness/releases>
