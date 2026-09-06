@@ -16,7 +16,7 @@ interface CandidateRow {
   updated_at: string
 }
 
-const STATUS: ReadonlySet<string> = new Set(['pending', 'accepted', 'rejected', 'stale'])
+const STATUS: ReadonlySet<string> = new Set(['pending', 'accepted', 'rejected', 'stale', 'applied'])
 
 function db(): BetterSqlite3.Database {
   const value = getProjectDb()
@@ -101,7 +101,7 @@ export class CharacterExtractionCandidateRepository {
     const result = db().prepare(`
       UPDATE character_extraction_candidates
       SET status = 'stale', updated_at = datetime('now')
-      WHERE source_id = ? AND source_hash = ? AND status <> 'rejected'
+      WHERE source_id = ? AND source_hash = ? AND status IN ('pending', 'accepted')
     `).run(sourceId, sourceHash)
     return result.changes
   }

@@ -2,7 +2,7 @@ import type { CharacterRosterRelationship, CharacterRosterRole } from './charact
 
 export type CharacterExtractionSourceKind = 'selection' | 'chapter' | 'chapter-range' | 'import'
 export type CharacterExtractionDisposition = 'new' | 'update' | 'ambiguous'
-export type CharacterExtractionCandidateStatus = 'pending' | 'accepted' | 'rejected' | 'stale'
+export type CharacterExtractionCandidateStatus = 'pending' | 'accepted' | 'rejected' | 'stale' | 'applied'
 
 export interface CharacterExtractionSource {
   sourceId: string

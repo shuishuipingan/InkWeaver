@@ -330,6 +330,17 @@ function DraftEditorSession({ tabId, filePath, content, projectKey }: Props) {
         projectKey,
       )
       requireIpcSuccess(result, text('合并人物候选', 'Apply character candidates'))
+      await Promise.all(accepted.map(async candidate => {
+        const statusResult = await ipc.invokeWithProjectSession(
+          session,
+          'db:character-extraction-candidate-status',
+          candidate.candidateId,
+          'applied',
+          projectKey,
+        )
+        requireIpcSuccess(statusResult, text('标记人物候选', 'Mark character candidate'))
+      }))
+      await loadCharacterCandidates()
       const { useCharacterStore } = await import('../../stores/character-store')
       await useCharacterStore.getState().load(projectKey, session)
       toast.success(text('已将接受的人物候选合并到角色卡', 'Accepted character candidates were applied to the roster'))

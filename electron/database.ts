@@ -368,7 +368,7 @@ function createTables(db: BetterSqlite3.Database, importSourceSecret?: Buffer) {
       source_id TEXT NOT NULL,
       source_hash TEXT NOT NULL,
       status TEXT NOT NULL DEFAULT 'pending'
-        CHECK(status IN ('pending', 'accepted', 'rejected', 'stale')),
+        CHECK(status IN ('pending', 'accepted', 'rejected', 'stale', 'applied')),
       payload_json TEXT NOT NULL,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))

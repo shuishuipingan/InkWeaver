@@ -62,7 +62,11 @@ export default function CharacterExtractionCandidatesPanel({
                 </div>
               ) : (
                 <span style={{ color: 'var(--color-text-secondary)' }}>
-                  {candidate.status === 'accepted' ? text('已接受', 'Accepted') : text('已拒绝', 'Rejected')}
+                  {candidate.status === 'accepted'
+                    ? text('已接受', 'Accepted')
+                    : candidate.status === 'applied'
+                      ? text('已合并到角色卡', 'Applied to roster')
+                      : text('已拒绝', 'Rejected')}
                 </span>
               )}
             </div>
