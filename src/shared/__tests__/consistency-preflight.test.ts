@@ -130,6 +130,33 @@ describe('findBlueprintContinuityRisks', () => {
     expect(findings[0]?.evidence).toContain('旧码头')
   })
 
+  it('reports an explicit item ownership conflict between finalized facts and a blueprint', () => {
+    const findings = findBlueprintContinuityRisks([{
+      ...projection[0]!,
+      facts: [{
+        category: 'character-state' as const,
+        entities: ['林舟'],
+        statement: '林舟持有红色钥匙。',
+        sourceChapter: 1,
+        evidence: '林舟把红色钥匙收进口袋。',
+      }],
+    }], {
+      chapterNumber: 2,
+      title: '钥匙易主',
+      role: '发展',
+      purpose: '沈月寻找钥匙',
+      keyEvents: '沈月拿着红色钥匙走进车站。',
+      characters: ['林舟', '沈月'],
+      suspenseHook: '',
+      userGuidance: '',
+      notes: '',
+    }, [])
+
+    expect(findings).toHaveLength(1)
+    expect(findings[0]?.issue.zhCN).toContain('红色钥匙')
+    expect(findings[0]?.issue.zhCN).toContain('归属')
+  })
+
   it('maps deterministic findings into the existing review item shape', () => {
     const finding = findBlueprintContinuityRisks(projection, {
       chapterNumber: 2, title: '重逢', role: '发展', purpose: '顾舟归来', keyEvents: '顾舟敲门',

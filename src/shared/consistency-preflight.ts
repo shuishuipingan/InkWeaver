@@ -64,6 +64,15 @@ function explicitLocation(statement: string, entity: string): string | undefined
   return match?.[1]?.trim() || undefined
 }
 
+function explicitHeldItem(statement: string, entity: string): string | undefined {
+  const subject = escapeRegExp(entity)
+  const match = new RegExp(
+    `${subject}.{0,20}?(?:持有|拥有|拿着|握着|获得|得到)\s*([^，。；,.;\\n]+?)(?=[，。；,.;\\n]|走进|走向|进入|离开|回到|来到|$)`,
+    'u',
+  ).exec(statement)
+  return match?.[1]?.trim() || undefined
+}
+
 export function continuityStableFactKey(fact: {
   category: string
   sourceChapter: number
@@ -147,6 +156,33 @@ export function findBlueprintContinuityRisks(
           enUS: 'Add the missing movement or transition, or adjust the blueprint location.',
         },
       }]
+    }
+
+    const factText = `${fact.statement}。${fact.evidence}`
+    for (const owner of fact.entities.map(normalizedKeyPart).filter(name => characters.has(name))) {
+      const item = explicitHeldItem(factText, owner)
+      if (!item) continue
+      for (const other of blueprint.characters.map(normalizedKeyPart)) {
+        if (other === owner) continue
+        const blueprintItem = explicitHeldItem(`${blueprint.purpose}。${blueprint.keyEvents}`, other)
+        if (!blueprintItem || normalizedKeyPart(blueprintItem) !== normalizedKeyPart(item)) continue
+        const ownershipKey = `${stableFactKey}:possession:${owner}:${item}`
+        if (activeExemptions.has(ownershipKey)) continue
+        return [{
+          stableFactKey: ownershipKey,
+          severity: 'warning' as const,
+          sourceChapter: fact.sourceChapter,
+          evidence: fact.evidence,
+          issue: {
+            zhCN: `物品归属冲突：已定稿事实记录“${owner}”持有“${item}”，但当前蓝图写成“${other}”持有。`,
+            enUS: `Item ownership conflict: finalized facts say “${owner}” holds “${item}”, but the current blueprint says “${other}” holds it.`,
+          },
+          suggestion: {
+            zhCN: '补充物品转交过程，或调整蓝图中的持有者。',
+            enUS: 'Add the transfer event, or adjust the blueprint owner.',
+          },
+        }]
+      }
     }
     return []
   }))
