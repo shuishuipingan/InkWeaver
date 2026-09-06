@@ -43,6 +43,7 @@ import { PostProcessRepository } from '../repositories/post-process-repository'
 // 沿用的旧表
 import { LLMHistoryRepository } from '../repositories/llm-repository'
 import { SummaryRepository } from '../repositories/summary-repository'
+import { ChapterHandoffRepository } from '../repositories/chapter-handoff-repository'
 import { ConsistencyExemptionRepository } from '../repositories/consistency-exemption-repository'
 import { NarrativeThreadRepository } from '../repositories/narrative-thread-repository'
 import { safeConsole } from '../utils/safe-console'
@@ -97,6 +98,8 @@ const MUTATING_DATABASE_CHANNELS = new Set([
   'db:narrative-thread-plan-update',
   'db:narrative-thread-plan-delete',
   'db:narrative-thread-event-confirm',
+  'db:chapter-handoff-save-candidate',
+  'db:chapter-handoff-confirm',
 ])
 
 function registerProjectDatabaseHandler(channel: string, handler: ProjectDatabaseHandler): void {
@@ -691,6 +694,34 @@ export function registerDatabaseController() {
   ipcMain.handle('db:continuity-list-before', async (_event, chapterNumber: number, expectedProjectPath: string) => {
     assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
     return SummaryRepository.listFinalizedContinuityBefore(chapterNumber)
+  })
+
+  ipcMain.handle('db:chapter-handoff-save-candidate', async (_event, request, expectedProjectPath: string) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      return { success: true, handoff: ChapterHandoffRepository.saveCandidate(request) }
+    } catch (error) {
+      return { success: false, error: String(error) }
+    }
+  })
+
+  ipcMain.handle('db:chapter-handoff-get', async (_event, handoffId: string, expectedProjectPath: string) => {
+    assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+    return ChapterHandoffRepository.get(handoffId)
+  })
+
+  ipcMain.handle('db:chapter-handoff-confirm', async (_event, handoffId: string, expectedProjectPath: string) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      return { success: true, handoff: ChapterHandoffRepository.confirm(handoffId) }
+    } catch (error) {
+      return { success: false, error: String(error) }
+    }
+  })
+
+  ipcMain.handle('db:chapter-handoff-latest-before', async (_event, chapterNumber: number, expectedProjectPath: string) => {
+    assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+    return ChapterHandoffRepository.getLatestConfirmedBefore(chapterNumber)
   })
 
   ipcMain.handle('db:consistency-exemption-list', async (_event, expectedProjectPath: string) => {

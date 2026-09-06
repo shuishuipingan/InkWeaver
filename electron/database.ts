@@ -342,6 +342,25 @@ function createTables(db: BetterSqlite3.Database, importSourceSecret?: Buffer) {
       FOREIGN KEY (draft_id) REFERENCES drafts(id) ON DELETE CASCADE
     );
 
+    -- Chapter handoffs are source-bound continuity candidates. They describe
+    -- where a finalized chapter leaves the story so the next chapter can
+    -- continue the scene, emotion, constraints, and unanswered questions.
+    CREATE TABLE IF NOT EXISTS chapter_handoffs (
+      handoff_id TEXT PRIMARY KEY,
+      draft_id INTEGER NOT NULL,
+      chapter_number INTEGER NOT NULL CHECK(chapter_number > 0),
+      source_content_hash TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'candidate'
+        CHECK(status IN ('candidate', 'confirmed', 'superseded', 'stale')),
+      payload_json TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      confirmed_at TEXT DEFAULT NULL,
+      FOREIGN KEY (draft_id) REFERENCES drafts(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_chapter_handoffs_chapter_status
+      ON chapter_handoffs(chapter_number, status, updated_at);
+
     CREATE TABLE IF NOT EXISTS narrative_thread_plans (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       title TEXT NOT NULL,

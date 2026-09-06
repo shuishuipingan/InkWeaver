@@ -16,6 +16,10 @@ import type {
   FinalizedContinuityProjection,
   SaveFinalizedContinuityRequest,
 } from './finalized-continuity'
+import type {
+  ChapterHandoffRecord,
+  SaveChapterHandoffRequest,
+} from './chapter-handoff'
 import type { ConsistencyExemption } from './consistency-preflight'
 import type {
   NarrativeThreadEvent,
@@ -820,6 +824,22 @@ export interface DatabaseChannels {
   'db:continuity-list-before': {
     args: [chapterNumber: number, expectedProjectPath: string]
     return: FinalizedContinuityProjection[]
+  }
+  'db:chapter-handoff-save-candidate': {
+    args: [request: SaveChapterHandoffRequest, expectedProjectPath: string]
+    return: { success: boolean; handoff?: ChapterHandoffRecord; error?: string }
+  }
+  'db:chapter-handoff-get': {
+    args: [handoffId: string, expectedProjectPath: string]
+    return: ChapterHandoffRecord | null
+  }
+  'db:chapter-handoff-confirm': {
+    args: [handoffId: string, expectedProjectPath: string]
+    return: { success: boolean; handoff?: ChapterHandoffRecord; error?: string }
+  }
+  'db:chapter-handoff-latest-before': {
+    args: [chapterNumber: number, expectedProjectPath: string]
+    return: ChapterHandoffRecord | null
   }
   'db:consistency-exemption-list': { args: [expectedProjectPath: string]; return: ConsistencyExemption[] }
   'db:consistency-exemption-save': {
