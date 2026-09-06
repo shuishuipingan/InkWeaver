@@ -72,7 +72,9 @@ export async function exportNovel(
   addLog('info', `开始导出（${formatLabel(options.format)}）...`)
 
   try {
-    // 遍历所有章节蓝图，取定稿内容
+    // Prefer blueprint order when it exists for backwards compatibility, but
+    // fall back to finalized manuscript authority so imported/original novels
+    // without blueprints export every chapter in sequence.
     const chapterContents: Array<{ name: string; content: string }> = []
     const blueprints = await ipc.invokeWithProjectSession(
       projectSession,
@@ -81,6 +83,34 @@ export async function exportNovel(
     ) as unknown as Array<Record<string, unknown>>
     if (!isProjectSessionCurrent(projectSession)) return staleExportResult()
     const sortedBps = blueprints ? blueprints.sort((a, b) => (a.chapterNumber as number) - (b.chapterNumber as number)) : []
+
+    if (sortedBps.length === 0) {
+      const authority = await ipc.invokeWithProjectSession(
+        projectSession,
+        'db:draft-authority-sequence',
+        projectSession.projectPath,
+      )
+      if (!isProjectSessionCurrent(projectSession)) return staleExportResult()
+      if (authority.status === 'invalid') {
+        return { success: false, error: '权威定稿章节序列存在缺章或重复，无法安全导出' }
+      }
+      const allDrafts = await ipc.invokeWithProjectSession(
+        projectSession,
+        'db:draft-list-all',
+        projectSession.projectPath,
+      ) as unknown as Array<{ id: number; chapterNumber: number; chapterTitle?: string; version: number; status: string }>
+      const latestByChapter = new Map<number, (typeof allDrafts)[number]>()
+      for (const draft of allDrafts) {
+        if (draft.status !== 'finalized') continue
+        const previous = latestByChapter.get(draft.chapterNumber)
+        if (!previous || draft.version > previous.version || (draft.version === previous.version && draft.id > previous.id)) latestByChapter.set(draft.chapterNumber, draft)
+      }
+      for (const draft of [...latestByChapter.values()].sort((left, right) => left.chapterNumber - right.chapterNumber)) {
+        const full = await ipc.invokeWithProjectSession(projectSession, 'db:draft-get-full', draft.id, projectSession.projectPath)
+        if (!isProjectSessionCurrent(projectSession)) return staleExportResult()
+        if (full?.content) chapterContents.push({ name: `chapter_${draft.chapterNumber}.md`, content: full.content })
+      }
+    }
 
     for (const bp of sortedBps) {
       const meta = await ipc.invokeWithProjectSession(

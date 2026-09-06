@@ -120,6 +120,30 @@ describe('exportNovel project session ownership', () => {
     expect(new TextEncoder().encode(exportedFact)).toEqual(new TextEncoder().encode(finalizedContent))
   })
 
+  it('exports finalized authority even when the project has no chapter blueprints', async () => {
+    vi.mocked(ipc.invokeWithProjectSession).mockImplementation((async (_session: ProjectSessionContext, channel: string, ...args: unknown[]) => {
+      if (channel === 'db:blueprint-get-all') return [] as never
+      if (channel === 'db:draft-authority-sequence') return {
+        status: 'continuous', lastChapterNumber: 2, nextChapterNumber: 3,
+        duplicateChapterNumbers: [], authorityFingerprint: 'a'.repeat(64),
+      } as never
+      if (channel === 'db:draft-list-all') return [
+        { id: 21, chapterNumber: 1, chapterTitle: '开篇', version: 1, status: 'finalized' },
+        { id: 22, chapterNumber: 2, chapterTitle: '转折', version: 1, status: 'finalized' },
+      ] as never
+      if (channel === 'db:draft-get-full') return { content: `正文${String(args[0])}` } as never
+      throw new Error(`Unexpected channel: ${channel}`)
+    }) as never)
+    await expect(exportNovel(
+      { format: 'merged-md', grantId: 'export-grant' },
+      projectSnapshot,
+      projectSession,
+    )).resolves.toEqual({ success: true, path: 'Project A.md' })
+    expect(vi.mocked(ipc.invoke)).toHaveBeenCalledWith(
+      'fs:grant-write-file', 'export-grant', 'Project A.md', expect.any(String),
+    )
+  })
+
   it('stops after the directory-selection export becomes stale on a same-path reopen', async () => {
     let resolveBlueprints: ((value: Array<{ chapterNumber: number }>) => void) | undefined
     vi.mocked(ipc.invokeWithProjectSession).mockImplementationOnce(() =>
