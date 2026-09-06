@@ -44,6 +44,7 @@ import { PostProcessRepository } from '../repositories/post-process-repository'
 import { LLMHistoryRepository } from '../repositories/llm-repository'
 import { SummaryRepository } from '../repositories/summary-repository'
 import { ChapterHandoffRepository } from '../repositories/chapter-handoff-repository'
+import { CharacterExtractionCandidateRepository } from '../repositories/character-extraction-candidate-repository'
 import { ConsistencyExemptionRepository } from '../repositories/consistency-exemption-repository'
 import { NarrativeThreadRepository } from '../repositories/narrative-thread-repository'
 import { safeConsole } from '../utils/safe-console'
@@ -100,6 +101,9 @@ const MUTATING_DATABASE_CHANNELS = new Set([
   'db:narrative-thread-event-confirm',
   'db:chapter-handoff-save-candidate',
   'db:chapter-handoff-confirm',
+  'db:character-extraction-candidates-save',
+  'db:character-extraction-candidate-status',
+  'db:character-extraction-candidates-stale',
 ])
 
 function registerProjectDatabaseHandler(channel: string, handler: ProjectDatabaseHandler): void {
@@ -727,6 +731,41 @@ export function registerDatabaseController() {
   ipcMain.handle('db:chapter-handoff-list-for-chapter', async (_event, chapterNumber: number, expectedProjectPath: string) => {
     assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
     return ChapterHandoffRepository.listForChapter(chapterNumber)
+  })
+
+  ipcMain.handle('db:character-extraction-candidates-save', async (_event, candidates, expectedProjectPath: string) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      return {
+        success: true,
+        candidates: CharacterExtractionCandidateRepository.saveBatch(candidates),
+      }
+    } catch (error) {
+      return { success: false, error: String(error) }
+    }
+  })
+
+  ipcMain.handle('db:character-extraction-candidates-list', async (_event, sourceId: string, sourceHash: string, expectedProjectPath: string) => {
+    assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+    return CharacterExtractionCandidateRepository.list(sourceId, sourceHash)
+  })
+
+  ipcMain.handle('db:character-extraction-candidate-status', async (_event, candidateId: string, status, expectedProjectPath: string) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      return { success: true, candidate: CharacterExtractionCandidateRepository.setStatus(candidateId, status) }
+    } catch (error) {
+      return { success: false, error: String(error) }
+    }
+  })
+
+  ipcMain.handle('db:character-extraction-candidates-stale', async (_event, sourceId: string, sourceHash: string, expectedProjectPath: string) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      return { success: true, count: CharacterExtractionCandidateRepository.markSourceStale(sourceId, sourceHash) }
+    } catch (error) {
+      return { success: false, error: String(error) }
+    }
   })
 
   ipcMain.handle('db:consistency-exemption-list', async (_event, expectedProjectPath: string) => {

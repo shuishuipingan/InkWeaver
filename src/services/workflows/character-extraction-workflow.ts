@@ -8,6 +8,8 @@ import {
   type CharacterExtractionSource,
 } from '../../shared/character-extraction'
 import { BaseWorkflowCommand, type CommandExecuteParams, type WorkflowGenerationRuntimeDependencies } from './commands/base-command'
+import { ipc } from '../ipc-client'
+import { requireIpcSuccess } from '../ipc-result'
 import { requireWorkflowProjectSession, workflowWritingLanguage } from './workflow-project-session'
 
 export interface CharacterExtractionWorkflowParams {
@@ -16,6 +18,7 @@ export interface CharacterExtractionWorkflowParams {
   source: CharacterExtractionSource
   chunks: readonly CharacterExtractionChunk[]
   existingNames: readonly string[]
+  persistCandidates?: boolean
 }
 
 function promptLanguage(language: WritingLanguage, zh: string, en: string): string {
@@ -79,6 +82,15 @@ export class CharacterExtractionWorkflowCommand extends BaseWorkflowCommand<Char
         candidates.push(...parseCharacterExtractionResponse(raw, this.params.source, this.params.existingNames))
       }
       const merged = mergeCharacterExtractionCandidates(candidates)
+      if (this.params.persistCandidates && merged.length > 0) {
+        const persisted = await ipc.invokeWithProjectSession(
+          session,
+          'db:character-extraction-candidates-save',
+          merged,
+          this.params.projectPath,
+        )
+        requireIpcSuccess(persisted, '保存人物提取候选')
+      }
       callbacks.setProgress(100)
       context.data.characterExtractionCandidates = merged
       return merged

@@ -361,6 +361,21 @@ function createTables(db: BetterSqlite3.Database, importSourceSecret?: Buffer) {
     CREATE INDEX IF NOT EXISTS idx_chapter_handoffs_chapter_status
       ON chapter_handoffs(chapter_number, status, updated_at);
 
+    -- AI character extraction remains a reviewable candidate projection until
+    -- an author-approved roster commit applies it to the characters table.
+    CREATE TABLE IF NOT EXISTS character_extraction_candidates (
+      candidate_id TEXT PRIMARY KEY,
+      source_id TEXT NOT NULL,
+      source_hash TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending'
+        CHECK(status IN ('pending', 'accepted', 'rejected', 'stale')),
+      payload_json TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_character_extraction_candidates_source
+      ON character_extraction_candidates(source_id, source_hash, status, updated_at);
+
     CREATE TABLE IF NOT EXISTS narrative_thread_plans (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       title TEXT NOT NULL,

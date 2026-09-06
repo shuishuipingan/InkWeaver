@@ -20,6 +20,7 @@ import type {
   ChapterHandoffRecord,
   SaveChapterHandoffRequest,
 } from './chapter-handoff'
+import type { CharacterExtractionCandidate } from './character-extraction'
 import type { ConsistencyExemption } from './consistency-preflight'
 import type {
   NarrativeThreadEvent,
@@ -844,6 +845,22 @@ export interface DatabaseChannels {
   'db:chapter-handoff-list-for-chapter': {
     args: [chapterNumber: number, expectedProjectPath: string]
     return: ChapterHandoffRecord[]
+  }
+  'db:character-extraction-candidates-save': {
+    args: [candidates: CharacterExtractionCandidate[], expectedProjectPath: string]
+    return: { success: boolean; candidates?: CharacterExtractionCandidate[]; error?: string }
+  }
+  'db:character-extraction-candidates-list': {
+    args: [sourceId: string, sourceHash: string, expectedProjectPath: string]
+    return: CharacterExtractionCandidate[]
+  }
+  'db:character-extraction-candidate-status': {
+    args: [candidateId: string, status: CharacterExtractionCandidate['status'], expectedProjectPath: string]
+    return: { success: boolean; candidate?: CharacterExtractionCandidate; error?: string }
+  }
+  'db:character-extraction-candidates-stale': {
+    args: [sourceId: string, sourceHash: string, expectedProjectPath: string]
+    return: { success: boolean; count?: number; error?: string }
   }
   'db:consistency-exemption-list': { args: [expectedProjectPath: string]; return: ConsistencyExemption[] }
   'db:consistency-exemption-save': {
