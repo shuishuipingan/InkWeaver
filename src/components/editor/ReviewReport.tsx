@@ -50,6 +50,9 @@ interface ReviewIssue {
   quote?: string
   stableFactKey?: string
   sourceChapter?: number
+  previousEvidence?: string
+  currentEvidence?: string
+  suggestedScope?: 'opening' | 'transition' | 'ending'
 }
 
 /** AI 返回的 JSON 审稿结构 */
@@ -61,6 +64,9 @@ interface ReviewJSON {
     quote?: string
     stableFactKey?: string
     sourceChapter?: number
+    previousEvidence?: string
+    currentEvidence?: string
+    suggestedScope?: 'opening' | 'transition' | 'ending'
   }>
   summary: string
 }
@@ -83,6 +89,9 @@ interface ReviewReportProps {
 interface EditableReviewItem extends HumanConfirmedReviewItem {
   id: string
   severity: ReviewIssue['severity']
+  previousEvidence?: string
+  currentEvidence?: string
+  suggestedScope?: 'opening' | 'transition' | 'ending'
 }
 
 interface ConfirmedChecklist {
@@ -137,6 +146,11 @@ function parseReport(text: string, fallbackCategory: string): { issues: ReviewIs
           stableFactKey: item.stableFactKey || undefined,
           sourceChapter: Number.isSafeInteger(item.sourceChapter) && Number(item.sourceChapter) > 0
             ? item.sourceChapter
+            : undefined,
+          previousEvidence: typeof item.previousEvidence === 'string' ? item.previousEvidence : undefined,
+          currentEvidence: typeof item.currentEvidence === 'string' ? item.currentEvidence : undefined,
+          suggestedScope: item.suggestedScope === 'opening' || item.suggestedScope === 'transition' || item.suggestedScope === 'ending'
+            ? item.suggestedScope
             : undefined,
         }))
         return { issues, summary: data.summary || '' }
@@ -300,6 +314,9 @@ function editableItemsFromReview(
     ...(issue.quote ? { quote: issue.quote } : {}),
     ...(issue.stableFactKey ? { stableFactKey: issue.stableFactKey } : {}),
     ...(issue.sourceChapter ? { sourceChapter: issue.sourceChapter } : {}),
+    ...(issue.previousEvidence ? { previousEvidence: issue.previousEvidence } : {}),
+    ...(issue.currentEvidence ? { currentEvidence: issue.currentEvidence } : {}),
+    ...(issue.suggestedScope ? { suggestedScope: issue.suggestedScope } : {}),
     decision: issue.severity === 'pass' ? 'ignore' : 'apply',
     origin: 'ai',
   }))
@@ -848,6 +865,27 @@ function ReviewReportSession({
                                   `来源：第${item.sourceChapter}章`,
                                   `Source: Chapter ${item.sourceChapter}`,
                                 )}
+                              </p>
+                            )}
+                            {!editingChecklist && (item.previousEvidence || item.currentEvidence) && (
+                              <div className="grid gap-1 text-[0.7rem] sm:grid-cols-2">
+                                {item.previousEvidence && (
+                                  <div className="rounded border px-2 py-1" style={{ borderColor: 'var(--color-border)' }}>
+                                    <span className="font-medium">{text('前章证据', 'Previous evidence')}</span>
+                                    <div className="mt-0.5 text-[var(--color-text-muted)]">{item.previousEvidence}</div>
+                                  </div>
+                                )}
+                                {item.currentEvidence && (
+                                  <div className="rounded border px-2 py-1" style={{ borderColor: 'var(--color-border)' }}>
+                                    <span className="font-medium">{text('本章证据', 'Current evidence')}</span>
+                                    <div className="mt-0.5 text-[var(--color-text-muted)]">{item.currentEvidence}</div>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                            {!editingChecklist && item.suggestedScope && (
+                              <p className="text-[0.7rem] text-[var(--color-text-muted)]">
+                                {text(`建议局部修稿范围：${item.suggestedScope}`, `Suggested local revision scope: ${item.suggestedScope}`)}
                               </p>
                             )}
                             {!isPass && editingChecklist && (
