@@ -36,6 +36,7 @@ import ChapterHandoffPanel from './ChapterHandoffPanel'
 import type { ChapterHandoffRecord } from '../../shared/chapter-handoff'
 import CharacterExtractionCandidatesPanel from './CharacterExtractionCandidatesPanel'
 import type { CharacterExtractionCandidate } from '../../shared/character-extraction'
+import ContinuityImpactPanel from './ContinuityImpactPanel'
 import { guardRepairPostProcess } from '../../services/workflow-guards'
 import {
   captureProjectSession,
@@ -940,6 +941,12 @@ function DraftEditorSession({ tabId, filePath, content, projectKey }: Props) {
             onApply={applyAcceptedCharacterCandidates}
             text={text}
           />
+        </div>
+      )}
+
+      {meta && meta.chapterNumber > 1 && status !== 'archived' && (
+        <div className="px-3" style={{ borderBottom: '1px solid var(--color-border)' }}>
+          <ContinuityImpactPanel projectKey={projectKey} changedChapter={meta.chapterNumber} />
         </div>
       )}
 

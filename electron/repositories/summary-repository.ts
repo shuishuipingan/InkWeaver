@@ -125,6 +125,33 @@ export class SummaryRepository {
     }))
   }
 
+  /** Returns all finalized continuity projections for impact analysis. */
+  static listAllFinalizedContinuity(): FinalizedContinuityProjection[] {
+    const db = getProjectDb()
+    if (!db) return []
+    const rows = db.prepare(`
+      SELECT summary_snapshots.draft_id AS draftId,
+             summary_snapshots.chapter_number AS chapterNumber,
+             COALESCE(finalization_outbox.chapter_title, '') AS chapterTitle,
+             summary_snapshots.chapter_notes AS chapterNotes,
+             summary_snapshots.continuity_facts AS continuityFacts
+      FROM summary_snapshots
+      JOIN drafts ON drafts.id = summary_snapshots.draft_id
+      LEFT JOIN finalization_outbox ON finalization_outbox.draft_id = drafts.id
+      WHERE summary_snapshots.draft_id IS NOT NULL
+        AND summary_snapshots.chapter_notes <> ''
+        AND drafts.status = 'finalized'
+      ORDER BY summary_snapshots.chapter_number ASC, summary_snapshots.draft_id ASC
+    `).all() as Array<Omit<FinalizedContinuityProjection, 'facts'> & { continuityFacts: string }>
+    return rows.map(row => ({
+      draftId: row.draftId,
+      chapterNumber: row.chapterNumber,
+      chapterTitle: row.chapterTitle,
+      chapterNotes: row.chapterNotes,
+      facts: parseFacts(row.continuityFacts, row.chapterNumber),
+    }))
+  }
+
   /** 保存角色状态快照 */
   static saveSnapshot(chapterNumber: number, characterStates: string): void {
     const db = getProjectDb()

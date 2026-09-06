@@ -201,4 +201,14 @@ export class ChapterHandoffRepository {
     `).all(chapterNumber) as HandoffRow[]
     return rows.map(rowToRecord)
   }
+
+  static listAll(): ChapterHandoffRecord[] {
+    const rows = db().prepare(`
+      SELECT * FROM chapter_handoffs
+      ORDER BY chapter_number ASC,
+               CASE status WHEN 'candidate' THEN 0 WHEN 'confirmed' THEN 1 ELSE 2 END,
+               updated_at DESC
+    `).all() as HandoffRow[]
+    return rows.map(rowToRecord)
+  }
 }

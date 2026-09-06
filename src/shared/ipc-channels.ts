@@ -826,6 +826,10 @@ export interface DatabaseChannels {
     args: [chapterNumber: number, expectedProjectPath: string]
     return: FinalizedContinuityProjection[]
   }
+  'db:continuity-list-all': {
+    args: [expectedProjectPath: string]
+    return: FinalizedContinuityProjection[]
+  }
   'db:chapter-handoff-save-candidate': {
     args: [request: SaveChapterHandoffRequest, expectedProjectPath: string]
     return: { success: boolean; handoff?: ChapterHandoffRecord; error?: string }
@@ -844,6 +848,10 @@ export interface DatabaseChannels {
   }
   'db:chapter-handoff-list-for-chapter': {
     args: [chapterNumber: number, expectedProjectPath: string]
+    return: ChapterHandoffRecord[]
+  }
+  'db:chapter-handoff-list-all': {
+    args: [expectedProjectPath: string]
     return: ChapterHandoffRecord[]
   }
   'db:character-extraction-candidates-save': {

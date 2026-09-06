@@ -700,6 +700,11 @@ export function registerDatabaseController() {
     return SummaryRepository.listFinalizedContinuityBefore(chapterNumber)
   })
 
+  ipcMain.handle('db:continuity-list-all', async (_event, expectedProjectPath: string) => {
+    assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+    return SummaryRepository.listAllFinalizedContinuity()
+  })
+
   ipcMain.handle('db:chapter-handoff-save-candidate', async (_event, request, expectedProjectPath: string) => {
     try {
       assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
@@ -731,6 +736,11 @@ export function registerDatabaseController() {
   ipcMain.handle('db:chapter-handoff-list-for-chapter', async (_event, chapterNumber: number, expectedProjectPath: string) => {
     assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
     return ChapterHandoffRepository.listForChapter(chapterNumber)
+  })
+
+  ipcMain.handle('db:chapter-handoff-list-all', async (_event, expectedProjectPath: string) => {
+    assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+    return ChapterHandoffRepository.listAll()
   })
 
   ipcMain.handle('db:character-extraction-candidates-save', async (_event, candidates, expectedProjectPath: string) => {
