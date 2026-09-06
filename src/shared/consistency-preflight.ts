@@ -73,6 +73,17 @@ function explicitHeldItem(statement: string, entity: string): string | undefined
   return match?.[1]?.trim() || undefined
 }
 
+function explicitStoryDay(statement: string, entity: string): number | undefined {
+  const subject = escapeRegExp(entity)
+  const match = new RegExp(
+    `(?:第\\s*(\\d+)\\s*天|day\\s*(\\d+)).{0,24}?${subject}|${subject}.{0,24}?(?:第\\s*(\\d+)\\s*天|day\\s*(\\d+))`,
+    'iu',
+  ).exec(statement)
+  const value = match?.slice(1).find(Boolean)
+  const day = value ? Number(value) : NaN
+  return Number.isSafeInteger(day) && day > 0 ? day : undefined
+}
+
 export function continuityStableFactKey(fact: {
   category: string
   sourceChapter: number
@@ -110,12 +121,14 @@ export function findBlueprintContinuityRisks(
   const characters = new Set(blueprint.characters.map(normalizedKeyPart))
 
   return projections.flatMap(projection => (projection.facts ?? []).flatMap((fact) => {
-    if (fact.category !== 'character-state') return []
+    if (fact.category !== 'character-state' && fact.category !== 'timeline') return []
     const stableFactKey = continuityStableFactKey(fact)
     if (activeExemptions.has(stableFactKey)) return []
-    const subject = fact.entities
+    const subject = fact.category === 'character-state'
+      ? fact.entities
       .map(normalizedKeyPart)
       .find(entity => characters.has(entity) && isExplicitTerminalSubject(fact.statement, entity))
+      : undefined
     if (subject) {
       return [{
         stableFactKey,
@@ -134,6 +147,30 @@ export function findBlueprintContinuityRisks(
     }
 
     for (const entity of fact.entities.map(normalizedKeyPart).filter(name => characters.has(name))) {
+      if (fact.category === 'timeline') {
+        const finalizedDay = explicitStoryDay(`${fact.statement}。${fact.evidence}`, entity)
+        const blueprintDay = explicitStoryDay(`${blueprint.purpose}。${blueprint.keyEvents}`, entity)
+        if (finalizedDay !== undefined && blueprintDay !== undefined && finalizedDay !== blueprintDay) {
+          const timelineKey = `${stableFactKey}:day:${entity}`
+          if (!activeExemptions.has(timelineKey)) {
+            return [{
+              stableFactKey: timelineKey,
+              severity: 'warning' as const,
+              sourceChapter: fact.sourceChapter,
+              evidence: fact.evidence,
+              issue: {
+                zhCN: `时间线冲突：定稿事实将“${entity}”置于第${finalizedDay}天，但当前蓝图写为第${blueprintDay}天。`,
+                enUS: `Timeline conflict: finalized facts place “${entity}” on story day ${finalizedDay}, but the current blueprint says day ${blueprintDay}.`,
+              },
+              suggestion: {
+                zhCN: '补充时间跳转或调整蓝图日期。',
+                enUS: 'Add the time transition or adjust the blueprint day.',
+              },
+            }]
+          }
+        }
+        continue
+      }
       const finalizedLocation = explicitLocation(fact.statement, entity)
       const blueprintLocation = explicitLocation(
         `${blueprint.purpose}。${blueprint.keyEvents}`,

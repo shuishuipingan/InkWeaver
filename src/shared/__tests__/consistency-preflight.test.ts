@@ -157,6 +157,32 @@ describe('findBlueprintContinuityRisks', () => {
     expect(findings[0]?.issue.zhCN).toContain('归属')
   })
 
+  it('reports an explicit story-day conflict when both sources name different days', () => {
+    const findings = findBlueprintContinuityRisks([{
+      ...projection[0]!,
+      facts: [{
+        category: 'timeline' as const,
+        entities: ['林舟'],
+        statement: '第3天，林舟抵达旧码头。',
+        sourceChapter: 1,
+        evidence: '第3天清晨，林舟抵达旧码头。',
+      }],
+    }], {
+      chapterNumber: 2,
+      title: '第四天',
+      role: '发展',
+      purpose: '林舟继续追查',
+      keyEvents: '第2天，林舟在旧码头等待接头。',
+      characters: ['林舟'],
+      suspenseHook: '',
+      userGuidance: '',
+      notes: '',
+    }, [])
+
+    expect(findings).toHaveLength(1)
+    expect(findings[0]?.issue.zhCN).toContain('时间线')
+  })
+
   it('maps deterministic findings into the existing review item shape', () => {
     const finding = findBlueprintContinuityRisks(projection, {
       chapterNumber: 2, title: '重逢', role: '发展', purpose: '顾舟归来', keyEvents: '顾舟敲门',
