@@ -14,7 +14,7 @@
 
 | 需求 | 功能 | 主工单 | 验收必须回答的问题 | 状态 | 负责人 / 实现 / 证据 |
 | --- | --- | --- | --- | --- | --- |
-| A01 | 章节交接记录 | 04 | 现场和情绪有原文证据吗？来源修订后是否过期？ | 开发中 | `7ba46f6`：source-bound handoff repository/IPC；`de9d1dd`：structured extraction command；`d76f852`：non-critical finalization candidate step；`257df5d`/`98db05e`：editor review panel/browser test；来源失效重建与完整衔接审查未完成 |
+| A01 | 章节交接记录 | 04 | 现场和情绪有原文证据吗？来源修订后是否过期？ | 开发中 | `7ba46f6`：source-bound handoff repository/IPC；`de9d1dd`：structured extraction command；`d76f852`：non-critical finalization candidate step；`257df5d`/`98db05e`：editor review panel/browser test；`eed0921`：新 finalized draft 会使旧交接失效；完整衔接审查未完成 |
 | A02 | 承接与转场策略 | 04 | 即时承接和刻意转场都自然吗？能由作者选择吗？ | 开发中 | `7ba46f6`：transition contract；`de9d1dd`：prompt carries selected transition；作者入口和衔接审查未完成 |
 | A03 | 相邻章节检查与局部修稿 | 04 | 问题能定位两端原文吗？旧版本修改被拒绝吗？ | 未开始 | — |
 | A04 | 场景因果链 | 06 | 能记录选择和后果吗？是否区分计划与实际事件？ | 未开始 | — |
