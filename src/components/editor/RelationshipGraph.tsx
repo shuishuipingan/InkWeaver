@@ -9,6 +9,10 @@ import {
 } from '../../shared/relationship-presentation'
 import { useLocaleStore } from '../../stores/locale-store'
 import { layoutRelationshipLabels } from './relationship-label-layout'
+import {
+  filterRelationshipGraph,
+  relationshipListRows,
+} from './relationship-graph-model'
 
 interface CharacterNode {
   name: string
@@ -39,6 +43,7 @@ interface RelationshipGraphProps {
     name: string
     role: string
     relationships: string
+    aliases?: readonly string[]
   }>
 }
 
@@ -93,6 +98,7 @@ export default function RelationshipGraph({ characters }: RelationshipGraphProps
   const [edgeLabelsOn, setEdgeLabelsOn] = useState<boolean | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [relationFilter, setRelationFilter] = useState<RelationKind | 'all'>('all')
+  const [focusDepth, setFocusDepth] = useState<0 | 1 | 2>(1)
   const [tooltip, setTooltip] = useState<{
     x: number
     y: number
@@ -138,43 +144,15 @@ export default function RelationshipGraph({ characters }: RelationshipGraphProps
     return list
   }, [characters])
 
-  const visibleGraph = useMemo(() => {
-    const query = searchQuery.trim().toLocaleLowerCase('en-US')
-    const matchingNames = new Set(
-      characters
-        .filter(character => !!query && character.name.toLocaleLowerCase('en-US').includes(query))
-        .map(character => character.name),
-    )
-    const focusNames = new Set(
-      query || relationFilter !== 'all'
-        ? matchingNames
-        : characters.map(character => character.name),
-    )
-    if (query) {
-      for (const edge of graphEdges) {
-        if (matchingNames.has(edge.a)) focusNames.add(edge.b)
-        if (matchingNames.has(edge.b)) focusNames.add(edge.a)
-      }
-    }
-    const edges = graphEdges.filter(edge => (
-      (relationFilter === 'all' || edge.kind === relationFilter)
-      && (!query || (focusNames.has(edge.a) && focusNames.has(edge.b)))
-    ))
-    if (relationFilter !== 'all') {
-      for (const edge of edges) {
-        focusNames.add(edge.a)
-        focusNames.add(edge.b)
-      }
-    }
-    const displayNames = query || relationFilter !== 'all'
-      ? focusNames
-      : new Set(characters.map(character => character.name))
-    return {
-      characters: characters.filter(character => displayNames.has(character.name)),
-      edges,
-      matchingNames,
-    }
-  }, [characters, graphEdges, relationFilter, searchQuery])
+  const visibleGraph = useMemo(() => filterRelationshipGraph(
+    characters,
+    graphEdges,
+    {
+      query: searchQuery,
+      relationKind: relationFilter,
+      focusDepth: searchQuery.trim() || relationFilter !== 'all' ? focusDepth : 0,
+    },
+  ), [characters, focusDepth, graphEdges, relationFilter, searchQuery])
 
   // 用于悬停邻域高亮和提示条的关系数（合并后 = 不同邻居数）
   const degreeByName = useMemo(() => {
@@ -214,6 +192,10 @@ export default function RelationshipGraph({ characters }: RelationshipGraphProps
   )
 
   const effectiveEdgeLabels = edgeLabelsOn ?? visibleGraph.edges.length <= EDGE_LABEL_AUTO_LIMIT
+  const accessibleRows = useMemo(
+    () => relationshipListRows(visibleGraph.characters, visibleGraph.edges),
+    [visibleGraph.characters, visibleGraph.edges],
+  )
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -841,6 +823,18 @@ export default function RelationshipGraph({ characters }: RelationshipGraphProps
     })
   }
 
+  const focusFromAccessibleList = (name: string) => {
+    const node = nodesRef.current.find(candidate => candidate.name === name)
+    if (!node) return
+    const neighbors = buildNeighbors(name)
+    pinnedRef.current = { name, neighbors }
+    hoverRef.current = null
+    const w = cssWidth()
+    const h = cssHeight()
+    showTooltipFor(node, w, h)
+    drawRef.current?.()
+  }
+
   const restorePinnedTooltip = (w: number, h: number) => {
     const pinned = pinnedRef.current
     if (!pinned) return
@@ -943,6 +937,19 @@ export default function RelationshipGraph({ characters }: RelationshipGraphProps
             <option key={kind} value={kind}>{text(RELATION_META[kind].zh, RELATION_META[kind].en)}</option>
           ))}
         </select>
+        {(searchQuery.trim() || relationFilter !== 'all') && (
+          <select
+            value={focusDepth}
+            onChange={event => setFocusDepth(Number(event.target.value) as 0 | 1 | 2)}
+            className="max-w-20 rounded border bg-transparent px-1 py-1 text-[11px] outline-none"
+            style={{ borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+            aria-label={text('聚焦范围', 'Focus depth')}
+          >
+            <option value={0}>{text('仅匹配', 'Matches')}</option>
+            <option value={1}>{text('一跳邻居', 'One hop')}</option>
+            <option value={2}>{text('二跳邻居', 'Two hops')}</option>
+          </select>
+        )}
         {(searchQuery || relationFilter !== 'all') && (
           <span className="px-1 text-[10px] tabular-nums" style={{ color: 'var(--color-text-muted)' }}>
             {visibleGraph.characters.length}
@@ -1019,6 +1026,31 @@ export default function RelationshipGraph({ characters }: RelationshipGraphProps
             </span>
           ))}
         </div>
+      )}
+      {accessibleRows.length > 0 && (
+        <details
+          data-relationship-list="true"
+          className="absolute bottom-3 right-3 z-10 max-w-[min(14rem,calc(100%-24px))] rounded-md border text-[11px]"
+          style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-panel)', color: 'var(--color-text)' }}
+        >
+          <summary className="cursor-pointer select-none px-2 py-1.5">
+            {text('角色列表', 'Character list')} · {accessibleRows.length}
+          </summary>
+          <div className="max-h-48 overflow-y-auto border-t p-1" style={{ borderColor: 'var(--color-border)' }} role="list">
+            {accessibleRows.slice(0, 120).map(row => (
+              <button
+                key={row.name}
+                type="button"
+                role="listitem"
+                className="flex w-full items-center justify-between gap-2 rounded px-1.5 py-1 text-left hover:bg-[var(--color-hover)]"
+                onClick={() => focusFromAccessibleList(row.name)}
+              >
+                <span className="truncate">{row.name}</span>
+                <span className="shrink-0 tabular-nums text-[var(--color-text-muted)]">{row.degree}</span>
+              </button>
+            ))}
+          </div>
+        </details>
       )}
       {tooltip && (
         <div

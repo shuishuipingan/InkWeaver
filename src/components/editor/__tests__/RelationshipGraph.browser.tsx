@@ -288,6 +288,36 @@ describe('RelationshipGraph relation kinds', () => {
     expect(container.textContent).toContain('3')
   })
 
+  it('supports alias search, optional two-hop focus, and a keyboard-accessible character list', async () => {
+    await act(async () => root.render(
+      <RelationshipGraph characters={[
+        { name: '林墨', aliases: ['夜行者'], role: 'protagonist', relationships: '周砧——挚友' },
+        { name: '周砧', role: 'supporting', relationships: '苏晚——共同追查' },
+        { name: '苏晚', role: 'supporting', relationships: '陈锋——旧识' },
+        { name: '陈锋', role: 'supporting', relationships: '' },
+      ]} />,
+    ))
+
+    const search = container.querySelector('input[aria-label="搜索角色"]')
+    if (!search) throw new Error('graph search control not found')
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+      setter?.call(search, '夜行者')
+      search.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    const depth = container.querySelector('select[aria-label="聚焦范围"]') as HTMLSelectElement | null
+    expect(depth).not.toBeNull()
+    if (!depth) throw new Error('focus depth control not found')
+    await act(async () => {
+      depth.value = '2'
+      depth.dispatchEvent(new Event('change', { bubbles: true }))
+    })
+    const list = container.querySelector('[data-relationship-list="true"]')
+    expect(list?.textContent).toContain('林墨')
+    expect(list?.textContent).toContain('苏晚')
+    expect(container.querySelector('[data-relationship-list="true"] button')).not.toBeNull()
+  })
+
   it('classifies free-text relations into graph kinds by keywords', () => {
     expect(classifyRelation('杀父之仇')).toBe('hostile')
     expect(classifyRelation('竞争对手')).toBe('hostile')
