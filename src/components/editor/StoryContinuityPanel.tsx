@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Plus, Save, RefreshCw } from 'lucide-react'
 import { ipc } from '../../services/ipc-client'
 import { useLocaleStore } from '../../stores/locale-store'
 import { useProjectStore } from '../../stores/project-store'
+import { useCharacterStore } from '../../stores/character-store'
 import { Button } from '../ui/Button'
 import { Input } from '../ui/Input'
 import { NativeSelect } from '../ui/NativeSelect'
@@ -20,6 +21,7 @@ import {
   type StoryContinuityDocument,
   type ViewpointThread,
 } from '../../shared/story-continuity'
+import type { KnowledgeEvent } from '../../shared/knowledge-event'
 
 interface StoryContinuityPanelProps {
   projectKey: string
@@ -58,11 +60,14 @@ function newViewpoint(): ViewpointThread {
 export default function StoryContinuityPanel({ projectKey, chapterNumber }: StoryContinuityPanelProps) {
   const text = useLocaleStore(state => state.text)
   const currentProject = useProjectStore(state => state.currentProject)
+  const characters = useCharacterStore(state => state.characters)
+  const characterNames = useMemo(() => characters.map(character => character.name).filter(Boolean), [characters])
   const [document, setDocument] = useState<StoryContinuityDocument>(() => emptyStoryContinuityDocument(chapterNumber))
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  const [knowledgeEvents, setKnowledgeEvents] = useState<KnowledgeEvent[]>([])
 
   const load = async () => {
     const session = captureProjectSession(currentProject)
@@ -80,6 +85,19 @@ export default function StoryContinuityPanel({ projectKey, chapterNumber }: Stor
   }
 
   useEffect(() => { void load() }, [chapterNumber, projectKey, currentProject?.sessionLease])
+
+  useEffect(() => {
+    const session = captureProjectSession(currentProject)
+    if (!session || !isProjectSessionPath(session, projectKey) || characterNames.length === 0) {
+      setKnowledgeEvents([])
+      return
+    }
+    let cancelled = false
+    void ipc.invokeWithProjectSession(session, 'db:knowledge-event-list-for-chapter', characterNames, chapterNumber, projectKey)
+      .then(events => { if (!cancelled && isProjectSessionCurrent(session)) setKnowledgeEvents(events) })
+      .catch(() => { if (!cancelled) setKnowledgeEvents([]) })
+    return () => { cancelled = true }
+  }, [chapterNumber, characterNames.join('\u0000'), currentProject?.sessionLease, projectKey])
 
   const update = (patch: Partial<StoryContinuityDocument>) => {
     setNotice(null)
@@ -167,6 +185,8 @@ export default function StoryContinuityPanel({ projectKey, chapterNumber }: Stor
           <div className="grid gap-2 sm:grid-cols-2"><Input aria-label={text('转折', 'Turning point')} value={document.arcContribution.turningPoint} onChange={event => update({ arcContribution: { ...document.arcContribution, turningPoint: event.target.value } })} placeholder={text('转折', 'Turning point')} /><Input aria-label={text('代价', 'Cost')} value={document.arcContribution.cost} onChange={event => update({ arcContribution: { ...document.arcContribution, cost: event.target.value } })} placeholder={text('代价', 'Cost')} /></div>
           <Textarea aria-label={text('待回应问题', 'Open questions')} value={lineText(document.arcContribution.unresolvedQuestions)} onChange={event => update({ arcContribution: { ...document.arcContribution, unresolvedQuestions: lines(event.target.value) } })} placeholder={text('每行一个跨章待回应问题', 'One cross-chapter open question per line')} />
         </section>
+
+        {knowledgeEvents.length > 0 && <section data-knowledge-boundary="true"><h4 className="mb-2 text-xs font-semibold">{text('当前角色知情范围（已确认）', 'Confirmed character knowledge')}</h4><div className="space-y-1.5">{knowledgeEvents.map(event => <div key={event.eventId} className="rounded border px-2 py-1.5 text-xs" style={{ borderColor: 'var(--color-border)' }}><div className="font-medium">{event.character} · {event.falseBelief ? text('误信', 'False belief') : event.certainty === 'rumor' ? text('传闻', 'Rumor') : text('已知事实', 'Known fact')}</div><div className="mt-0.5 text-[var(--color-text-secondary)]">{event.information}</div><div className="mt-0.5 text-[var(--color-text-muted)]">{text(`获知方式：${event.learnedBy} · 第${event.sourceChapter}章证据：${event.evidence}`, `Learned by ${event.learnedBy} · evidence from Chapter ${event.sourceChapter}: ${event.evidence}`)}</div></div>)}</div></section>}
 
         <section>
           <div className="mb-2 flex items-center justify-between gap-2"><h4 className="text-xs font-semibold">{text('情绪余波与人物成长', 'Emotional carry-over and growth')}</h4><Button variant="outline" size="sm" onClick={() => update({ emotionalCarryOver: [...document.emotionalCarryOver, newEmotion(document.emotionalCarryOver.length + 1)] })}><Plus size={12} />{text('加人物', 'Add character')}</Button></div>
