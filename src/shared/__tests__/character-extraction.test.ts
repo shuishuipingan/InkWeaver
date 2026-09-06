@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  mergeCharacterExtractionCandidates,
+  parseCharacterExtractionResponse,
   planCharacterExtractionChunks,
   textFingerprint,
 } from '../character-extraction'
@@ -34,5 +36,56 @@ describe('character extraction chunk planning', () => {
       kind: 'selection',
       maxCharacters: 99,
     })).toThrow(/至少为 1000/u)
+  })
+
+  it('parses only fields backed by explicit evidence and merges aliases across chunks', () => {
+    const source = {
+      sourceId: 'chapter-4',
+      sourceHash: 'a'.repeat(64),
+      kind: 'chapter' as const,
+      chapterNumbers: [4],
+    }
+    const first = parseCharacterExtractionResponse(JSON.stringify({
+      characters: [{
+        name: '沈月',
+        aliases: ['月儿'],
+        role: 'supporting',
+        fields: { personality: '谨慎' },
+        evidence: [{ field: 'personality', value: '谨慎', excerpt: '沈月没有立刻回答，先观察了四周。' }],
+      }],
+    }), source)
+    const second = parseCharacterExtractionResponse(JSON.stringify({
+      characters: [{
+        name: '月儿',
+        fields: { background: '来自北境' },
+        evidence: [{ field: 'background', value: '来自北境', excerpt: '月儿来自北境的旧城。' }],
+      }],
+    }), source)
+
+    const merged = mergeCharacterExtractionCandidates([...first, ...second])
+    expect(merged).toHaveLength(1)
+    expect(merged[0]).toMatchObject({ name: '沈月', aliases: ['月儿'] })
+    expect(merged[0]?.fields).toMatchObject({ personality: '谨慎', background: '来自北境' })
+    expect(merged[0]?.fieldEvidence).toHaveLength(2)
+  })
+
+  it('marks conflicting evidence as ambiguous instead of overwriting a field', () => {
+    const source = {
+      sourceId: 'chapter-5',
+      sourceHash: 'b'.repeat(64),
+      kind: 'chapter' as const,
+      chapterNumbers: [5],
+    }
+    const candidates = parseCharacterExtractionResponse(JSON.stringify({
+      characters: [
+        { name: '林舟', fields: { age: '18' }, evidence: [{ field: 'age', value: '18', excerpt: '林舟十八岁。' }] },
+        { name: '林舟', fields: { age: '19' }, evidence: [{ field: 'age', value: '19', excerpt: '林舟已经十九岁。' }] },
+      ],
+    }), source)
+
+    const merged = mergeCharacterExtractionCandidates(candidates)
+    expect(merged[0]?.disposition).toBe('ambiguous')
+    expect(merged[0]?.fields.age).toBeUndefined()
+    expect(merged[0]?.fieldEvidence).toHaveLength(2)
   })
 })
