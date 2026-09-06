@@ -1,9 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import {
-  normalizeChapterHandoffCandidate,
-  type SaveChapterHandoffRequest,
-} from '../chapter-handoff'
+import { normalizeChapterHandoffCandidate } from '../chapter-handoff'
 
 const source = {
   handoffId: 'handoff-7',
@@ -27,7 +24,7 @@ describe('normalizeChapterHandoffCandidate', () => {
       evidence: ['他握紧钥匙，听见门后有人叫他的名字。'],
     }, source)
 
-    expect(result).toMatchObject<SaveChapterHandoffRequest>({
+    expect(result).toMatchObject({
       ...source,
       sceneLocation: '旧码头',
       transition: 'continue-scene',
