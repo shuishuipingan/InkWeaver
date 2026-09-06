@@ -8,6 +8,7 @@ import {
   type RelationKind,
 } from '../../shared/relationship-presentation'
 import { useLocaleStore } from '../../stores/locale-store'
+import { layoutRelationshipLabels } from './relationship-label-layout'
 
 interface CharacterNode {
   name: string
@@ -475,17 +476,50 @@ export default function RelationshipGraph({ characters }: RelationshipGraphProps
             labelEntries = labelEntries.slice(0, EDGE_LABEL_HOVER_LIMIT)
           }
         }
-        // 标签竖向避让：按中点 y 排序后逐个下移，保证间距不小于字高
-        labelEntries.sort((p, q) => ((p.a.y + p.b.y) / 2) - ((q.a.y + q.b.y) / 2))
-        const labelGap = Math.max(14, edgeLabelSize * 1.4) / Math.max(view.scale, 0.1)
-        let lastLabelY = -Infinity
-        for (const edge of labelEntries) {
-          const mx = (edge.a.x + edge.b.x) / 2
-          const my = Math.max((edge.a.y + edge.b.y) / 2 - 4, lastLabelY + labelGap)
-          lastLabelY = my
-          ctx.strokeText(edge.label, mx, my)
-          ctx.fillStyle = kindColor(edge.kind)
-          ctx.fillText(edge.label, mx, my)
+        const pixelRatio = current.width / Math.max(current.clientWidth, 1)
+        const labels = labelEntries.map((edge) => {
+          const dx = edge.b.x - edge.a.x
+          const dy = edge.b.y - edge.a.y
+          const length = Math.hypot(dx, dy) || 1
+          return {
+            edge,
+            anchor: {
+              x: (edge.a.x + edge.b.x) / 2,
+              y: (edge.a.y + edge.b.y) / 2 - 4,
+              normalX: -dy / length,
+              normalY: dx / length,
+              width: ctx.measureText(edge.label).width,
+              height: edgeLabelSize,
+            },
+          }
+        })
+        const placements = layoutRelationshipLabels(
+          labels.map((entry) => entry.anchor),
+          {
+            maxOffset: 24,
+            gap: 4,
+            // Canvas coordinates are backing-store pixels. Convert the
+            // screen-space bound before comparing label rectangles.
+            scale: view.scale / Math.max(pixelRatio, 1),
+          },
+        )
+        for (const [index, entry] of labels.entries()) {
+          const placement = placements[index]
+          if (!placement || placement.hidden) continue
+          if (placement.leader) {
+            ctx.save()
+            ctx.globalAlpha = 0.45
+            ctx.strokeStyle = kindColor(entry.edge.kind)
+            ctx.lineWidth = 1
+            ctx.beginPath()
+            ctx.moveTo(entry.anchor.x, entry.anchor.y + 2)
+            ctx.lineTo(placement.x, placement.y - entry.anchor.height / 2)
+            ctx.stroke()
+            ctx.restore()
+          }
+          ctx.strokeText(entry.edge.label, placement.x, placement.y)
+          ctx.fillStyle = kindColor(entry.edge.kind)
+          ctx.fillText(entry.edge.label, placement.x, placement.y)
         }
         ctx.restore()
       }
