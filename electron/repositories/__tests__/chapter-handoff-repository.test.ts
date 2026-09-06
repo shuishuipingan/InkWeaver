@@ -67,6 +67,7 @@ describe('ChapterHandoffRepository', () => {
       status: 'confirmed',
       sceneLocation: payload.sceneLocation,
     })
+    expect(ChapterHandoffRepository.listForChapter(1)).toHaveLength(1)
   })
 
   it('rejects a candidate whose frozen source hash no longer matches the draft', () => {

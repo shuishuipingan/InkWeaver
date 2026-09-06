@@ -182,4 +182,15 @@ export class ChapterHandoffRepository {
     `).get(chapterNumber) as HandoffRow | undefined
     return row ? rowToRecord(row) : null
   }
+
+  static listForChapter(chapterNumber: number): ChapterHandoffRecord[] {
+    if (!Number.isSafeInteger(chapterNumber) || chapterNumber < 1) throw new Error('目标章节无效')
+    const rows = db().prepare(`
+      SELECT * FROM chapter_handoffs
+      WHERE chapter_number = ?
+      ORDER BY CASE status WHEN 'candidate' THEN 0 WHEN 'confirmed' THEN 1 ELSE 2 END,
+               updated_at DESC
+    `).all(chapterNumber) as HandoffRow[]
+    return rows.map(rowToRecord)
+  }
 }

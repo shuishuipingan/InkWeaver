@@ -724,6 +724,11 @@ export function registerDatabaseController() {
     return ChapterHandoffRepository.getLatestConfirmedBefore(chapterNumber)
   })
 
+  ipcMain.handle('db:chapter-handoff-list-for-chapter', async (_event, chapterNumber: number, expectedProjectPath: string) => {
+    assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+    return ChapterHandoffRepository.listForChapter(chapterNumber)
+  })
+
   ipcMain.handle('db:consistency-exemption-list', async (_event, expectedProjectPath: string) => {
     assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
     return ConsistencyExemptionRepository.list()

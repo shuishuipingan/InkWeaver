@@ -29,6 +29,8 @@ import { DRAFT_STATUS_LABEL, DRAFT_STATUS_COLOR } from '../../shared/draft-statu
 import { countDraftUnits } from '../../shared/draft-units'
 import { PostProcessStatusPanel } from '../ui/PostProcessStatusPanel'
 import { getChapterFinalizeScope } from '../../services/workflows/workflow-utils'
+import ChapterHandoffPanel from './ChapterHandoffPanel'
+import type { ChapterHandoffRecord } from '../../shared/chapter-handoff'
 import { guardRepairPostProcess } from '../../services/workflow-guards'
 import {
   captureProjectSession,
@@ -90,6 +92,10 @@ function DraftEditorSession({ tabId, filePath, content, projectKey }: Props) {
 
   // 后处理失败状态（用于控制是否展示修复按钮）
   const [hasProcessFailure, setHasProcessFailure] = useState(false)
+  const [chapterHandoffs, setChapterHandoffs] = useState<ChapterHandoffRecord[]>([])
+  const [handoffLoading, setHandoffLoading] = useState(false)
+  const [handoffConfirming, setHandoffConfirming] = useState<string | null>(null)
+  const status: DraftStatus = tabDraftStatus ?? meta?.status ?? 'draft'
 
   useEffect(() => {
     let cancelled = false
@@ -124,7 +130,33 @@ function DraftEditorSession({ tabId, filePath, content, projectKey }: Props) {
     }
   }, [currentProject, filePath, projectKey])
 
-  const status: DraftStatus = tabDraftStatus ?? meta?.status ?? 'draft'
+  useEffect(() => {
+    let cancelled = false
+    const loadHandoffs = async () => {
+      const session = captureProjectSession(currentProject)
+      if (!session || !meta || status !== 'finalized' || !isProjectSessionPath(session, projectKey)) {
+        setChapterHandoffs([])
+        return
+      }
+      setHandoffLoading(true)
+      try {
+        const records = await ipc.invokeWithProjectSession(
+          session,
+          'db:chapter-handoff-list-for-chapter',
+          meta.chapterNumber,
+          projectKey,
+        )
+        if (!cancelled && isProjectSessionCurrent(session)) setChapterHandoffs(records)
+      } catch {
+        if (!cancelled) setChapterHandoffs([])
+      } finally {
+        if (!cancelled) setHandoffLoading(false)
+      }
+    }
+    void loadHandoffs()
+    return () => { cancelled = true }
+  }, [currentProject?.sessionLease, meta?.chapterNumber, projectKey, status])
+
   const isReadonly = status === 'finalized' || status === 'archived'
 
   // 检查是否有相关章节工作流正在运行
@@ -176,6 +208,33 @@ function DraftEditorSession({ tabId, filePath, content, projectKey }: Props) {
   const finalizationPending = editorTab?.finalizationPublication === 'pending'
   const finalizationConflict = editorTab?.finalizationConflict
   const currentBodyRef = useRef(content)
+
+  const confirmChapterHandoff = async (handoffId: string) => {
+    const session = captureProjectSession(currentProject)
+    if (!session || !meta || !isProjectSessionPath(session, projectKey)) return
+    setHandoffConfirming(handoffId)
+    try {
+      const result = await ipc.invokeWithProjectSession(
+        session,
+        'db:chapter-handoff-confirm',
+        handoffId,
+        projectKey,
+      )
+      requireIpcSuccess(result, text('确认章节交接', 'Confirm chapter handoff'))
+      if (result.handoff) {
+        setChapterHandoffs(records => records.map(record => (
+          record.handoffId === handoffId
+            ? result.handoff!
+            : record.status === 'confirmed' ? { ...record, status: 'superseded' } : record
+        )))
+      }
+      toast.success(text('章节交接已确认，下一章会使用这份记录', 'Chapter handoff confirmed and will be used by the next chapter'))
+    } catch (error) {
+      toast.error(String(error))
+    } finally {
+      setHandoffConfirming(null)
+    }
+  }
 
   /** 保存（vela://draft/ 走 DB，其他走 FS） */
   const doSave = async (draftContent: string) => {
@@ -699,6 +758,13 @@ function DraftEditorSession({ tabId, filePath, content, projectKey }: Props) {
             scope={getChapterFinalizeScope(meta.chapterNumber)}
             onRetry={() => doRepairFinalize()}
             onStatusLoad={setHasProcessFailure}
+          />
+          <ChapterHandoffPanel
+            records={chapterHandoffs}
+            loading={handoffLoading}
+            confirmingId={handoffConfirming}
+            onConfirm={confirmChapterHandoff}
+            text={text}
           />
         </div>
       )}

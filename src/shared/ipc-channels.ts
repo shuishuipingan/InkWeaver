@@ -841,6 +841,10 @@ export interface DatabaseChannels {
     args: [chapterNumber: number, expectedProjectPath: string]
     return: ChapterHandoffRecord | null
   }
+  'db:chapter-handoff-list-for-chapter': {
+    args: [chapterNumber: number, expectedProjectPath: string]
+    return: ChapterHandoffRecord[]
+  }
   'db:consistency-exemption-list': { args: [expectedProjectPath: string]; return: ConsistencyExemption[] }
   'db:consistency-exemption-save': {
     args: [stableFactKey: string, reason: string, expectedProjectPath: string]
