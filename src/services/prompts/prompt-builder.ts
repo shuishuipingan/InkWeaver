@@ -88,6 +88,11 @@ export class ChapterPromptBuilder extends BasePromptBuilder {
     return this;
   }
 
+  withChapterHandoff(chapterHandoff: string) {
+    this.variables.chapter_handoff = chapterHandoff;
+    return this;
+  }
+
   withChapterInfo(chapterInfo: string | object) {
     this.variables.chapter_info = typeof chapterInfo === 'string' 
       ? chapterInfo 

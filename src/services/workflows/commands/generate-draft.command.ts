@@ -29,6 +29,8 @@ import type { FinalizedContinuityProjection } from '../../../shared/finalized-co
 import type { NarrativeThreadView } from '../../../shared/narrative-thread'
 import { promptLanguageText } from '../../prompt-language'
 import { countDraftUnits } from '../../../shared/draft-units'
+import { formatChapterHandoff } from '../../chapter-handoff-context'
+import type { ChapterHandoffRecord } from '../../../shared/chapter-handoff'
 
 export { countDraftUnits } from '../../../shared/draft-units'
 
@@ -301,6 +303,20 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
       )
       callbacks.log(`  已加载相关活跃叙事线索（${activeThreads.count} 条）`)
 
+      let chapterHandoff: ChapterHandoffRecord | null = null
+      try {
+        chapterHandoff = await ipc.invokeWithProjectSession(
+          projectSession,
+          'db:chapter-handoff-latest-before',
+          this.chapterInfo.chapterNumber,
+          expectedProjectPath,
+        )
+        if (chapterHandoff) callbacks.log('  已加载上一章确认的场景交接记录')
+      } catch {
+        // Older projects may not have a handoff yet; the previous ending remains
+        // a valid fallback and the prompt explicitly says that no handoff exists.
+      }
+
       let previousEnding = this.previousDraftEnding ?? ''
       if (!previousEnding) {
         try {
@@ -343,6 +359,7 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
         // ---- 缓存命中区续（要点时间线按序追加，前缀对齐）----
         .withGlobalSummary([chapterTimeline.text, activeThreads.text].filter(Boolean).join('\n\n'))
         .withCharacterStates(characterState)
+        .withChapterHandoff(formatChapterHandoff(chapterHandoff, writingLanguage))
         // ---- 缓存失效区（逐章变化）----
         .withPreviousEnding(previousEnding || promptLanguageText(
           writingLanguage,

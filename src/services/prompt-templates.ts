@@ -88,6 +88,7 @@ export const PROMPT_VARIABLE_DESCRIPTIONS_EN: Readonly<Record<string, string>> =
   character_states: 'Character states',
   short_summary: 'Recent chapter summary',
   previous_ending: 'Last 800 characters of the previous chapter',
+  chapter_handoff: 'Confirmed scene handoff from the previous chapter',
   filtered_context: 'Knowledge-base search results',
   draft_content: 'Chapter draft',
   user_refine_prompt: 'Author revision guidance (optional)',
@@ -664,6 +665,7 @@ export const BUILTIN_PROMPTS: PromptTemplate[] = [
       character_states: '角色状态',
       short_summary: '近期三章简要',
       previous_ending: '上章结尾800字',
+      chapter_handoff: '上一章已确认的场景交接记录',
       chapter_info: '本章蓝图信息（JSON）',
       future_blueprints: '后续章节蓝图（防止剧情提前）',
       user_guidance: '作者本章微操指导（可选）',
@@ -680,6 +682,9 @@ export const BUILTIN_PROMPTS: PromptTemplate[] = [
 - [近期三章简要]：{{short_summary}}
 ★【上一章结尾最后一小段（极其关键，起笔必须无缝衔接）】★：
 {{previous_ending}}
+
+★【上一章已确认的交接记录（必须保持现场、情绪和未完成动作）】★：
+{{chapter_handoff}}
 
 【本章写作方向与核心任务】
 {{chapter_info}}
