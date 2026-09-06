@@ -27,6 +27,8 @@ import { APP_BRAND } from '../../shared/brand'
 import { ipc } from '../../services/ipc-client'
 import { useLocaleStore } from '../../stores/locale-store'
 import type { MessageKey } from '../../i18n/core'
+import { toast } from '../ui/Toast'
+import { captureProjectSession, isProjectSessionCurrent } from '../project-session-gate'
 
 const isMac = navigator.userAgent.includes('Mac')
 
@@ -55,6 +57,22 @@ export default function TitleBar() {
   const openExport = useLayoutStore(s => s.openExport)
   const openImportNovel = useLayoutStore(s => s.openImportNovel)
   const { locale, toggleLocale, t } = useLocaleStore()
+
+  const createProjectSnapshot = async () => {
+    const session = captureProjectSession(currentProject)
+    if (!session) return
+    try {
+      const result = await ipc.invokeWithProjectSession(session, 'db:project-snapshot-create', session.projectPath)
+      if (!isProjectSessionCurrent(session)) return
+      if (!result.success || !result.manifest) {
+        toast.error(t('project.backupFailed', { error: result.error ?? 'unknown error' }))
+        return
+      }
+      toast.success(t('project.backupSuccess', { id: result.manifest.snapshotId }))
+    } catch (error) {
+      if (isProjectSessionCurrent(session)) toast.error(t('project.backupFailed', { error: String(error) }))
+    }
+  }
 
   const ThemeIcon = themeIcons[theme] || Sun
   const cycleTheme = (e: MouseEvent) => {
@@ -169,7 +187,7 @@ export default function TitleBar() {
 
         <div className="writer-command-divider h-5 w-px" />
 
-        <button className="writer-command-button" title={t('project.backupUnavailable')} disabled>
+        <button className="writer-command-button" title={t('project.backupUnavailable')} onClick={() => void createProjectSnapshot()} disabled={!currentProject}>
           <Archive size={14} strokeWidth={1.75} />
           {t('common.backup')}
         </button>

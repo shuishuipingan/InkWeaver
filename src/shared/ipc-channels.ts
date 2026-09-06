@@ -926,6 +926,14 @@ export interface DatabaseChannels {
     args: [eventId: string, status: KnowledgeEvent['status'], expectedProjectPath: string]
     return: { success: boolean; event?: KnowledgeEvent; error?: string }
   }
+  'db:project-snapshot-create': {
+    args: [expectedProjectPath: string]
+    return: { success: boolean; manifest?: import('./project-snapshot').ProjectSnapshotManifest; error?: string }
+  }
+  'db:project-snapshot-list': {
+    args: [expectedProjectPath: string]
+    return: import('./project-snapshot').ProjectSnapshotManifest[]
+  }
   'db:draft-next-version': { args: [chapterNumber: number, expectedProjectPath: string]; return: number }
   'db:draft-update-status': { args: [id: number, status: string, wordCount: number | undefined, expectedProjectPath: string]; return: { success: boolean; error?: string } }
   'db:draft-update-content': { args: [id: number, content: string, wordCount: number, expectedProjectPath: string]; return: { success: boolean; error?: string } }

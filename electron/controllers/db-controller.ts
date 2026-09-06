@@ -49,6 +49,7 @@ import { ConsistencyExemptionRepository } from '../repositories/consistency-exem
 import { NarrativeThreadRepository } from '../repositories/narrative-thread-repository'
 import { StoryContinuityRepository } from '../repositories/story-continuity-repository'
 import { KnowledgeEventRepository } from '../repositories/knowledge-event-repository'
+import { ProjectSnapshotService } from '../services/project-snapshot-service'
 import { safeConsole } from '../utils/safe-console'
 
 type ProjectDatabaseHandler = (event: unknown, ...args: never[]) => unknown
@@ -104,6 +105,7 @@ const MUTATING_DATABASE_CHANNELS = new Set([
   'db:story-continuity-save',
   'db:knowledge-event-save-candidate',
   'db:knowledge-event-status',
+  'db:project-snapshot-create',
   'db:chapter-handoff-save-candidate',
   'db:chapter-handoff-confirm',
   'db:character-extraction-candidates-save',
@@ -874,6 +876,20 @@ export function registerDatabaseController() {
     } catch (error) {
       return { success: false, error: String(error) }
     }
+  })
+
+  ipcMain.handle('db:project-snapshot-create', async (_event, expectedProjectPath: string) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      return { success: true, manifest: await ProjectSnapshotService.create(expectedProjectPath) }
+    } catch (error) {
+      return { success: false, error: String(error) }
+    }
+  })
+
+  ipcMain.handle('db:project-snapshot-list', async (_event, expectedProjectPath: string) => {
+    assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+    return ProjectSnapshotService.list(expectedProjectPath)
   })
 
   ipcMain.handle('db:draft-next-version', async (_event, chapterNumber: number, expectedProjectPath: string) => {
