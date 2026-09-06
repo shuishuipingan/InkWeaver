@@ -30,6 +30,8 @@ import type {
   NarrativeThreadPlanRecord,
   NarrativeThreadView,
 } from './narrative-thread'
+import type { StoryContinuityDocument } from './story-continuity'
+import type { SaveStoryContinuityRequest } from '../../electron/repositories/story-continuity-repository'
 import type {
   UpdateActionResponse,
   UpdateCheckResponse,
@@ -902,6 +904,14 @@ export interface DatabaseChannels {
   'db:narrative-thread-event-confirm': {
     args: [input: NarrativeThreadEventInput, expectedProjectPath: string]
     return: { success: boolean; event?: NarrativeThreadEvent; error?: string }
+  }
+  'db:story-continuity-read': {
+    args: [chapterNumber: number, expectedProjectPath: string]
+    return: StoryContinuityDocument
+  }
+  'db:story-continuity-save': {
+    args: [request: SaveStoryContinuityRequest, expectedProjectPath: string]
+    return: { success: boolean; document?: StoryContinuityDocument; error?: string }
   }
   'db:draft-next-version': { args: [chapterNumber: number, expectedProjectPath: string]; return: number }
   'db:draft-update-status': { args: [id: number, status: string, wordCount: number | undefined, expectedProjectPath: string]; return: { success: boolean; error?: string } }

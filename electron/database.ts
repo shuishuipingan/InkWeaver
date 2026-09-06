@@ -402,6 +402,13 @@ function createTables(db: BetterSqlite3.Database, importSourceSecret?: Buffer) {
     CREATE INDEX IF NOT EXISTS idx_narrative_thread_confirmations_plan
       ON narrative_thread_confirmations(plan_id, draft_id, id);
 
+    CREATE TABLE IF NOT EXISTS story_continuity_plans (
+      chapter_number INTEGER PRIMARY KEY CHECK(chapter_number > 0),
+      revision INTEGER NOT NULL DEFAULT 0 CHECK(revision >= 0),
+      payload_json TEXT NOT NULL,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
     -- 索引
     CREATE INDEX IF NOT EXISTS idx_llm_calls_time ON llm_calls(created_at);
 
