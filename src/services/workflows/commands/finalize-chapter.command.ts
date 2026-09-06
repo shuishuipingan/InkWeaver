@@ -27,6 +27,7 @@ import { readWorkflowDraftMeta } from '../workflow-draft-meta'
 import { requireWorkflowProjectSession, workflowWritingLanguage } from '../workflow-project-session'
 import type { CharacterRosterEntry, CharacterRosterRole } from '../../../shared/character-roster'
 import { writingLanguageText } from '../../../shared/writing-language'
+import { buildCharacterExtractionContext } from '../character-extraction-context'
 import {
   buildChapterHandoffPrompt,
   parseChapterHandoffCompletion,
@@ -356,7 +357,7 @@ export function buildFinalizePostProcessSteps(
         const simpleCards = allChars.map((c) => ({ name: c.name, role: c.role }))
 
         const cardBuilder = new PostProcessPromptBuilder(cardTemplate, writingLanguage)
-          .withChapterContent(draftContent.slice(0, 5000))
+          .withChapterContent(buildCharacterExtractionContext(draftContent, 12_000))
           .withChapterNumber(chapterNumber)
           .withExistingCardsJson(simpleCards)
 
