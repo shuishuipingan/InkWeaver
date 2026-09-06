@@ -18,7 +18,7 @@ function rowToEvent(row: EventRow): KnowledgeEvent {
 
 export class KnowledgeEventRepository {
   static saveCandidate(value: KnowledgeEvent): KnowledgeEvent {
-    const event = normalizeKnowledgeEvent(value)
+    const event = { ...normalizeKnowledgeEvent(value), status: 'candidate' as const }
     const database = db()
     const existing = database.prepare('SELECT event_id, payload_json FROM knowledge_events WHERE event_id = ?').get(event.eventId) as EventRow | undefined
     if (existing) {

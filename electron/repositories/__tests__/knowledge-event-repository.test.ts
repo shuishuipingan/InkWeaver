@@ -12,7 +12,7 @@ let db: BetterSqlite3.Database
 
 const event: KnowledgeEvent = {
   eventId: 'knowledge:lin:1', character: '林夏', information: '灯塔会在午夜熄灭', certainty: 'fact',
-  falseBelief: false, learnedBy: '亲眼见到', sourceChapter: 1, evidence: '她看见灯塔熄灭。', status: 'confirmed',
+  falseBelief: false, learnedBy: '亲眼见到', sourceChapter: 1, evidence: '她看见灯塔熄灭。', status: 'candidate',
 }
 
 beforeEach(() => {
@@ -28,6 +28,8 @@ afterEach(() => db.close())
 describe('KnowledgeEventRepository', () => {
   it('keeps candidates non-authoritative until status is confirmed and filters by chapter', () => {
     KnowledgeEventRepository.saveCandidate(event)
+    expect(KnowledgeEventRepository.listForChapter(['林夏'], 1)).toHaveLength(0)
+    KnowledgeEventRepository.setStatus(event.eventId, 'confirmed')
     expect(KnowledgeEventRepository.listForChapter(['林夏'], 1)).toHaveLength(1)
     KnowledgeEventRepository.setStatus(event.eventId, 'rejected')
     expect(KnowledgeEventRepository.listForChapter(['林夏'], 1)).toHaveLength(0)
