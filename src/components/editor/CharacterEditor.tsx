@@ -232,7 +232,7 @@ export default function CharacterEditor({ projectKey }: { projectKey: string }) 
       {/* 主体区 */}
       <div className={cn('relative', viewMode === 'graph' ? 'flex-1 overflow-hidden' : 'flex-1 overflow-y-auto')}>
         {viewMode === 'graph' ? (
-          <RelationshipGraph characters={characters} />
+          <RelationshipGraph characters={characters} projectKey={projectKey} />
         ) : !selectedCard ? (
           <BaseEmptyState 
             icon={<Users size={36} />} 

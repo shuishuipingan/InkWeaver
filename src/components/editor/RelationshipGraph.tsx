@@ -1,5 +1,5 @@
 import { useRef, useEffect, useMemo, useState, type PointerEvent as ReactPointerEvent } from 'react'
-import { Maximize2, Tag, ZoomIn, ZoomOut } from 'lucide-react'
+import { Maximize2, RotateCcw, Tag, ZoomIn, ZoomOut } from 'lucide-react'
 import {
   parseRelationshipEdges,
   classifyRelation,
@@ -21,6 +21,7 @@ interface CharacterNode {
   y: number
   vx: number
   vy: number
+  pinned?: boolean
 }
 
 interface GraphEdge {
@@ -54,6 +55,7 @@ interface RelationshipGraphProps {
     relationships: string
     aliases?: readonly string[]
   }>
+  projectKey?: string
 }
 
 /** 关系类型 → 连线线型（canvas setLineDash）与图例样式 */
@@ -88,7 +90,7 @@ const TOOLTIP_ITEMS_LIMIT = 5
  *     所以"适配视图"的目标缩放是 1.8 * w / boxW（0.9 填充率 × 2 倍空间）。
  */
 
-export default function RelationshipGraph({ characters }: RelationshipGraphProps) {
+export default function RelationshipGraph({ characters, projectKey }: RelationshipGraphProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const nodesRef = useRef<CharacterNode[]>([])
   const resolvedEdgesRef = useRef<ResolvedEdge[]>([])
@@ -99,6 +101,7 @@ export default function RelationshipGraph({ characters }: RelationshipGraphProps
   const pointerDownRef = useRef<{ x: number; y: number } | null>(null)
   const hoverRef = useRef<{ name: string; neighbors: Set<string> } | null>(null)
   const pinnedRef = useRef<{ name: string; neighbors: Set<string> } | null>(null)
+  const pinnedNamesRef = useRef<Set<string>>(new Set())
   const edgeHoverRef = useRef<number | null>(null)
   const userInteractedRef = useRef(false)
   const fitViewRef = useRef<(() => void) | null>(null)
@@ -108,6 +111,8 @@ export default function RelationshipGraph({ characters }: RelationshipGraphProps
   const [searchQuery, setSearchQuery] = useState('')
   const [relationFilter, setRelationFilter] = useState<RelationKind | 'all'>('all')
   const [focusDepth, setFocusDepth] = useState<0 | 1 | 2>(1)
+  const [layoutEpoch, setLayoutEpoch] = useState(0)
+  const [pinVersion, setPinVersion] = useState(0)
   const [tooltip, setTooltip] = useState<{
     x: number
     y: number
@@ -219,8 +224,38 @@ export default function RelationshipGraph({ characters }: RelationshipGraphProps
   const effectiveEdgeLabels = edgeLabelsOn ?? visibleGraph.edges.length <= EDGE_LABEL_AUTO_LIMIT
   const accessibleRows = useMemo(
     () => relationshipListRows(visibleGraph.characters, visibleGraph.edges),
-    [visibleGraph.characters, visibleGraph.edges],
+    [pinVersion, visibleGraph.characters, visibleGraph.edges],
   )
+  const layoutStorageKey = projectKey ? `inkweaver.relationship-layout:${projectKey}` : null
+
+  const readStoredLayout = (): { positions: Record<string, { x: number; y: number }>; pinned: string[] } => {
+    if (!layoutStorageKey) return { positions: {}, pinned: [] }
+    try {
+      const value = JSON.parse(localStorage.getItem(layoutStorageKey) ?? '{}') as { positions?: Record<string, { x?: unknown; y?: unknown }>; pinned?: unknown }
+      const positions: Record<string, { x: number; y: number }> = {}
+      for (const [name, point] of Object.entries(value.positions ?? {})) {
+        if (typeof point.x === 'number' && Number.isFinite(point.x) && typeof point.y === 'number' && Number.isFinite(point.y)) positions[name] = { x: point.x, y: point.y }
+      }
+      const pinned = Array.isArray(value.pinned) ? value.pinned.filter((name): name is string => typeof name === 'string') : []
+      return { positions, pinned }
+    } catch { return { positions: {}, pinned: [] } }
+  }
+
+  const persistLayout = (nodes: readonly CharacterNode[]) => {
+    if (!layoutStorageKey || nodes.length === 0) return
+    try {
+      localStorage.setItem(layoutStorageKey, JSON.stringify({
+        positions: Object.fromEntries(nodes.map(node => [node.name, { x: node.x, y: node.y }])),
+        pinned: [...pinnedNamesRef.current],
+      }))
+    } catch { /* presentation state is best-effort */ }
+  }
+
+  const resetLayout = () => {
+    if (layoutStorageKey) localStorage.removeItem(layoutStorageKey)
+    pinnedNamesRef.current = new Set()
+    setLayoutEpoch(value => value + 1)
+  }
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -266,6 +301,8 @@ export default function RelationshipGraph({ characters }: RelationshipGraphProps
       const centerX = w
       const centerY = h
       const nodeNames = new Map<string, CharacterNode>()
+      const storedLayout = readStoredLayout()
+      pinnedNamesRef.current = new Set(storedLayout.pinned)
 
       // 初始布局：黄金角螺旋/圆环铺满整个画布（内容空间 = 2 × CSS，半轴 w/h 即铺满 CSS 全宽高）
       nodesRef.current = visibleGraph.characters.map((c, i) => {
@@ -284,7 +321,16 @@ export default function RelationshipGraph({ characters }: RelationshipGraphProps
           x = centerX + radius * Math.cos(angle)
           y = centerY + radius * Math.sin(angle)
         }
-        const node: CharacterNode = { name: c.name, role: c.role, x, y, vx: 0, vy: 0 }
+        const stored = storedLayout.positions[c.name]
+        const node: CharacterNode = {
+          name: c.name,
+          role: c.role,
+          x: stored?.x ?? x,
+          y: stored?.y ?? y,
+          vx: 0,
+          vy: 0,
+          pinned: pinnedNamesRef.current.has(c.name),
+        }
         nodeNames.set(c.name, node)
         return node
       })
@@ -610,6 +656,7 @@ export default function RelationshipGraph({ characters }: RelationshipGraphProps
         const nodes = nodesRef.current
         if (iteration >= maxIterations) {
           drawFrame()
+          persistLayout(nodes)
           // 布局收敛后自动适配视图，保证一眼看到全图（用户已手动操作过则不打扰）
           if (!userInteractedRef.current && nodes.length > 1) fitViewRef.current?.()
           return
@@ -652,6 +699,11 @@ export default function RelationshipGraph({ characters }: RelationshipGraphProps
 
         // 向心力
         for (const node of nodes) {
+          if (node.pinned) {
+            node.vx = 0
+            node.vy = 0
+            continue
+          }
           node.vx += (centerX - node.x) * gravity * alpha
           node.vy += (centerY - node.y) * gravity * alpha
         }
@@ -663,6 +715,11 @@ export default function RelationshipGraph({ characters }: RelationshipGraphProps
         const maxX = cw - 40
         const maxY = ch - 40
         for (const node of nodes) {
+          if (node.pinned) {
+            node.vx = 0
+            node.vy = 0
+            continue
+          }
           node.vx *= damping
           node.vy *= damping
           const speed = Math.sqrt(node.vx * node.vx + node.vy * node.vy)
@@ -707,7 +764,7 @@ export default function RelationshipGraph({ characters }: RelationshipGraphProps
       cancelAnimationFrame(animRef.current)
       drawRef.current = null
     }
-  }, [visibleGraph.characters, visibleGraph.edges])
+  }, [layoutEpoch, visibleGraph.characters, visibleGraph.edges])
 
   // 屏幕 CSS 坐标 → 内容坐标（见文件头注释的反解公式）
   const screenToContent = (screenX: number, screenY: number, w: number, h: number) => {
@@ -881,6 +938,18 @@ export default function RelationshipGraph({ characters }: RelationshipGraphProps
     drawRef.current?.()
   }
 
+  const togglePinnedFromAccessibleList = (name: string) => {
+    const next = new Set(pinnedNamesRef.current)
+    if (next.has(name)) next.delete(name)
+    else next.add(name)
+    pinnedNamesRef.current = next
+    const node = nodesRef.current.find(candidate => candidate.name === name)
+    if (node) node.pinned = next.has(name)
+    persistLayout(nodesRef.current)
+    setPinVersion(value => value + 1)
+    drawRef.current?.()
+  }
+
   const restorePinnedTooltip = (w: number, h: number) => {
     const pinned = pinnedRef.current
     if (!pinned) return
@@ -1050,6 +1119,14 @@ export default function RelationshipGraph({ characters }: RelationshipGraphProps
         >
           <Tag size={14} aria-hidden="true" />
         </button>
+        <button
+          type="button"
+          className="rounded p-1 hover:bg-[var(--color-hover)]"
+          aria-label={text('重置关系图布局', 'Reset relationship graph layout')}
+          onClick={resetLayout}
+        >
+          <RotateCcw size={14} aria-hidden="true" />
+        </button>
       </div>
       {legendKinds.length > 0 && (
         <div
@@ -1090,8 +1167,10 @@ export default function RelationshipGraph({ characters }: RelationshipGraphProps
                 role="listitem"
                 className="flex w-full items-center justify-between gap-2 rounded px-1.5 py-1 text-left hover:bg-[var(--color-hover)]"
                 onClick={() => focusFromAccessibleList(row.name)}
+                onDoubleClick={() => togglePinnedFromAccessibleList(row.name)}
+                title={text('单击聚焦，双击固定/取消固定节点', 'Click to focus; double-click to pin or unpin')}
               >
-                <span className="truncate">{row.name}</span>
+                <span className="truncate">{pinnedNamesRef.current.has(row.name) ? '📌 ' : ''}{row.name}</span>
                 <span className="shrink-0 tabular-nums text-[var(--color-text-muted)]">{row.degree}</span>
               </button>
             ))}

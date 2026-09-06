@@ -318,6 +318,22 @@ describe('RelationshipGraph relation kinds', () => {
     expect(container.querySelector('[data-relationship-list="true"] button')).not.toBeNull()
   })
 
+  it('exposes reset layout and lets the accessible list pin a node without changing graph facts', async () => {
+    await act(async () => root.render(
+      <RelationshipGraph projectKey="C:\\novels\\graph-layout" characters={[
+        { name: '林墨', role: 'protagonist', relationships: '周砧——挚友' },
+        { name: '周砧', role: 'supporting', relationships: '' },
+      ]} />,
+    ))
+    expect(container.querySelector('button[aria-label="重置关系图布局"]')).not.toBeNull()
+    const row = container.querySelector('[data-relationship-list="true"] button')
+    expect(row).not.toBeNull()
+    await act(async () => row?.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })))
+    expect(container.textContent).toContain('📌')
+    await act(async () => container.querySelector('button[aria-label="重置关系图布局"]')?.dispatchEvent(new MouseEvent('click', { bubbles: true })))
+    expect(container.textContent).not.toContain('📌')
+  })
+
   it('classifies free-text relations into graph kinds by keywords', () => {
     expect(classifyRelation('杀父之仇')).toBe('hostile')
     expect(classifyRelation('竞争对手')).toBe('hostile')
