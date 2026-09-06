@@ -96,4 +96,25 @@ describe('ChapterHandoffRepository', () => {
     expect(getProjectDb()!.prepare('SELECT COUNT(*) AS count FROM chapter_handoffs').get())
       .toEqual({ count: 1 })
   })
+
+  it('does not return a confirmed handoff after a newer finalized draft replaces its source', () => {
+    const firstContent = '第一版定稿，林舟在旧码头。'
+    const receipt = FinalizedDraftImportRepository.commit(projectRoot, {
+      operationId: 'handoff-old-final',
+      chapters: [{ chapterNumber: 1, title: '第一版', content: firstContent, wordCount: countDraftUnits(firstContent) }],
+    })
+    const oldDraft = receipt.drafts[0]!
+    const old = request(oldDraft.draftId, 1, oldDraft.contentHash)
+    ChapterHandoffRepository.saveCandidate(old)
+    ChapterHandoffRepository.confirm(old.handoffId)
+
+    const database = getProjectDb()!
+    const contentId = Number(database.prepare('INSERT INTO contents (body) VALUES (?)').run('第二版定稿，林舟已到车站。').lastInsertRowid)
+    database.prepare(`
+      INSERT INTO drafts (chapter_number, version, status, source, content_id, word_count)
+      VALUES (1, 2, 'finalized', 'rewrite', ?, 13)
+    `).run(contentId)
+
+    expect(ChapterHandoffRepository.getLatestConfirmedBefore(2)).toBeNull()
+  })
 })

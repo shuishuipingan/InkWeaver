@@ -176,7 +176,15 @@ export class ChapterHandoffRepository {
     if (!Number.isSafeInteger(chapterNumber) || chapterNumber < 1) throw new Error('目标章节无效')
     const row = db().prepare(`
       SELECT * FROM chapter_handoffs
-      WHERE chapter_number < ? AND status = 'confirmed'
+      WHERE chapter_number < ?
+        AND status = 'confirmed'
+        AND draft_id = (
+          SELECT id FROM drafts AS latest_draft
+          WHERE latest_draft.chapter_number = chapter_handoffs.chapter_number
+            AND latest_draft.status = 'finalized'
+          ORDER BY latest_draft.version DESC, latest_draft.id DESC
+          LIMIT 1
+        )
       ORDER BY chapter_number DESC, updated_at DESC
       LIMIT 1
     `).get(chapterNumber) as HandoffRow | undefined
