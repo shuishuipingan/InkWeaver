@@ -9,6 +9,7 @@ interface CharacterExtractionCandidatesPanelProps {
   updatingId?: string | null
   onRefresh: () => void
   onStatus: (candidateId: string, status: 'accepted' | 'rejected') => Promise<void>
+  onApply: () => Promise<void>
   text: (zhCNText: string, enUSText: string) => string
 }
 
@@ -18,6 +19,7 @@ export default function CharacterExtractionCandidatesPanel({
   updatingId = null,
   onRefresh,
   onStatus,
+  onApply,
   text,
 }: CharacterExtractionCandidatesPanelProps) {
   const visible = candidates.filter(candidate => candidate.status !== 'stale')
@@ -60,7 +62,7 @@ export default function CharacterExtractionCandidatesPanel({
                 </div>
               ) : (
                 <span style={{ color: 'var(--color-text-secondary)' }}>
-                  {candidate.status === 'accepted' ? text('已接受，待合并', 'Accepted, pending merge') : text('已拒绝', 'Rejected')}
+                  {candidate.status === 'accepted' ? text('已接受', 'Accepted') : text('已拒绝', 'Rejected')}
                 </span>
               )}
             </div>
@@ -77,6 +79,14 @@ export default function CharacterExtractionCandidatesPanel({
           </div>
         ))}
       </div>
+      {visible.some(candidate => candidate.status === 'accepted') && (
+        <div className="mt-2 flex justify-end">
+          <Button variant="success" size="sm" onClick={onApply}>
+            <Check size={12} aria-hidden="true" />
+            {text('合并已接受候选到角色卡', 'Apply accepted candidates to character cards')}
+          </Button>
+        </div>
+      )}
     </section>
   )
 }

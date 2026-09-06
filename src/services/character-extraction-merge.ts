@@ -1,0 +1,83 @@
+import type { CharacterExtractionCandidate } from '../shared/character-extraction'
+import type { CharacterRosterEntry, CharacterRosterSnapshot } from '../shared/character-roster'
+
+const TEXT_FIELDS = [
+  'gender', 'age', 'appearance', 'personality', 'background',
+  'abilities', 'motivation', 'arc', 'notes',
+] as const
+
+function key(value: string): string {
+  return value.trim().replace(/\s+/gu, '').toLocaleLowerCase('en-US')
+}
+
+function emptyEntry(candidate: CharacterExtractionCandidate): CharacterRosterEntry {
+  return {
+    name: candidate.name.trim(),
+    role: candidate.role ?? 'supporting',
+    gender: candidate.fields.gender ?? '',
+    age: candidate.fields.age ?? '',
+    appearance: candidate.fields.appearance ?? '',
+    personality: candidate.fields.personality ?? '',
+    background: candidate.fields.background ?? '',
+    abilities: candidate.fields.abilities ?? '',
+    motivation: candidate.fields.motivation ?? '',
+    relationships: [],
+    arc: candidate.fields.arc ?? '',
+    notes: candidate.fields.notes ?? '',
+    ...(candidate.currentState ? {
+      currentState: {
+        location: candidate.currentState.location ?? '',
+        powerLevel: candidate.currentState.powerLevel ?? '',
+        physicalState: candidate.currentState.physicalState ?? '',
+        mentalState: candidate.currentState.mentalState ?? '',
+        keyItems: candidate.currentState.keyItems ?? '',
+        recentEvents: candidate.currentState.recentEvents ?? '',
+        updatedAtChapter: 0,
+      },
+    } : {}),
+  }
+}
+
+export function mergeAcceptedCharacterCandidates(
+  snapshot: CharacterRosterSnapshot,
+  candidates: readonly CharacterExtractionCandidate[],
+): CharacterRosterEntry[] {
+  const entries = snapshot.entries.map(entry => ({
+    ...entry,
+    relationships: entry.relationships.map(relationship => ({ ...relationship })),
+    ...(entry.currentState ? { currentState: { ...entry.currentState } } : {}),
+  }))
+
+  for (const candidate of candidates) {
+    if (candidate.status !== 'accepted' || candidate.disposition === 'ambiguous') continue
+    const possibleNames = [candidate.name, ...candidate.aliases]
+    const index = entries.findIndex(entry => (
+      possibleNames.some(name => key(name) === key(entry.name))
+      || candidate.matchedCharacterName !== undefined && key(candidate.matchedCharacterName) === key(entry.name)
+    ))
+    if (index < 0) {
+      entries.push(emptyEntry(candidate))
+      continue
+    }
+
+    const current = entries[index]!
+    const merged: CharacterRosterEntry = { ...current }
+    if (candidate.role) merged.role = candidate.role
+    for (const field of TEXT_FIELDS) {
+      const value = candidate.fields[field]
+      if (value) merged[field] = value
+    }
+    if (candidate.currentState) {
+      merged.currentState = {
+        ...(current.currentState ?? {
+          location: '', powerLevel: '', physicalState: '', mentalState: '',
+          keyItems: '', recentEvents: '', updatedAtChapter: 0,
+        }),
+        ...candidate.currentState,
+      }
+    }
+    entries[index] = merged
+  }
+
+  return entries
+}

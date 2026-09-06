@@ -31,6 +31,7 @@ import { PostProcessStatusPanel } from '../ui/PostProcessStatusPanel'
 import { getChapterFinalizeScope } from '../../services/workflows/workflow-utils'
 import { planCharacterExtractionChunks, textFingerprint } from '../../shared/character-extraction'
 import { createCharacterExtractionWorkflow } from '../../services/workflows/character-extraction-workflow'
+import { mergeAcceptedCharacterCandidates } from '../../services/character-extraction-merge'
 import ChapterHandoffPanel from './ChapterHandoffPanel'
 import type { ChapterHandoffRecord } from '../../shared/chapter-handoff'
 import CharacterExtractionCandidatesPanel from './CharacterExtractionCandidatesPanel'
@@ -297,6 +298,43 @@ function DraftEditorSession({ tabId, filePath, content, projectKey }: Props) {
       toast.error(String(error))
     } finally {
       setCharacterCandidateUpdating(null)
+    }
+  }
+
+  const applyAcceptedCharacterCandidates = async () => {
+    const session = captureProjectSession(currentProject)
+    if (!session || !meta || !isProjectSessionPath(session, projectKey)) return
+    const accepted = characterCandidates.filter(candidate => candidate.status === 'accepted')
+    if (accepted.length === 0) return
+    try {
+      const roster = await ipc.invokeWithProjectSession(
+        session,
+        'db:character-roster-read',
+        projectKey,
+      )
+      if (!isProjectSessionCurrent(session)) return
+      if (roster.status !== 'ready' && roster.status !== 'empty') {
+        throw new Error(text('当前角色名单需要先完成修复，不能合并候选', 'The current character roster needs repair before candidates can be applied.'))
+      }
+      const merged = mergeAcceptedCharacterCandidates(roster, accepted)
+      const result = await ipc.invokeWithProjectSession(
+        session,
+        'db:character-roster-commit',
+        {
+          operationId: `character-candidate-merge-${meta.id}-${accepted.map(candidate => candidate.candidateId).join('-')}`,
+          expectedRevision: roster.revision,
+          schemaVersion: 1,
+          intent: 'novel_import',
+          entries: merged,
+        },
+        projectKey,
+      )
+      requireIpcSuccess(result, text('合并人物候选', 'Apply character candidates'))
+      const { useCharacterStore } = await import('../../stores/character-store')
+      await useCharacterStore.getState().load(projectKey, session)
+      toast.success(text('已将接受的人物候选合并到角色卡', 'Accepted character candidates were applied to the roster'))
+    } catch (error) {
+      toast.error(String(error))
     }
   }
 
@@ -888,6 +926,7 @@ function DraftEditorSession({ tabId, filePath, content, projectKey }: Props) {
             updatingId={characterCandidateUpdating}
             onRefresh={() => void loadCharacterCandidates()}
             onStatus={updateCharacterCandidateStatus}
+            onApply={applyAcceptedCharacterCandidates}
             text={text}
           />
         </div>

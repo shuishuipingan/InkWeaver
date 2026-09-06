@@ -39,6 +39,7 @@ describe('CharacterExtractionCandidatesPanel', () => {
         candidates={[candidate]}
         onRefresh={vi.fn()}
         onStatus={onStatus}
+        onApply={vi.fn(async () => {})}
         text={text}
       />,
     ))
