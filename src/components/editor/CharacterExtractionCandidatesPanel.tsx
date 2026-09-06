@@ -70,6 +70,12 @@ export default function CharacterExtractionCandidatesPanel({
               {Object.entries(candidate.fields).map(([field, value]) => (
                 <div key={field}><strong>{field}：</strong>{value}</div>
               ))}
+              {candidate.relationships?.map((relationship, index) => (
+                <div key={`relationship-${relationship.target}-${index}`}>
+                  <strong>{text('关系：', 'Relationship:')}</strong>
+                  {relationship.target}（{relationship.relation}）
+                </div>
+              ))}
               {candidate.fieldEvidence.map((evidence, index) => (
                 <div key={`${evidence.field}-${index}`} className="border-l-2 pl-2" style={{ borderColor: 'var(--color-accent)' }}>
                   {evidence.excerpt}
