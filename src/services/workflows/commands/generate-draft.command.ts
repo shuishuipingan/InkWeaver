@@ -155,6 +155,40 @@ function workflowGenerationModelId(context: CommandExecuteParams['context']): st
   return context.generationModelId?.trim() || undefined
 }
 
+function contextReceiptEntry(
+  id: string,
+  layer: ContextSelectionEntry['layer'],
+  label: string,
+  content: string,
+  sourceChapter?: number,
+): ContextReceipt['entries'][number] {
+  const charCount = content.trim().length
+  return {
+    id,
+    layer,
+    label,
+    ...(sourceChapter === undefined ? {} : { sourceChapter }),
+    included: charCount > 0,
+    ...(charCount > 0 ? {} : { reason: 'unavailable' as const }),
+    charCount,
+  }
+}
+
+/** Add non-budgeted prompt layers to the privacy-safe receipt without storing their text. */
+function extendContextReceipt(
+  receipt: ContextReceipt,
+  entries: readonly ContextReceipt['entries'][number][],
+): ContextReceipt {
+  const existing = new Set(receipt.entries.map(entry => entry.id))
+  return {
+    ...receipt,
+    entries: [
+      ...receipt.entries,
+      ...entries.filter(entry => !existing.has(entry.id)),
+    ].sort((left, right) => left.id.localeCompare(right.id)),
+  }
+}
+
 /** Join a visible continuation without allowing a repeated prompt tail to count as new prose. */
 export function appendVisibleDraftContinuation(draft: string, continuation: string): string {
   return appendVisibleTextContinuation(draft, continuation, sanitizeDraftText)
@@ -384,6 +418,28 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
       } catch {
         filteredContext = promptLanguageText(writingLanguage, '（知识库检索不可用）', '(knowledge-base search unavailable)')
       }
+
+      context.data.contextReceipt = extendContextReceipt(chapterTimeline.receipt, [
+        contextReceiptEntry('fixed-rules:architecture', 'fixed-rules', '故事架构', architecture),
+        contextReceiptEntry('fixed-rules:guidance', 'fixed-rules', '全局写作要求', mergedGuidance),
+        contextReceiptEntry('fixed-rules:style', 'fixed-rules', '文风约束', novelConfig.writingStyle || ''),
+        contextReceiptEntry('character-state:current', 'character-state', '角色状态档案', characterState),
+        contextReceiptEntry('active-thread:relevant', 'active-thread', '相关活跃叙事线', activeThreads.text),
+        contextReceiptEntry('knowledge-search:current', 'knowledge-search', '知识库检索片段', filteredContext),
+        contextReceiptEntry(
+          'immediate-handoff:previous',
+          'immediate-handoff',
+          '上一章确认交接',
+          formatChapterHandoff(chapterHandoff, writingLanguage),
+          chapterHandoff?.chapterNumber,
+        ),
+        contextReceiptEntry(
+          'knowledge-search:confirmed-events',
+          'knowledge-search',
+          '当前角色已确认知情范围',
+          knowledgeEvents.text,
+        ),
+      ])
 
       promptBuilder
         // ---- 缓存命中区续（要点时间线按序追加，前缀对齐）----
