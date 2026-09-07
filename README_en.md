@@ -6,6 +6,8 @@ InkWeaver is a local-first desktop workspace for long-form fiction. It brings pr
 
 Current version: **v0.9.2**
 
+> InkWeaver 1.1.0 is under active development and has not been released. The development line already contains continuous reading, chapter continuity sheets, evidence-backed character extraction, knowledge boundaries, relationship navigation, and SQLite consistency snapshots; the complete roadmap, installers, and formal Release are not frozen yet.
+
 [Download for Windows or macOS](https://github.com/shuishuipingan/InkWeaver/releases/latest) · [View source](https://github.com/shuishuipingan/InkWeaver) · [Install the DeepSeek Harness plugin](https://www.npmjs.com/package/@ethanyoq/dsh-ai-novel-writer)
 
 ## What InkWeaver is for
@@ -35,6 +37,27 @@ InkWeaver is not a hosted model service or an online fiction platform. It includ
 - **Recoverable operations** record progress for long generation, batch writing, imports, finalization, and post-processing.
 - **Independent UI and writing languages** let the interface and the novel use different languages.
 - **More precise failure messages** distinguish content restrictions, provider failures, prompt-budget exhaustion, and resource conflicts from successful output.
+
+## The 1.1.0 writing-experience line
+
+The goal of 1.1.0 is to make a long novel feel like one continuously developing
+story rather than a sequence of unrelated generations. The following pieces are
+already implemented in the development line:
+
+- **Chapter continuity sheets** record scene entry state, goal, obstacle, choice, consequence, and exit state while distinguishing author plans, AI candidates, confirmed facts, and observed prose. The same sheet can record volume-level contributions, emotional carry-over, reader expectations, and viewpoint landing points.
+- **Evidence-backed handoffs** preserve the previous finalized scene, viewpoint, unfinished actions, immediate goal, emotion, and open questions with manuscript evidence. When the source final changes, the old handoff is no longer presented as current.
+- **Serial reading and repetition notes** present finalized chapters in authoritative order with chapter boundaries, search, reading-position memory, and an editor return action. Repeated openings, endings, or weather openings are suggestions only; authors can explicitly keep intentional repetition.
+- **Layered pre-writing context** selects complete entries instead of cutting through evidence or negation. The AI output surface reports what was included and what was omitted, while the receipt avoids copying private prose.
+- **Knowledge boundaries and false beliefs** separate facts, beliefs, rumors, and false beliefs with acquisition method, source chapter, validity range, and evidence. Only confirmed knowledge active at the current chapter enters drafting context.
+- **Safe historical revision** lists downstream continuity projections, handoffs, and narrative lines affected by an older edit. Revision proposals bind to the base-content fingerprint and refuse to merge after the source changes.
+- **Field-level character review** keeps evidence, aliases, relationships, and current state on extraction candidates. Authors can accept individual fields; unchecked values never enter the authoritative roster. Stable character IDs preserve references across renames.
+- **Relationship graph workspace** supports name/alias search, one- and two-hop focus, relationship filtering, a keyboard-accessible list, pin/unpin/reset layout, and project-level layout persistence. Directed relationships can show arrows, source chapters, and manuscript evidence.
+- **Consistency snapshots and blueprint-free export** use SQLite's backup API with file hashes, and export finalized manuscript authority even when no chapter blueprint exists.
+
+These capabilities are still being verified one requirement at a time. Features
+that have not passed the roadmap gates are not presented as released 1.1.0
+functionality, and this section does not imply that cross-platform installers
+are available yet.
 
 ## Model connections
 
