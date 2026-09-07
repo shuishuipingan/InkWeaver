@@ -26,7 +26,7 @@ import { factAppliesAtChapter, type FinalizedContinuityProjection } from '../../
 import { aggregateStoryContinuity, type VolumeProgressSummary } from '../../shared/story-continuity-aggregation'
 import { knowledgeEventAppliesAtChapter, type KnowledgeEvent } from '../../shared/knowledge-event'
 import type { ChapterHandoffRecord } from '../../shared/chapter-handoff'
-import type { NarrativeThreadView } from '../../shared/narrative-thread'
+import { resolveNarrativeThreadDormantThreshold, type NarrativeThreadView } from '../../shared/narrative-thread'
 
 interface StoryContinuityPanelProps {
   projectKey: string
@@ -71,6 +71,9 @@ function newViewpoint(): ViewpointThread {
 export default function StoryContinuityPanel({ projectKey, chapterNumber }: StoryContinuityPanelProps) {
   const text = useLocaleStore(state => state.text)
   const currentProject = useProjectStore(state => state.currentProject)
+  const dormantThreshold = resolveNarrativeThreadDormantThreshold(
+    currentProject?.novelConfig.narrativeThreadDormantChapterThreshold,
+  )
   const characters = useCharacterStore(state => state.characters)
   const characterNames = useMemo(() => characters.map(character => character.name).filter(Boolean), [characters])
   const [document, setDocument] = useState<StoryContinuityDocument>(() => emptyStoryContinuityDocument(chapterNumber))
@@ -251,6 +254,10 @@ export default function StoryContinuityPanel({ projectKey, chapterNumber }: Stor
   const blueprintKeyEvents = Array.isArray(preparation.blueprint?.keyEvents)
     ? preparation.blueprint.keyEvents.filter((value): value is string => typeof value === 'string' && value.trim() !== '')
     : []
+  const dormantAlerts = preparation.narrativeThreads
+    .filter(thread => thread.overdue || thread.dormantChapters >= dormantThreshold)
+    .slice(0, 4)
+
   const ruleEntries = [
     [text('世界设定', 'World rules'), currentProject?.novelConfig.worldSetting],
     [text('全局写作要求', 'Global guidance'), currentProject?.novelConfig.globalGuidance],
@@ -316,6 +323,14 @@ export default function StoryContinuityPanel({ projectKey, chapterNumber }: Stor
                 ? <div className="text-[var(--color-text-muted)]">{text('当前没有相关活跃线索', 'No relevant active threads')}</div>
                 : <div className="space-y-0.5 text-[var(--color-text-secondary)]">{preparation.narrativeThreads.slice(0, 4).map(thread => <div key={thread.id}>{thread.title} · {thread.status}{thread.dormantChapters > 0 ? text(` · 沉寂${thread.dormantChapters}章`, ` · dormant ${thread.dormantChapters} chapters`) : ''}</div>)}</div>}
             </div>
+            {dormantAlerts.length > 0 && (
+              <div role="status" data-thread-dormant-alerts="true" className="rounded border px-2 py-1.5 text-xs" style={{ borderColor: 'var(--color-warning)' }}>
+                <span className="font-medium">{text('叙事线提醒', 'Narrative thread alerts')}</span>
+                <div className="mt-0.5 text-[var(--color-warning-text)]">{dormantAlerts.map(alert => alert.overdue
+                  ? text(alert.title + '（已逾期）', alert.title + ' (overdue)')
+                  : text(alert.title + '（沉寂' + alert.dormantChapters + '章，达到阈值）', alert.title + ' (dormant ' + alert.dormantChapters + ' chapters, threshold reached)')).join('；')}</div>
+              </div>
+            )}
             <div className="rounded border px-2 py-1.5" style={{ borderColor: 'var(--color-border)' }}>
               <div className="font-medium">{text('知情边界与预算', 'Knowledge boundary and budget')}</div>
               <div className="text-[var(--color-text-secondary)]">{text(`已确认知情 ${knowledgeEvents.length} 条 · 待审 ${knowledgeReviewEvents.length} 条`, `${knowledgeEvents.length} confirmed knowledge events · ${knowledgeReviewEvents.length} awaiting review`)}</div>

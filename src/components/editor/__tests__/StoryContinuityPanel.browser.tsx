@@ -123,4 +123,29 @@ describe('StoryContinuityPanel', () => {
     expect([...container.querySelectorAll<HTMLSelectElement>('select')].some(select => select.value === 'candidate')).toBe(true)
     expect(container.textContent).toContain('码头')
   })
+
+  it('surfaces dormant and overdue thread alerts in the writing preparation summary', async () => {
+    timelineFixtures = []
+    reviewEvents = []
+    finalizedContent = null
+    invoke = vi.fn(async (channel: string, ..._args: unknown[]) => {
+      if (channel === 'db:narrative-thread-list-relevant') {
+        return [{ id: 3, title: '灯塔暗语', type: 'mystery', targetStartChapter: 2, targetEndChapter: 6, authorIntent: '逐步揭示', status: 'progressing', dormantChapters: 5, overdue: true, events: [], createdAt: '2026-09-07T00:00:00.000Z', updatedAt: '2026-09-07T00:00:00.000Z' }]
+      }
+      if (channel === 'db:story-continuity-read') return emptyStoryContinuityDocument(2)
+      if (channel === 'db:continuity-list-before') return []
+      if (channel === 'db:story-continuity-list-all') return []
+      if (channel === 'db:blueprint-get-all') return []
+      if (channel === 'db:chapter-handoff-latest-before') return null
+      if (channel === 'db:knowledge-event-list-for-chapter') return []
+      if (channel === 'db:knowledge-event-list-review') return []
+      throw new Error('Unexpected IPC ' + channel)
+    })
+    Object.defineProperty(window, 'velaAPI', { configurable: true, value: { invoke, on: vi.fn(() => () => {}), once: vi.fn(), send: vi.fn(), setZoomLevel: vi.fn(), setZoomFactor: vi.fn(), getZoomLevel: vi.fn(() => 0) } })
+    await act(async () => root.render(<StoryContinuityPanel projectKey={PROJECT_PATH} chapterNumber={2} />))
+    await vi.waitFor(() => expect(container.querySelector('[data-thread-dormant-alerts="true"]')).not.toBeNull())
+    expect(container.textContent).toContain('叙事线提醒')
+    expect(container.textContent).toContain('灯塔暗语')
+    expect(container.textContent).toContain('已逾期')
+  })
 })
