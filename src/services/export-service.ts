@@ -148,6 +148,19 @@ async function contentHash(value: string): Promise<string> {
   }
 }
 
+async function verifyWrittenFile(
+  grantId: string,
+  relativePath: string,
+  expectedContent: string,
+): Promise<void> {
+  const result = await ipc.invoke('fs:grant-read-file', grantId, relativePath)
+  requireIpcSuccess(result, '回读导出文件 ' + relativePath)
+  const readResult = result as { content?: unknown }
+  if (typeof readResult.content !== 'string' || readResult.content !== expectedContent) {
+    throw new Error('导出文件回读校验失败：' + relativePath)
+  }
+}
+
 /** 导出全书 */
 export async function exportNovel(
   options: ExportOptions,
@@ -245,6 +258,8 @@ export async function exportNovel(
         const writeResult = await ipc.invoke('fs:grant-write-file', options.grantId, outputPath, content)
         if (!isProjectSessionCurrent(projectSession)) return staleExportResult()
         requireIpcSuccess(writeResult, '写入导出文件')
+        if (!isProjectSessionCurrent(projectSession)) return staleExportResult()
+        await verifyWrittenFile(options.grantId, outputPath, content)
         break
       }
 
@@ -259,6 +274,8 @@ export async function exportNovel(
           const writeResult = await ipc.invoke('fs:grant-write-file', options.grantId, `${splitDir}/${ch.name}`, ch.content)
           if (!isProjectSessionCurrent(projectSession)) return staleExportResult()
           requireIpcSuccess(writeResult, `导出章节 ${ch.name}`)
+          if (!isProjectSessionCurrent(projectSession)) return staleExportResult()
+          await verifyWrittenFile(options.grantId, splitDir + '/' + ch.name, ch.content)
         }
 
         outputPath = splitDir
@@ -286,6 +303,8 @@ export async function exportNovel(
         const writeResult = await ipc.invoke('fs:grant-write-file', options.grantId, outputPath, content)
         if (!isProjectSessionCurrent(projectSession)) return staleExportResult()
         requireIpcSuccess(writeResult, '写入导出文件')
+        if (!isProjectSessionCurrent(projectSession)) return staleExportResult()
+        await verifyWrittenFile(options.grantId, outputPath, content)
         break
       }
     }
@@ -313,6 +332,8 @@ export async function exportNovel(
     )
     if (!isProjectSessionCurrent(projectSession)) return staleExportResult()
     requireIpcSuccess(manifestResult, '写入导出清单')
+    if (!isProjectSessionCurrent(projectSession)) return staleExportResult()
+    await verifyWrittenFile(options.grantId, `${projectFileStem}.manifest.json`, JSON.stringify(manifest, null, 2))
     addLog('info', `导出完成: ${outputPath}`)
     return { success: true, path: outputPath }
   } catch (error) {

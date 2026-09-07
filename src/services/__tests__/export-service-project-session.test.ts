@@ -45,7 +45,17 @@ vi.mock('../../stores/workflow-store', () => ({
 beforeEach(() => {
   vi.clearAllMocks()
   setActiveProjectSessionContext(projectSession)
-  vi.mocked(ipc.invoke).mockResolvedValue({ success: true } as never)
+  const writtenFiles = new Map<string, string>()
+  vi.mocked(ipc.invoke).mockImplementation((async (_channel: string, _grantId?: string, relativePath?: string, content?: unknown) => {
+    if (_channel === 'fs:grant-write-file') {
+      if (typeof relativePath === 'string') writtenFiles.set(relativePath, String(content))
+      return { success: true }
+    }
+    if (_channel === 'fs:grant-read-file') {
+      return { success: true, content: typeof relativePath === 'string' ? writtenFiles.get(relativePath) ?? '' : '' }
+    }
+    return { success: true }
+  }) as never)
   vi.mocked(ipc.invokeWithProjectSession).mockImplementation((async (_session: ProjectSessionContext, channel: string) => {
     if (channel === 'db:draft-authority-sequence') return {
       status: 'continuous', lastChapterNumber: 1, nextChapterNumber: 2,
@@ -232,5 +242,29 @@ describe('exportNovel project session ownership', () => {
     })
     expect(ipc.invokeWithProjectSession).toHaveBeenCalledOnce()
     expect(ipc.invoke).not.toHaveBeenCalled()
+  })
+
+  it('fails when the granted directory readback does not match what was written', async () => {
+    let relativeReadback = ''
+    vi.mocked(ipc.invoke).mockImplementation((async (channel: string, _grantId?: string, relativePath?: string, content?: unknown) => {
+      if (channel === 'fs:grant-write-file') {
+        relativeReadback = String(relativePath ?? '')
+        return { success: true }
+      }
+      if (channel === 'fs:grant-read-file') {
+        return { success: true, content: '' }
+      }
+      return { success: true }
+    }) as never)
+
+    await expect(exportNovel(
+      { format: 'merged-md', grantId: 'export-grant' },
+      projectSnapshot,
+      projectSession,
+    )).resolves.toMatchObject({
+      success: false,
+      error: expect.stringContaining('回读校验失败'),
+    })
+    expect(relativeReadback).toBe('Project A.md')
   })
 })

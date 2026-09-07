@@ -98,6 +98,14 @@ describe('external file grant IPC contract', () => {
     const written = fs.readFileSync(path.join(exportDirectory, 'Night Flight.md'), 'utf8')
     expect(written).toBe(content)
     expect(Buffer.from(written, 'utf8')).toEqual(Buffer.from(content, 'utf8'))
+
+        const readback = await handler('fs:grant-read-file')(
+      event(),
+      selection.grantId,
+      'Night Flight.md',
+    ) as { success: boolean; content?: string; error?: string }
+    expect(readback).toMatchObject({ success: true, content })
+    expect(readback.content).toBe(content)
   }, SECURE_FILE_SYSTEM_TEST_TIMEOUT_MS)
 
   it('导出写入拒绝 grant 外的 traversal 相对路径', async () => {
