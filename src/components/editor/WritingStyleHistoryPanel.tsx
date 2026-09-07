@@ -4,6 +4,7 @@ import { ipc } from '../../services/ipc-client'
 import type { WritingStyleHistoryRecord } from '../../shared/ipc-channels'
 import { useLocaleStore } from '../../stores/locale-store'
 import { useProjectStore } from '../../stores/project-store'
+import { toast } from '../ui/Toast'
 import {
   captureProjectSession,
   isProjectSessionCurrent,
@@ -14,9 +15,11 @@ import {
 export default function WritingStyleHistoryPanel({ projectKey }: { projectKey: string }) {
   const currentProject = useProjectStore(state => state.currentProject)
   const updateNovelConfig = useProjectStore(state => state.updateNovelConfig)
+  const saveProject = useProjectStore(state => state.saveProject)
   const text = useLocaleStore(state => state.text)
   const [records, setRecords] = useState<WritingStyleHistoryRecord[]>([])
   const [loading, setLoading] = useState(false)
+  const [applying, setApplying] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -46,10 +49,23 @@ export default function WritingStyleHistoryPanel({ projectKey }: { projectKey: s
 
   if (records.length === 0 && !loading && !error) return null
 
-  const applyVersion = (nextStyle: string) => {
+  const applyVersion = async (nextStyle: string) => {
     const session = captureProjectSession(currentProject)
-    if (!session || !isProjectSessionPath(session, projectKey)) return
-    updateNovelConfig({ writingStyle: nextStyle }, session)
+    if (!session || !isProjectSessionPath(session, projectKey) || applying) return
+    setApplying(true)
+    setError(null)
+    try {
+      updateNovelConfig({ writingStyle: nextStyle }, session)
+      const saved = await saveProject(session)
+      if (!isProjectSessionCurrent(session)) return
+      if (!saved) throw new Error(text('文风已应用，但保存到磁盘失败；请手动保存项目。', 'Style applied, but saving to disk failed; save the project manually.'))
+      toast.success(text('已应用并保存该文风版本。', 'Applied and saved this style version.'))
+    } catch (cause) {
+      if (!isProjectSessionCurrent(session)) return
+      toast.error(String(cause))
+    } finally {
+      if (isProjectSessionCurrent(session)) setApplying(false)
+    }
   }
 
   return (
@@ -71,12 +87,13 @@ export default function WritingStyleHistoryPanel({ projectKey }: { projectKey: s
               {new Date(record.createdAt.replace(' ', 'T') + 'Z').toLocaleString()}
               <button
                 type="button"
+                disabled={applying}
                 className="ml-auto inline-flex items-center gap-1 rounded border px-1.5 py-0.5"
                 style={{ borderColor: 'var(--color-border)', color: 'var(--color-accent)' }}
-                onClick={() => applyVersion(record.nextStyle)}
+                onClick={() => void applyVersion(record.nextStyle)}
               >
                 <RotateCcw size={10} aria-hidden="true" />
-                {text('应用到当前', 'Apply to current')}
+                {applying ? text('应用中…', 'Applying…') : text('应用到当前', 'Apply to current')}
               </button>
             </div>
             {record.previousStyle
