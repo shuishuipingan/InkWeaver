@@ -12,6 +12,8 @@ New contributors should start with the [project file guide](docs/PROJECT-FILE-GU
 
 The current source branch, GitHub topic, and remaining release gates are recorded in the [GitHub/distribution receipt](docs/upgrade/GITHUB-DISTRIBUTION-RECEIPT.md).
 
+User-visible changes are listed in the [changelog](CHANGELOG.md); every `1.1.0 development` entry is explicitly not a formal Release claim.
+
 [Download for Windows or macOS](https://github.com/shuishuipingan/InkWeaver/releases/latest) · [View source](https://github.com/shuishuipingan/InkWeaver) · [Install the DeepSeek Harness plugin](https://www.npmjs.com/package/@ethanyoq/dsh-ai-novel-writer)
 
 ## What InkWeaver is for

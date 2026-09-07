@@ -12,6 +12,8 @@
 
 开发分支、GitHub topic 和待发布门禁的当前回读见[GitHub/分发核验收据](docs/upgrade/GITHUB-DISTRIBUTION-RECEIPT.md)。
 
+逐项用户可见更新见[更新日志](CHANGELOG.md)；其中所有 `1.1.0 development` 条目都不代表正式 Release 已完成。
+
 [下载 Windows / macOS 桌面版](https://github.com/shuishuipingan/InkWeaver/releases/latest) · [查看源代码](https://github.com/shuishuipingan/InkWeaver) · [安装 DeepSeek Harness 插件](https://www.npmjs.com/package/@ethanyoq/dsh-ai-novel-writer)
 
 ## 织墨解决什么问题
