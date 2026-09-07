@@ -36,6 +36,19 @@ export class KnowledgeEventRepository {
     return rows.map(rowToEvent).filter(event => knowledgeEventAppliesAtChapter(event, chapterNumber))
   }
 
+  /** Review-only projection: candidates are visible to the author but never to prompts. */
+  static listForReview(characters: readonly string[], chapterNumber: number): KnowledgeEvent[] {
+    if (characters.length === 0) return []
+    const rows = db().prepare('SELECT event_id, payload_json FROM knowledge_events WHERE character_name IN (' + characters.map(() => '?').join(',') + ') ORDER BY source_chapter ASC, event_id ASC').all(...characters) as EventRow[]
+    return rows.map(rowToEvent).filter(event => {
+      if (event.status === 'candidate') {
+        const start = event.validFromChapter ?? event.sourceChapter
+        return event.sourceChapter <= chapterNumber && start <= chapterNumber
+      }
+      return knowledgeEventAppliesAtChapter(event, chapterNumber)
+    })
+  }
+
   static setStatus(eventId: string, status: KnowledgeEvent['status']): KnowledgeEvent {
     if (!['candidate', 'confirmed', 'rejected', 'stale'].includes(status)) throw new Error('知情事件状态无效')
     const database = db()

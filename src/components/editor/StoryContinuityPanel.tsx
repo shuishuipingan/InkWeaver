@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Plus, Save, RefreshCw } from 'lucide-react'
+import { Check, Plus, Save, RefreshCw, X } from 'lucide-react'
 import { ipc } from '../../services/ipc-client'
 import { useLocaleStore } from '../../stores/locale-store'
 import { useProjectStore } from '../../stores/project-store'
@@ -21,7 +21,7 @@ import {
   type StoryContinuityDocument,
   type ViewpointThread,
 } from '../../shared/story-continuity'
-import type { KnowledgeEvent } from '../../shared/knowledge-event'
+import { knowledgeEventAppliesAtChapter, type KnowledgeEvent } from '../../shared/knowledge-event'
 
 interface StoryContinuityPanelProps {
   projectKey: string
@@ -68,6 +68,8 @@ export default function StoryContinuityPanel({ projectKey, chapterNumber }: Stor
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [knowledgeEvents, setKnowledgeEvents] = useState<KnowledgeEvent[]>([])
+  const [knowledgeReviewEvents, setKnowledgeReviewEvents] = useState<KnowledgeEvent[]>([])
+  const [knowledgeUpdatingId, setKnowledgeUpdatingId] = useState<string | null>(null)
 
   const load = async () => {
     const session = captureProjectSession(currentProject)
@@ -90,14 +92,46 @@ export default function StoryContinuityPanel({ projectKey, chapterNumber }: Stor
     const session = captureProjectSession(currentProject)
     if (!session || !isProjectSessionPath(session, projectKey) || characterNames.length === 0) {
       setKnowledgeEvents([])
+      setKnowledgeReviewEvents([])
       return
     }
     let cancelled = false
-    void ipc.invokeWithProjectSession(session, 'db:knowledge-event-list-for-chapter', characterNames, chapterNumber, projectKey)
-      .then(events => { if (!cancelled && isProjectSessionCurrent(session)) setKnowledgeEvents(events) })
+    void Promise.all([
+      ipc.invokeWithProjectSession(session, 'db:knowledge-event-list-for-chapter', characterNames, chapterNumber, projectKey),
+      ipc.invokeWithProjectSession(session, 'db:knowledge-event-list-review', characterNames, chapterNumber, projectKey),
+    ])
+      .then(([events, reviewEvents]) => {
+        if (!cancelled && isProjectSessionCurrent(session)) {
+          setKnowledgeEvents(events)
+          setKnowledgeReviewEvents(reviewEvents)
+        }
+      })
       .catch(() => { if (!cancelled) setKnowledgeEvents([]) })
     return () => { cancelled = true }
   }, [chapterNumber, characterNames.join('\u0000'), currentProject?.sessionLease, projectKey])
+
+  const updateKnowledgeStatus = async (eventId: string, status: 'confirmed' | 'rejected') => {
+    const session = captureProjectSession(currentProject)
+    if (!session || !isProjectSessionPath(session, projectKey)) return
+    setKnowledgeUpdatingId(eventId)
+    setError(null)
+    try {
+      const result = await ipc.invokeWithProjectSession(session, 'db:knowledge-event-status', eventId, status, projectKey)
+      if (!result.success || !result.event) throw new Error(result.error || text('更新知情事件失败', 'Could not update the knowledge event'))
+      if (!isProjectSessionCurrent(session)) return
+      setKnowledgeReviewEvents(current => current.filter(event => event.eventId !== eventId))
+      if (status === 'confirmed' && knowledgeEventAppliesAtChapter(result.event, chapterNumber)) {
+        setKnowledgeEvents(current => [...current.filter(event => event.eventId !== eventId), result.event!])
+      }
+      setNotice(status === 'confirmed'
+        ? text('知情事件已确认并可用于本章写作', 'Knowledge event confirmed for this chapter')
+        : text('知情事件已拒绝，不会进入写作上下文', 'Knowledge event rejected; it will not enter writing context'))
+    } catch (cause) {
+      if (isProjectSessionCurrent(session)) setError(String(cause))
+    } finally {
+      if (isProjectSessionCurrent(session)) setKnowledgeUpdatingId(null)
+    }
+  }
 
   const update = (patch: Partial<StoryContinuityDocument>) => {
     setNotice(null)
@@ -186,6 +220,7 @@ export default function StoryContinuityPanel({ projectKey, chapterNumber }: Stor
           <Textarea aria-label={text('待回应问题', 'Open questions')} value={lineText(document.arcContribution.unresolvedQuestions)} onChange={event => update({ arcContribution: { ...document.arcContribution, unresolvedQuestions: lines(event.target.value) } })} placeholder={text('每行一个跨章待回应问题', 'One cross-chapter open question per line')} />
         </section>
 
+        {knowledgeReviewEvents.some(event => event.status === 'candidate') && <section data-knowledge-candidates="true"><h4 className="mb-2 text-xs font-semibold">{text('待确认知情候选（不会自动写入上下文）', 'Knowledge candidates (not injected automatically)')}</h4><div className="space-y-1.5">{knowledgeReviewEvents.filter(event => event.status === 'candidate').map(event => <div key={event.eventId} className="rounded border px-2 py-1.5 text-xs" style={{ borderColor: 'var(--color-border)' }}><div className="flex items-start justify-between gap-2"><div><div className="font-medium">{event.character} · {event.falseBelief ? text('误信', 'False belief') : event.certainty === 'rumor' ? text('传闻', 'Rumor') : text('候选事实', 'Candidate fact')}</div><div className="mt-0.5 text-[var(--color-text-secondary)]">{event.information}</div><div className="mt-0.5 text-[var(--color-text-muted)]">{text(`获知方式：${event.learnedBy} · 第${event.sourceChapter}章证据：${event.evidence}`, `Learned by ${event.learnedBy} · evidence from Chapter ${event.sourceChapter}: ${event.evidence}`)}</div></div><div className="flex shrink-0 gap-1"><Button variant="success" size="sm" disabled={knowledgeUpdatingId === event.eventId} onClick={() => void updateKnowledgeStatus(event.eventId, 'confirmed')} aria-label={text(`确认知情事件 ${event.eventId}`, `Confirm knowledge event ${event.eventId}`)}><Check size={11} aria-hidden="true" /></Button><Button variant="ghost" size="sm" disabled={knowledgeUpdatingId === event.eventId} onClick={() => void updateKnowledgeStatus(event.eventId, 'rejected')} aria-label={text(`拒绝知情事件 ${event.eventId}`, `Reject knowledge event ${event.eventId}`)}><X size={11} aria-hidden="true" /></Button></div></div></div>)}</div></section>}
         {knowledgeEvents.length > 0 && <section data-knowledge-boundary="true"><h4 className="mb-2 text-xs font-semibold">{text('当前角色知情范围（已确认）', 'Confirmed character knowledge')}</h4><div className="space-y-1.5">{knowledgeEvents.map(event => <div key={event.eventId} className="rounded border px-2 py-1.5 text-xs" style={{ borderColor: 'var(--color-border)' }}><div className="font-medium">{event.character} · {event.falseBelief ? text('误信', 'False belief') : event.certainty === 'rumor' ? text('传闻', 'Rumor') : text('已知事实', 'Known fact')}</div><div className="mt-0.5 text-[var(--color-text-secondary)]">{event.information}</div><div className="mt-0.5 text-[var(--color-text-muted)]">{text(`获知方式：${event.learnedBy} · 第${event.sourceChapter}章证据：${event.evidence}`, `Learned by ${event.learnedBy} · evidence from Chapter ${event.sourceChapter}: ${event.evidence}`)}</div></div>)}</div></section>}
 
         <section>

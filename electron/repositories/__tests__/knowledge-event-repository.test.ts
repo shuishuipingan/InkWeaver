@@ -29,6 +29,7 @@ describe('KnowledgeEventRepository', () => {
   it('keeps candidates non-authoritative until status is confirmed and filters by chapter', () => {
     KnowledgeEventRepository.saveCandidate(event)
     expect(KnowledgeEventRepository.listForChapter(['林夏'], 1)).toHaveLength(0)
+    expect(KnowledgeEventRepository.listForReview(['林夏'], 1)).toHaveLength(1)
     KnowledgeEventRepository.setStatus(event.eventId, 'confirmed')
     expect(KnowledgeEventRepository.listForChapter(['林夏'], 1)).toHaveLength(1)
     KnowledgeEventRepository.setStatus(event.eventId, 'rejected')

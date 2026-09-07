@@ -3,6 +3,7 @@ import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import StoryContinuityPanel from '../StoryContinuityPanel'
 import { useProjectStore } from '../../../stores/project-store'
+import { useCharacterStore } from '../../../stores/character-store'
 import { setActiveProjectSessionContext } from '../../../shared/project-session-context'
 import { emptyStoryContinuityDocument } from '../../../shared/story-continuity'
 
@@ -11,14 +12,23 @@ const SESSION = { projectId: 'story-continuity', leaseId: 'story-continuity-leas
 let root: Root
 let container: HTMLDivElement
 let invoke: ReturnType<typeof vi.fn>
+let reviewEvents: Array<Record<string, unknown>>
 
 beforeEach(() => {
   ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
   useProjectStore.setState({ currentProject: { id: SESSION.projectId, sessionLease: SESSION.leaseId, path: PROJECT_PATH, novelConfig: { writingLanguage: 'zh-CN' } } as never })
+  useCharacterStore.setState({ characters: [], loaded: false, dataProjectKey: null, dataProjectSession: null } as never)
   setActiveProjectSessionContext(SESSION)
   const empty = emptyStoryContinuityDocument(2)
+  reviewEvents = []
   invoke = vi.fn(async (channel: string, ...args: unknown[]) => {
     if (channel === 'db:story-continuity-read') return empty
+    if (channel === 'db:knowledge-event-list-for-chapter') return []
+    if (channel === 'db:knowledge-event-list-review') return reviewEvents
+    if (channel === 'db:knowledge-event-status') {
+      const event = reviewEvents.find(candidate => candidate.eventId === args[0])
+      return { success: true, event: event ? Object.assign({}, event, { status: args[1] }) : undefined }
+    }
     if (channel === 'db:story-continuity-save') return { success: true, document: { ...(args[0] as { document: typeof empty }).document, revision: 1 } }
     throw new Error(`Unexpected IPC ${channel}`)
   })
@@ -34,6 +44,7 @@ afterEach(async () => {
   Reflect.deleteProperty(window, 'velaAPI')
   setActiveProjectSessionContext(null)
   useProjectStore.setState({ currentProject: null })
+  useCharacterStore.setState({ characters: [], loaded: false, dataProjectKey: null, dataProjectSession: null } as never)
 })
 
 describe('StoryContinuityPanel', () => {
@@ -58,5 +69,22 @@ describe('StoryContinuityPanel', () => {
     await act(async () => save?.click())
     await vi.waitFor(() => expect(invoke.mock.calls.some(([channel]) => channel === 'db:story-continuity-save')).toBe(true))
     expect(container.textContent).toContain('章节连续性计划已保存')
+  })
+
+  it('keeps a knowledge candidate out of the writing context until the author confirms it', async () => {
+    useCharacterStore.setState({ characters: [{ name: '林夏' }], loaded: true, dataProjectKey: PROJECT_PATH, dataProjectSession: SESSION } as never)
+    reviewEvents = [{
+      eventId: 'knowledge:candidate', character: '林夏', information: '灯塔会在午夜熄灭',
+      certainty: 'fact', falseBelief: false, learnedBy: '亲眼见到', sourceChapter: 1,
+      evidence: '她看见灯塔熄灭。', status: 'candidate',
+    }]
+    await act(async () => root.render(<StoryContinuityPanel projectKey={PROJECT_PATH} chapterNumber={2} />))
+    await vi.waitFor(() => expect(container.textContent).toContain('待确认知情候选'))
+    expect(container.textContent).not.toContain('当前角色知情范围（已确认）')
+    const confirm = [...container.querySelectorAll<HTMLButtonElement>('button')].find(button => button.getAttribute('aria-label')?.includes('确认知情事件'))
+    expect(confirm).not.toBeUndefined()
+    await act(async () => confirm?.click())
+    await vi.waitFor(() => expect(invoke.mock.calls.some(([channel, eventId, status]) => channel === 'db:knowledge-event-status' && eventId === 'knowledge:candidate' && status === 'confirmed')).toBe(true))
+    expect(container.textContent).toContain('知情事件已确认并可用于本章写作')
   })
 })

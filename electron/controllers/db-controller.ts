@@ -860,6 +860,11 @@ export function registerDatabaseController() {
     return KnowledgeEventRepository.listForChapter(characters, chapterNumber)
   })
 
+  ipcMain.handle('db:knowledge-event-list-review', async (_event, characters: string[], chapterNumber: number, expectedProjectPath: string) => {
+    assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+    return KnowledgeEventRepository.listForReview(characters, chapterNumber)
+  })
+
   ipcMain.handle('db:knowledge-event-save-candidate', async (_event, event, expectedProjectPath: string) => {
     try {
       assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)

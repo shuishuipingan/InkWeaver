@@ -918,6 +918,10 @@ export interface DatabaseChannels {
     args: [characters: string[], chapterNumber: number, expectedProjectPath: string]
     return: KnowledgeEvent[]
   }
+  'db:knowledge-event-list-review': {
+    args: [characters: string[], chapterNumber: number, expectedProjectPath: string]
+    return: KnowledgeEvent[]
+  }
   'db:knowledge-event-save-candidate': {
     args: [event: KnowledgeEvent, expectedProjectPath: string]
     return: { success: boolean; event?: KnowledgeEvent; error?: string }
