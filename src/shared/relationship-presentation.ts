@@ -144,7 +144,7 @@ function isAllowedEdge(edge: RelationshipEdge, options: RelationshipTextOptions)
 function deduplicateEdges(edges: readonly RelationshipEdge[]): RelationshipEdge[] {
   const seen = new Set<string>()
   return edges.filter((edge) => {
-    const key = `${edge.target}\u0000${edge.relation}\u0000${String(edge.direction ?? '')}`
+    const key = `${edge.target}\u0000${edge.relation}\u0000${String(edge.direction ?? '')}\u0000${String(edge.sourceChapter ?? '')}\u0000${edge.evidence ?? ''}`
     if (seen.has(key)) return false
     seen.add(key)
     return true

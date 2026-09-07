@@ -37,6 +37,17 @@ describe('relationship presentation', () => {
     }])
   })
 
+  it('keeps same-label relationship evidence from different chapters as history', () => {
+    const persisted = JSON.stringify([
+      { target: '陆云飞', relation: '信任', sourceChapter: 3, evidence: '第一次交付钥匙。' },
+      { target: '陆云飞', relation: '信任', sourceChapter: 9, evidence: '危急时刻替他挡刀。' },
+    ])
+    expect(parseRelationshipEdges(persisted, { knownNames: ['沈砺', '陆云飞'], selfName: '沈砺' })).toEqual([
+      { target: '陆云飞', relation: '信任', sourceChapter: 3, evidence: '第一次交付钥匙。' },
+      { target: '陆云飞', relation: '信任', sourceChapter: 9, evidence: '危急时刻替他挡刀。' },
+    ])
+  })
+
   it('stores unambiguous natural-language editor lines as graph-readable edges', () => {
     const stored = relationshipStorageFromEditor(
       '陆云飞：竞争对手（权力斗争）\n苏璃：盟友',

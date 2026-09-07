@@ -143,7 +143,12 @@ export default function RelationshipGraph({ characters, projectKey }: Relationsh
           map.set(key, entry)
         }
         const label = relationShortLabel(parsed.relation)
-        if (!label || entry.items.some((item) => item.label === label)) continue
+        if (!label || entry.items.some((item) => (
+          item.label === label
+          && item.sourceChapter === parsed.sourceChapter
+          && item.evidence === parsed.evidence
+          && item.direction === parsed.direction
+        ))) continue
         entry.items.push({
           label,
           kind: classifyRelation(parsed.relation),
