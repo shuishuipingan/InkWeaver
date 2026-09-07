@@ -1,5 +1,3 @@
-import { createHash } from 'node:crypto'
-
 import { BaseWorkflowCommand, type CommandExecuteParams } from './base-command'
 import { ipc } from '../../ipc-client'
 import { requireIpcSuccess } from '../../ipc-result'
@@ -9,6 +7,7 @@ import {
 } from '../../../shared/chapter-handoff'
 import type { ChapterHandoffRecord } from '../../../shared/chapter-handoff'
 import type { WritingLanguage } from '../../../shared/writing-language'
+import { sha256Hex } from '../../../shared/sha256-hex'
 import { requireWorkflowProjectSession, workflowWritingLanguage } from '../workflow-project-session'
 
 const HANDOFF_CONTEXT_MAX_CHARS = 16_000
@@ -81,8 +80,8 @@ export function parseChapterHandoffCompletion(
   return normalizeChapterHandoffCandidate(parseJsonObject(text), source)
 }
 
-function contentHash(content: string): string {
-  return createHash('sha256').update(content, 'utf8').digest('hex')
+async function contentHash(content: string): Promise<string> {
+  return sha256Hex(content)
 }
 
 export class GenerateChapterHandoffCommand extends BaseWorkflowCommand<string> {
@@ -97,7 +96,7 @@ export class GenerateChapterHandoffCommand extends BaseWorkflowCommand<string> {
       handoffId: `chapter-handoff-${context.runId}-${this.params.chapterNumber}`,
       draftId: this.params.draftId,
       chapterNumber: this.params.chapterNumber,
-      sourceContentHash: contentHash(this.params.content),
+      sourceContentHash: await contentHash(this.params.content),
     }
     const raw = await this.callLLM(
       buildChapterHandoffPrompt({ ...this.params, writingLanguage }),
