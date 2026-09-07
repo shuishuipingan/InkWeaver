@@ -84,6 +84,7 @@ export default function StoryContinuityPanel({ projectKey, chapterNumber }: Stor
   const [knowledgeEvents, setKnowledgeEvents] = useState<KnowledgeEvent[]>([])
   const [timeline, setTimeline] = useState<FinalizedContinuityProjection[]>([])
   const [volumeProgress, setVolumeProgress] = useState<VolumeProgressSummary[]>([])
+  const [previousDocuments, setPreviousDocuments] = useState<StoryContinuityDocument[]>([])
   const [knowledgeReviewEvents, setKnowledgeReviewEvents] = useState<KnowledgeEvent[]>([])
   const [knowledgeUpdatingId, setKnowledgeUpdatingId] = useState<string | null>(null)
   const [extractingScenes, setExtractingScenes] = useState(false)
@@ -114,6 +115,9 @@ export default function StoryContinuityPanel({ projectKey, chapterNumber }: Stor
         setDocument(next)
         setTimeline(nextTimeline)
         setVolumeProgress(aggregateStoryContinuity([...allDocuments, next]))
+        const previousDocs = (Array.isArray(allDocuments) ? allDocuments : [])
+          .filter((doc: StoryContinuityDocument) => doc.chapterNumber < chapterNumber)
+        setPreviousDocuments(previousDocs)
         const blueprint = Array.isArray(blueprints)
           ? blueprints.find(candidate => (candidate as { chapterNumber?: number }).chapterNumber === chapterNumber)
           : undefined
@@ -128,6 +132,7 @@ export default function StoryContinuityPanel({ projectKey, chapterNumber }: Stor
         setError(String(cause))
         setTimeline([])
         setVolumeProgress([])
+        setPreviousDocuments([])
         setPreparation({ blueprint: null, handoff: null, narrativeThreads: [] })
       }
     } finally {
@@ -280,6 +285,14 @@ export default function StoryContinuityPanel({ projectKey, chapterNumber }: Stor
       ? text('尚未配置世界规则或全局写作约束', 'No world rules or global writing constraints are configured')
       : undefined,
   ].filter((value): value is string => value !== undefined)
+  const currentCarryCharacters = new Set(
+    document.emotionalCarryOver.map(item => item.character.trim()).filter(Boolean),
+  )
+  const previousCarryOver = previousDocuments
+    .flatMap(doc => doc.emotionalCarryOver)
+    .filter(item => item.character.trim() && item.nextState.trim())
+    .filter(item => !currentCarryCharacters.has(item.character.trim()))
+    .slice(0, 8)
   const timelineFacts = timeline.flatMap(projection => (projection.facts ?? [])
     .filter(fact => factAppliesAtChapter(fact, chapterNumber)))
   const timelineGroups = [...timelineFacts.reduce((groups, fact) => {
@@ -354,6 +367,15 @@ export default function StoryContinuityPanel({ projectKey, chapterNumber }: Stor
               : <ul className="mt-1 list-disc space-y-0.5 pl-4 text-[var(--color-text-muted)]">{preparationMissing.map(item => <li key={item}>{item}</li>)}</ul>}
           </div>
         </section>
+        {previousCarryOver.length > 0 && (
+          <section data-emotional-carryover-alert="true" className="rounded border p-2 text-xs" style={{ borderColor: 'var(--color-warning)', backgroundColor: 'var(--color-raised)' }}>
+            <div className="font-medium">{text('上一章情绪余波待承接', 'Previous-chapter emotional carry-over awaiting continuity')}</div>
+            <div className="mt-1 space-y-0.5 text-[var(--color-warning-text)]">
+                          {previousCarryOver.map(item => <div key={item.character}>{item.character} · {text('后状态：' + item.nextState, 'next state: ' + item.nextState)}</div>)}
+            </div>
+            <p className="mt-1 text-[var(--color-text-muted)]">{text('如果本章没有承接这些情绪余波，可在下方“情绪余波与人物成长”补记，或保留刻意跳切。', 'If this chapter does not continue these emotional states, add them under “Emotional carry-over and growth” below, or keep an intentional cutaway.')}</p>
+          </section>
+        )}
         {timelineGroups.length > 0 && <section data-continuity-timeline="true" className="rounded border p-2" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-raised)' }}>
           <h4 className="mb-2 text-xs font-semibold">{text('跨章事实时间线', 'Cross-chapter fact timeline')}</h4>
           <div className="space-y-1.5">{timelineGroups.map(([sourceChapter, facts]) => <details key={sourceChapter} open className="rounded border px-2 py-1.5" style={{ borderColor: 'var(--color-border)' }}>

@@ -15,6 +15,7 @@ let invoke: ReturnType<typeof vi.fn>
 let reviewEvents: Array<Record<string, unknown>>
 let timelineFixtures: unknown[]
 let finalizedContent: string | null
+let allDocumentsFixture: unknown[]
 
 beforeEach(() => {
   ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -25,10 +26,11 @@ beforeEach(() => {
   reviewEvents = []
   timelineFixtures = []
   finalizedContent = null
+  allDocumentsFixture = []
   invoke = vi.fn(async (channel: string, ...args: unknown[]) => {
     if (channel === 'db:story-continuity-read') return empty
     if (channel === 'db:continuity-list-before') return timelineFixtures
-    if (channel === 'db:story-continuity-list-all') return []
+    if (channel === 'db:story-continuity-list-all') return allDocumentsFixture
     if (channel === 'db:blueprint-get-all') return []
     if (channel === 'db:chapter-handoff-latest-before') return null
     if (channel === 'db:narrative-thread-list-relevant') return []
@@ -147,5 +149,24 @@ describe('StoryContinuityPanel', () => {
     expect(container.textContent).toContain('叙事线提醒')
     expect(container.textContent).toContain('灯塔暗语')
     expect(container.textContent).toContain('已逾期')
+  })
+
+
+  it('warns about previous-chapter emotional carry-over not yet picked up', async () => {
+    timelineFixtures = []
+    reviewEvents = []
+    finalizedContent = null
+    const previous = emptyStoryContinuityDocument(1)
+    previous.emotionalCarryOver = [{
+      character: '林夏', previousState: '恐惧', trigger: '看见暗门', choice: '推门',
+      cost: '手受伤', nextState: '执拗', evidence: ['她推开了暗门。'],
+    }]
+    allDocumentsFixture = [previous]
+
+    await act(async () => root.render(<StoryContinuityPanel projectKey={PROJECT_PATH} chapterNumber={2} />))
+    await vi.waitFor(() => expect(container.querySelector('[data-emotional-carryover-alert="true"]')).not.toBeNull())
+    expect(container.textContent).toContain('上一章情绪余波待承接')
+    expect(container.textContent).toContain('林夏')
+    expect(container.textContent).toContain('执拗')
   })
 })
