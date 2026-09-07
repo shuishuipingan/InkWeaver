@@ -25,6 +25,12 @@ import {
   formatSafeCallDiagnostic,
   type SafeDiagnosticWorkflow,
 } from '../../services/safe-call-diagnostic'
+import {
+  canResumeWorkflowCheckpoint,
+  clearWorkflowRecoveryCheckpoint,
+  listWorkflowRecoveryCheckpoints,
+  type WorkflowRecoveryCheckpoint,
+} from '../../shared/workflow-recovery'
 
 /** 底部面板 Tab 名称映射 */
 const TAB_LABELS: Record<string, string> = {
@@ -161,15 +167,19 @@ function TaskRunView() {
 
   if (activeRuns.length === 0 && history.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-full gap-3" style={{ color: 'var(--color-text-muted)' }}>
-        <Zap size={24} style={{ opacity: 0.5 }} />
-        <span className="text-xs">暂无任务，AI 工作流启动后会在这里展示进度</span>
+      <div className="h-full overflow-y-auto pb-4">
+        <WorkflowRecoveryReceipts />
+        <div className="flex flex-col items-center justify-center h-full gap-3" style={{ color: 'var(--color-text-muted)' }}>
+          <Zap size={24} style={{ opacity: 0.5 }} />
+          <span className="text-xs">暂无任务，AI 工作流启动后会在这里展示进度</span>
+        </div>
       </div>
     )
   }
 
   return (
     <div className="h-full overflow-y-auto pb-4">
+      <WorkflowRecoveryReceipts />
       {/* 活跃任务列表（支持多个并行） */}
       {activeRuns.length > 0 && (
         <div className="flex-shrink-0" style={{ borderBottom: history.length > 0 ? '1px solid var(--color-border)' : undefined }}>
@@ -227,6 +237,81 @@ function TaskRunView() {
         </div>
       )}
     </div>
+  )
+}
+
+/**
+ * Shows durable workflow checkpoints after a reload without pretending that a
+ * generic checkpoint contains enough information to replay a workflow. The
+ * lease check deliberately fails closed; only the workflow that owns its
+ * inputs may offer a real continuation action.
+ */
+function WorkflowRecoveryReceipts() {
+  const text = useLocaleStore(s => s.text)
+  const currentProject = useProjectStore(s => s.currentProject)
+  const session = useMemo(
+    () => projectSessionContextFromProject(currentProject),
+    [currentProject],
+  )
+  const [checkpoints, setCheckpoints] = useState<WorkflowRecoveryCheckpoint[]>([])
+
+  useEffect(() => {
+    setCheckpoints(listWorkflowRecoveryCheckpoints(session?.projectPath))
+  }, [session?.projectPath, session?.leaseId])
+
+  if (checkpoints.length === 0) return null
+
+  const remove = (runId: string) => {
+    clearWorkflowRecoveryCheckpoint(runId)
+    setCheckpoints(current => current.filter(checkpoint => checkpoint.runId !== runId))
+  }
+
+  return (
+    <section
+      aria-label={text('工作流恢复收据', 'Workflow recovery receipts')}
+      className="mx-3 mt-2 rounded-md border px-3 py-2"
+      data-workflow-recovery-receipts="true"
+      style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-raised)' }}
+    >
+      <div className="mb-1 flex items-center gap-2">
+        <Clock size={12} style={{ color: 'var(--color-warning)' }} aria-hidden="true" />
+        <span className="text-xs font-semibold" style={{ color: 'var(--color-text)' }}>
+          {text('恢复收据', 'Recovery receipts')}
+        </span>
+        <span className="text-[0.68rem]" style={{ color: 'var(--color-text-muted)' }}>
+          {text('只记录安全边界，不包含正文', 'Safe-boundary metadata only; prose is never stored here')}
+        </span>
+      </div>
+      <div className="space-y-1.5">
+        {checkpoints.map(checkpoint => {
+          const resumable = session !== null && canResumeWorkflowCheckpoint(checkpoint, session)
+          const completed = checkpoint.steps.filter(step => step.status === 'completed').length
+          return (
+            <div key={checkpoint.runId} className="flex items-start gap-2 rounded border px-2 py-1.5 text-xs" style={{ borderColor: 'var(--color-border)' }}>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                  <span className="font-medium" style={{ color: 'var(--color-text)' }}>{checkpoint.title}</span>
+                  <span style={{ color: resumable ? 'var(--color-success-text)' : 'var(--color-warning-text)' }}>
+                    {resumable ? text('当前会话可识别', 'Recognized by current session') : text('会话已变化，不能继续', 'Session changed; cannot resume')}
+                  </span>
+                </div>
+                <div className="mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
+                  {text(`边界：${checkpoint.boundary} · 步骤 ${completed}/${checkpoint.steps.length} · ${new Date(checkpoint.updatedAt).toLocaleString('zh-CN')}`, `Boundary: ${checkpoint.boundary} · ${completed}/${checkpoint.steps.length} steps · ${new Date(checkpoint.updatedAt).toLocaleString()}`)}
+                </div>
+                <div className="mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
+                  {resumable
+                    ? text('只有原工作流重新提供完整输入后才能继续；此收据本身不会重放任务。', 'Continuation requires the owning workflow to provide its complete inputs; this receipt never replays a task by itself.')
+                    : text('为避免旧租约写入当前项目，请重新启动同类任务；清理该收据不会影响正文。', 'Restart the task type to avoid writing through an old lease; clearing this receipt does not affect prose.')}
+                </div>
+              </div>
+              <button type="button" className="flex-shrink-0 rounded border px-2 py-1 text-[0.68rem]" onClick={() => remove(checkpoint.runId)}>
+                {text('清除收据', 'Clear receipt')}
+              </button>
+            </div>
+          )
+        })}
+      </div>
+    </section>
   )
 }
 
