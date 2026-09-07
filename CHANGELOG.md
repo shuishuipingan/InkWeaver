@@ -25,12 +25,14 @@
 - 定稿连续性事实支持 `validFromChapter` / `validUntilChapter`，写稿上下文不会把已过期事实带入当前章节。
 - 知情事件区分事实、信念、传闻和误信，记录获知方式、来源章节、有效范围、证据和确认状态；只有确认且当前有效的事件进入写作上下文。
 - AI 输出面板显示分层上下文纳入/省略收据；provider 没有返回 usage 时显示“未知”，不伪造为 0。
+- 任务面板显示不含正文的恢复收据，区分当前项目 lease 与过期 lease，并允许安全清理；统计面板在没有核验价格快照时明确显示“仅 token 用量”，不伪造费用。
 - 项目快照使用 SQLite backup API，复制提示词和 manuscript 附件，生成逐文件哈希 manifest，支持完整性核验、恢复预览和恢复到源项目外的空目录。
 - 快照按数量和总字节数自动清理旧目录；清理目标限定在 `.vela/snapshots` 内，不覆盖当前项目。
 - 导出以 finalized authority 枚举章节，即使没有蓝图也能导出；拒绝缺章、重复、越界、空正文、标题漂移和字数不一致。
 - 每次导出额外生成不含正文的 `.manifest.json` 清单，记录权威指纹、章节标题、字数、输出路径和内容哈希，方便作者或发布脚本回读核对。
 - 连续性工作单新增跨章事实时间线，只显示在当前章节仍有效的定稿事实和原文证据，不会直接修改事实源。
-- 连续性工作单新增卷级推进摘要，聚合已保存章节的主线贡献、转折、场景观察度和待回应问题，让作者能看到故事是否持续向前发展。
+- 连续性工作单新增写前准备摘要：在动笔前汇总章节蓝图、上一章确认交接、相关活跃叙事线、世界规则、全局指导、文风约束、知情边界和缺失资料。
+- 连续性工作单新增卷级推进摘要，聚合已保存章节的主线、支线、人物弧、转折、活跃读者期待、场景观察度和待回应问题，让作者能看到故事是否持续向前发展。
 - 局部修稿、审稿、人物候选和历史影响均保留来源正文指纹，正文变化后拒绝旧结果覆盖。
 
 ### DSH 插件
@@ -41,6 +43,7 @@
 - DSH Client 工作台显示章节交接、上一章定稿和已确认知情范围；客户端在 loopback 边界校验无路径的严格 DTO。
 - 插件已通过 typecheck、build、emitted package verification、定向 V2 回归和 qualification readback；完整 tarball 隔离 profile、真实 roster/mount、浏览器同页应用和重启读回仍是正式发布门禁。
 - DSH Web qualification 已固定使用兼容的 `@linxin666/dsh-web-all@0.3.17`；旧 `dsh-web-ui-all@0.1.16` 会因 `dsh-settings` API 不匹配阻止 Web 启动，不再作为发布依赖。
+- 插件已从旧目录/包名迁移到 `plugins/inkweaver-dsh` 与 `@shuishuipingan/inkweaver-dsh`，Host/preset 统一使用 `inkweaver`；旧 `@ethanyoq/dsh-ai-novel-writer` 仅保留在迁移说明中，不是新安装目标。`@linxin666/dsh-web-all` 仍是外部宿主 companion，不属于本仓库交付物。
 
 ### 文档与开发交接
 
