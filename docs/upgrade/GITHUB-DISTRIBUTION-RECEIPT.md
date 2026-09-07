@@ -1,0 +1,33 @@
+# 1.1.0 GitHub / 分发核验收据（开发线）
+
+核验日期：2026-09-07（Asia/Hong_Kong）
+
+这不是正式 Release 收据。它记录当前开发线已经完成的远端同步与发现性检查，避免把开发分支、npm 兼容性或 GitHub topic 元数据误写成 1.1.0 正式发布。
+
+## 源码同步
+
+| 项目 | 当前证据 |
+| --- | --- |
+| 仓库 | `shuishuipingan/InkWeaver` |
+| 开发分支 | `1.1.0-development` |
+| 本地/远端 SHA | `6903057`（本收据提交前的开发线父提交；提交后以 `git rev-parse HEAD` 和 `git ls-remote` 回读为准） |
+| 远端主线 | `main` 保持既有 v1.0.0 线，未被开发分支推送覆盖 |
+| 开发 PR | GitHub 为该分支提供 `https://github.com/shuishuipingan/InkWeaver/pull/new/1.1.0-development` |
+
+开发线每次新增提交后必须重新回读本地 SHA 与远端 branch SHA；正式 tag、Release 和安装包必须在所有路线需求通过后另行创建。
+
+## GitHub topic
+
+GitHub API 已回读仓库 topic 包含：
+
+`cordis-plugin`、`deepseek-harness`、`dsh`、`dsh-plugin`、`novel-writing`。
+
+公开主题页：[github.com/topics/dsh-plugin](https://github.com/topics/dsh-plugin)。2026-09-07 页面显示该主题约 13,983 个公开仓库；在当前“Most stars”首屏和抓取内容中尚未出现 `shuishuipingan/InkWeaver`。因此当前结论是“元数据已设置，实际索引可见性待发布后复核”，不是“已保证在主题页显示”。
+
+## 正式发布前必须补的证据
+
+- [ ] 所有 38 项需求和 12 条端到端旅程通过。
+- [ ] 源码、桌面版本、插件版本统一冻结到 1.1.0，并记录不可变 SHA。
+- [ ] Windows x64、macOS ARM64、macOS x64 资格资产来自同一 SHA，并回读原始哈希。
+- [ ] 插件 1.1.0 tarball/npm 分发、隔离 profile roster/mount、Proposal 同页应用和重启读回通过。
+- [ ] 创建正式 tag/Release 后，重新回读下载链接、资产哈希和 `dsh-plugin` 主题页；若 GitHub 尚未索引，必须在更新日志中明确说明。

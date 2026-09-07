@@ -10,6 +10,8 @@
 
 接手开发时先看[项目文件指南](docs/PROJECT-FILE-GUIDE.md)，再看[完整功能图](docs/upgrade/INKWEAVER-1.1.0-FULL-FEATURE-MAP.md)和[交付追踪表](docs/upgrade/INKWEAVER-1.1.0-DELIVERY-TRACKER.md)。文件指南按事实源、主进程副作用、Renderer 投影、DSH 插件和发布生成物解释每个目录的职责。
 
+开发分支、GitHub topic 和待发布门禁的当前回读见[GitHub/分发核验收据](docs/upgrade/GITHUB-DISTRIBUTION-RECEIPT.md)。
+
 [下载 Windows / macOS 桌面版](https://github.com/shuishuipingan/InkWeaver/releases/latest) · [查看源代码](https://github.com/shuishuipingan/InkWeaver) · [安装 DeepSeek Harness 插件](https://www.npmjs.com/package/@ethanyoq/dsh-ai-novel-writer)
 
 ## 织墨解决什么问题

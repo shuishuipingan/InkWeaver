@@ -10,6 +10,8 @@ Current version: **v0.9.2**
 
 New contributors should start with the [project file guide](docs/PROJECT-FILE-GUIDE.md), then read the [full feature map](docs/upgrade/INKWEAVER-1.1.0-FULL-FEATURE-MAP.md) and [delivery tracker](docs/upgrade/INKWEAVER-1.1.0-DELIVERY-TRACKER.md). The guide explains source-of-truth ownership, main-process side effects, renderer projections, the DSH plugin, and generated release files.
 
+The current source branch, GitHub topic, and remaining release gates are recorded in the [GitHub/distribution receipt](docs/upgrade/GITHUB-DISTRIBUTION-RECEIPT.md).
+
 [Download for Windows or macOS](https://github.com/shuishuipingan/InkWeaver/releases/latest) · [View source](https://github.com/shuishuipingan/InkWeaver) · [Install the DeepSeek Harness plugin](https://www.npmjs.com/package/@ethanyoq/dsh-ai-novel-writer)
 
 ## What InkWeaver is for
