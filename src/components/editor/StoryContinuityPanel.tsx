@@ -313,7 +313,10 @@ export default function StoryContinuityPanel({ projectKey, chapterNumber }: Stor
           <div className="space-y-2">{volumeProgress.map(summary => <div key={summary.volume} className="rounded border px-2 py-1.5 text-xs" style={{ borderColor: 'var(--color-border)' }}>
             <div className="font-medium">{summary.volume} · {text(`${summary.chapterCount}章`, `${summary.chapterCount} chapters`)} · {text(`场景 ${summary.observedSceneCount}/${summary.sceneCount} 已观察`, `${summary.observedSceneCount}/${summary.sceneCount} scenes observed`)}</div>
             {summary.mainlineContributions.length > 0 && <div className="text-[var(--color-text-secondary)]">{text(`主线：${summary.mainlineContributions.join('；')}`, `Mainline: ${summary.mainlineContributions.join('; ')}`)}</div>}
+            {summary.subplots.length > 0 && <div className="text-[var(--color-text-secondary)]">{text(`支线：${summary.subplots.join('；')}`, `Subplots: ${summary.subplots.join('; ')}`)}</div>}
+            {summary.characterArcs.length > 0 && <div className="text-[var(--color-text-secondary)]">{text(`人物弧：${summary.characterArcs.join('；')}`, `Character arcs: ${summary.characterArcs.join('; ')}`)}</div>}
             {summary.turningPoints.length > 0 && <div className="text-[var(--color-text-secondary)]">{text(`转折：${summary.turningPoints.join('；')}`, `Turns: ${summary.turningPoints.join('; ')}`)}</div>}
+            {summary.activeExpectationCount > 0 && <div className="text-[var(--color-text-muted)]">{text(`活跃读者期待：${summary.activeExpectationCount} 条`, `Active reader expectations: ${summary.activeExpectationCount}`)}</div>}
             {summary.unresolvedQuestions.length > 0 && <div className="text-[var(--color-text-muted)]">{text(`待回应：${summary.unresolvedQuestions.join('；')}`, `Open questions: ${summary.unresolvedQuestions.join('; ')}`)}</div>}
           </div>)}</div>
         </section>}
