@@ -299,6 +299,11 @@ export default function StoryContinuityPanel({ projectKey, chapterNumber }: Stor
       .map(item => ({ ...item, fromChapter: doc.chapterNumber })))
     .filter(item => (item.dueChapter === undefined || item.dueChapter <= chapterNumber))
     .slice(0, 6)
+  const previousViewpointKnowledge = previousDocuments
+    .flatMap(doc => doc.viewpointThreads
+      .filter(thread => thread.readerKnowledge.trim() || thread.unresolvedHooks.length > 0)
+      .map(thread => ({ ...thread, fromChapter: doc.chapterNumber })))
+    .slice(0, 8)
   const timelineFacts = timeline.flatMap(projection => (projection.facts ?? [])
     .filter(fact => factAppliesAtChapter(fact, chapterNumber)))
   const timelineGroups = [...timelineFacts.reduce((groups, fact) => {
@@ -373,6 +378,19 @@ export default function StoryContinuityPanel({ projectKey, chapterNumber }: Stor
               : <ul className="mt-1 list-disc space-y-0.5 pl-4 text-[var(--color-text-muted)]">{preparationMissing.map(item => <li key={item}>{item}</li>)}</ul>}
           </div>
         </section>
+        {previousViewpointKnowledge.length > 0 && (
+          <section data-previous-viewpoint-knowledge="true" className="rounded border p-2 text-xs" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-raised)' }}>
+            <div className="font-medium">{text('跨章视角落点与读者已知', 'Cross-chapter viewpoint landing and reader knowledge')}</div>
+            <div className="mt-1 space-y-1">
+              {previousViewpointKnowledge.map((thread, index) => <div key={thread.viewpoint + '-' + index} className="text-[var(--color-text-secondary)]">
+                <span className="font-medium">{thread.viewpoint || text('未命名视角', 'Unnamed viewpoint')}</span>
+                <span className="text-[var(--color-text-muted)]"> · {text('第' + thread.fromChapter + '章', 'Chapter ' + thread.fromChapter)}</span>
+                {thread.readerKnowledge ? <div>{text('读者已知：', 'Reader knows: ')}{thread.readerKnowledge}</div> : undefined}
+                {thread.unresolvedHooks.length > 0 ? <div>{text('未解钩子：', 'Open hooks: ')}{thread.unresolvedHooks.join('、')}</div> : undefined}
+              </div>)}
+            </div>
+          </section>
+        )}
         {dueExpectations.length > 0 && (
           <section data-due-expectations-alert="true" className="rounded border p-2 text-xs" style={{ borderColor: 'var(--color-accent)', backgroundColor: 'var(--color-raised)' }}>
             <div className="font-medium">{text('本章到期读者期待', 'Reader expectations due this chapter')}</div>

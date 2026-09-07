@@ -187,4 +187,23 @@ describe('StoryContinuityPanel', () => {
     expect(container.textContent).toContain('本章到期读者期待')
     expect(container.textContent).toContain('门后的人是谁？')
   })
+
+
+  it('shows previous viewpoint landing points and reader knowledge', async () => {
+    timelineFixtures = []
+    reviewEvents = []
+    finalizedContent = null
+    const previous = emptyStoryContinuityDocument(1)
+    previous.viewpointThreads = [{
+      viewpoint: '林夏', lastChapter: 1, unresolvedHooks: ['信是谁寄出的'],
+      readerKnowledge: '读者知道信来自未来', nextLanding: '第二章回码头',
+    }]
+    allDocumentsFixture = [previous]
+
+    await act(async () => root.render(<StoryContinuityPanel projectKey={PROJECT_PATH} chapterNumber={2} />))
+    await vi.waitFor(() => expect(container.querySelector('[data-previous-viewpoint-knowledge="true"]')).not.toBeNull())
+    expect(container.textContent).toContain('林夏')
+    expect(container.textContent).toContain('读者知道信来自未来')
+    expect(container.textContent).toContain('信是谁寄出的')
+  })
 })
