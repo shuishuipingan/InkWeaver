@@ -13,6 +13,7 @@ let root: Root
 let container: HTMLDivElement
 let invoke: ReturnType<typeof vi.fn>
 let reviewEvents: Array<Record<string, unknown>>
+let timelineFixtures: unknown[]
 
 beforeEach(() => {
   ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -21,8 +22,10 @@ beforeEach(() => {
   setActiveProjectSessionContext(SESSION)
   const empty = emptyStoryContinuityDocument(2)
   reviewEvents = []
+  timelineFixtures = []
   invoke = vi.fn(async (channel: string, ...args: unknown[]) => {
     if (channel === 'db:story-continuity-read') return empty
+    if (channel === 'db:continuity-list-before') return timelineFixtures
     if (channel === 'db:knowledge-event-list-for-chapter') return []
     if (channel === 'db:knowledge-event-list-review') return reviewEvents
     if (channel === 'db:knowledge-event-status') {
@@ -86,5 +89,16 @@ describe('StoryContinuityPanel', () => {
     await act(async () => confirm?.click())
     await vi.waitFor(() => expect(invoke.mock.calls.some(([channel, eventId, status]) => channel === 'db:knowledge-event-status' && eventId === 'knowledge:candidate' && status === 'confirmed')).toBe(true))
     expect(container.textContent).toContain('知情事件已确认并可用于本章写作')
+  })
+
+  it('shows active finalized facts in the cross-chapter timeline without editing them', async () => {
+    timelineFixtures = [{
+      draftId: 7, chapterNumber: 1, chapterTitle: '第一章', chapterNotes: '灯塔异动',
+      facts: [{ category: 'plot', entities: ['林夏'], statement: '灯塔会在午夜熄灭', sourceChapter: 1, evidence: '她看见灯塔熄灭。' }],
+    }]
+    await act(async () => root.render(<StoryContinuityPanel projectKey={PROJECT_PATH} chapterNumber={2} />))
+    await vi.waitFor(() => expect(container.querySelector('[data-continuity-timeline="true"]')).not.toBeNull())
+    expect(container.textContent).toContain('灯塔会在午夜熄灭')
+    expect(container.textContent).toContain('证据：她看见灯塔熄灭。')
   })
 })

@@ -21,6 +21,7 @@ import {
   type StoryContinuityDocument,
   type ViewpointThread,
 } from '../../shared/story-continuity'
+import { factAppliesAtChapter, type FinalizedContinuityProjection } from '../../shared/finalized-continuity'
 import { knowledgeEventAppliesAtChapter, type KnowledgeEvent } from '../../shared/knowledge-event'
 
 interface StoryContinuityPanelProps {
@@ -68,6 +69,7 @@ export default function StoryContinuityPanel({ projectKey, chapterNumber }: Stor
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [knowledgeEvents, setKnowledgeEvents] = useState<KnowledgeEvent[]>([])
+  const [timeline, setTimeline] = useState<FinalizedContinuityProjection[]>([])
   const [knowledgeReviewEvents, setKnowledgeReviewEvents] = useState<KnowledgeEvent[]>([])
   const [knowledgeUpdatingId, setKnowledgeUpdatingId] = useState<string | null>(null)
 
@@ -77,10 +79,19 @@ export default function StoryContinuityPanel({ projectKey, chapterNumber }: Stor
     setLoading(true)
     setError(null)
     try {
-      const next = await ipc.invokeWithProjectSession(session, 'db:story-continuity-read', chapterNumber, projectKey)
-      if (isProjectSessionCurrent(session)) setDocument(next)
+      const [next, nextTimeline] = await Promise.all([
+        ipc.invokeWithProjectSession(session, 'db:story-continuity-read', chapterNumber, projectKey),
+        ipc.invokeWithProjectSession(session, 'db:continuity-list-before', chapterNumber, projectKey),
+      ])
+      if (isProjectSessionCurrent(session)) {
+        setDocument(next)
+        setTimeline(nextTimeline)
+      }
     } catch (cause) {
-      if (isProjectSessionCurrent(session)) setError(String(cause))
+      if (isProjectSessionCurrent(session)) {
+        setError(String(cause))
+        setTimeline([])
+      }
     } finally {
       if (isProjectSessionCurrent(session)) setLoading(false)
     }
@@ -183,6 +194,16 @@ export default function StoryContinuityPanel({ projectKey, chapterNumber }: Stor
       <div className="space-y-3 border-t p-3" style={{ borderColor: 'var(--color-border)' }}>
         {loading && <div className="flex items-center gap-1 text-xs text-[var(--color-text-muted)]"><RefreshCw size={12} className="animate-spin" />{text('读取中…', 'Loading…')}</div>}
         {error && <div className="rounded border px-2 py-1 text-xs text-[var(--color-error-text)]" style={{ borderColor: 'var(--color-error)' }}>{error}</div>}
+        {timeline.length > 0 && <section data-continuity-timeline="true" className="rounded border p-2" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-raised)' }}>
+          <h4 className="mb-2 text-xs font-semibold">{text('跨章事实时间线', 'Cross-chapter fact timeline')}</h4>
+          <div className="space-y-2">{timeline.flatMap(projection => (projection.facts ?? [])
+            .filter(fact => factAppliesAtChapter(fact, chapterNumber))
+            .map((fact, index) => <div key={`${fact.sourceChapter}:${fact.category}:${index}`} className="border-l-2 pl-2 text-xs" style={{ borderColor: 'var(--color-accent)' }}>
+              <div className="font-medium">{text(`第${fact.sourceChapter}章 · ${fact.category}`, `Chapter ${fact.sourceChapter} · ${fact.category}`)}</div>
+              <div className="text-[var(--color-text-secondary)]">{fact.statement}</div>
+              <div className="text-[var(--color-text-muted)]">{text(`证据：${fact.evidence}`, `Evidence: ${fact.evidence}`)}</div>
+            </div>))}</div>
+        </section>}
         <section>
           <div className="mb-2 flex items-center justify-between gap-2">
             <h4 className="text-xs font-semibold">{text('场景因果链（计划 / 实际）', 'Scene causality (plan / observed)')}</h4>
