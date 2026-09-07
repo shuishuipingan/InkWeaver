@@ -47,8 +47,11 @@ beforeEach(() => {
   setActiveProjectSessionContext(projectSession)
   vi.mocked(ipc.invoke).mockResolvedValue({ success: true } as never)
   vi.mocked(ipc.invokeWithProjectSession).mockImplementation((async (_session: ProjectSessionContext, channel: string) => {
-    if (channel === 'db:blueprint-get-all') return [{ chapterNumber: 1 }] as never
-    if (channel === 'db:draft-get-finalized') return { id: 1 } as never
+    if (channel === 'db:draft-authority-sequence') return {
+      status: 'continuous', lastChapterNumber: 1, nextChapterNumber: 2,
+      duplicateChapterNumbers: [], authorityFingerprint: 'a'.repeat(64),
+    } as never
+    if (channel === 'db:draft-list-all') return [{ id: 1, chapterNumber: 1, chapterTitle: '开篇', version: 1, status: 'finalized', wordCount: 2 }] as never
     if (channel === 'db:draft-get-full') return { content: 'Final chapter' } as never
     if (channel === 'db:project-core-get') return { synopsis: 'Synopsis' } as never
     throw new Error(`Unexpected channel: ${channel}`)
@@ -76,14 +79,13 @@ describe('exportNovel project session ownership', () => {
     expect(ipc.invokeWithProjectSession).toHaveBeenNthCalledWith(
       1,
       projectSession,
-      'db:blueprint-get-all',
+      'db:draft-authority-sequence',
       projectPath,
     )
     expect(ipc.invokeWithProjectSession).toHaveBeenNthCalledWith(
       2,
       projectSession,
-      'db:draft-get-finalized',
-      1,
+      'db:draft-list-all',
       projectPath,
     )
     expect(ipc.invokeWithProjectSession).toHaveBeenNthCalledWith(
@@ -98,8 +100,11 @@ describe('exportNovel project session ownership', () => {
   it('passes mixed UTF-8 finalized prose to the export capability without transcoding', async () => {
     const finalizedContent = 'The sign reads “夜航 Café” — déjà vu.'
     vi.mocked(ipc.invokeWithProjectSession).mockImplementation((async (_session: ProjectSessionContext, channel: string) => {
-      if (channel === 'db:blueprint-get-all') return [{ chapterNumber: 1 }] as never
-      if (channel === 'db:draft-get-finalized') return { id: 1 } as never
+      if (channel === 'db:draft-authority-sequence') return {
+        status: 'continuous', lastChapterNumber: 1, nextChapterNumber: 2,
+        duplicateChapterNumbers: [], authorityFingerprint: 'a'.repeat(64),
+      } as never
+      if (channel === 'db:draft-list-all') return [{ id: 1, chapterNumber: 1, chapterTitle: '开篇', version: 1, status: 'finalized', wordCount: 8 }] as never
       if (channel === 'db:draft-get-full') return { content: finalizedContent } as never
       throw new Error(`Unexpected channel: ${channel}`)
     }) as never)
@@ -122,14 +127,13 @@ describe('exportNovel project session ownership', () => {
 
   it('exports finalized authority even when the project has no chapter blueprints', async () => {
     vi.mocked(ipc.invokeWithProjectSession).mockImplementation((async (_session: ProjectSessionContext, channel: string, ...args: unknown[]) => {
-      if (channel === 'db:blueprint-get-all') return [] as never
       if (channel === 'db:draft-authority-sequence') return {
         status: 'continuous', lastChapterNumber: 2, nextChapterNumber: 3,
         duplicateChapterNumbers: [], authorityFingerprint: 'a'.repeat(64),
       } as never
       if (channel === 'db:draft-list-all') return [
-        { id: 21, chapterNumber: 1, chapterTitle: '开篇', version: 1, status: 'finalized' },
-        { id: 22, chapterNumber: 2, chapterTitle: '转折', version: 1, status: 'finalized' },
+        { id: 21, chapterNumber: 1, chapterTitle: '开篇', version: 1, status: 'finalized', wordCount: 4 },
+        { id: 22, chapterNumber: 2, chapterTitle: '转折', version: 1, status: 'finalized', wordCount: 4 },
       ] as never
       if (channel === 'db:draft-get-full') return { content: `正文${String(args[0])}` } as never
       throw new Error(`Unexpected channel: ${channel}`)
@@ -142,6 +146,43 @@ describe('exportNovel project session ownership', () => {
     expect(vi.mocked(ipc.invoke)).toHaveBeenCalledWith(
       'fs:grant-write-file', 'export-grant', 'Project A.md', expect.any(String),
     )
+  })
+
+  it('refuses to export when finalized authority reports a gap or duplicate chapter', async () => {
+    vi.mocked(ipc.invokeWithProjectSession).mockImplementation((async (_session: ProjectSessionContext, channel: string) => {
+      if (channel === 'db:draft-authority-sequence') return {
+        status: 'invalid', lastChapterNumber: 3, firstGapChapterNumber: 2,
+        duplicateChapterNumbers: [3], authorityFingerprint: 'b'.repeat(64),
+      } as never
+      if (channel === 'db:draft-list-all') return [] as never
+      throw new Error(`Unexpected channel: ${channel}`)
+    }) as never)
+
+    await expect(exportNovel(
+      { format: 'merged-md', grantId: 'export-grant' },
+      projectSnapshot,
+      projectSession,
+    )).resolves.toMatchObject({ success: false, error: expect.stringContaining('缺章或重复') })
+    expect(ipc.invoke).not.toHaveBeenCalled()
+  })
+
+  it('refuses to export a finalized draft whose stored word count no longer matches its body', async () => {
+    vi.mocked(ipc.invokeWithProjectSession).mockImplementation((async (_session: ProjectSessionContext, channel: string) => {
+      if (channel === 'db:draft-authority-sequence') return {
+        status: 'continuous', lastChapterNumber: 1, nextChapterNumber: 2,
+        duplicateChapterNumbers: [], authorityFingerprint: 'c'.repeat(64),
+      } as never
+      if (channel === 'db:draft-list-all') return [{ id: 8, chapterNumber: 1, chapterTitle: '开篇', version: 1, status: 'finalized', wordCount: 99 }] as never
+      if (channel === 'db:draft-get-full') return { content: '两词' } as never
+      throw new Error(`Unexpected channel: ${channel}`)
+    }) as never)
+
+    await expect(exportNovel(
+      { format: 'merged-md', grantId: 'export-grant' },
+      projectSnapshot,
+      projectSession,
+    )).resolves.toMatchObject({ success: false, error: expect.stringContaining('字数') })
+    expect(ipc.invoke).not.toHaveBeenCalled()
   })
 
   it('stops after the directory-selection export becomes stale on a same-path reopen', async () => {
