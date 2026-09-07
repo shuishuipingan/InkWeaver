@@ -31,7 +31,7 @@ import { PostProcessStatusPanel } from '../ui/PostProcessStatusPanel'
 import { getChapterFinalizeScope } from '../../services/workflows/workflow-utils'
 import { planCharacterExtractionChunks, textFingerprint } from '../../shared/character-extraction'
 import { createCharacterExtractionWorkflow } from '../../services/workflows/character-extraction-workflow'
-import { mergeAcceptedCharacterCandidates, type CharacterCandidateFieldSelection } from '../../services/character-extraction-merge'
+import { mergeAcceptedCharacterCandidates, type CharacterCandidateFieldSelection, type CharacterCandidateMatchSelection } from '../../services/character-extraction-merge'
 import ChapterHandoffPanel from './ChapterHandoffPanel'
 import type { ChapterHandoffRecord } from '../../shared/chapter-handoff'
 import CharacterExtractionCandidatesPanel from './CharacterExtractionCandidatesPanel'
@@ -303,7 +303,10 @@ function DraftEditorSession({ tabId, filePath, content, projectKey }: Props) {
     }
   }
 
-  const applyAcceptedCharacterCandidates = async (fieldSelection: CharacterCandidateFieldSelection = {}) => {
+  const applyAcceptedCharacterCandidates = async (
+    fieldSelection: CharacterCandidateFieldSelection = {},
+    matchSelection: CharacterCandidateMatchSelection = {},
+  ) => {
     const session = captureProjectSession(currentProject)
     if (!session || !meta || !isProjectSessionPath(session, projectKey)) return
     const accepted = characterCandidates.filter(candidate => candidate.status === 'accepted')
@@ -318,7 +321,7 @@ function DraftEditorSession({ tabId, filePath, content, projectKey }: Props) {
       if (roster.status !== 'ready' && roster.status !== 'empty') {
         throw new Error(text('当前角色名单需要先完成修复，不能合并候选', 'The current character roster needs repair before candidates can be applied.'))
       }
-      const merged = mergeAcceptedCharacterCandidates(roster, accepted, fieldSelection)
+      const merged = mergeAcceptedCharacterCandidates(roster, accepted, fieldSelection, matchSelection)
       const result = await ipc.invokeWithProjectSession(
         session,
         'db:character-roster-commit',

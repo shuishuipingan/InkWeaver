@@ -52,4 +52,36 @@ describe('CharacterExtractionCandidatesPanel', () => {
     await act(async () => button?.dispatchEvent(new MouseEvent('click', { bubbles: true })))
     expect(onStatus).toHaveBeenCalledWith('candidate-ui-1', 'accepted')
   })
+
+  it('requires an explicit target for an ambiguous same-name candidate before apply', async () => {
+    container = document.createElement('div')
+    document.body.append(container)
+    root = createRoot(container)
+    const onApply = vi.fn(async () => {})
+    const text = (zh: string, _en: string) => zh
+    await act(async () => root.render(
+      <CharacterExtractionCandidatesPanel
+        candidates={[{ ...candidate, candidateId: 'ambiguous-ui-1', name: '林舟', disposition: 'ambiguous', status: 'accepted' }]}
+        onRefresh={vi.fn()}
+        onStatus={vi.fn(async () => {})}
+        onApply={onApply}
+        text={text}
+      />
+    ))
+    expect(container.textContent).toContain('同名角色需要作者明确选择')
+    const apply = Array.from(container.querySelectorAll('button')).find(node => node.textContent?.includes('合并已接受'))
+    expect(apply?.hasAttribute('disabled')).toBe(true)
+    const target = container.querySelector<HTMLInputElement>('input[aria-label*="选择现有角色"]')
+    expect(target).not.toBeNull()
+    if (target) {
+      await act(async () => {
+        const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+        setter?.call(target, '沈月')
+        target.dispatchEvent(new Event('input', { bubbles: true }))
+      })
+    }
+    const enabledApply = Array.from(container.querySelectorAll<HTMLButtonElement>('button')).find(node => node.textContent?.includes('合并已接受'))
+    await act(async () => enabledApply?.click())
+    expect(onApply).toHaveBeenCalledWith(expect.anything(), { 'ambiguous-ui-1': '沈月' })
+  })
 })

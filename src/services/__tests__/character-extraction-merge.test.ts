@@ -69,4 +69,11 @@ describe('mergeAcceptedCharacterCandidates', () => {
     })])
     expect(merged[0]?.appearance).toBe('')
   })
+
+  it('requires an explicit target before applying an ambiguous candidate', () => {
+    const ambiguous = candidate({ candidateId: 'ambiguous', name: '林舟', aliases: [], disposition: 'ambiguous' })
+    expect(mergeAcceptedCharacterCandidates(snapshot, [ambiguous])[0]?.appearance).toBe('')
+    const merged = mergeAcceptedCharacterCandidates(snapshot, [ambiguous], {}, { ambiguous: '沈月' })
+    expect(merged.find(entry => entry.name === '沈月')).toMatchObject({ appearance: '总是穿着灰色斗篷' })
+  })
 })

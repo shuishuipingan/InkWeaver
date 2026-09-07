@@ -4,6 +4,7 @@ import { Check, RefreshCw, Sparkles, X } from 'lucide-react'
 import type { CharacterExtractionCandidate } from '../../shared/character-extraction'
 import type { CharacterCandidateFieldSelection } from '../../services/character-extraction-merge'
 import { Button } from '../ui/Button'
+import { Input } from '../ui/Input'
 
 interface CharacterExtractionCandidatesPanelProps {
   candidates: readonly CharacterExtractionCandidate[]
@@ -11,7 +12,7 @@ interface CharacterExtractionCandidatesPanelProps {
   updatingId?: string | null
   onRefresh: () => void
   onStatus: (candidateId: string, status: 'accepted' | 'rejected') => Promise<void>
-  onApply: (fieldSelection?: CharacterCandidateFieldSelection) => Promise<void>
+  onApply: (fieldSelection?: CharacterCandidateFieldSelection, matchSelection?: Readonly<Record<string, string>>) => Promise<void>
   text: (zhCNText: string, enUSText: string) => string
 }
 
@@ -25,7 +26,10 @@ export default function CharacterExtractionCandidatesPanel({
   text,
 }: CharacterExtractionCandidatesPanelProps) {
   const [fieldSelection, setFieldSelection] = useState<Record<string, Set<string>>>({})
+  const [matchSelection, setMatchSelection] = useState<Record<string, string>>({})
   const visible = candidates.filter(candidate => candidate.status !== 'stale')
+  const accepted = visible.filter(candidate => candidate.status === 'accepted')
+  const unresolvedAmbiguity = accepted.some(candidate => candidate.disposition === 'ambiguous' && !matchSelection[candidate.candidateId]?.trim())
   if (!loading && visible.length === 0) return null
 
   return (
@@ -73,6 +77,15 @@ export default function CharacterExtractionCandidatesPanel({
                 </span>
               )}
             </div>
+            {candidate.disposition === 'ambiguous' && <div className="mt-1 rounded border px-2 py-1.5" style={{ borderColor: 'var(--color-warning)' }}>
+              <div className="mb-1" style={{ color: 'var(--color-warning-text)' }}>{text('同名角色需要作者明确选择，未选择前不会合并。', 'This name matches multiple characters. Choose the exact target before applying; it will not merge automatically.')}</div>
+              <Input
+                aria-label={text(`为${candidate.name}选择现有角色`, `Choose existing character for ${candidate.name}`)}
+                value={matchSelection[candidate.candidateId] ?? ''}
+                onChange={event => setMatchSelection(current => ({ ...current, [candidate.candidateId]: event.target.value }))}
+                placeholder={text('输入现有角色的完整姓名', 'Type the exact existing character name')}
+              />
+            </div>}
             <div className="mt-1 space-y-0.5" style={{ color: 'var(--color-text-secondary)' }}>
               {Object.entries(candidate.fields).map(([field, value]) => {
                 const selected = fieldSelection[candidate.candidateId]?.has(field) ?? true
@@ -95,9 +108,12 @@ export default function CharacterExtractionCandidatesPanel({
           </div>
         ))}
       </div>
-      {visible.some(candidate => candidate.status === 'accepted') && (
+      {accepted.length > 0 && (
         <div className="mt-2 flex justify-end">
-          <Button variant="success" size="sm" onClick={() => onApply(Object.fromEntries(Object.entries(fieldSelection).map(([candidateId, fields]) => [candidateId, [...fields]])))}>
+          <Button variant="success" size="sm" disabled={unresolvedAmbiguity} onClick={() => onApply(
+            Object.fromEntries(Object.entries(fieldSelection).map(([candidateId, fields]) => [candidateId, [...fields]])),
+            matchSelection,
+          )}>
             <Check size={12} aria-hidden="true" />
             {text('合并已接受候选到角色卡', 'Apply accepted candidates to character cards')}
           </Button>

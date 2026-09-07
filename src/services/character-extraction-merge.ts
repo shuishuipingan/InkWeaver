@@ -11,6 +11,7 @@ function key(value: string): string {
 }
 
 export type CharacterCandidateFieldSelection = Readonly<Record<string, readonly string[]>>
+export type CharacterCandidateMatchSelection = Readonly<Record<string, string>>
 
 function emptyEntry(candidate: CharacterExtractionCandidate, selected: ReadonlySet<string>): CharacterRosterEntry {
   return {
@@ -45,6 +46,7 @@ export function mergeAcceptedCharacterCandidates(
   snapshot: CharacterRosterSnapshot,
   candidates: readonly CharacterExtractionCandidate[],
   fieldSelection: CharacterCandidateFieldSelection = {},
+  matchSelection: CharacterCandidateMatchSelection = {},
 ): CharacterRosterEntry[] {
   const entries = snapshot.entries.map(entry => ({
     ...entry,
@@ -53,7 +55,9 @@ export function mergeAcceptedCharacterCandidates(
   }))
 
   for (const candidate of candidates) {
-    if (candidate.status !== 'accepted' || candidate.disposition === 'ambiguous') continue
+    if (candidate.status !== 'accepted') continue
+    const explicitMatch = matchSelection[candidate.candidateId]?.trim()
+    if (candidate.disposition === 'ambiguous' && !explicitMatch) continue
     const allFields = new Set([
       ...(candidate.role ? ['role'] : []),
       ...Object.keys(candidate.fields),
@@ -63,11 +67,12 @@ export function mergeAcceptedCharacterCandidates(
     ])
     const selected = new Set(fieldSelection[candidate.candidateId] ?? [...allFields])
     if (selected.size === 0) continue
-    const possibleNames = [candidate.name, ...candidate.aliases]
+    const possibleNames = explicitMatch ? [explicitMatch] : [candidate.name, ...candidate.aliases]
     const index = entries.findIndex(entry => (
       possibleNames.some(name => key(name) === key(entry.name))
       || candidate.matchedCharacterName !== undefined && key(candidate.matchedCharacterName) === key(entry.name)
     ))
+    if (candidate.disposition === 'ambiguous' && index < 0) continue
     if (index < 0) {
       entries.push(emptyEntry(candidate, selected))
       continue
