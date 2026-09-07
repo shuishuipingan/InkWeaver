@@ -882,7 +882,7 @@ $targetNames = @(
   [System.IO.Path]::GetFileNameWithoutExtension($resolvedExe),
   'InkWeaver.exe',
   '织墨',
-  'ai-novel-writer'
+  'inkweaver'
   $RelatedTargetNames
 )
 $baselineWindowIdentities = $WindowBaselineIdentities

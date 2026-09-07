@@ -283,7 +283,7 @@ describe('Windows official in-app update E2E contract', () => {
     })).toEqual({
       mode: 'legacy-bridge',
       sourceTag: 'v0.6.0',
-      expectedPendingInstallerPath: 'C:\\Users\\runneradmin\\AppData\\Local\\ai-novel-writer-updater\\pending\\inkweaver-setup-0.7.0.exe',
+      expectedPendingInstallerPath: 'C:\\Users\\runneradmin\\AppData\\Local\\inkweaver-updater\\pending\\inkweaver-setup-0.7.0.exe',
       expectedInstaller: {
         name: 'inkweaver-setup-0.7.0.exe',
         size: 234_679_883,
@@ -564,7 +564,7 @@ $velaHome = 'C:\\polluted-by-dot-source'
   })
 
   windowsPowerShellIt('waits only for the exact pending installer root to exit before force-run cleanup', () => {
-    const pendingInstallerPath = 'C:\\Users\\runneradmin\\AppData\\Local\\ai-novel-writer-updater\\pending\\inkweaver-setup-0.8.0.exe'
+    const pendingInstallerPath = 'C:\\Users\\runneradmin\\AppData\\Local\\inkweaver-updater\\pending\\inkweaver-setup-0.8.0.exe'
     const output = runWindowsE2ePowerShellFunctions([
       'Assert-E2eCondition',
       'Test-E2eSameAbsolutePath',

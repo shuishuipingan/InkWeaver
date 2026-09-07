@@ -10,7 +10,7 @@
 | 2 | `docs/upgrade/INKWEAVER-1.1.0-FULL-FEATURE-MAP.md` | 全路线功能图、依赖关系、技术分层、验收旅程与发布门禁。 |
 | 3 | `docs/upgrade/INKWEAVER-1.1.0-DELIVERY-TRACKER.md` | 38 项需求的唯一逐项证据表；状态不能只用“代码已合并”代替验收。 |
 | 4 | `docs/upgrade/INKWEAVER-1.1.0-BASELINE.md` | 开发基线、用户保留修改、DSH 版本查询与初始验证结果。 |
-| 5 | `plugins/dsh-ai-novel-writer/docs/v2-development-gates.md` | DSH V2 的 tarball、roster、mount、Proposal 同页应用和重启回读门禁。 |
+| 5 | `plugins/inkweaver-dsh/docs/v2-development-gates.md` | DSH V2 的 tarball、roster、mount、Proposal 同页应用和重启回读门禁。 |
 | 6 | `package.json`、`electron-builder.json5`、`.release/release-profile.json` | 桌面版本、构建目标、资产合同和云端资格构建配置。 |
 
 ## 根目录文件
@@ -110,14 +110,14 @@
 | `electron/security/` | Windows/macOS 安全文件系统辅助程序和原生 ABI 入口。 |
 | `electron/vector-store.ts` / `electron/knowledge-base.ts` | 知识库索引、迁移和检索；向量是可重建投影，原始正文不以它为唯一事实源。 |
 
-## DSH 插件：`plugins/dsh-ai-novel-writer/`
+## DSH 插件：`plugins/inkweaver-dsh/`
 
 这是独立的 npm 包，不读取桌面版 `.vela` 数据库；它有自己的 `.ai-novel/novel.db` V2 store。
 
 | 路径 | 作用 |
 | --- | --- |
 | `package.json` / `pnpm-lock.yaml` | 插件版本、DSH peer pin、build/test/qualification 命令和打包文件清单。 |
-| `src/index.ts` | DSH Host 入口、loopback `/ai-novel` RPC 装配和工作区路由。 |
+| `src/index.ts` | DSH Host 入口、loopback `/inkweaver` RPC 装配和工作区路由。 |
 | `src/agent.ts` | V1 文件资产工具、persona、native approval 入口。 |
 | `src/agent-v2.ts` | V2 `novel_read` / `novel_propose_change`、严格 Proposal 合同和 session 装配。 |
 | `src/novel-store.ts` | V2 SQLite 权威 store、ChangeSet、Proposal inbox、artifact 链、schema 迁移和 schema 5 handoff/knowledge。 |

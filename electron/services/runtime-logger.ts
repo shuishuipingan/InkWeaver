@@ -34,7 +34,7 @@ const LOG_FILE_NAME_PATTERN = /^app-\d{4}-\d{2}-\d{2}\.log(\.old)?$/
 
 /**
  * 日志目录：软件根目录下的 logs/ 子目录。
- * 打包后为 exe 所在目录（例如 D:\Game APP\ai-novel\ai-novel-writer\logs），
+ * 打包后为 exe 所在目录（例如 D:\Game APP\ai-novel\inkweaver\logs），
  * 未打包开发模式回退到 ~/.vela/logs。
  */
 function logDir(): string {

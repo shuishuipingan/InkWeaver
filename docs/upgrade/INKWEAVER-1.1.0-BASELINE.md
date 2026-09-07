@@ -40,7 +40,7 @@ checkpoint `@deepseek-ai/dsh` reports `latest=0.1.2-rc.1`,
 release at this checkpoint. The plugin compatibility receipt records the exact
 related package pins and API migration evidence:
 
-[DSH 0.1.2-rc.1 compatibility receipt](../../plugins/dsh-ai-novel-writer/docs/dsh-0.1.2-rc.1-compatibility.md)
+[DSH 0.1.2-rc.1 compatibility receipt](../../plugins/inkweaver-dsh/docs/dsh-0.1.2-rc.1-compatibility.md)
 
 ## Verification checkpoint
 

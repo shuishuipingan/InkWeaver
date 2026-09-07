@@ -163,7 +163,7 @@ export const useLayoutStore = create<LayoutState>()(persist((set) => ({
   openChapterCreation: (prefill = null) => set({ chapterCreationOpen: true, chapterCreationPrefill: prefill }),
   closeChapterCreation: () => set({ chapterCreationOpen: false, chapterCreationPrefill: null }),
 }), {
-  name: 'ai-novel-writer-layout',
+  name: 'inkweaver-layout',
   partialize: (s) => ({
     bottomPanelFloating: s.bottomPanelFloating,
     floatingBounds: s.floatingBounds,

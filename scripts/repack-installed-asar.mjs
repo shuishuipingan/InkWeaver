@@ -3,7 +3,7 @@ import { createRequire } from 'node:module'
 import { join, relative } from 'node:path'
 
 const PROJ = 'D:/Game APP/AI-Novel-Writer'
-const INST = 'D:/Game APP/ai-novel/ai-novel-writer'
+const INST = 'D:/Game APP/ai-novel/inkweaver'
 const APP_ASAR = INST + '/resources/app.asar'
 const TMP = '/tmp/asar-repack-final'
 const TMP_SRC = TMP + '/asar-src'

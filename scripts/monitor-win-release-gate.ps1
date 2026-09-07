@@ -2269,7 +2269,7 @@ function New-AiNovelGateLegacyBridgeState {
   ) {
     throw 'Release gate rejected incomplete legacy bridge installer metadata.'
   }
-  $expectedPath = [System.IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA (Join-Path 'ai-novel-writer-updater\pending' ([string]$installer.name))))
+  $expectedPath = [System.IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA (Join-Path 'inkweaver-updater\pending' ([string]$installer.name))))
   if (-not (Test-AiNovelGateSameAbsolutePath -Left ([string]$bridge.expectedPendingInstallerPath) -Right $expectedPath)) {
     throw 'Release gate rejected a legacy bridge pending installer path outside LOCALAPPDATA.'
   }
@@ -2528,7 +2528,7 @@ function Test-AiNovelGateNativeUpdaterPendingInstallerIdentity {
     }
     $expectedPendingInstallerPath = [System.IO.Path]::GetFullPath((Join-Path `
       $env:LOCALAPPDATA `
-      (Join-Path 'ai-novel-writer-updater\pending' $installerName)))
+      (Join-Path 'inkweaver-updater\pending' $installerName)))
     return (
       (Test-AiNovelGateSameAbsolutePath `
         -Left ([string]$InstallerIdentity.executablePath) `
@@ -3051,7 +3051,7 @@ $trackedNames = [System.Collections.Generic.HashSet[string]]::new([System.String
 foreach ($name in @(
   'InkWeaver.exe',
   '织墨',
-  'ai-novel-writer',
+  'inkweaver',
   'electron-builder',
   'electron-rebuild',
   'rcedit',

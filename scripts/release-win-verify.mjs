@@ -635,7 +635,7 @@ async function main() {
           'electron-builder',
           'InkWeaver.exe',
           '织墨',
-          'ai-novel-writer',
+          'inkweaver',
       ])
       await waitForMonitorState(['monitoring'], 10_000, step)
       await releaseArmedNodeProcess(step, launch)

@@ -757,7 +757,7 @@ $identities = New-AiNovelWindowIdentitySet -Windows $baseline
 $targetProcessIds = [System.Collections.Generic.HashSet[int]]::new()
 [void]$targetProcessIds.Add(505)
 [void]$targetProcessIds.Add(707)
-$matches = @(Get-AiNovelNewErrorWindows -BaselineIdentities $identities -CurrentWindows $current -TargetProcessIds $targetProcessIds -TargetNames @('InkWeaver.exe', 'ai-novel-writer'))
+$matches = @(Get-AiNovelNewErrorWindows -BaselineIdentities $identities -CurrentWindows $current -TargetProcessIds $targetProcessIds -TargetNames @('InkWeaver.exe', 'inkweaver'))
 [pscustomobject]@{
   Count = $matches.Count
   Processes = @($matches | ForEach-Object ProcessName)
@@ -1164,7 +1164,7 @@ $uncaptured = Get-GateExitFailure ([pscustomobject]@{ ProcessId = 704; ExitCode 
     const output = runReleaseMonitorLibrary(`
 $installRoot = 'C:\\e2e\\installed app'
 $oldExe = $installRoot + '\\InkWeaver.exe'
-$pendingExe = 'C:\\Users\\runneradmin\\AppData\\Local\\ai-novel-writer-updater\\pending\\inkweaver-setup-0.7.0.exe'
+$pendingExe = 'C:\\Users\\runneradmin\\AppData\\Local\\inkweaver-updater\\pending\\inkweaver-setup-0.7.0.exe'
 $old = [pscustomobject]@{
   processId = 410
   startTimeTicks = '638900000000000410'
@@ -1359,7 +1359,7 @@ $terminatedAt = [DateTime]::new(2026, 8, 8, 0, 0, 0, [DateTimeKind]::Utc)
 $installer = [pscustomobject]@{
   processId = 5568
   startTimeTicks = '639218304000005568'
-  executablePath = 'C:\\Users\\runneradmin\\AppData\\Local\\ai-novel-writer-updater\\pending\\inkweaver-setup-0.7.0.exe'
+  executablePath = 'C:\\Users\\runneradmin\\AppData\\Local\\inkweaver-updater\\pending\\inkweaver-setup-0.7.0.exe'
   identityCaptured = $true
 }
 $bridge = [pscustomobject]@{
@@ -1414,7 +1414,7 @@ $armedAt = [DateTime]::new(2026, 8, 8, 0, 0, 0, [DateTimeKind]::Utc)
 $installer = [pscustomobject]@{
   processId = 1032
   startTimeTicks = '639218304000001032'
-  executablePath = 'C:\\Users\\runneradmin\\AppData\\Local\\ai-novel-writer-updater\\pending\\inkweaver-setup-0.7.0.exe'
+  executablePath = 'C:\\Users\\runneradmin\\AppData\\Local\\inkweaver-updater\\pending\\inkweaver-setup-0.7.0.exe'
   identityCaptured = $true
 }
 $bridge = [pscustomobject]@{
@@ -1479,7 +1479,7 @@ $wrongStateRejected = -not (Test-AiNovelGateLegacyBridgeTerminationArmedCleanupW
   windowsPowerShellIt('classifies only the exact historical old app breakpoint after a bound installer handoff', () => {
     const output = runReleaseMonitorLibrary(`
 $oldExe = 'D:\\e2e\\installed-app\\InkWeaver.exe'
-$pendingExe = 'C:\\Users\\runneradmin\\AppData\\Local\\ai-novel-writer-updater\\pending\\inkweaver-setup-0.7.0.exe'
+$pendingExe = 'C:\\Users\\runneradmin\\AppData\\Local\\inkweaver-updater\\pending\\inkweaver-setup-0.7.0.exe'
 $old = [pscustomobject]@{ processId = 3472; startTimeTicks = '639217245409219881'; executablePath = $oldExe; identityCaptured = $true }
 $installer = [pscustomobject]@{
   processId = 5180
@@ -1542,7 +1542,7 @@ $wrongInstallerParentRejected = -not (Test-AiNovelGateLegacyBridgeOldApplication
 $e2eEvidenceRoot = 'D:\\a\\_temp\\ai-novel-windows-in-app-update-e2e'
 $env:AI_NOVEL_UPDATE_E2E_EVIDENCE_ROOT = $e2eEvidenceRoot
 $oldExe = $e2eEvidenceRoot + '\\runtime\\installed-app\\InkWeaver.exe'
-$pendingRoot = Join-Path $env:LOCALAPPDATA 'ai-novel-writer-updater\\pending'
+$pendingRoot = Join-Path $env:LOCALAPPDATA 'inkweaver-updater\\pending'
 $pendingExe = Join-Path $pendingRoot 'inkweaver-setup-0.8.0.exe'
 $old = [pscustomobject]@{
   processId = 5660
@@ -1664,7 +1664,7 @@ $otherProcessRejected = -not (Test-AiNovelGateNativeUpdaterOldApplicationExit -S
 $e2eEvidenceRoot = 'D:\\a\\_temp\\ai-novel-windows-in-app-update-e2e'
 $env:AI_NOVEL_UPDATE_E2E_EVIDENCE_ROOT = $e2eEvidenceRoot
 $oldExe = $e2eEvidenceRoot + '\\runtime\\installed-app\\InkWeaver.exe'
-$pendingExe = Join-Path $env:LOCALAPPDATA 'ai-novel-writer-updater\\pending\\inkweaver-setup-0.8.0.exe'
+$pendingExe = Join-Path $env:LOCALAPPDATA 'inkweaver-updater\\pending\\inkweaver-setup-0.8.0.exe'
 $oldUninstallerPath = Join-Path (Join-Path ([System.IO.Path]::GetTempPath()) 'nsn315E.tmp') 'old-uninstaller.exe'
 $system32 = Join-Path $env:SystemRoot 'System32\\WindowsPowerShell\\v1.0\\powershell.exe'
 $cmdPath = Join-Path $env:SystemRoot 'System32\\cmd.exe'

@@ -20,7 +20,7 @@
 
 桌面应用与 DSH 插件使用不同项目格式：桌面 `.vela/vela.db`，插件 `.ai-novel/novel.db`。不得用统一版本号暗示两种格式可以直接互通。
 
-仓库现有 ADR 与插件 AGENTS.md 是实施前必读材料；插件开发还须读取 plugins/dsh-ai-novel-writer/docs/v2-development-gates.md。以下技术落点是建议，不要求机械沿用旧文件结构。
+仓库现有 ADR 与插件 AGENTS.md 是实施前必读材料；插件开发还须读取 plugins/inkweaver-dsh/docs/v2-development-gates.md。以下技术落点是建议，不要求机械沿用旧文件结构。
 
 ## 2. 产品目标与全功能树
 
@@ -376,7 +376,7 @@ flowchart TD
 | 编辑审稿 | src/components/editor/DraftEditor.tsx；ReviewReport.tsx；src/stores/editor-store.ts |
 | 数据库与 IPC | electron/database.ts；electron/controllers/db-controller.ts；src/shared/ipc-channels.ts |
 | 项目与权限 | electron/services/project-access.ts；src/shared/project-session-context.ts；src/services/ipc-client.ts |
-| 插件核心 | plugins/dsh-ai-novel-writer/src/novel-store.ts；agent.ts；agent-v2.ts；command-rpc.ts；src/client/ |
+| 插件核心 | plugins/inkweaver-dsh/src/novel-store.ts；agent.ts；agent-v2.ts；command-rpc.ts；src/client/ |
 | 发布 | .release/release-profile.json；.github/workflows/；scripts/release-win-verify.mjs；electron-builder.json5 |
 
 ## 14. 验收与阅读质量评测
@@ -427,7 +427,7 @@ GitHub About 简介保持一句准确的产品说明，详细功能放 README。
 | Windows x64 | inkweaver-setup-1.1.0.exe；对应 .exe.blockmap；latest.yml |
 | macOS Apple Silicon | inkweaver-mac-arm64-1.1.0-installer.dmg；对应 .dmg.sha256 |
 | macOS Intel | inkweaver-mac-x64-1.1.0-installer.dmg；对应 .dmg.sha256 |
-| DSH 插件 | @ethanyoq/dsh-ai-novel-writer@1.1.0 的可安装分发与完整构建字节 |
+| DSH 插件 | @shuishuipingan/inkweaver-dsh@1.1.0 的可安装分发与完整构建字节 |
 
 插件 tarball 如需作为额外 Release 资产，先显式扩展现有严格七资产合同及其验证器，不能绕过合同临时上传。若保持七资产合同，则通过 npm 或另行明确的插件分发页交付。
 

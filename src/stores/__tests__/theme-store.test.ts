@@ -55,7 +55,7 @@ function installDomStubs() {
 
 function seedPersistedTheme(theme: string, version: number | null = 0) {
   localStorage.setItem(
-    'ai-novel-writer-theme',
+    'inkweaver-theme',
     JSON.stringify({
       state: {
         theme,
@@ -70,7 +70,7 @@ function seedPersistedTheme(theme: string, version: number | null = 0) {
 
 function seedPersistedState(state: Record<string, unknown>, version: number | null = 0) {
   localStorage.setItem(
-    'ai-novel-writer-theme',
+    'inkweaver-theme',
     JSON.stringify({ state, ...(version === null ? {} : { version }) })
   )
 }
@@ -101,7 +101,7 @@ describe('theme store branding defaults', () => {
   })
 
   it('fails safely to the paper default when persisted JSON is corrupt', async () => {
-    localStorage.setItem('ai-novel-writer-theme', '{not-json')
+    localStorage.setItem('inkweaver-theme', '{not-json')
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
     const { useThemeStore } = await import('../theme-store')
 
@@ -117,7 +117,7 @@ describe('theme store branding defaults', () => {
 
     useThemeStore.getState().setTheme('dark')
 
-    expect(localStorage.getItem('ai-novel-writer-theme')).toContain('"dark"')
+    expect(localStorage.getItem('inkweaver-theme')).toContain('"dark"')
     expect(localStorage.getItem('ve' + 'la-theme')).toBeNull()
   })
 
@@ -152,11 +152,11 @@ describe('theme store branding defaults', () => {
 
     expect(useThemeStore.getState().theme).toBe('dark')
     expect(useThemeStore.getState().resolvedTheme).toBe('dark')
-    expect(JSON.parse(localStorage.getItem('ai-novel-writer-theme') ?? '{}')).toMatchObject({
+    expect(JSON.parse(localStorage.getItem('inkweaver-theme') ?? '{}')).toMatchObject({
       state: { theme: 'dark' },
       version: 1,
     })
-    expect(localStorage.getItem('ai-novel-writer-theme-migrated')).toBeNull()
+    expect(localStorage.getItem('inkweaver-theme-migrated')).toBeNull()
   })
 
   it('migrates an unversioned historical night theme during initialization', async () => {
@@ -166,7 +166,7 @@ describe('theme store branding defaults', () => {
     useThemeStore.getState().initTheme()
 
     expect(useThemeStore.getState().theme).toBe('dark')
-    expect(JSON.parse(localStorage.getItem('ai-novel-writer-theme') ?? '{}')).toMatchObject({
+    expect(JSON.parse(localStorage.getItem('inkweaver-theme') ?? '{}')).toMatchObject({
       state: { theme: 'dark' },
       version: 1,
     })
@@ -177,11 +177,11 @@ describe('theme store branding defaults', () => {
     const { useThemeStore } = await import('../theme-store')
 
     useThemeStore.getState().initTheme()
-    const firstPersistedState = localStorage.getItem('ai-novel-writer-theme')
+    const firstPersistedState = localStorage.getItem('inkweaver-theme')
     useThemeStore.getState().initTheme()
 
     expect(useThemeStore.getState().theme).toBe('dark')
     expect(useThemeStore.getState().resolvedTheme).toBe('dark')
-    expect(localStorage.getItem('ai-novel-writer-theme')).toBe(firstPersistedState)
+    expect(localStorage.getItem('inkweaver-theme')).toBe(firstPersistedState)
   })
 })

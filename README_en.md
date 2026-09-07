@@ -14,7 +14,7 @@ The current source branch, GitHub topic, and remaining release gates are recorde
 
 User-visible changes are listed in the [changelog](CHANGELOG.md); every `1.1.0 development` entry is explicitly not a formal Release claim.
 
-[Download for Windows or macOS](https://github.com/shuishuipingan/InkWeaver/releases/latest) · [View source](https://github.com/shuishuipingan/InkWeaver) · [Install the DeepSeek Harness plugin](https://www.npmjs.com/package/@ethanyoq/dsh-ai-novel-writer)
+[Download for Windows or macOS](https://github.com/shuishuipingan/InkWeaver/releases/latest) · [View source](https://github.com/shuishuipingan/InkWeaver) · [Install the DeepSeek Harness plugin](https://www.npmjs.com/package/@shuishuipingan/inkweaver-dsh)
 
 ## What InkWeaver is for
 
@@ -127,14 +127,16 @@ The current macOS installers do not have a Developer ID signature and are not no
 
 ## DeepSeek Harness plugin
 
-The bundled `@ethanyoq/dsh-ai-novel-writer` package is an independent early-stage plugin, not a replacement for the desktop application. It provides a narrow reviewed chain for project settings, story architecture, characters, the whole-book outline, chapter blueprints, and chapter prose. Model changes enter a Proposal inbox and become authoritative only after the user applies them.
+The bundled `@shuishuipingan/inkweaver-dsh` package is an independent early-stage plugin, not a replacement for the desktop application. It provides a narrow reviewed chain for project settings, story architecture, characters, the whole-book outline, chapter blueprints, and chapter prose. Model changes enter a Proposal inbox and become authoritative only after the user applies them.
+
+Migration note: `@ethanyoq/dsh-ai-novel-writer` was the historical package name before the repository move; it is not the 1.1.0 development-line delivery package. New installations should use only `@shuishuipingan/inkweaver-dsh`. The DSH host and its Web UI companion are maintained by the DeepSeek Harness ecosystem and are not packages from this repository.
 
 ```sh
-dsh plugin --profile web add @ethanyoq/dsh-ai-novel-writer
+dsh plugin --profile web add @shuishuipingan/inkweaver-dsh
 dsh --profile web
 ```
 
-The plugin uses its own `.ai-novel` format and does not read desktop projects. See the [plugin documentation](plugins/dsh-ai-novel-writer/README.md) for details.
+The plugin uses its own `.ai-novel` format and does not read desktop projects. See the [plugin documentation](plugins/inkweaver-dsh/README.md) for details.
 
 ## Local development
 

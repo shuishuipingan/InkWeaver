@@ -189,7 +189,7 @@ export const useThemeStore = create<ThemeState>()(
       },
     }),
     {
-      name: 'ai-novel-writer-theme',
+      name: 'inkweaver-theme',
       storage: createJSONStorage(() => localStorage),
       partialize: (state) => ({
         theme: state.theme,

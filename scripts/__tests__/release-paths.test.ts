@@ -4,7 +4,7 @@ import { resolveBuildTargets } from '../clean-build-output.mjs'
 
 describe('release cleanup paths', () => {
   it('resolves only generated directories inside the repository', () => {
-    const root = path.resolve('C:/workspace/ai-novel-writer')
+    const root = path.resolve('C:/workspace/inkweaver')
     const targets = resolveBuildTargets(root, '0.2.0')
 
     expect(targets).toEqual([
@@ -18,6 +18,6 @@ describe('release cleanup paths', () => {
   })
 
   it.each(['', '.', '..', '../outside', '0.2.0/../../outside'])('rejects unsafe version %j', (version) => {
-    expect(() => resolveBuildTargets(path.resolve('C:/workspace/ai-novel-writer'), version)).toThrow()
+    expect(() => resolveBuildTargets(path.resolve('C:/workspace/inkweaver'), version)).toThrow()
   })
 })

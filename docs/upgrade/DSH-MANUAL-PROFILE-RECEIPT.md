@@ -11,11 +11,11 @@
 | 项目 | 值 |
 | --- | --- |
 | DSH CLI | 本机 `dsh.ps1` |
-| 隔离 DSH_HOME | `C:\Users\shuishui\.cache\inkweaver-dsh-profile-manual\dsh-home` |
+| 隔离 DSH_HOME | `C:\Users\shuishui\AppData\Local\Temp\inkweaver-dsh-profile-identity-d10a663ebdd343aead23c05b65b2ddca` |
 | profile | `web` |
-| tarball | `ethanyoq-dsh-ai-novel-writer-0.1.0.tgz` |
-| tarball SHA-256 | `bcb343059851efa5b9e4807a604d62b281597c5c8c878f1697768f377c9f542a` |
-| tarball bytes | `236207` |
+| tarball | `shuishuipingan-inkweaver-dsh-0.1.0.tgz` |
+| tarball SHA-256 | `D5610294587756B195F78B7197CAC9BA29282B76376D01F51DC5575FA510EEB7` |
+| tarball bytes | `236384` |
 | web UI companion | `@linxin666/dsh-web-all@0.3.17` |
 
 ## 已完成操作
@@ -30,12 +30,12 @@
    dsh --profile web --dump-config
    ```
 
-   回读结果包含 `@ethanyoq/dsh-ai-novel-writer` bundle 和 Host 条目 `ai-novel-writer`。
+   回读结果包含 `@shuishuipingan/inkweaver-dsh` bundle 和 Host 条目 `inkweaver`。
 
 4. 执行 profile 卸载：
 
    ```powershell
-   dsh plugin --profile web remove @ethanyoq/dsh-ai-novel-writer
+   dsh plugin --profile web remove @shuishuipingan/inkweaver-dsh
    ```
 
    回读 `package.json` 后插件依赖与 bundle 已移除，web UI companion 保留。
@@ -50,7 +50,8 @@
 
    Playwright 回读到页面标题 `DeepSeek Harness`，页面正文包含“小说工作台”。这证明当前 companion 与 DSH runtime 可以启动；旧的 `dsh-web-ui-all@0.1.16` 会因 `dsh-settings` 导出不匹配而启动失败，已从当前 qualification 目标中移除。
 
-7. 使用该 profile 的 installed package/preset 路径运行 `web-all-composition.spec.ts`，真实 Loader 请求头隔离测试通过：每个模型请求只包含 `novel_read` 与 `novel_propose_change` 两个小说工具。
+7. 使用该 profile 启动 `dsh web --no-open --host 127.0.0.1 --port 0`，Playwright 回读页面标题 `DeepSeek Harness`，并看到“小说工作台”入口；页面控制台仍有宿主预览版自身的已知警告，未把它们计为插件失败。
+8. 使用该 profile 的 installed package/preset 路径运行 `web-all-composition.spec.ts`，真实 Loader 请求头隔离测试通过：每个模型请求只包含 `novel_read` 与 `novel_propose_change` 两个小说工具。
 
 ## 尚未完成的门禁
 

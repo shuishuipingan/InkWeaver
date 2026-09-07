@@ -44,7 +44,7 @@ describe('macOS DMG acceptance receipt contract', () => {
       verificationExitCode: 0,
       detailsOutput: [
         'Executable=/Volumes/AI/织墨.app/Contents/MacOS/织墨',
-        'Identifier=com.ethanyoq.ai-novel-writer',
+        'Identifier=com.inkweaver.app',
         'Format=app bundle with Mach-O thin (arm64)',
         'Signature=adhoc',
         'TeamIdentifier=not set',
@@ -66,7 +66,7 @@ describe('macOS DMG acceptance receipt contract', () => {
       verificationExitCode: 0,
       detailsOutput: [
         'Executable=/Volumes/AI/织墨.app/Contents/MacOS/织墨',
-        'Identifier=com.ethanyoq.ai-novel-writer',
+        'Identifier=com.inkweaver.app',
         'Format=app bundle with Mach-O thin (arm64)',
         'Signature size=8993',
         'Authority=Developer ID Application: Example Developer (ABCDE12345)',

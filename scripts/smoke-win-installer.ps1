@@ -50,7 +50,7 @@ foreach ($name in @(
   [System.IO.Path]::GetFileNameWithoutExtension($resolvedInstaller),
   'InkWeaver.exe',
   '织墨',
-  'ai-novel-writer'
+  'inkweaver'
 )) {
   if (-not [string]::IsNullOrWhiteSpace($name) -and -not $roundTargetNames.Contains($name)) {
     $roundTargetNames.Add($name)

@@ -89,16 +89,16 @@ describe('GitHub Windows update release verification', () => {
       assets: [
         ...releaseFor(artifacts).assets,
         {
-          name: 'ai-novel-writer-0.2.6-arm64.dmg',
+          name: 'inkweaver-0.2.6-arm64.dmg',
           size: 7,
           digest: `sha256:${sha256('mac-dmg')}`,
-          browser_download_url: 'https://example.test/ai-novel-writer-0.2.6-arm64.dmg',
+          browser_download_url: 'https://example.test/inkweaver-0.2.6-arm64.dmg',
         },
         {
-          name: 'ai-novel-writer-0.2.6-arm64.dmg.sha256',
+          name: 'inkweaver-0.2.6-arm64.dmg.sha256',
           size: 64,
           digest: `sha256:${sha256('mac-checksum')}`,
-          browser_download_url: 'https://example.test/ai-novel-writer-0.2.6-arm64.dmg.sha256',
+          browser_download_url: 'https://example.test/inkweaver-0.2.6-arm64.dmg.sha256',
         },
       ],
     }

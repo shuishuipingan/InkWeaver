@@ -122,7 +122,7 @@ export function createLegacyUpdateBridgePlan(plan, { localAppData = process.env.
   return {
     mode: 'legacy-bridge',
     sourceTag,
-    expectedPendingInstallerPath: win32.join(localAppData, 'ai-novel-writer-updater', 'pending', installer.name),
+    expectedPendingInstallerPath: win32.join(localAppData, 'inkweaver-updater', 'pending', installer.name),
     expectedInstaller: {
       name: installer.name,
       size: installer.size,
@@ -580,7 +580,7 @@ async function runWindowsInAppUpdateE2e(plan, evidenceRoot) {
         plan.expected.assets.installer.name,
         'InkWeaver.exe',
         '织墨',
-        'ai-novel-writer',
+        'inkweaver',
       ],
       legacyBridge,
     })
