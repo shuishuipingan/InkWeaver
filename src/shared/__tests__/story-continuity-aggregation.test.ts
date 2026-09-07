@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { emptyStoryContinuityDocument } from '../story-continuity'
-import { aggregateStoryContinuity } from '../story-continuity-aggregation'
+import { aggregateStoryContinuity, deriveVolumeTrends } from '../story-continuity-aggregation'
 
-function document(chapterNumber: number, volume: string, mainline: string) {
+function document(chapterNumber: number, volume: string, mainline: string, subplots: string[] = []) {
   const value = emptyStoryContinuityDocument(chapterNumber)
   return {
     ...value,
@@ -10,6 +10,7 @@ function document(chapterNumber: number, volume: string, mainline: string) {
       ...value.arcContribution,
       volume,
       mainline,
+      subplots,
       turningPoint: chapterNumber === 2 ? '第一次反转' : '',
       unresolvedQuestions: chapterNumber === 1 ? ['谁寄来的信？'] : [],
     },
@@ -39,6 +40,22 @@ describe('story continuity aggregation', () => {
         activeExpectationCount: 1, unresolvedQuestions: ['谁寄来的信？'],
       }),
       expect.objectContaining({ volume: '第二卷', chapters: [3], chapterCount: 1 }),
+    ])
+  })
+
+  it('derives new vs continued mainline and subplot threads across volumes', () => {
+    const summaries = aggregateStoryContinuity([
+      document(1, '第一卷', '建立日常', ['神秘信']),
+      document(2, '第一卷', '发现异常', ['神秘信']),
+      document(3, '第二卷', '发现异常', ['神秘信', '新支线']),
+      document(4, '第三卷', '揭晓真相'),
+    ])
+
+    const trends = deriveVolumeTrends(summaries)
+    expect(trends).toEqual([
+      expect.objectContaining({ volume: '第一卷', newMainlineItems: ['建立日常', '发现异常'], continuedMainlineItems: [], newSubplots: ['神秘信'] }),
+      expect.objectContaining({ volume: '第二卷', newMainlineItems: [], continuedMainlineItems: ['发现异常'], newSubplots: ['新支线'] }),
+      expect.objectContaining({ volume: '第三卷', newMainlineItems: ['揭晓真相'], continuedMainlineItems: [], newSubplots: [] }),
     ])
   })
 })

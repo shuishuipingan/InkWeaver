@@ -15,8 +15,22 @@ export interface VolumeProgressSummary {
   activeExpectationCount: number
 }
 
+export interface VolumeTrendStep {
+  volume: string
+  /** Mainline contribution strings that first appear in this volume. */
+  newMainlineItems: string[]
+  /** Mainline contribution strings already seen in the previous volume. */
+  continuedMainlineItems: string[]
+  /** Subplot strings that first appear in this volume. */
+  newSubplots: string[]
+}
+
 function uniqueText(values: readonly string[]): string[] {
   return [...new Set(values.map(value => value.trim()).filter(Boolean))]
+}
+
+function firstChapter(summary: VolumeProgressSummary): number {
+  return Math.min(...summary.chapters.filter(Number.isFinite))
 }
 
 /**
@@ -57,6 +71,33 @@ export function aggregateStoryContinuity(
       activeExpectationCount: group.reduce((total, document) => total + document.readerExpectations.filter(expectation => (
         expectation.status === 'open' || expectation.status === 'progressing'
       )).length, 0),
+    }
+  })
+}
+
+/**
+ * Derives how story threads evolve across volumes. Volumes are ordered by
+ * their first chapter. A contribution/subplot is "new" in a volume only when
+ * it was absent from every earlier volume; otherwise it is "continued".
+ * This is purely presentational and never edits the underlying sheets.
+ */
+export function deriveVolumeTrends(summaries: readonly VolumeProgressSummary[]): VolumeTrendStep[] {
+  const ordered = [...summaries].sort((left, right) => firstChapter(left) - firstChapter(right))
+  const seenMainline = new Set<string>()
+  const seenSubplots = new Set<string>()
+  return ordered.map(summary => {
+    const mainlineItems = summary.mainlineContributions.filter(Boolean)
+    const subplotItems = summary.subplots.filter(Boolean)
+    const newMainlineItems = mainlineItems.filter(item => !seenMainline.has(item))
+    const continuedMainlineItems = mainlineItems.filter(item => seenMainline.has(item))
+    const newSubplots = subplotItems.filter(item => !seenSubplots.has(item))
+    mainlineItems.forEach(item => seenMainline.add(item))
+    subplotItems.forEach(item => seenSubplots.add(item))
+    return {
+      volume: summary.volume,
+      newMainlineItems,
+      continuedMainlineItems,
+      newSubplots,
     }
   })
 }
