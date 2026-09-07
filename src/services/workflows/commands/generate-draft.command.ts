@@ -31,6 +31,7 @@ import { promptLanguageText } from '../../prompt-language'
 import { countDraftUnits } from '../../../shared/draft-units'
 import { formatChapterHandoff } from '../../chapter-handoff-context'
 import type { ChapterHandoffRecord } from '../../../shared/chapter-handoff'
+import { generationReceiptFromAttempt } from '../../../shared/generation-receipt'
 import { formatKnowledgeEventForPrompt, type KnowledgeEvent } from '../../../shared/knowledge-event'
 import {
   selectContextEntries,
@@ -138,6 +139,7 @@ function logDraftAttempt(
   phase: string,
   receipt: GenerationAttemptReceipt,
 ): void {
+  callbacks.setGenerationReceipt?.(generationReceiptFromAttempt(receipt))
   callbacks.log(
     `  ${phase}：租约请求上限 ${receipt.budget.requestedOutputTokens} Tokens` +
     `（单次上限 ${receipt.budget.maxRequestedOutputTokensPerAttempt}，` +

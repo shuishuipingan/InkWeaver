@@ -17,6 +17,7 @@ import {
 import type { ProjectSessionContext } from '../../shared/ipc-channels'
 import type { PromptBudgetReport } from '../../services/generation/generation-harness'
 import type { ContextReceipt } from '../../shared/context-receipt'
+import type { GenerationReceiptSummary } from '../../shared/generation-receipt'
 import MarkdownContent from '../ui/MarkdownContent'
 import { PanelHeader } from '../ui/PanelHeader'
 import { presentWorkflowFailure } from './ai-output-failure-presentation'
@@ -214,6 +215,7 @@ function ActiveRunView({
       </div>
 
       {run.contextReceipt && <ContextReceiptSummary receipt={run.contextReceipt} locale={locale} />}
+      {run.generationReceipt && <GenerationReceiptSummaryBlock receipt={run.generationReceipt} locale={locale} />}
 
       {/* 滚动内容区 */}
       <div
@@ -306,6 +308,20 @@ function ContextReceiptSummary({ receipt, locale }: { receipt: ContextReceipt; l
         ))}
       </div>
     </details>
+  )
+}
+
+function GenerationReceiptSummaryBlock({ receipt, locale }: { receipt: GenerationReceiptSummary; locale: 'zh-CN' | 'en-US' }) {
+  const usage = receipt.usage
+  return (
+    <div className="mx-2 mb-2 rounded-md border px-2 py-1.5 text-[0.68rem]" data-generation-receipt="true" style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }}>
+      <div className="flex flex-wrap gap-x-2 gap-y-0.5">
+        <span>{locale === 'en-US' ? 'Model' : '模型'}: {receipt.modelId}</span>
+        <span>{locale === 'en-US' ? 'attempt' : '尝试'} {receipt.attempt}</span>
+        <span>{locale === 'en-US' ? 'budget' : '预算'} {receipt.cumulativeRequestedOutputTokens}/{receipt.maxRequestedOutputTokens}</span>
+        <span>{locale === 'en-US' ? 'usage' : '实际用量'}: {usage?.totalTokens ?? (locale === 'en-US' ? 'unavailable' : '未知')}</span>
+      </div>
+    </div>
   )
 }
 

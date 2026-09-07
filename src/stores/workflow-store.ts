@@ -28,6 +28,7 @@ import {
   type WorkflowResourceKind,
 } from '../shared/workflow-resource-claims'
 import type { ContextReceipt } from '../shared/context-receipt'
+import type { GenerationReceiptSummary } from '../shared/generation-receipt'
 import {
   checkpointFromRun,
   saveWorkflowRecoveryCheckpoint,
@@ -103,6 +104,8 @@ export interface WorkflowRun {
   promptBudgetReport?: PromptBudgetReport
   /** Privacy-safe explanation of which complete context entries were selected. */
   contextReceipt?: ContextReceipt
+  /** Safe model/budget attribution; null usage means provider usage was unavailable. */
+  generationReceipt?: GenerationReceiptSummary
   /** Safe restart metadata; never contains step result/prose. */
   recoveryCheckpoint?: import('../shared/workflow-recovery').WorkflowRecoveryCheckpoint
   /** 已请求在当前步骤完成后的安全边界暂停 */
@@ -160,6 +163,7 @@ export interface StepCallbacks {
   setProgress: (progress: number) => void
   /** 保存本步骤最近一次模型调用的安全提示词预算摘要。 */
   setPromptBudgetReport?: (report: PromptBudgetReport) => void
+  setGenerationReceipt?: (receipt: GenerationReceiptSummary) => void
   /** 流式文本追加 */
   appendText: (text: string) => void
   /** 用一份安全的临时或终态文本替换当前步骤输出。 */
@@ -649,6 +653,9 @@ export const useWorkflowStore = create<WorkflowState>()((set, get) => ({
           const attributableReport = promptBudgetAttemptCount === 1 ? report : undefined
           updateStepById(set, run.id, i, { promptBudgetReport: attributableReport })
           updateRunById(set, run.id, { promptBudgetReport: attributableReport })
+        },
+        setGenerationReceipt: (receipt) => {
+          updateRunById(set, run.id, { generationReceipt: receipt })
         },
         appendText: (text) => {
           const activeRun = get().activeRuns.find(r => r.id === run.id)

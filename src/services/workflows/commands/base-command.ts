@@ -22,6 +22,7 @@ import {
 } from '../bounded-completion'
 import { workflowUiText, workflowWritingLanguage } from '../workflow-project-session'
 import { runtimeLog } from '../../runtime-log'
+import { generationReceiptFromAttempt } from '../../../shared/generation-receipt'
 
 export interface CommandExecuteParams {
   step: unknown
@@ -322,6 +323,7 @@ export abstract class BaseWorkflowCommand<TResult = string> {
     receipt: GenerationAttemptReceipt,
   ): void {
     if (receipt.promptBudget) callbacks.setPromptBudgetReport?.(receipt.promptBudget)
+    callbacks.setGenerationReceipt?.(generationReceiptFromAttempt(receipt))
   }
 
   protected createIncompleteCompletionError(finishReason: LLMFinishReason): Error {
