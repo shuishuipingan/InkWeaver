@@ -87,6 +87,21 @@ export default function TitleBar() {
         toast.info(t('project.restoreUnavailable'))
         return
       }
+      const verification = await ipc.invokeWithProjectSession(
+        session,
+        'db:project-snapshot-verify',
+        latest.snapshotId,
+        session.projectPath,
+      )
+      if (!isProjectSessionCurrent(session)) return
+      if (!verification.valid) {
+        const detail = [
+          verification.missing.length > 0 ? `missing: ${verification.missing.join(', ')}` : '',
+          verification.mismatched.length > 0 ? `mismatched: ${verification.mismatched.join(', ')}` : '',
+        ].filter(Boolean).join('; ')
+        toast.error(t('project.restoreFailed', { error: detail || 'snapshot verification failed' }))
+        return
+      }
       const destinationPath = await ipc.invoke('dialog:select-folder')
       if (!destinationPath || !isProjectSessionCurrent(session)) return
       const preview = await ipc.invokeWithProjectSession(

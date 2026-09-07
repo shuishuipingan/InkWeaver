@@ -301,7 +301,7 @@ function ContextReceiptSummary({ receipt, locale }: { receipt: ContextReceipt; l
       <div className="mt-1 space-y-0.5" data-context-receipt="true">
         {receipt.entries.map(entry => (
           <div key={`${entry.id}:${entry.included ? 'in' : 'out'}`} className="flex gap-1.5">
-            <span aria-hidden="true">{entry.included ? '✓' : '—'}</span>
+            <span aria-hidden="true">{entry.included ? <CheckCircle2 size={11} /> : '—'}</span>
             <span className="truncate">{entry.label}</span>
             {!entry.included && <span className="shrink-0 text-[var(--color-text-muted)]">{entry.reason}</span>}
           </div>
