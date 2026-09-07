@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { mkdir, readFile, readdir, stat, writeFile, cp } from 'node:fs/promises'
 import path from 'node:path'
 import { getCurrentProjectPath, getProjectDb } from '../database'
-import type { ProjectSnapshotFile, ProjectSnapshotManifest } from '../../src/shared/project-snapshot'
+import type { ProjectSnapshotFile, ProjectSnapshotManifest, ProjectSnapshotVerification } from '../../src/shared/project-snapshot'
 
 const SNAPSHOT_DIR = path.join('.vela', 'snapshots')
 const DATABASE_FILE = 'database.sqlite'
@@ -75,5 +75,22 @@ export class ProjectSnapshotService {
       } catch { /* ignore incomplete snapshots */ }
     }
     return manifests.sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+  }
+
+  static async verify(snapshotId: string, projectPath = getCurrentProjectPath()): Promise<ProjectSnapshotVerification> {
+    if (!projectPath) throw new Error('项目数据库未打开')
+    if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u.test(snapshotId)) throw new Error('快照 ID 无效')
+    const root = path.join(projectPath, SNAPSHOT_DIR, snapshotId)
+    const manifest = JSON.parse(await readFile(path.join(root, 'manifest.json'), 'utf8')) as ProjectSnapshotManifest
+    const missing: string[] = []
+    const mismatched: string[] = []
+    for (const file of manifest.files) {
+      const target = path.join(root, file.relativePath)
+      try {
+        const bytes = await readFile(target)
+        if (bytes.byteLength !== file.bytes || sha256(bytes) !== file.sha256) mismatched.push(file.relativePath)
+      } catch { missing.push(file.relativePath) }
+    }
+    return { snapshotId, valid: missing.length === 0 && mismatched.length === 0, missing, mismatched }
   }
 }

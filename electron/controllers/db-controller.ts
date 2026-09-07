@@ -892,6 +892,11 @@ export function registerDatabaseController() {
     return ProjectSnapshotService.list(expectedProjectPath)
   })
 
+  ipcMain.handle('db:project-snapshot-verify', async (_event, snapshotId: string, expectedProjectPath: string) => {
+    assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+    return ProjectSnapshotService.verify(snapshotId, expectedProjectPath)
+  })
+
   ipcMain.handle('db:draft-next-version', async (_event, chapterNumber: number, expectedProjectPath: string) => {
     assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
     return DraftRepository.getNextVersion(chapterNumber)

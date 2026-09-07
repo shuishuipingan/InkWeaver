@@ -33,9 +33,16 @@ describe('ProjectSnapshotService', () => {
     expect(manifest.files.some(file => file.relativePath === '.vela/prompts/style.md')).toBe(true)
     const listed = await ProjectSnapshotService.list()
     expect(listed[0]?.snapshotId).toBe(manifest.snapshotId)
+    await expect(ProjectSnapshotService.verify(manifest.snapshotId)).resolves.toMatchObject({ valid: true, missing: [], mismatched: [] })
     const snapshotDb = new Database(path.join(root, '.vela', 'snapshots', manifest.snapshotId, 'database.sqlite'), { readonly: true })
     expect(snapshotDb.prepare('SELECT value FROM state').get()).toEqual({ value: 'consistent' })
     snapshotDb.close()
     await expect(readFile(path.join(root, '.vela', 'snapshots', manifest.snapshotId, 'manifest.json'), 'utf8')).resolves.toContain(manifest.snapshotId)
+  })
+
+  it('reports a changed snapshot file without restoring it', async () => {
+    const manifest = await ProjectSnapshotService.create()
+    await require('node:fs').promises.writeFile(path.join(root, '.vela', 'snapshots', manifest.snapshotId, 'database.sqlite'), 'tampered')
+    await expect(ProjectSnapshotService.verify(manifest.snapshotId)).resolves.toMatchObject({ valid: false, mismatched: ['database.sqlite'] })
   })
 })

@@ -18,3 +18,10 @@ export interface ProjectSnapshotManifest {
 export type ProjectSnapshotResult =
   | { success: true; manifest: ProjectSnapshotManifest }
   | { success: false; error: string }
+
+export interface ProjectSnapshotVerification {
+  snapshotId: string
+  valid: boolean
+  missing: string[]
+  mismatched: string[]
+}
