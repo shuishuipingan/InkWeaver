@@ -223,6 +223,11 @@ export default function StoryContinuityPanel({ projectKey, chapterNumber }: Stor
   const blueprintKeyEvents = Array.isArray(preparation.blueprint?.keyEvents)
     ? preparation.blueprint.keyEvents.filter((value): value is string => typeof value === 'string' && value.trim() !== '')
     : []
+  const ruleEntries = [
+    [text('世界设定', 'World rules'), currentProject?.novelConfig.worldSetting],
+    [text('全局写作要求', 'Global guidance'), currentProject?.novelConfig.globalGuidance],
+    [text('文风约束', 'Style constraints'), currentProject?.novelConfig.writingStyle],
+  ].filter((entry): entry is [string, string] => typeof entry[1] === 'string' && entry[1].trim() !== '')
   const preparationMissing = [
     !preparation.blueprint
       ? text('本章还没有章节蓝图', 'This chapter has no blueprint yet')
@@ -235,6 +240,9 @@ export default function StoryContinuityPanel({ projectKey, chapterNumber }: Stor
       : undefined,
     knowledgeEvents.length === 0 && knowledgeReviewEvents.length === 0
       ? text('当前没有角色知情记录（不代表可以泄漏未来信息）', 'No character-knowledge record is available; future information must still stay out')
+      : undefined,
+    ruleEntries.length === 0
+      ? text('尚未配置世界规则或全局写作约束', 'No world rules or global writing constraints are configured')
       : undefined,
   ].filter((value): value is string => value !== undefined)
 
@@ -276,6 +284,12 @@ export default function StoryContinuityPanel({ projectKey, chapterNumber }: Stor
               <div className="text-[var(--color-text-secondary)]">{text(`已确认知情 ${knowledgeEvents.length} 条 · 待审 ${knowledgeReviewEvents.length} 条`, `${knowledgeEvents.length} confirmed knowledge events · ${knowledgeReviewEvents.length} awaiting review`)}</div>
               <div className="mt-0.5 text-[var(--color-text-muted)]">{text('写作上下文会按模型预算裁剪，并在任务收据中列出纳入/省略原因。', 'Writing context is bounded by the model budget; the task receipt lists included and omitted sources.')}</div>
             </div>
+          </div>
+          <div className="mt-2 rounded border px-2 py-1.5 text-xs" style={{ borderColor: 'var(--color-border)' }}>
+            <div className="font-medium">{text('规则与写作约束', 'Rules and writing constraints')}</div>
+            {ruleEntries.length === 0
+              ? <div className="mt-0.5 text-[var(--color-text-muted)]">{text('未配置；开始写作前建议补充世界规则或全局约束。', 'Not configured; add world rules or global constraints before writing.')}</div>
+              : <div className="mt-1 grid gap-1 sm:grid-cols-3">{ruleEntries.map(([label, value]) => <div key={label} className="min-w-0"><div className="text-[var(--color-text-muted)]">{label}</div><div className="truncate text-[var(--color-text-secondary)]" title={value}>{value}</div></div>)}</div>}
           </div>
           <div className="mt-2 rounded border px-2 py-1.5 text-xs" style={{ borderColor: preparationMissing.length > 0 ? 'var(--color-warning)' : 'var(--color-border)' }}>
             <span className="font-medium">{text('开始前需留意', 'Before writing')}</span>
