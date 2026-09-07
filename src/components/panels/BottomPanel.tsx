@@ -256,7 +256,7 @@ function WorkflowRecoveryReceipts() {
   const [checkpoints, setCheckpoints] = useState<WorkflowRecoveryCheckpoint[]>([])
 
   useEffect(() => {
-    setCheckpoints(listWorkflowRecoveryCheckpoints(session?.projectPath))
+    setCheckpoints(session ? listWorkflowRecoveryCheckpoints(session.projectPath) : [])
   }, [session?.projectPath, session?.leaseId])
 
   if (checkpoints.length === 0) return null
