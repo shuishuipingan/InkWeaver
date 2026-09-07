@@ -22,6 +22,7 @@ import {
   type ViewpointThread,
 } from '../../shared/story-continuity'
 import { factAppliesAtChapter, type FinalizedContinuityProjection } from '../../shared/finalized-continuity'
+import { aggregateStoryContinuity, type VolumeProgressSummary } from '../../shared/story-continuity-aggregation'
 import { knowledgeEventAppliesAtChapter, type KnowledgeEvent } from '../../shared/knowledge-event'
 
 interface StoryContinuityPanelProps {
@@ -70,6 +71,7 @@ export default function StoryContinuityPanel({ projectKey, chapterNumber }: Stor
   const [notice, setNotice] = useState<string | null>(null)
   const [knowledgeEvents, setKnowledgeEvents] = useState<KnowledgeEvent[]>([])
   const [timeline, setTimeline] = useState<FinalizedContinuityProjection[]>([])
+  const [volumeProgress, setVolumeProgress] = useState<VolumeProgressSummary[]>([])
   const [knowledgeReviewEvents, setKnowledgeReviewEvents] = useState<KnowledgeEvent[]>([])
   const [knowledgeUpdatingId, setKnowledgeUpdatingId] = useState<string | null>(null)
 
@@ -79,18 +81,21 @@ export default function StoryContinuityPanel({ projectKey, chapterNumber }: Stor
     setLoading(true)
     setError(null)
     try {
-      const [next, nextTimeline] = await Promise.all([
+      const [next, nextTimeline, allDocuments] = await Promise.all([
         ipc.invokeWithProjectSession(session, 'db:story-continuity-read', chapterNumber, projectKey),
         ipc.invokeWithProjectSession(session, 'db:continuity-list-before', chapterNumber, projectKey),
+        ipc.invokeWithProjectSession(session, 'db:story-continuity-list-all', projectKey),
       ])
       if (isProjectSessionCurrent(session)) {
         setDocument(next)
         setTimeline(nextTimeline)
+        setVolumeProgress(aggregateStoryContinuity([...allDocuments, next]))
       }
     } catch (cause) {
       if (isProjectSessionCurrent(session)) {
         setError(String(cause))
         setTimeline([])
+        setVolumeProgress([])
       }
     } finally {
       if (isProjectSessionCurrent(session)) setLoading(false)
@@ -203,6 +208,15 @@ export default function StoryContinuityPanel({ projectKey, chapterNumber }: Stor
               <div className="text-[var(--color-text-secondary)]">{fact.statement}</div>
               <div className="text-[var(--color-text-muted)]">{text(`证据：${fact.evidence}`, `Evidence: ${fact.evidence}`)}</div>
             </div>))}</div>
+        </section>}
+        {volumeProgress.length > 0 && <section data-volume-progress="true" className="rounded border p-2" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-raised)' }}>
+          <h4 className="mb-2 text-xs font-semibold">{text('卷级推进摘要', 'Volume progress')}</h4>
+          <div className="space-y-2">{volumeProgress.map(summary => <div key={summary.volume} className="rounded border px-2 py-1.5 text-xs" style={{ borderColor: 'var(--color-border)' }}>
+            <div className="font-medium">{summary.volume} · {text(`${summary.chapterCount}章`, `${summary.chapterCount} chapters`)} · {text(`场景 ${summary.observedSceneCount}/${summary.sceneCount} 已观察`, `${summary.observedSceneCount}/${summary.sceneCount} scenes observed`)}</div>
+            {summary.mainlineContributions.length > 0 && <div className="text-[var(--color-text-secondary)]">{text(`主线：${summary.mainlineContributions.join('；')}`, `Mainline: ${summary.mainlineContributions.join('; ')}`)}</div>}
+            {summary.turningPoints.length > 0 && <div className="text-[var(--color-text-secondary)]">{text(`转折：${summary.turningPoints.join('；')}`, `Turns: ${summary.turningPoints.join('; ')}`)}</div>}
+            {summary.unresolvedQuestions.length > 0 && <div className="text-[var(--color-text-muted)]">{text(`待回应：${summary.unresolvedQuestions.join('；')}`, `Open questions: ${summary.unresolvedQuestions.join('; ')}`)}</div>}
+          </div>)}</div>
         </section>}
         <section>
           <div className="mb-2 flex items-center justify-between gap-2">

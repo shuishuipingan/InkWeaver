@@ -17,6 +17,21 @@ export interface SaveStoryContinuityRequest {
 }
 
 export class StoryContinuityRepository {
+  static listAll(): StoryContinuityDocument[] {
+    const rows = db().prepare(`
+      SELECT chapter_number AS chapterNumber, payload_json AS payloadJson
+      FROM story_continuity_plans
+      ORDER BY chapter_number ASC
+    `).all() as Array<{ chapterNumber: number; payloadJson: string }>
+    return rows.map(row => {
+      try {
+        return normalizeStoryContinuityDocument(JSON.parse(row.payloadJson), row.chapterNumber)
+      } catch {
+        throw new Error(`第${row.chapterNumber}章连续性计划数据损坏`)
+      }
+    })
+  }
+
   static read(chapterNumber: number): StoryContinuityDocument {
     if (!Number.isSafeInteger(chapterNumber) || chapterNumber < 1) throw new Error('章节号无效')
     const row = db().prepare(`

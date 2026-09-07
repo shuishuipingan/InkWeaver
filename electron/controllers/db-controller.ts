@@ -846,6 +846,11 @@ export function registerDatabaseController() {
     return StoryContinuityRepository.read(chapterNumber)
   })
 
+  ipcMain.handle('db:story-continuity-list-all', async (_event, expectedProjectPath: string) => {
+    assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+    return StoryContinuityRepository.listAll()
+  })
+
   ipcMain.handle('db:story-continuity-save', async (_event, request, expectedProjectPath: string) => {
     try {
       assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)

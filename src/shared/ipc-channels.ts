@@ -910,6 +910,10 @@ export interface DatabaseChannels {
     args: [chapterNumber: number, expectedProjectPath: string]
     return: StoryContinuityDocument
   }
+  'db:story-continuity-list-all': {
+    args: [expectedProjectPath: string]
+    return: StoryContinuityDocument[]
+  }
   'db:story-continuity-save': {
     args: [request: SaveStoryContinuityRequest, expectedProjectPath: string]
     return: { success: boolean; document?: StoryContinuityDocument; error?: string }

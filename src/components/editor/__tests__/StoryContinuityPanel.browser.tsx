@@ -26,6 +26,7 @@ beforeEach(() => {
   invoke = vi.fn(async (channel: string, ...args: unknown[]) => {
     if (channel === 'db:story-continuity-read') return empty
     if (channel === 'db:continuity-list-before') return timelineFixtures
+    if (channel === 'db:story-continuity-list-all') return []
     if (channel === 'db:knowledge-event-list-for-chapter') return []
     if (channel === 'db:knowledge-event-list-review') return reviewEvents
     if (channel === 'db:knowledge-event-status') {
