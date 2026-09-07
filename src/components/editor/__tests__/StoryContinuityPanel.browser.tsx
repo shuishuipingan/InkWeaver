@@ -169,4 +169,22 @@ describe('StoryContinuityPanel', () => {
     expect(container.textContent).toContain('林夏')
     expect(container.textContent).toContain('执拗')
   })
+
+
+  it('shows reader expectations that are due in the current chapter', async () => {
+    timelineFixtures = []
+    reviewEvents = []
+    finalizedContent = null
+    const previous = emptyStoryContinuityDocument(1)
+    previous.readerExpectations = [{
+      id: 'expect-door', question: '门后的人是谁？', introducedChapter: 1,
+      expectedProgress: '本章揭晓声音来源', dueChapter: 2, status: 'open', delayReason: '', evidence: [],
+    }]
+    allDocumentsFixture = [previous]
+
+    await act(async () => root.render(<StoryContinuityPanel projectKey={PROJECT_PATH} chapterNumber={2} />))
+    await vi.waitFor(() => expect(container.querySelector('[data-due-expectations-alert="true"]')).not.toBeNull())
+    expect(container.textContent).toContain('本章到期读者期待')
+    expect(container.textContent).toContain('门后的人是谁？')
+  })
 })

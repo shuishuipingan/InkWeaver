@@ -293,6 +293,12 @@ export default function StoryContinuityPanel({ projectKey, chapterNumber }: Stor
     .filter(item => item.character.trim() && item.nextState.trim())
     .filter(item => !currentCarryCharacters.has(item.character.trim()))
     .slice(0, 8)
+  const dueExpectations = previousDocuments
+    .flatMap(doc => doc.readerExpectations
+      .filter(item => (item.status === 'open' || item.status === 'progressing'))
+      .map(item => ({ ...item, fromChapter: doc.chapterNumber })))
+    .filter(item => (item.dueChapter === undefined || item.dueChapter <= chapterNumber))
+    .slice(0, 6)
   const timelineFacts = timeline.flatMap(projection => (projection.facts ?? [])
     .filter(fact => factAppliesAtChapter(fact, chapterNumber)))
   const timelineGroups = [...timelineFacts.reduce((groups, fact) => {
@@ -367,6 +373,15 @@ export default function StoryContinuityPanel({ projectKey, chapterNumber }: Stor
               : <ul className="mt-1 list-disc space-y-0.5 pl-4 text-[var(--color-text-muted)]">{preparationMissing.map(item => <li key={item}>{item}</li>)}</ul>}
           </div>
         </section>
+        {dueExpectations.length > 0 && (
+          <section data-due-expectations-alert="true" className="rounded border p-2 text-xs" style={{ borderColor: 'var(--color-accent)', backgroundColor: 'var(--color-raised)' }}>
+            <div className="font-medium">{text('本章到期读者期待', 'Reader expectations due this chapter')}</div>
+            <div className="mt-1 space-y-0.5 text-[var(--color-text-secondary)]">
+              {dueExpectations.map(item => <div key={item.id}>{text('第' + item.fromChapter + '章埋设：', 'Planted in Chapter ' + item.fromChapter + ': ')}{item.question}{item.expectedProgress ? ' · ' + item.expectedProgress : ''}</div>)}
+            </div>
+            <p className="mt-1 text-[var(--color-text-muted)]">{text('如果本章不推进这些期待，可主动延后并写明理由。', 'If this chapter does not advance these expectations, delay them explicitly with a reason.')}</p>
+          </section>
+        )}
         {previousCarryOver.length > 0 && (
           <section data-emotional-carryover-alert="true" className="rounded border p-2 text-xs" style={{ borderColor: 'var(--color-warning)', backgroundColor: 'var(--color-raised)' }}>
             <div className="font-medium">{text('上一章情绪余波待承接', 'Previous-chapter emotional carry-over awaiting continuity')}</div>
