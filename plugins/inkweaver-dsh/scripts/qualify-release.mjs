@@ -803,6 +803,7 @@ async function qualifyPresetTools(logRoot, profileRoot, installedRoot, env) {
   await mkdir(configRoot, { recursive: true })
   await writeFile(configPath, [
     "- id: llm\n  name: '@deepseek-ai/dsh-llm'",
+    "- id: session-projections\n  name: '@deepseek-ai/dsh-session-projection'",
     "- id: sessions\n  name: '@deepseek-ai/dsh-session'",
     "- id: system-prompt\n  name: '@deepseek-ai/dsh-system-prompt'\n  config:\n    persona: ''",
     "- id: tools\n  name: '@deepseek-ai/dsh-tools'",
