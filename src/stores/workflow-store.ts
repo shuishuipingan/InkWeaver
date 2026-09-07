@@ -28,6 +28,11 @@ import {
   type WorkflowResourceKind,
 } from '../shared/workflow-resource-claims'
 import type { ContextReceipt } from '../shared/context-receipt'
+import {
+  checkpointFromRun,
+  saveWorkflowRecoveryCheckpoint,
+  type WorkflowRecoveryBoundary,
+} from '../shared/workflow-recovery'
 
 // ===== 工作流数据模型 =====
 
@@ -98,6 +103,8 @@ export interface WorkflowRun {
   promptBudgetReport?: PromptBudgetReport
   /** Privacy-safe explanation of which complete context entries were selected. */
   contextReceipt?: ContextReceipt
+  /** Safe restart metadata; never contains step result/prose. */
+  recoveryCheckpoint?: import('../shared/workflow-recovery').WorkflowRecoveryCheckpoint
   /** 已请求在当前步骤完成后的安全边界暂停 */
   pauseRequested?: boolean
 }
@@ -537,6 +544,7 @@ export const useWorkflowStore = create<WorkflowState>()((set, get) => ({
         ...computeCompat(newRuns, s.waitingRuns),
       }
     })
+    persistRecoveryCheckpoint(run, 'started')
     get().addLog('info', uiText(
       uiLocale,
       `[开始] 工作流「${definition.title}」已启动`,
@@ -686,6 +694,8 @@ export const useWorkflowStore = create<WorkflowState>()((set, get) => ({
           progress: 100,
           result: result || get().activeRuns.find(r => r.id === run.id)?.steps[i].result,
         })
+        const completedRun = get().activeRuns.find(candidate => candidate.id === run.id)
+        if (completedRun) persistRecoveryCheckpoint(completedRun, 'step-completed')
         const contextReceipt = context.data.contextReceipt as ContextReceipt | undefined
         if (contextReceipt) updateRunById(set, run.id, { contextReceipt })
         get().addLog('info', uiText(
@@ -729,6 +739,8 @@ export const useWorkflowStore = create<WorkflowState>()((set, get) => ({
           ...(failureCode ? { failureCode } : {}),
           ...(promptBudgetFailure ? { promptBudgetReport: promptBudgetFailure.report } : {}),
         })
+        const failedRun = get().activeRuns.find(candidate => candidate.id === run.id)
+        if (failedRun) persistRecoveryCheckpoint(failedRun, 'failed')
         get().addLog('error', uiText(
           context.uiLocale,
           `[失败] [${definition.title}] 步骤: ${stepDef.name} — ${errorMsg}`,
@@ -759,6 +771,7 @@ export const useWorkflowStore = create<WorkflowState>()((set, get) => ({
         completedAt: new Date().toISOString(),
       })
       finalRun = get().activeRuns.find(r => r.id === run.id)
+      if (finalRun) persistRecoveryCheckpoint(finalRun, 'cancelled')
     }
     if (finalRun && finalRun.status === 'running' && !isCurrentWorkflowSession(
       definition.projectPath,
@@ -778,6 +791,8 @@ export const useWorkflowStore = create<WorkflowState>()((set, get) => ({
     if (finalRun && finalRun.status === 'running') {
       const projectSession = context.projectSession
       updateRunById(set, run.id, { status: 'completed', completedAt: new Date().toISOString() })
+      const completedRun = get().activeRuns.find(candidate => candidate.id === run.id)
+      if (completedRun) persistRecoveryCheckpoint(completedRun, 'completed')
       get().addLog('info', uiText(
         context.uiLocale,
         `[完成] 工作流「${definition.title}」已完成`,
@@ -1005,6 +1020,11 @@ export const useWorkflowStore = create<WorkflowState>()((set, get) => ({
 }))
 
 // ===== 工具函数（按 runId 操作） =====
+
+function persistRecoveryCheckpoint(run: WorkflowRun, boundary: WorkflowRecoveryBoundary): void {
+  const checkpoint = checkpointFromRun(run, boundary)
+  if (checkpoint) saveWorkflowRecoveryCheckpoint(checkpoint)
+}
 
 /** 更新指定工作流的运行状态 */
 function updateRunById(
