@@ -319,6 +319,10 @@ export default function StoryContinuityPanel({ projectKey, chapterNumber }: Stor
               ? <div className="mt-0.5 text-[var(--color-text-muted)]">{text('未配置；开始写作前建议补充世界规则或全局约束。', 'Not configured; add world rules or global constraints before writing.')}</div>
               : <div className="mt-1 grid gap-1 sm:grid-cols-3">{ruleEntries.map(([label, value]) => <div key={label} className="min-w-0"><div className="text-[var(--color-text-muted)]">{label}</div><div className="truncate text-[var(--color-text-secondary)]" title={value}>{value}</div></div>)}</div>}
           </div>
+          {document.viewpointThreads.some(thread => thread.readerKnowledge.trim() || thread.unresolvedHooks.length > 0) && <div className="mt-2 rounded border px-2 py-1.5 text-xs" data-reader-knowledge-summary="true" style={{ borderColor: 'var(--color-border)' }}>
+            <div className="font-medium">{text('读者已知与视角落点', 'Reader knowledge and viewpoint landing')}</div>
+            <div className="mt-1 space-y-1">{document.viewpointThreads.filter(thread => thread.readerKnowledge.trim() || thread.unresolvedHooks.length > 0).map((thread, index) => <div key={`${thread.viewpoint}-${index}`} className="text-[var(--color-text-secondary)]"><span className="font-medium">{thread.viewpoint || text('未命名视角', 'Unnamed viewpoint')}：</span>{thread.readerKnowledge || text('读者知识未填写', 'Reader knowledge not filled')}{thread.unresolvedHooks.length > 0 ? text(`；未解钩子：${thread.unresolvedHooks.join('、')}`, `; open hooks: ${thread.unresolvedHooks.join(', ')}`) : ''}</div>)}</div>
+          </div>}
           <div className="mt-2 rounded border px-2 py-1.5 text-xs" style={{ borderColor: preparationMissing.length > 0 ? 'var(--color-warning)' : 'var(--color-border)' }}>
             <span className="font-medium">{text('开始前需留意', 'Before writing')}</span>
             {preparationMissing.length === 0
