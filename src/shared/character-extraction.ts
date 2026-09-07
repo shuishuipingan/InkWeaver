@@ -99,7 +99,6 @@ export function parseCharacterExtractionResponse(
   const rawCharacters = isRecord(root) && Array.isArray(root.characters)
     ? root.characters
     : Array.isArray(root) ? root : []
-  const known = new Set(existingNames.map(normalizedName))
   return rawCharacters.flatMap((raw, index) => {
     if (!isRecord(raw)) return []
     const name = textValue(raw.name)
@@ -143,14 +142,19 @@ export function parseCharacterExtractionResponse(
           return evidenceSupported ? [{ target, relation }] : []
         })
       : []
-    const matchedName = [name, ...aliases].find(item => known.has(normalizedName(item)))
+    const matchedIndices = [name, ...aliases].flatMap(item => (
+      existingNames.flatMap((existing, existingIndex) => normalizedName(existing) === normalizedName(item) ? [existingIndex] : [])
+    ))
+    const uniqueMatchedIndices = [...new Set(matchedIndices)]
+    const sameNameAmbiguity = uniqueMatchedIndices.length > 1
+    const matchedName = uniqueMatchedIndices.length === 1 ? existingNames[uniqueMatchedIndices[0]] : undefined
     return [{
       candidateId: `${source.sourceId}:${source.sourceHash.slice(0, 16)}:${index}:${normalizedName(name)}`,
       source,
       name,
       aliases: [...new Set(aliases.filter(alias => normalizedName(alias) !== normalizedName(name)))],
-      ...(matchedName ? { matchedCharacterName: existingNames.find(item => normalizedName(item) === normalizedName(matchedName)) } : {}),
-      disposition: matchedName ? 'update' : 'new',
+      ...(matchedName && !sameNameAmbiguity ? { matchedCharacterName: matchedName } : {}),
+      disposition: sameNameAmbiguity ? 'ambiguous' : matchedName ? 'update' : 'new',
       status: 'pending',
       ...(role ? { role } : {}),
       fields,

@@ -93,4 +93,19 @@ describe('character extraction chunk planning', () => {
     expect(merged[0]?.fields.age).toBeUndefined()
     expect(merged[0]?.fieldEvidence).toHaveLength(2)
   })
+
+  it('does not silently choose one existing character when the normalized name is duplicated', () => {
+    const source = {
+      sourceId: 'chapter-same-name', sourceHash: 'c'.repeat(64), kind: 'chapter' as const, chapterNumbers: [8],
+    }
+    const candidates = parseCharacterExtractionResponse(JSON.stringify({
+      characters: [{
+        name: '林舟', fields: { notes: '携带旧钥匙' },
+        evidence: [{ field: 'notes', value: '携带旧钥匙', excerpt: '两个林舟都被提到，无法仅凭姓名判断。' }],
+      }],
+    }), source, ['林舟', '林舟'])
+
+    expect(candidates[0]).toMatchObject({ disposition: 'ambiguous' })
+    expect(candidates[0]?.matchedCharacterName).toBeUndefined()
+  })
 })
