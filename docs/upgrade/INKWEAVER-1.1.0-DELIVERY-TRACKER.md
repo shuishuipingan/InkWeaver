@@ -46,7 +46,7 @@
 | E08 | 导出完整性 | 08 | 无蓝图原稿也能导出全部定稿且顺序正确吗？ | 开发中 | `169ff10`：导出始终以 finalized authority 和定稿事实枚举章节，不再让蓝图改变顺序；拒绝缺章/重复/越界、空正文、标题漂移和字数不一致，并保留无蓝图原稿路径；导出标题/哈希清单回读仍待完善 |
 | E09 | 双语与可访问性 | 10 | 新入口、错误、审核和恢复流程都有双语与键盘支持吗？ | 开发中 | 新增连续阅读、连续性工作单、关系图列表、知情边界和快照入口均使用中英文文案、可聚焦按钮/表单标签/键盘列表替代；全量 a11y 审计和恢复流程的键盘回归仍待完成 |
 | F01 | DSH 兼容版本 | 11 | 核对的是官方默认分发渠道且固定准确版本吗？ | 开发中 | 官方 npm 查询确认 `@deepseek-ai/dsh` latest/next=`0.1.2-rc.1`、alpha=`0.1.2-alpha.5`；插件依赖与锁文件已升级并固定；迁移/版本/测试证据见 `plugins/dsh-ai-novel-writer/docs/dsh-0.1.2-rc.1-compatibility.md`；隔离 profile 和真实浏览器 qualification 仍待完成 |
-| F02 | 插件接口与安装 | 11 | tarball 在隔离 profile 的 roster、mount 和浏览器链通过吗？ | 开发中 | 官方 0.1.2-rc.1 API 迁移后，插件 typecheck、build、emitted-package Loader/roster 验证及 V1/V2 本地会话回归已通过；完整 tarball 隔离 profile、真实 roster/mount 和 keyless 浏览器链仍待运行 |
+| F02 | 插件接口与安装 | 11 | tarball 在隔离 profile 的 roster、mount 和浏览器链通过吗？ | 开发中 | 官方 0.1.2-rc.1 API 迁移后，当前源码已再次通过 `pnpm run typecheck`、`pnpm run build`、emitted-package Loader/roster verification 与 `pnpm pack --dry-run`；完整 tarball 隔离 profile、真实 roster/mount 和 keyless 浏览器链仍待运行 |
 | F03 | 插件对应创作功能 | 12 | 交接/人物候选/事实上下文和 Proposal 审核形成闭环吗？ | 开发中 | DSH V2 已扩展 schema 5：`NovelChapterHandoff` 与 `NovelKnowledgeEvent` 进入章节 Proposal/SQLite，`chapter/context` 只返回当前章节有效且 confirmed 的知识；`f03` 回归覆盖候选隔离、稳定角色 ID、迁移和客户端 DTO 校验；真实 tarball Session/浏览器回归仍待完成 |
 | F04 | 插件版本与分发 | 13 | 1.1.0 可实际安装且公开兼容与升级说明吗？ | 未开始 | — |
 | F05 | 主题发现 | 13 | dsh-plugin 元数据和实际索引结果分别有证据吗？ | 开发中 | GitHub API 已回读仓库 topic 含 `dsh-plugin`；2026-09-07 公开主题页显示 13,983 个匹配仓库，但当前页面首屏/可检索内容未出现 `shuishuipingan/InkWeaver`，因此不能宣称已完成实际索引可见性；发布 1.1.0 后需按同一链接复核并留档 |
