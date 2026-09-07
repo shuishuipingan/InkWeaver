@@ -9,7 +9,9 @@ import { WorkspaceId, type WorkspaceId as WorkspaceIdType } from '@deepseek-ai/d
 import { openNovelStore, recoverNovelStoreBinding } from '../src/novel-store.ts'
 import type { NovelProposalRequest, NovelStore, NovelStoreInitializeRequest } from '../src/novel-store.ts'
 import { makeTestWorkspace } from './test-workspace.ts'
+import { symlinkAvailable } from './symlink-available.ts'
 
+const symlinkSupported = await symlinkAvailable()
 const signal = new AbortController().signal
 const WORKSPACE_ID = WorkspaceId('workspace-a')
 
@@ -755,7 +757,7 @@ describe('NovelStore SQLite core', () => {
     await emptyStore.dispose()
   })
 
-  it('rejects a project directory that escapes the workspace through a link', async () => {
+  it.runIf(symlinkSupported)('rejects a project directory that escapes the workspace through a link', async () => {
     const linkedRoot = await makeTestWorkspace('novel-store-link-root-')
     const outside = await makeTestWorkspace('novel-store-link-outside-')
     await symlink(outside, join(linkedRoot, '.ai-novel'), 'junction')
@@ -763,7 +765,7 @@ describe('NovelStore SQLite core', () => {
     await expect(openNovelStore(linkedRoot, WORKSPACE_ID)).rejects.toMatchObject({ code: 'PATH_REJECTED' })
   })
 
-  it('rejects a linked database file even when its target is a valid project', async () => {
+  it.runIf(symlinkSupported)('rejects a linked database file even when its target is a valid project', async () => {
     const databasePath = join(root, '.ai-novel', 'novel.db')
     const outsideDatabase = join(await makeTestWorkspace('novel-store-db-target-'), 'novel.db')
     await store.dispose()

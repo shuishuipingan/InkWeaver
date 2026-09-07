@@ -8,7 +8,9 @@ import {
 } from '../src/novel-migration.ts'
 import { openNovelStore } from '../src/novel-store.ts'
 import { makeTestWorkspace } from './test-workspace.ts'
+import { symlinkAvailable } from './symlink-available.ts'
 
+const symlinkSupported = await symlinkAvailable()
 const signal = new AbortController().signal
 const workspaceId = WorkspaceId('123e4567-e89b-42d3-a456-426614174201')
 const projectId = '123e4567-e89b-42d3-a456-426614174000'
@@ -287,7 +289,7 @@ describe('explicit V1 migration', () => {
     })
   })
 
-  it('rejects a symlinked workspace root', async () => {
+  it.runIf(symlinkSupported)('rejects a symlinked workspace root', async () => {
     const root = await makeTestWorkspace('v1-migrate-root-symlink-')
     await createV1Project(root)
     const alias = `${root}-alias`
