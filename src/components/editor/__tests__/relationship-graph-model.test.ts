@@ -34,4 +34,25 @@ describe('relationship graph model', () => {
       { name: '苏晚', degree: 1 },
     ])
   })
+
+  it('stays bounded when filtering and searching a 5,000-node dense graph', () => {
+    const bigCharacters = Array.from({ length: 5000 }, (_, index) => ({
+      name: `角色${index}`,
+      aliases: index % 100 === 0 ? [`别名${index}`] : [],
+    }))
+    const bigEdges = Array.from({ length: 5000 }, (_, index) => ({
+      a: `角色${index}`,
+      b: `角色${(index + 1) % 5000}`,
+      kind: (index % 3 === 0 ? 'hostile' : index % 3 === 1 ? 'ally' : 'family') as 'hostile' | 'ally' | 'family',
+    }))
+    const matches = matchingRelationshipCharacters(bigCharacters, '别名4000')
+    expect(matches).toEqual(new Set(['角色4000']))
+    const filtered = filterRelationshipGraph(bigCharacters, bigEdges, { relationKind: 'hostile' })
+    expect(filtered.edges.length).toBeGreaterThan(0)
+    expect(filtered.edges.every(edge => edge.kind === 'hostile')).toBe(true)
+    const focused = filterRelationshipGraph(bigCharacters, bigEdges, { query: '角色4000', focusDepth: 1 })
+    expect(focused.characters.length).toBeLessThanOrEqual(5000)
+    expect(focused.characters.some(character => character.name === '角色4000')).toBe(true)
+    expect(relationshipListRows(focused.characters, focused.edges).length).toBeGreaterThan(0)
+  })
 })
