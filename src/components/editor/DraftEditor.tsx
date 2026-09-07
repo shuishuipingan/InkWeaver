@@ -32,6 +32,7 @@ import { getChapterFinalizeScope } from '../../services/workflows/workflow-utils
 import { planCharacterExtractionChunks, textFingerprint } from '../../shared/character-extraction'
 import { createCharacterExtractionWorkflow } from '../../services/workflows/character-extraction-workflow'
 import { mergeAcceptedCharacterCandidates, type CharacterCandidateFieldSelection, type CharacterCandidateMatchSelection } from '../../services/character-extraction-merge'
+import { diffCharacterRoster } from '../../shared/character-roster-diff'
 import ChapterHandoffPanel from './ChapterHandoffPanel'
 import type { ChapterHandoffRecord } from '../../shared/chapter-handoff'
 import CharacterExtractionCandidatesPanel from './CharacterExtractionCandidatesPanel'
@@ -322,6 +323,7 @@ function DraftEditorSession({ tabId, filePath, content, projectKey }: Props) {
         throw new Error(text('当前角色名单需要先完成修复，不能合并候选', 'The current character roster needs repair before candidates can be applied.'))
       }
       const merged = mergeAcceptedCharacterCandidates(roster, accepted, fieldSelection, matchSelection)
+      const appliedDiff = diffCharacterRoster(roster.entries ?? [], merged)
       const result = await ipc.invokeWithProjectSession(
         session,
         'db:character-roster-commit',
@@ -348,7 +350,16 @@ function DraftEditorSession({ tabId, filePath, content, projectKey }: Props) {
       await loadCharacterCandidates()
       const { useCharacterStore } = await import('../../stores/character-store')
       await useCharacterStore.getState().load(projectKey, session)
-      toast.success(text('已将接受的人物候选合并到角色卡', 'Accepted character candidates were applied to the roster'))
+      const changeSummary = appliedDiff.map(diff => {
+        const parts = diff.changes.map(change => change.field + (change.kind === 'changed' ? ' →' : ''))
+        if (diff.relationshipAdded > 0) parts.push('关系+' + diff.relationshipAdded)
+        if (diff.relationshipRemoved > 0) parts.push('关系-' + diff.relationshipRemoved)
+        return diff.name + '：' + (parts.slice(0, 5).join('、') || text('字段更新', 'fields updated'))
+      }).join('；')
+      toast.success(text(
+        '已将接受的人物候选合并到角色卡；本次：' + changeSummary,
+        'Accepted character candidates were applied; this change: ' + changeSummary,
+      ))
     } catch (error) {
       toast.error(String(error))
     }
