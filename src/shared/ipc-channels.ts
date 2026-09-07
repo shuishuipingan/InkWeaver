@@ -938,6 +938,14 @@ export interface DatabaseChannels {
     args: [snapshotId: string, expectedProjectPath: string]
     return: import('./project-snapshot').ProjectSnapshotVerification
   }
+  'db:project-snapshot-restore-preview': {
+    args: [snapshotId: string, destinationPath: string, expectedProjectPath: string]
+    return: import('./project-snapshot').ProjectSnapshotRestorePreview
+  }
+  'db:project-snapshot-restore': {
+    args: [snapshotId: string, destinationPath: string, expectedProjectPath: string]
+    return: { success: boolean; result?: import('./project-snapshot').ProjectSnapshotRestoreResult; error?: string }
+  }
   'db:draft-next-version': { args: [chapterNumber: number, expectedProjectPath: string]; return: number }
   'db:draft-update-status': { args: [id: number, status: string, wordCount: number | undefined, expectedProjectPath: string]; return: { success: boolean; error?: string } }
   'db:draft-update-content': { args: [id: number, content: string, wordCount: number, expectedProjectPath: string]; return: { success: boolean; error?: string } }

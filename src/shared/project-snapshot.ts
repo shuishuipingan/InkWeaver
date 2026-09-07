@@ -25,3 +25,23 @@ export interface ProjectSnapshotVerification {
   missing: string[]
   mismatched: string[]
 }
+
+export interface ProjectSnapshotRestorePreview {
+  snapshotId: string
+  destinationPath: string
+  valid: boolean
+  destinationExists: boolean
+  destinationEmpty: boolean
+  canRestore: boolean
+  fileCount: number
+  conflicts: string[]
+  missing: string[]
+  mismatched: string[]
+}
+
+export interface ProjectSnapshotRestoreResult {
+  snapshotId: string
+  destinationPath: string
+  files: number
+  manifest: ProjectSnapshotManifest
+}

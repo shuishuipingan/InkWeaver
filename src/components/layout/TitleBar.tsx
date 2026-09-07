@@ -1,6 +1,7 @@
 import { useEffect, type CSSProperties, type MouseEvent } from 'react'
 import {
   Archive,
+  ArchiveRestore,
   CheckCircle2,
   FilePlus2,
   FolderOpen,
@@ -28,6 +29,7 @@ import { ipc } from '../../services/ipc-client'
 import { useLocaleStore } from '../../stores/locale-store'
 import type { MessageKey } from '../../i18n/core'
 import { toast } from '../ui/Toast'
+import { confirm } from '../ui/Confirm'
 import { captureProjectSession, isProjectSessionCurrent } from '../project-session-gate'
 
 const isMac = navigator.userAgent.includes('Mac')
@@ -71,6 +73,54 @@ export default function TitleBar() {
       toast.success(t('project.backupSuccess', { id: result.manifest.snapshotId }))
     } catch (error) {
       if (isProjectSessionCurrent(session)) toast.error(t('project.backupFailed', { error: String(error) }))
+    }
+  }
+
+  const restoreLatestProjectSnapshot = async () => {
+    const session = captureProjectSession(currentProject)
+    if (!session) return
+    try {
+      const snapshots = await ipc.invokeWithProjectSession(session, 'db:project-snapshot-list', session.projectPath)
+      if (!isProjectSessionCurrent(session)) return
+      const latest = snapshots[0]
+      if (!latest) {
+        toast.info(t('project.restoreUnavailable'))
+        return
+      }
+      const destinationPath = await ipc.invoke('dialog:select-folder')
+      if (!destinationPath || !isProjectSessionCurrent(session)) return
+      const preview = await ipc.invokeWithProjectSession(
+        session,
+        'db:project-snapshot-restore-preview',
+        latest.snapshotId,
+        destinationPath,
+        session.projectPath,
+      )
+      if (!isProjectSessionCurrent(session)) return
+      if (!preview.canRestore) {
+        toast.error(t('project.restoreFailed', { error: preview.destinationEmpty ? '快照校验失败 / snapshot verification failed' : '目标目录必须为空 / destination must be empty' }))
+        return
+      }
+      const approved = await confirm(
+        t('project.restoreConfirm', { id: latest.snapshotId, path: destinationPath }),
+        { title: t('project.restore'), danger: true },
+      )
+      if (!approved || !isProjectSessionCurrent(session)) return
+      const result = await ipc.invokeWithProjectSession(
+        session,
+        'db:project-snapshot-restore',
+        latest.snapshotId,
+        destinationPath,
+        session.projectPath,
+      )
+      if (!isProjectSessionCurrent(session)) return
+      if (!result.success) {
+        toast.error(t('project.restoreFailed', { error: result.error ?? 'unknown error' }))
+        return
+      }
+      toast.success(t('project.restoreSuccess', { path: result.result?.destinationPath ?? destinationPath }))
+    } catch (error) {
+      if (isProjectSessionCurrent(session)) toast.error(t('project.restoreFailed', { error: String(error) }))
     }
   }
 
@@ -190,6 +240,10 @@ export default function TitleBar() {
         <button className="writer-command-button" title={t('project.backupUnavailable')} onClick={() => void createProjectSnapshot()} disabled={!currentProject}>
           <Archive size={14} strokeWidth={1.75} />
           {t('common.backup')}
+        </button>
+        <button className="writer-command-button" title={t('project.restore')} onClick={() => void restoreLatestProjectSnapshot()} disabled={!currentProject}>
+          <ArchiveRestore size={14} strokeWidth={1.75} />
+          {t('common.restore')}
         </button>
         <button className="writer-command-button" title={t('project.imitation')} onClick={openImportNovel}>
           <Import size={14} strokeWidth={1.75} />

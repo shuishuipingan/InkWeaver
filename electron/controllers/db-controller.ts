@@ -897,6 +897,20 @@ export function registerDatabaseController() {
     return ProjectSnapshotService.verify(snapshotId, expectedProjectPath)
   })
 
+  ipcMain.handle('db:project-snapshot-restore-preview', async (_event, snapshotId: string, destinationPath: string, expectedProjectPath: string) => {
+    assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+    return ProjectSnapshotService.previewRestore(snapshotId, destinationPath, expectedProjectPath)
+  })
+
+  ipcMain.handle('db:project-snapshot-restore', async (_event, snapshotId: string, destinationPath: string, expectedProjectPath: string) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      return { success: true, result: await ProjectSnapshotService.restore(snapshotId, destinationPath, expectedProjectPath) }
+    } catch (error) {
+      return { success: false, error: String(error) }
+    }
+  })
+
   ipcMain.handle('db:draft-next-version', async (_event, chapterNumber: number, expectedProjectPath: string) => {
     assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
     return DraftRepository.getNextVersion(chapterNumber)
