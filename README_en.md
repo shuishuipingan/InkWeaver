@@ -124,7 +124,15 @@ inkweaver-mac-x64-<version>-installer.dmg
 ```
 
 The current macOS installers do not have a Developer ID signature and are not notarized. Download only from the official Release and follow the operating system's first-launch confirmation. The formal Release uses a seven-asset contract covering Windows install/update assets, macOS Apple Silicon, and macOS Intel.
-
+const fs = require('fs')
+const p = 'D:/Game APP/AI-Novel-Writer/README_en.md'
+let s = fs.readFileSync(p, 'utf8')
+const content = fs.readFileSync(process.argv[1], 'utf8')
+const anchor = '\n## DeepSeek Harness plugin\n'
+if (!s.includes(anchor)) throw new Error('anchor missing')
+s = s.replace(anchor, content + anchor)
+fs.writeFileSync(p, s, 'utf8')
+console.log('en quickstart added')
 ## DeepSeek Harness plugin
 
 The bundled `@shuishuipingan/inkweaver-dsh` package is an independent early-stage plugin, not a replacement for the desktop application. It provides a narrow reviewed chain for project settings, story architecture, characters, the whole-book outline, chapter blueprints, and chapter prose. Model changes enter a Proposal inbox and become authoritative only after the user applies them.

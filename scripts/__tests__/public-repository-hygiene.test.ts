@@ -1,4 +1,5 @@
-import { existsSync, readFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
 const prohibitedPaths = [
@@ -14,9 +15,10 @@ const prohibitedPaths = [
 ]
 
 describe('public repository hygiene', () => {
-  it('does not contain internal process material or generated output', () => {
+  it('does not track internal process material or generated output', () => {
+    const tracked = execFileSync('git', ['ls-files'], { encoding: 'utf8' }).split(/\r?\n/)
     for (const target of prohibitedPaths) {
-      expect(existsSync(target), target).toBe(false)
+      expect(tracked, target).not.toContain(target)
     }
   })
 

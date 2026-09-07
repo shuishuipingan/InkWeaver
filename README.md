@@ -119,7 +119,15 @@ inkweaver-mac-x64-<版本号>-installer.dmg
 ```
 
 当前 macOS 安装包未使用 Developer ID 签名且未公证。请只从官方 Release 下载，并按系统安全提示确认首次打开。正式 Release 使用七项资产合同，分别覆盖 Windows 安装与更新文件、macOS Apple Silicon 安装包和 macOS Intel 安装包。
-
+const fs = require('fs')
+const p = 'D:/Game APP/AI-Novel-Writer/README.md'
+let s = fs.readFileSync(p, 'utf8')
+const content = fs.readFileSync(process.argv[1], 'utf8')
+const anchor = '\n## DeepSeek Harness 插件\n'
+if (!s.includes(anchor)) throw new Error('anchor missing')
+s = s.replace(anchor, content + anchor)
+fs.writeFileSync(p, s, 'utf8')
+console.log('zh quickstart added')
 ## DeepSeek Harness 插件
 
 仓库中的 `@shuishuipingan/inkweaver-dsh` 是独立的早期插件，不是桌面版的替代品。它提供精简的项目设置、故事架构、人物、全书纲要、章节蓝图和章节正文流程；模型修改先进入 Proposal，由用户审核应用后才改变权威项目状态。
