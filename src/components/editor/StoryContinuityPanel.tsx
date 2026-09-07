@@ -24,10 +24,18 @@ import {
 import { factAppliesAtChapter, type FinalizedContinuityProjection } from '../../shared/finalized-continuity'
 import { aggregateStoryContinuity, type VolumeProgressSummary } from '../../shared/story-continuity-aggregation'
 import { knowledgeEventAppliesAtChapter, type KnowledgeEvent } from '../../shared/knowledge-event'
+import type { ChapterHandoffRecord } from '../../shared/chapter-handoff'
+import type { NarrativeThreadView } from '../../shared/narrative-thread'
 
 interface StoryContinuityPanelProps {
   projectKey: string
   chapterNumber: number
+}
+
+interface WritingPreparationSummary {
+  blueprint: Record<string, unknown> | null
+  handoff: ChapterHandoffRecord | null
+  narrativeThreads: NarrativeThreadView[]
 }
 
 function lines(value: string): string[] {
@@ -74,6 +82,7 @@ export default function StoryContinuityPanel({ projectKey, chapterNumber }: Stor
   const [volumeProgress, setVolumeProgress] = useState<VolumeProgressSummary[]>([])
   const [knowledgeReviewEvents, setKnowledgeReviewEvents] = useState<KnowledgeEvent[]>([])
   const [knowledgeUpdatingId, setKnowledgeUpdatingId] = useState<string | null>(null)
+  const [preparation, setPreparation] = useState<WritingPreparationSummary>({ blueprint: null, handoff: null, narrativeThreads: [] })
 
   const load = async () => {
     const session = captureProjectSession(currentProject)
@@ -81,28 +90,47 @@ export default function StoryContinuityPanel({ projectKey, chapterNumber }: Stor
     setLoading(true)
     setError(null)
     try {
-      const [next, nextTimeline, allDocuments] = await Promise.all([
+      const [next, nextTimeline, allDocuments, blueprints, handoff, narrativeThreads] = await Promise.all([
         ipc.invokeWithProjectSession(session, 'db:story-continuity-read', chapterNumber, projectKey),
         ipc.invokeWithProjectSession(session, 'db:continuity-list-before', chapterNumber, projectKey),
         ipc.invokeWithProjectSession(session, 'db:story-continuity-list-all', projectKey),
+        ipc.invokeWithProjectSession(session, 'db:blueprint-get-all', projectKey),
+        chapterNumber > 1
+          ? ipc.invokeWithProjectSession(session, 'db:chapter-handoff-latest-before', chapterNumber, projectKey)
+          : Promise.resolve(null),
+        ipc.invokeWithProjectSession(session, 'db:narrative-thread-list-relevant', {
+          chapterNumber,
+          title: '',
+          keyEvents: '',
+          characters: characterNames,
+        }, projectKey),
       ])
       if (isProjectSessionCurrent(session)) {
         setDocument(next)
         setTimeline(nextTimeline)
         setVolumeProgress(aggregateStoryContinuity([...allDocuments, next]))
+        const blueprint = Array.isArray(blueprints)
+          ? blueprints.find(candidate => (candidate as { chapterNumber?: number }).chapterNumber === chapterNumber)
+          : undefined
+        setPreparation({
+          blueprint: blueprint && typeof blueprint === 'object' ? blueprint as unknown as Record<string, unknown> : null,
+          handoff: handoff && typeof handoff === 'object' ? handoff as ChapterHandoffRecord : null,
+          narrativeThreads: Array.isArray(narrativeThreads) ? narrativeThreads as NarrativeThreadView[] : [],
+        })
       }
     } catch (cause) {
       if (isProjectSessionCurrent(session)) {
         setError(String(cause))
         setTimeline([])
         setVolumeProgress([])
+        setPreparation({ blueprint: null, handoff: null, narrativeThreads: [] })
       }
     } finally {
       if (isProjectSessionCurrent(session)) setLoading(false)
     }
   }
 
-  useEffect(() => { void load() }, [chapterNumber, projectKey, currentProject?.sessionLease])
+  useEffect(() => { void load() }, [chapterNumber, projectKey, currentProject?.sessionLease, characterNames.join('\u0000')])
 
   useEffect(() => {
     const session = captureProjectSession(currentProject)
@@ -190,6 +218,26 @@ export default function StoryContinuityPanel({ projectKey, chapterNumber }: Stor
     }
   }
 
+  const blueprintTitle = typeof preparation.blueprint?.title === 'string' ? preparation.blueprint.title : ''
+  const blueprintPurpose = typeof preparation.blueprint?.purpose === 'string' ? preparation.blueprint.purpose : ''
+  const blueprintKeyEvents = Array.isArray(preparation.blueprint?.keyEvents)
+    ? preparation.blueprint.keyEvents.filter((value): value is string => typeof value === 'string' && value.trim() !== '')
+    : []
+  const preparationMissing = [
+    !preparation.blueprint
+      ? text('本章还没有章节蓝图', 'This chapter has no blueprint yet')
+      : undefined,
+    chapterNumber > 1 && !preparation.handoff
+      ? text('上一章没有已确认的章节交接', 'No confirmed handoff is available from the previous chapter')
+      : undefined,
+    characterNames.length === 0 && !Array.isArray(preparation.blueprint?.characters)
+      ? text('尚未加载本章相关人物', 'No chapter characters are loaded')
+      : undefined,
+    knowledgeEvents.length === 0 && knowledgeReviewEvents.length === 0
+      ? text('当前没有角色知情记录（不代表可以泄漏未来信息）', 'No character-knowledge record is available; future information must still stay out')
+      : undefined,
+  ].filter((value): value is string => value !== undefined)
+
   return (
     <details className="mt-3 rounded-lg border" data-story-continuity-panel="true" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-panel)' }}>
       <summary className="flex cursor-pointer items-center justify-between gap-2 px-3 py-2 text-xs font-semibold text-[var(--color-text)]">
@@ -199,6 +247,43 @@ export default function StoryContinuityPanel({ projectKey, chapterNumber }: Stor
       <div className="space-y-3 border-t p-3" style={{ borderColor: 'var(--color-border)' }}>
         {loading && <div className="flex items-center gap-1 text-xs text-[var(--color-text-muted)]"><RefreshCw size={12} className="animate-spin" />{text('读取中…', 'Loading…')}</div>}
         {error && <div className="rounded border px-2 py-1 text-xs text-[var(--color-error-text)]" style={{ borderColor: 'var(--color-error)' }}>{error}</div>}
+        <section data-writing-preparation="true" className="rounded border p-2" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-raised)' }}>
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <h4 className="text-xs font-semibold">{text('写前准备摘要', 'Writing preparation')}</h4>
+            <span className="text-[0.68rem] font-normal text-[var(--color-text-muted)]">{text('只读来源汇总', 'Read-only source summary')}</span>
+          </div>
+          <div className="grid gap-2 text-xs sm:grid-cols-2">
+            <div className="rounded border px-2 py-1.5" style={{ borderColor: 'var(--color-border)' }}>
+              <div className="font-medium">{text('本章蓝图', 'Chapter blueprint')}</div>
+              <div className="text-[var(--color-text-secondary)]">{blueprintTitle || text('未创建', 'Not created')}</div>
+              {blueprintPurpose && <div className="mt-0.5 text-[var(--color-text-muted)]">{blueprintPurpose}</div>}
+              {blueprintKeyEvents.length > 0 && <div className="mt-0.5 text-[var(--color-text-muted)]">{text(`关键事件：${blueprintKeyEvents.slice(0, 3).join('；')}`, `Key events: ${blueprintKeyEvents.slice(0, 3).join('; ')}`)}</div>}
+            </div>
+            <div className="rounded border px-2 py-1.5" style={{ borderColor: 'var(--color-border)' }}>
+              <div className="font-medium">{text('上一章交接', 'Previous-chapter handoff')}</div>
+              {preparation.handoff
+                ? <><div className="text-[var(--color-text-secondary)]">{preparation.handoff.sceneLocation || text('现场未填写', 'Scene location not filled')}</div><div className="mt-0.5 text-[var(--color-text-muted)]">{preparation.handoff.immediateGoal || text('即时目标未填写', 'Immediate goal not filled')}</div></>
+                : <div className="text-[var(--color-text-muted)]">{chapterNumber === 1 ? text('开篇章节，无前章交接', 'Opening chapter; no previous handoff') : text('未找到已确认交接', 'No confirmed handoff found')}</div>}
+            </div>
+            <div className="rounded border px-2 py-1.5" style={{ borderColor: 'var(--color-border)' }}>
+              <div className="font-medium">{text('活跃伏笔 / 叙事线', 'Active narrative threads')}</div>
+              {preparation.narrativeThreads.length === 0
+                ? <div className="text-[var(--color-text-muted)]">{text('当前没有相关活跃线索', 'No relevant active threads')}</div>
+                : <div className="space-y-0.5 text-[var(--color-text-secondary)]">{preparation.narrativeThreads.slice(0, 4).map(thread => <div key={thread.id}>{thread.title} · {thread.status}{thread.dormantChapters > 0 ? text(` · 沉寂${thread.dormantChapters}章`, ` · dormant ${thread.dormantChapters} chapters`) : ''}</div>)}</div>}
+            </div>
+            <div className="rounded border px-2 py-1.5" style={{ borderColor: 'var(--color-border)' }}>
+              <div className="font-medium">{text('知情边界与预算', 'Knowledge boundary and budget')}</div>
+              <div className="text-[var(--color-text-secondary)]">{text(`已确认知情 ${knowledgeEvents.length} 条 · 待审 ${knowledgeReviewEvents.length} 条`, `${knowledgeEvents.length} confirmed knowledge events · ${knowledgeReviewEvents.length} awaiting review`)}</div>
+              <div className="mt-0.5 text-[var(--color-text-muted)]">{text('写作上下文会按模型预算裁剪，并在任务收据中列出纳入/省略原因。', 'Writing context is bounded by the model budget; the task receipt lists included and omitted sources.')}</div>
+            </div>
+          </div>
+          <div className="mt-2 rounded border px-2 py-1.5 text-xs" style={{ borderColor: preparationMissing.length > 0 ? 'var(--color-warning)' : 'var(--color-border)' }}>
+            <span className="font-medium">{text('开始前需留意', 'Before writing')}</span>
+            {preparationMissing.length === 0
+              ? <span className="ml-1 text-[var(--color-success-text)]">{text('当前准备项齐全', 'The preparation inputs are ready')}</span>
+              : <ul className="mt-1 list-disc space-y-0.5 pl-4 text-[var(--color-text-muted)]">{preparationMissing.map(item => <li key={item}>{item}</li>)}</ul>}
+          </div>
+        </section>
         {timeline.length > 0 && <section data-continuity-timeline="true" className="rounded border p-2" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-raised)' }}>
           <h4 className="mb-2 text-xs font-semibold">{text('跨章事实时间线', 'Cross-chapter fact timeline')}</h4>
           <div className="space-y-2">{timeline.flatMap(projection => (projection.facts ?? [])

@@ -27,6 +27,9 @@ beforeEach(() => {
     if (channel === 'db:story-continuity-read') return empty
     if (channel === 'db:continuity-list-before') return timelineFixtures
     if (channel === 'db:story-continuity-list-all') return []
+    if (channel === 'db:blueprint-get-all') return []
+    if (channel === 'db:chapter-handoff-latest-before') return null
+    if (channel === 'db:narrative-thread-list-relevant') return []
     if (channel === 'db:knowledge-event-list-for-chapter') return []
     if (channel === 'db:knowledge-event-list-review') return reviewEvents
     if (channel === 'db:knowledge-event-status') {
@@ -56,6 +59,8 @@ describe('StoryContinuityPanel', () => {
     await act(async () => root.render(<StoryContinuityPanel projectKey={PROJECT_PATH} chapterNumber={2} />))
     const summary = container.querySelector('summary')
     expect(summary?.textContent).toContain('章节连续性工作单')
+    expect(container.querySelector('[data-writing-preparation="true"]')).not.toBeNull()
+    expect(container.textContent).toContain('写前准备摘要')
     await act(async () => summary?.dispatchEvent(new MouseEvent('click', { bubbles: true })))
     await act(async () => container.querySelector('button')?.click())
     expect(container.textContent).toContain('场景 1')
