@@ -273,6 +273,15 @@ export default function StoryContinuityPanel({ projectKey, chapterNumber }: Stor
       ? text('尚未配置世界规则或全局写作约束', 'No world rules or global writing constraints are configured')
       : undefined,
   ].filter((value): value is string => value !== undefined)
+  const timelineFacts = timeline.flatMap(projection => (projection.facts ?? [])
+    .filter(fact => factAppliesAtChapter(fact, chapterNumber)))
+  const timelineGroups = [...timelineFacts.reduce((groups, fact) => {
+    const chapter = fact.sourceChapter
+    const current = groups.get(chapter) ?? []
+    current.push(fact)
+    groups.set(chapter, current)
+    return groups
+  }, new Map<number, NonNullable<FinalizedContinuityProjection['facts']>>())].sort(([left], [right]) => left - right)
 
   return (
     <details className="mt-3 rounded-lg border" data-story-continuity-panel="true" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-panel)' }}>
@@ -330,15 +339,16 @@ export default function StoryContinuityPanel({ projectKey, chapterNumber }: Stor
               : <ul className="mt-1 list-disc space-y-0.5 pl-4 text-[var(--color-text-muted)]">{preparationMissing.map(item => <li key={item}>{item}</li>)}</ul>}
           </div>
         </section>
-        {timeline.length > 0 && <section data-continuity-timeline="true" className="rounded border p-2" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-raised)' }}>
+        {timelineGroups.length > 0 && <section data-continuity-timeline="true" className="rounded border p-2" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-raised)' }}>
           <h4 className="mb-2 text-xs font-semibold">{text('跨章事实时间线', 'Cross-chapter fact timeline')}</h4>
-          <div className="space-y-2">{timeline.flatMap(projection => (projection.facts ?? [])
-            .filter(fact => factAppliesAtChapter(fact, chapterNumber))
-            .map((fact, index) => <div key={`${fact.sourceChapter}:${fact.category}:${index}`} className="border-l-2 pl-2 text-xs" style={{ borderColor: 'var(--color-accent)' }}>
-              <div className="font-medium">{text(`第${fact.sourceChapter}章 · ${fact.category}`, `Chapter ${fact.sourceChapter} · ${fact.category}`)}</div>
+          <div className="space-y-1.5">{timelineGroups.map(([sourceChapter, facts]) => <details key={sourceChapter} open className="rounded border px-2 py-1.5" style={{ borderColor: 'var(--color-border)' }}>
+            <summary className="cursor-pointer text-xs font-medium">{text(`第${sourceChapter}章 · ${facts.length} 条有效事实`, `Chapter ${sourceChapter} · ${facts.length} active facts`)}</summary>
+            <div className="mt-2 space-y-2">{facts.map((fact, index) => <div key={`${sourceChapter}:${fact.category}:${index}`} className="border-l-2 pl-2 text-xs" style={{ borderColor: 'var(--color-accent)' }}>
+              <div className="font-medium">{fact.category}</div>
               <div className="text-[var(--color-text-secondary)]">{fact.statement}</div>
               <div className="text-[var(--color-text-muted)]">{text(`证据：${fact.evidence}`, `Evidence: ${fact.evidence}`)}</div>
-            </div>))}</div>
+            </div>)}</div>
+          </details>)}</div>
         </section>}
         {volumeProgress.length > 0 && <section data-volume-progress="true" className="rounded border p-2" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-raised)' }}>
           <h4 className="mb-2 text-xs font-semibold">{text('卷级推进摘要', 'Volume progress')}</h4>
