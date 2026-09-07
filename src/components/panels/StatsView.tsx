@@ -303,6 +303,10 @@ export default function StatsView() {
               <KpiCard icon={XCircle} label={text('失败', 'Failed')} value={String(stats?.failedCalls ?? 0)} tone="danger" />
               <KpiCard icon={Zap} label={text('总消耗', 'Tokens')} value={formatTokens(stats?.totalTokens ?? null)} sub={formatTokens(stats?.totalPromptTokens ?? null) + ' 输入 / ' + formatTokens(stats?.totalCompletionTokens ?? null) + ' 输出'} tone="accent" />
             </div>
+            <div className="rounded-lg border px-3 py-2 text-[0.68rem]" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-hover)', color: 'var(--color-text-secondary)' }} data-cost-estimate-status="unavailable">
+              <div className="font-medium text-[var(--color-text)]">{text('费用估算', 'Cost estimate')}</div>
+              <div className="mt-0.5">{text('当前只显示服务商回报的 token 用量；未配置并核验的官方价格快照不会被换算成美元，也不会把缺失用量显示为 0。', 'Only provider-reported token usage is shown. Without a verified official price snapshot, InkWeaver does not invent a dollar estimate or turn missing usage into zero.')}</div>
+            </div>
 {/* 缓存命中率 */}
             <CacheRateBar hit={stats?.totalCacheHitTokens ?? 0} miss={stats?.totalCacheMissTokens ?? 0} />
 
