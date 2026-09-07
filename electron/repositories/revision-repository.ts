@@ -6,6 +6,7 @@
  */
 import { getProjectDb } from '../database'
 import { ContentRepository } from './content-repository'
+import { textFingerprint } from '../../src/shared/character-extraction'
 
 /** 修稿元数据（不含正文） */
 export interface RevisionMeta {
@@ -21,6 +22,7 @@ export interface RevisionMeta {
     wordCount: number
     createdAt: string
     updatedAt: string
+    baseContentHash?: string
 }
 
 /** 修稿完整数据（含正文） */
@@ -42,7 +44,26 @@ function rowToMeta(row: Record<string, unknown>): RevisionMeta {
         wordCount: row.word_count as number,
         createdAt: row.created_at as string,
         updatedAt: row.updated_at as string,
+        ...(typeof row.base_content_hash === 'string' && row.base_content_hash ? { baseContentHash: row.base_content_hash } : {}),
     }
+}
+
+function ensureBaseHashColumn(db: ReturnType<typeof getProjectDb>): asserts db is NonNullable<ReturnType<typeof getProjectDb>> {
+    if (!db) return
+    const columns = (db.prepare('PRAGMA table_info(revisions)').all() as Array<{ name: string }>).map(column => column.name)
+    if (!columns.includes('base_content_hash')) db.exec("ALTER TABLE revisions ADD COLUMN base_content_hash TEXT NOT NULL DEFAULT ''")
+}
+
+function currentDraftContentHash(db: NonNullable<ReturnType<typeof getProjectDb>>, draftId: number): string {
+    const row = db.prepare(`SELECT contents.body AS body FROM drafts JOIN contents ON contents.id = drafts.content_id WHERE drafts.id = ?`).get(draftId) as { body?: string } | undefined
+    if (!row || typeof row.body !== 'string') throw new Error('修稿基准草稿不存在')
+    return textFingerprint(row.body)
+}
+
+function assertBaseContentHash(db: NonNullable<ReturnType<typeof getProjectDb>>, draftId: number, expected?: string): void {
+    if (expected === undefined) return
+    if (!/^[a-f0-9]{64}$/u.test(expected)) throw new Error('修稿基准正文指纹无效')
+    if (currentDraftContentHash(db, draftId) !== expected) throw new Error('修稿基准正文已变化，已拒绝保存旧修稿')
 }
 
 export class RevisionRepository {
@@ -57,9 +78,12 @@ export class RevisionRepository {
         reviewSourceId?: number
         content: string
         wordCount: number
+        baseContentHash?: string
     }): { id: number; revisionIndex: number } {
         const db = getProjectDb()
         if (!db) throw new Error('[RevisionRepository] 数据库未连接')
+        ensureBaseHashColumn(db)
+        assertBaseContentHash(db, params.baseDraftId, params.baseContentHash)
 
         const tx = db.transaction(() => {
             const row = db.prepare(`
@@ -71,8 +95,8 @@ export class RevisionRepository {
             const result = db.prepare(`
         INSERT INTO revisions (
           base_draft_id, revision_index, revision_type,
-          user_prompt, review_source_id, content_id, word_count
-        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+          user_prompt, review_source_id, content_id, word_count, base_content_hash
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
                 params.baseDraftId,
                 revisionIndex,
@@ -81,6 +105,7 @@ export class RevisionRepository {
                 params.reviewSourceId ?? null,
                 contentId,
                 params.wordCount,
+                params.baseContentHash ?? '',
             )
             return { id: Number(result.lastInsertRowid), revisionIndex }
         })
@@ -99,9 +124,12 @@ export class RevisionRepository {
         reviewSourceId?: number
         content: string
         wordCount: number
+        baseContentHash?: string
     }): { id: number; revisionIndex: number } {
         const db = getProjectDb()
         if (!db) throw new Error('[RevisionRepository] 数据库未连接')
+        ensureBaseHashColumn(db)
+        assertBaseContentHash(db, params.baseDraftId, params.baseContentHash)
 
         return db.transaction(() => {
             const row = db.prepare(`
@@ -112,8 +140,8 @@ export class RevisionRepository {
             const result = db.prepare(`
         INSERT INTO revisions (
           base_draft_id, revision_index, revision_type,
-          user_prompt, review_source_id, content_id, word_count
-        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+          user_prompt, review_source_id, content_id, word_count, base_content_hash
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
                 params.baseDraftId,
                 revisionIndex,
@@ -122,6 +150,7 @@ export class RevisionRepository {
                 params.reviewSourceId ?? null,
                 contentId,
                 params.wordCount,
+                params.baseContentHash ?? '',
             )
             const id = Number(result.lastInsertRowid)
             db.prepare(`
@@ -191,6 +220,13 @@ export class RevisionRepository {
     static markMerged(id: number, mergedToDraftId: number): void {
         const db = getProjectDb()
         if (!db) throw new Error('[RevisionRepository] 数据库未连接')
+        ensureBaseHashColumn(db)
+
+        const revision = db.prepare('SELECT base_draft_id, base_content_hash FROM revisions WHERE id = ?').get(id) as { base_draft_id: number; base_content_hash: string } | undefined
+        if (!revision) throw new Error(`[RevisionRepository] 修稿不存在：${id}`)
+        if (revision.base_content_hash && currentDraftContentHash(db, revision.base_draft_id) !== revision.base_content_hash) {
+            throw new Error('修稿基准正文已变化，已拒绝合并旧修稿')
+        }
 
         const result = db.prepare(`
       UPDATE revisions

@@ -608,6 +608,13 @@ function createTables(db: BetterSqlite3.Database, importSourceSecret?: Buffer) {
     db.exec('ALTER TABLE llm_calls ADD COLUMN cache_miss_tokens INTEGER DEFAULT 0')
   }
 
+  const revisionColumns = new Set(
+    (db.prepare('PRAGMA table_info(revisions)').all() as Array<{ name: string }>).map(column => column.name),
+  )
+  if (!revisionColumns.has('base_content_hash')) {
+    db.exec("ALTER TABLE revisions ADD COLUMN base_content_hash TEXT NOT NULL DEFAULT ''")
+  }
+
   // Durable continuity facts were added to the existing summary projection so
   // older projects keep their legacy snapshots while new rows bind to a
   // finalized draft identity.

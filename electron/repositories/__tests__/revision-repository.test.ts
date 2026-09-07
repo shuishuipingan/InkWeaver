@@ -5,6 +5,7 @@ import type BetterSqlite3 from 'better-sqlite3'
 import { getProjectDb } from '../../database'
 import { ContentRepository } from '../content-repository'
 import { RevisionRepository } from '../revision-repository'
+import { textFingerprint } from '../../../src/shared/character-extraction'
 
 vi.mock('../../database', () => ({ getProjectDb: vi.fn() }))
 
@@ -51,6 +52,18 @@ beforeEach(() => {
 afterEach(() => db.close())
 
 describe('RevisionRepository.replacePending', () => {
+  it('binds a revision to its base content and rejects merging after the source changes', () => {
+    const revision = RevisionRepository.create({
+      baseDraftId: 1,
+      revisionType: 'review-fix',
+      content: '基于原稿的修订',
+      wordCount: 7,
+      baseContentHash: textFingerprint('原稿'),
+    })
+    db.prepare('UPDATE contents SET body = ? WHERE id = 1').run('作者后来改过的原稿')
+    expect(() => RevisionRepository.markMerged(revision.id, 2)).toThrow(/基准正文已变化/)
+  })
+
   it('creates the replacement and discards every previous pending revision in one transaction', () => {
     const first = RevisionRepository.create({
       baseDraftId: 1,

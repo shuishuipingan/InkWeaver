@@ -14,6 +14,7 @@ import {
 } from '../workflow-project-session'
 import { assertMateriallyCompleteRevision } from './refinement-completeness'
 import { countDraftUnits } from '../../../shared/draft-units'
+import { textFingerprint } from '../../../shared/character-extraction'
 import {
   hasIncludedReviewItems,
   parseHumanConfirmedReviewSnapshot,
@@ -221,6 +222,7 @@ export class RefineFromReviewCommand extends BaseWorkflowCommand<string> {
       wordCount: countDraftUnits(cleanRefined),
       userPrompt: confirmedReview.authorGuidance || undefined,
       reviewSourceId,
+      baseContentHash: textFingerprint(this.params.draftContent),
     }, context.projectPath)
     requireIpcSuccess(createRes, text('创建审稿修订稿', 'Create review-based revision'))
     if (createRes.id === undefined) throw new Error(text(
