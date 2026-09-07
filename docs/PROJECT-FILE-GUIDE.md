@@ -83,7 +83,7 @@
 | 路径 | 作用 |
 | --- | --- |
 | `services/ipc-client.ts` | Renderer 到主进程的类型化调用和 project-session gate。 |
-| `services/export-service.ts` | 以 finalized authority 枚举章节、校验顺序/标题/字数/正文并写出受限导出文件。 |
+| `services/export-service.ts` | 以 finalized authority 枚举章节、校验顺序/标题/字数/正文，写出受限导出文件及不含正文的 authority/hash manifest。 |
 | `services/character-extraction-merge.ts` | 只合并已接受且非 ambiguous 的人物候选，保留字段级选择。 |
 | `services/continuity-impact.ts` | 将历史改稿映射为可选影响项。 |
 | `services/generation/` | Provider 调用、预算、重试、usage 和取消边界。 |

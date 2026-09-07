@@ -12,6 +12,7 @@ import { useWorkflowStore } from '../stores/workflow-store'
 import type { ProjectSessionContext } from '../shared/ipc-channels'
 import type { AuthoritativeChapterSequence } from '../shared/author-manuscript-import'
 import { countDraftUnits } from '../shared/draft-units'
+import { textFingerprint } from '../shared/character-extraction'
 import {
   getActiveProjectSessionContext,
   sameProjectPathKey,
@@ -61,6 +62,21 @@ export interface FinalizedExportPlanChapter {
 export type FinalizedExportPlan =
   | { ok: true; chapters: FinalizedExportPlanChapter[] }
   | { ok: false; error: string }
+
+export interface ExportManifest {
+  schemaVersion: 1
+  projectName: string
+  format: ExportFormat
+  generatedAt: string
+  authorityFingerprint: string
+  chapters: Array<{
+    chapterNumber: number
+    title: string
+    wordCount: number
+    outputFile: string
+    contentHash: string
+  }>
+}
 
 /**
  * Selects only the canonical finalized authority. Blueprints are planning data
@@ -121,6 +137,17 @@ function staleExportResult(): { success: false; error: string } {
   return { success: false, error: PROJECT_SESSION_CHANGED_ERROR }
 }
 
+async function contentHash(value: string): Promise<string> {
+  try {
+    const subtle = globalThis.crypto?.subtle
+    if (!subtle) return textFingerprint(value)
+    const digest = await subtle.digest('SHA-256', new TextEncoder().encode(value))
+    return [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, '0')).join('')
+  } catch {
+    return textFingerprint(value)
+  }
+}
+
 /** 导出全书 */
 export async function exportNovel(
   options: ExportOptions,
@@ -152,7 +179,7 @@ export async function exportNovel(
     const plan = createFinalizedExportPlan(authority, allDrafts)
     if (!plan.ok) return { success: false, error: plan.error }
 
-    const chapterContents: Array<{ name: string; title: string; content: string; wordCount: number }> = []
+    const chapterContents: Array<{ chapterNumber: number; name: string; title: string; content: string; wordCount: number; contentHash: string }> = []
     for (const chapter of plan.chapters) {
       const full = await ipc.invokeWithProjectSession(projectSession, 'db:draft-get-full', chapter.id, projectSession.projectPath) as unknown as {
         content?: unknown
@@ -175,10 +202,12 @@ export async function exportNovel(
         return { success: false, error: `第 ${chapter.chapterNumber} 章标题校验失败，无法安全导出` }
       }
       chapterContents.push({
+        chapterNumber: chapter.chapterNumber,
         name: `chapter_${chapter.chapterNumber}.md`,
         title: chapter.chapterTitle,
         content: full.content,
         wordCount: computedWordCount,
+        contentHash: await contentHash(full.content),
       })
     }
 
@@ -262,6 +291,28 @@ export async function exportNovel(
     }
 
     if (!isProjectSessionCurrent(projectSession)) return staleExportResult()
+    const manifest: ExportManifest = {
+      schemaVersion: 1,
+      projectName: project.name,
+      format: options.format,
+      generatedAt: new Date().toISOString(),
+      authorityFingerprint: authority.authorityFingerprint,
+      chapters: chapterContents.map(chapter => ({
+        chapterNumber: chapter.chapterNumber,
+        title: chapter.title,
+        wordCount: chapter.wordCount,
+        outputFile: options.format === 'split-md' ? `${projectFileStem}/${chapter.name}` : outputPath,
+        contentHash: chapter.contentHash,
+      })),
+    }
+    const manifestResult = await ipc.invoke(
+      'fs:grant-write-file',
+      options.grantId,
+      `${projectFileStem}.manifest.json`,
+      JSON.stringify(manifest, null, 2),
+    )
+    if (!isProjectSessionCurrent(projectSession)) return staleExportResult()
+    requireIpcSuccess(manifestResult, '写入导出清单')
     addLog('info', `导出完成: ${outputPath}`)
     return { success: true, path: outputPath }
   } catch (error) {

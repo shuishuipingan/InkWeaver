@@ -185,6 +185,32 @@ describe('exportNovel project session ownership', () => {
     expect(ipc.invoke).not.toHaveBeenCalled()
   })
 
+  it('writes a source-bound export manifest with chapter title, count, path, and content hash', async () => {
+    await expect(exportNovel(
+      { format: 'merged-md', grantId: 'export-grant' },
+      projectSnapshot,
+      projectSession,
+    )).resolves.toEqual({ success: true, path: 'Project A.md' })
+
+    const manifestCall = vi.mocked(ipc.invoke).mock.calls.find(([channel, _grantId, relativePath]) => (
+      channel === 'fs:grant-write-file' && typeof relativePath === 'string' && relativePath.endsWith('.manifest.json')
+    ))
+    expect(manifestCall).toBeDefined()
+    const manifest = JSON.parse(String(manifestCall?.[3])) as {
+      schemaVersion: number
+      format: string
+      authorityFingerprint: string
+      chapters: Array<{ chapterNumber: number; title: string; wordCount: number; outputFile: string; contentHash: string }>
+    }
+    expect(manifest).toMatchObject({
+      schemaVersion: 1,
+      format: 'merged-md',
+      authorityFingerprint: 'a'.repeat(64),
+      chapters: [{ chapterNumber: 1, title: '开篇', wordCount: 2, outputFile: 'Project A.md' }],
+    })
+    expect(manifest.chapters[0]?.contentHash).toMatch(/^[a-f0-9]{64}$/u)
+  })
+
   it('stops after the directory-selection export becomes stale on a same-path reopen', async () => {
     let resolveBlueprints: ((value: Array<{ chapterNumber: number }>) => void) | undefined
     vi.mocked(ipc.invokeWithProjectSession).mockImplementationOnce(() =>
