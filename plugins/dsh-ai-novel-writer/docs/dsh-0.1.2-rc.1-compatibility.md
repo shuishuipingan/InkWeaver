@@ -80,6 +80,9 @@ The current DSH runtime is compatible with the official
 profile it imports removed `dsh-settings` exports and prevents the Web profile
 from booting. The plugin qualification script pins `dsh-web-all@0.3.17` for
 this reason.
+This package is owned and released by the DSH Web host ecosystem; InkWeaver
+does not modify, version, publish, or promise support for that package beyond
+recording the compatibility prerequisite used by qualification.
 
 ## Evidence and remaining gate
 

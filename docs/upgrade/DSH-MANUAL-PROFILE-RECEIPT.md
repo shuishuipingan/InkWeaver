@@ -3,6 +3,8 @@
 日期：2026-09-07（Asia/Hong_Kong）
 
 这是一份开发线子门禁收据，不是正式插件 1.1.0 发布收据。
+`@linxin666/dsh-web-all` 是 DSH 宿主侧的外部 UI companion，不属于 InkWeaver
+插件的源码、版本或发布资产；这里仅记录它作为 Web qualification 的环境前置依赖。
 
 ## 环境
 
