@@ -8,6 +8,8 @@
 
 > 1.1.0 正在开发中，尚未发布。当前开发线已经加入连续阅读、章节连续性工作单、证据化人物提取、知情范围、关系图导航与 SQLite 一致性快照；完整路线图、跨平台安装包和正式 Release 尚未冻结。
 
+接手开发时先看[项目文件指南](docs/PROJECT-FILE-GUIDE.md)，再看[完整功能图](docs/upgrade/INKWEAVER-1.1.0-FULL-FEATURE-MAP.md)和[交付追踪表](docs/upgrade/INKWEAVER-1.1.0-DELIVERY-TRACKER.md)。文件指南按事实源、主进程副作用、Renderer 投影、DSH 插件和发布生成物解释每个目录的职责。
+
 [下载 Windows / macOS 桌面版](https://github.com/shuishuipingan/InkWeaver/releases/latest) · [查看源代码](https://github.com/shuishuipingan/InkWeaver) · [安装 DeepSeek Harness 插件](https://www.npmjs.com/package/@ethanyoq/dsh-ai-novel-writer)
 
 ## 织墨解决什么问题
