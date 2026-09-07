@@ -174,6 +174,44 @@ export function emptyStoryContinuityDocument(chapterNumber: number): StoryContin
   }
 }
 
+/**
+ * Suggest scene cards from finalized prose without inferring story facts.
+ *
+ * Paragraph grouping is deliberately mechanical: the only durable evidence
+ * produced here is a short excerpt copied from the manuscript, and every
+ * field that would require semantic judgment stays empty for the author to
+ * complete. The result is always `candidate`, never `confirmed` or `observed`.
+ */
+export function suggestSceneCandidatesFromText(content: string, maxScenes = 12): SceneBeat[] {
+  if (typeof content !== 'string' || content.trim() === '' || !Number.isSafeInteger(maxScenes) || maxScenes < 1) return []
+  const paragraphs = content
+    .split(/\r?\n\s*\r?\n/gu)
+    .map(paragraph => paragraph.replace(/\s+/gu, ' ').trim())
+    .filter(paragraph => paragraph.length >= 12)
+  if (paragraphs.length === 0) return []
+  const sceneCount = Math.min(maxScenes, paragraphs.length)
+  const groupSize = Math.max(1, Math.ceil(paragraphs.length / sceneCount))
+  const scenes: SceneBeat[] = []
+  for (let start = 0; start < paragraphs.length && scenes.length < maxScenes; start += groupSize) {
+    const evidence = paragraphs.slice(start, start + groupSize).join(' ').slice(0, 320).trim()
+    if (!evidence) continue
+    const sceneNumber = scenes.length + 1
+    scenes.push({
+      id: `scene-candidate-${sceneNumber}-${evidence.slice(0, 24).replace(/[^\p{L}\p{N}]+/gu, '-').toLowerCase()}`,
+      sceneNumber,
+      status: 'candidate',
+      entryState: '',
+      goal: '',
+      obstacle: '',
+      choice: '',
+      consequence: '',
+      exitState: '',
+      evidence: [evidence],
+    })
+  }
+  return scenes
+}
+
 export function normalizeStoryContinuityDocument(value: unknown, chapterNumber: number): StoryContinuityDocument {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('章节连续性文档无效')
   const record = value as Record<string, unknown>

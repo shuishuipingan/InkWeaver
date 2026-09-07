@@ -20,6 +20,7 @@ import {
   type SceneBeat,
   type StoryContinuityDocument,
   type ViewpointThread,
+  suggestSceneCandidatesFromText,
 } from '../../shared/story-continuity'
 import { factAppliesAtChapter, type FinalizedContinuityProjection } from '../../shared/finalized-continuity'
 import { aggregateStoryContinuity, type VolumeProgressSummary } from '../../shared/story-continuity-aggregation'
@@ -82,6 +83,7 @@ export default function StoryContinuityPanel({ projectKey, chapterNumber }: Stor
   const [volumeProgress, setVolumeProgress] = useState<VolumeProgressSummary[]>([])
   const [knowledgeReviewEvents, setKnowledgeReviewEvents] = useState<KnowledgeEvent[]>([])
   const [knowledgeUpdatingId, setKnowledgeUpdatingId] = useState<string | null>(null)
+  const [extractingScenes, setExtractingScenes] = useState(false)
   const [preparation, setPreparation] = useState<WritingPreparationSummary>({ blueprint: null, handoff: null, narrativeThreads: [] })
 
   const load = async () => {
@@ -218,6 +220,32 @@ export default function StoryContinuityPanel({ projectKey, chapterNumber }: Stor
     }
   }
 
+  const extractSceneCandidates = async () => {
+    const session = captureProjectSession(currentProject)
+    if (!session || !isProjectSessionPath(session, projectKey) || extractingScenes) return
+    setExtractingScenes(true)
+    setError(null)
+    setNotice(null)
+    try {
+      const meta = await ipc.invokeWithProjectSession(session, 'db:draft-get-finalized', chapterNumber, projectKey)
+      if (!meta) throw new Error(text('本章还没有已定稿正文，暂时不能提取场景候选', 'This chapter has no finalized prose yet, so scene candidates cannot be suggested'))
+      const full = await ipc.invokeWithProjectSession(session, 'db:draft-get-full', meta.id, projectKey)
+      const candidates = suggestSceneCandidatesFromText(full?.content ?? '')
+      if (candidates.length === 0) throw new Error(text('定稿正文中没有足够的段落证据', 'The finalized prose has no sufficiently long paragraph evidence'))
+      if (!isProjectSessionCurrent(session)) return
+      const offset = document.sceneBeats.length
+      update({ sceneBeats: [...document.sceneBeats, ...candidates.map((candidate, index) => ({
+        ...candidate,
+        sceneNumber: offset + index + 1,
+      }))] })
+      setNotice(text(`已加入 ${candidates.length} 个场景候选；请补充因果字段后保存工作单`, `${candidates.length} scene candidates added; complete the causal fields before saving`))
+    } catch (cause) {
+      if (isProjectSessionCurrent(session)) setError(String(cause))
+    } finally {
+      if (isProjectSessionCurrent(session)) setExtractingScenes(false)
+    }
+  }
+
   const blueprintTitle = typeof preparation.blueprint?.title === 'string' ? preparation.blueprint.title : ''
   const blueprintPurpose = typeof preparation.blueprint?.purpose === 'string' ? preparation.blueprint.purpose : ''
   const blueprintKeyEvents = Array.isArray(preparation.blueprint?.keyEvents)
@@ -323,7 +351,10 @@ export default function StoryContinuityPanel({ projectKey, chapterNumber }: Stor
         <section>
           <div className="mb-2 flex items-center justify-between gap-2">
             <h4 className="text-xs font-semibold">{text('场景因果链（计划 / 实际）', 'Scene causality (plan / observed)')}</h4>
-            <Button variant="outline" size="sm" onClick={() => update({ sceneBeats: [...document.sceneBeats, newScene(document.sceneBeats.length + 1)] })}><Plus size={12} />{text('加场景', 'Add scene')}</Button>
+            <div className="flex flex-wrap justify-end gap-1">
+              <Button variant="outline" size="sm" onClick={() => void extractSceneCandidates()} disabled={extractingScenes}><RefreshCw size={12} className={extractingScenes ? 'animate-spin' : undefined} />{text('从定稿提取候选', 'Suggest from finalized prose')}</Button>
+              <Button variant="outline" size="sm" onClick={() => update({ sceneBeats: [...document.sceneBeats, newScene(document.sceneBeats.length + 1)] })}><Plus size={12} />{text('加场景', 'Add scene')}</Button>
+            </div>
           </div>
           <div className="space-y-2">
             {document.sceneBeats.map(scene => (

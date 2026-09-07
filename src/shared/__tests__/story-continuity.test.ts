@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   emptyStoryContinuityDocument,
   normalizeStoryContinuityDocument,
+  suggestSceneCandidatesFromText,
   storyContinuityProgress,
 } from '../story-continuity'
 
@@ -45,5 +46,19 @@ describe('story continuity document', () => {
         character: '林', previousState: '', trigger: '', choice: '', cost: '', nextState: '', evidence: [],
       })),
     }, 2)).toThrow(/情绪记录数量/)
+  })
+
+  it('suggests evidence-only candidate scenes without inventing causal fields', () => {
+    const candidates = suggestSceneCandidatesFromText([
+      '她在雨后的码头停下，听见仓门里传来金属碰撞声。',
+      '',
+      '林夏握紧信件，没有立刻推门，而是先观察守门人的手势。',
+      '',
+      '潮水退去后，暗锁露出一角；她把弟弟的名字说给守门人听。',
+    ].join('\n\n'), 2)
+    expect(candidates).toHaveLength(2)
+    expect(candidates.every(scene => scene.status === 'candidate')).toBe(true)
+    expect(candidates.every(scene => scene.goal === '' && scene.consequence === '' && scene.evidence.length === 1)).toBe(true)
+    expect(candidates[0]?.evidence[0]).toContain('码头')
   })
 })

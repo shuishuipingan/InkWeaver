@@ -14,6 +14,7 @@ let container: HTMLDivElement
 let invoke: ReturnType<typeof vi.fn>
 let reviewEvents: Array<Record<string, unknown>>
 let timelineFixtures: unknown[]
+let finalizedContent: string | null
 
 beforeEach(() => {
   ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -23,6 +24,7 @@ beforeEach(() => {
   const empty = emptyStoryContinuityDocument(2)
   reviewEvents = []
   timelineFixtures = []
+  finalizedContent = null
   invoke = vi.fn(async (channel: string, ...args: unknown[]) => {
     if (channel === 'db:story-continuity-read') return empty
     if (channel === 'db:continuity-list-before') return timelineFixtures
@@ -30,6 +32,8 @@ beforeEach(() => {
     if (channel === 'db:blueprint-get-all') return []
     if (channel === 'db:chapter-handoff-latest-before') return null
     if (channel === 'db:narrative-thread-list-relevant') return []
+    if (channel === 'db:draft-get-finalized') return finalizedContent === null ? null : { id: 7 }
+    if (channel === 'db:draft-get-full') return finalizedContent === null ? null : { id: 7, content: finalizedContent }
     if (channel === 'db:knowledge-event-list-for-chapter') return []
     if (channel === 'db:knowledge-event-list-review') return reviewEvents
     if (channel === 'db:knowledge-event-status') {
@@ -62,7 +66,8 @@ describe('StoryContinuityPanel', () => {
     expect(container.querySelector('[data-writing-preparation="true"]')).not.toBeNull()
     expect(container.textContent).toContain('写前准备摘要')
     await act(async () => summary?.dispatchEvent(new MouseEvent('click', { bubbles: true })))
-    await act(async () => container.querySelector('button')?.click())
+    const addScene = [...container.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.includes('加场景'))
+    await act(async () => addScene?.click())
     expect(container.textContent).toContain('场景 1')
     const goal = [...container.querySelectorAll<HTMLInputElement>('input')].find(input => input.getAttribute('aria-label') === '场景目标')
     expect(goal).not.toBeUndefined()
@@ -106,5 +111,16 @@ describe('StoryContinuityPanel', () => {
     await vi.waitFor(() => expect(container.querySelector('[data-continuity-timeline="true"]')).not.toBeNull())
     expect(container.textContent).toContain('灯塔会在午夜熄灭')
     expect(container.textContent).toContain('证据：她看见灯塔熄灭。')
+  })
+
+  it('adds evidence-only scene candidates from finalized prose without auto-confirming them', async () => {
+    finalizedContent = '她在码头停下，听见仓门里的金属声。\n\n林夏没有推门，先观察守门人的手势。\n\n潮水退去后，暗锁露出一角。'
+    await act(async () => root.render(<StoryContinuityPanel projectKey={PROJECT_PATH} chapterNumber={2} />))
+    const extract = [...container.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.includes('从定稿提取候选'))
+    expect(extract).not.toBeUndefined()
+    await act(async () => extract?.click())
+    await vi.waitFor(() => expect(container.textContent).toContain('已加入 3 个场景候选'))
+    expect([...container.querySelectorAll<HTMLSelectElement>('select')].some(select => select.value === 'candidate')).toBe(true)
+    expect(container.textContent).toContain('码头')
   })
 })
