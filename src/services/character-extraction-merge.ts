@@ -10,22 +10,24 @@ function key(value: string): string {
   return value.trim().replace(/\s+/gu, '').toLocaleLowerCase('en-US')
 }
 
-function emptyEntry(candidate: CharacterExtractionCandidate): CharacterRosterEntry {
+export type CharacterCandidateFieldSelection = Readonly<Record<string, readonly string[]>>
+
+function emptyEntry(candidate: CharacterExtractionCandidate, selected: ReadonlySet<string>): CharacterRosterEntry {
   return {
     name: candidate.name.trim(),
-    ...(candidate.aliases.length > 0 ? { aliases: [...new Set(candidate.aliases)] } : {}),
-    role: candidate.role ?? 'supporting',
-    gender: candidate.fields.gender ?? '',
-    age: candidate.fields.age ?? '',
-    appearance: candidate.fields.appearance ?? '',
-    personality: candidate.fields.personality ?? '',
-    background: candidate.fields.background ?? '',
-    abilities: candidate.fields.abilities ?? '',
-    motivation: candidate.fields.motivation ?? '',
-    relationships: candidate.relationships ?? [],
-    arc: candidate.fields.arc ?? '',
-    notes: candidate.fields.notes ?? '',
-    ...(candidate.currentState ? {
+    ...(selected.has('aliases') && candidate.aliases.length > 0 ? { aliases: [...new Set(candidate.aliases)] } : {}),
+    role: selected.has('role') ? candidate.role ?? 'supporting' : 'supporting',
+    gender: selected.has('gender') ? candidate.fields.gender ?? '' : '',
+    age: selected.has('age') ? candidate.fields.age ?? '' : '',
+    appearance: selected.has('appearance') ? candidate.fields.appearance ?? '' : '',
+    personality: selected.has('personality') ? candidate.fields.personality ?? '' : '',
+    background: selected.has('background') ? candidate.fields.background ?? '' : '',
+    abilities: selected.has('abilities') ? candidate.fields.abilities ?? '' : '',
+    motivation: selected.has('motivation') ? candidate.fields.motivation ?? '' : '',
+    relationships: selected.has('relationships') ? candidate.relationships ?? [] : [],
+    arc: selected.has('arc') ? candidate.fields.arc ?? '' : '',
+    notes: selected.has('notes') ? candidate.fields.notes ?? '' : '',
+    ...(selected.has('currentState') && candidate.currentState ? {
       currentState: {
         location: candidate.currentState.location ?? '',
         powerLevel: candidate.currentState.powerLevel ?? '',
@@ -42,6 +44,7 @@ function emptyEntry(candidate: CharacterExtractionCandidate): CharacterRosterEnt
 export function mergeAcceptedCharacterCandidates(
   snapshot: CharacterRosterSnapshot,
   candidates: readonly CharacterExtractionCandidate[],
+  fieldSelection: CharacterCandidateFieldSelection = {},
 ): CharacterRosterEntry[] {
   const entries = snapshot.entries.map(entry => ({
     ...entry,
@@ -51,29 +54,38 @@ export function mergeAcceptedCharacterCandidates(
 
   for (const candidate of candidates) {
     if (candidate.status !== 'accepted' || candidate.disposition === 'ambiguous') continue
+    const allFields = new Set([
+      ...(candidate.role ? ['role'] : []),
+      ...Object.keys(candidate.fields),
+      ...(candidate.aliases.length > 0 ? ['aliases'] : []),
+      ...(candidate.relationships && candidate.relationships.length > 0 ? ['relationships'] : []),
+      ...(candidate.currentState && Object.keys(candidate.currentState).length > 0 ? ['currentState'] : []),
+    ])
+    const selected = new Set(fieldSelection[candidate.candidateId] ?? [...allFields])
+    if (selected.size === 0) continue
     const possibleNames = [candidate.name, ...candidate.aliases]
     const index = entries.findIndex(entry => (
       possibleNames.some(name => key(name) === key(entry.name))
       || candidate.matchedCharacterName !== undefined && key(candidate.matchedCharacterName) === key(entry.name)
     ))
     if (index < 0) {
-      entries.push(emptyEntry(candidate))
+      entries.push(emptyEntry(candidate, selected))
       continue
     }
 
     const current = entries[index]!
     const merged: CharacterRosterEntry = { ...current }
-    merged.aliases = [...new Set([
+    if (selected.has('aliases')) merged.aliases = [...new Set([
       ...(current.aliases ?? []),
       ...candidate.aliases,
       ...(candidate.name.trim() !== current.name.trim() ? [candidate.name.trim()] : []),
     ].filter(alias => key(alias) !== key(current.name)))]
-    if (candidate.role) merged.role = candidate.role
+    if (selected.has('role') && candidate.role) merged.role = candidate.role
     for (const field of TEXT_FIELDS) {
       const value = candidate.fields[field]
-      if (value) merged[field] = value
+      if (selected.has(field) && value) merged[field] = value
     }
-    if (candidate.currentState) {
+    if (selected.has('currentState') && candidate.currentState) {
       merged.currentState = {
         ...(current.currentState ?? {
           location: '', powerLevel: '', physicalState: '', mentalState: '',
@@ -82,6 +94,7 @@ export function mergeAcceptedCharacterCandidates(
         ...candidate.currentState,
       }
     }
+    if (selected.has('relationships') && candidate.relationships?.length) merged.relationships = [...merged.relationships, ...candidate.relationships]
     entries[index] = merged
   }
 

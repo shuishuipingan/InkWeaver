@@ -1,6 +1,8 @@
+import { useState } from 'react'
 import { Check, RefreshCw, Sparkles, X } from 'lucide-react'
 
 import type { CharacterExtractionCandidate } from '../../shared/character-extraction'
+import type { CharacterCandidateFieldSelection } from '../../services/character-extraction-merge'
 import { Button } from '../ui/Button'
 
 interface CharacterExtractionCandidatesPanelProps {
@@ -9,7 +11,7 @@ interface CharacterExtractionCandidatesPanelProps {
   updatingId?: string | null
   onRefresh: () => void
   onStatus: (candidateId: string, status: 'accepted' | 'rejected') => Promise<void>
-  onApply: () => Promise<void>
+  onApply: (fieldSelection?: CharacterCandidateFieldSelection) => Promise<void>
   text: (zhCNText: string, enUSText: string) => string
 }
 
@@ -22,6 +24,7 @@ export default function CharacterExtractionCandidatesPanel({
   onApply,
   text,
 }: CharacterExtractionCandidatesPanelProps) {
+  const [fieldSelection, setFieldSelection] = useState<Record<string, Set<string>>>({})
   const visible = candidates.filter(candidate => candidate.status !== 'stale')
   if (!loading && visible.length === 0) return null
 
@@ -71,14 +74,17 @@ export default function CharacterExtractionCandidatesPanel({
               )}
             </div>
             <div className="mt-1 space-y-0.5" style={{ color: 'var(--color-text-secondary)' }}>
-              {Object.entries(candidate.fields).map(([field, value]) => (
-                <div key={field}><strong>{field}：</strong>{value}</div>
-              ))}
+              {Object.entries(candidate.fields).map(([field, value]) => {
+                const selected = fieldSelection[candidate.candidateId]?.has(field) ?? true
+                return <label key={field} className="flex items-start gap-1.5"><input type="checkbox" checked={selected} onChange={() => setFieldSelection(current => { const next = new Set(current[candidate.candidateId] ?? Object.keys(candidate.fields)); if (next.has(field)) next.delete(field); else next.add(field); return { ...current, [candidate.candidateId]: next } })} /><span><strong>{field}：</strong>{value}</span></label>
+              })}
+              {candidate.aliases.length > 0 && <label className="flex items-start gap-1.5"><input type="checkbox" checked={fieldSelection[candidate.candidateId]?.has('aliases') ?? true} onChange={() => setFieldSelection(current => { const next = new Set(current[candidate.candidateId] ?? [...Object.keys(candidate.fields), 'aliases']); if (next.has('aliases')) next.delete('aliases'); else next.add('aliases'); return { ...current, [candidate.candidateId]: next } })} /><span><strong>{text('别名：', 'Aliases:')}</strong>{candidate.aliases.join('、')}</span></label>}
+              {candidate.currentState && <label className="flex items-start gap-1.5"><input type="checkbox" checked={fieldSelection[candidate.candidateId]?.has('currentState') ?? true} onChange={() => setFieldSelection(current => { const next = new Set(current[candidate.candidateId] ?? [...Object.keys(candidate.fields), 'currentState']); if (next.has('currentState')) next.delete('currentState'); else next.add('currentState'); return { ...current, [candidate.candidateId]: next } })} /><span><strong>{text('当前状态：', 'Current state:')}</strong>{Object.values(candidate.currentState).filter(Boolean).join(' / ')}</span></label>}
               {candidate.relationships?.map((relationship, index) => (
-                <div key={`relationship-${relationship.target}-${index}`}>
+                <label key={`relationship-${relationship.target}-${index}`} className="flex items-start gap-1.5"><input type="checkbox" checked={fieldSelection[candidate.candidateId]?.has('relationships') ?? true} onChange={() => setFieldSelection(current => { const next = new Set(current[candidate.candidateId] ?? [...Object.keys(candidate.fields), 'relationships']); if (next.has('relationships')) next.delete('relationships'); else next.add('relationships'); return { ...current, [candidate.candidateId]: next } })} /><span>
                   <strong>{text('关系：', 'Relationship:')}</strong>
                   {relationship.target}（{relationship.relation}）
-                </div>
+                </span></label>
               ))}
               {candidate.fieldEvidence.map((evidence, index) => (
                 <div key={`${evidence.field}-${index}`} className="border-l-2 pl-2" style={{ borderColor: 'var(--color-accent)' }}>
@@ -91,7 +97,7 @@ export default function CharacterExtractionCandidatesPanel({
       </div>
       {visible.some(candidate => candidate.status === 'accepted') && (
         <div className="mt-2 flex justify-end">
-          <Button variant="success" size="sm" onClick={onApply}>
+          <Button variant="success" size="sm" onClick={() => onApply(Object.fromEntries(Object.entries(fieldSelection).map(([candidateId, fields]) => [candidateId, [...fields]])))}>
             <Check size={12} aria-hidden="true" />
             {text('合并已接受候选到角色卡', 'Apply accepted candidates to character cards')}
           </Button>

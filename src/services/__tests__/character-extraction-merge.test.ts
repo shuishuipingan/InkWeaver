@@ -29,6 +29,19 @@ function candidate(overrides: Partial<CharacterExtractionCandidate>): CharacterE
 }
 
 describe('mergeAcceptedCharacterCandidates', () => {
+  it('applies only the fields the author selected before committing a candidate', () => {
+    const result = mergeAcceptedCharacterCandidates(snapshot, [candidate({
+      candidateId: 'candidate-field-selection',
+      fields: { personality: '谨慎', background: '不应覆盖的旧背景' },
+      status: 'accepted',
+    })], {
+      'candidate-field-selection': ['personality'],
+    })
+    expect(result.find(entry => entry.name === '沈月')).toMatchObject({
+      personality: '谨慎',
+      background: '',
+    })
+  })
   it('matches aliases, patches accepted evidence fields, and preserves author fields', () => {
     const merged = mergeAcceptedCharacterCandidates(snapshot, [candidate({})])
     expect(merged).toHaveLength(1)
