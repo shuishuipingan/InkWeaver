@@ -289,6 +289,23 @@ function ContextReceiptSummary({ receipt, locale }: { receipt: ContextReceipt; l
   const included = receipt.entries.filter(entry => entry.included).length
   const omitted = receipt.entries.length - included
   if (receipt.entries.length === 0) return null
+
+  const layerLabel: Record<ContextReceipt['entries'][number]['layer'], string> = {
+    'fixed-rules': locale === 'en-US' ? 'Fixed rules' : '固定规则',
+    'current-arc': locale === 'en-US' ? 'Current arc' : '当前剧情弧',
+    'character-state': locale === 'en-US' ? 'Character state' : '角色状态',
+    'historical-fact': locale === 'en-US' ? 'Historical facts' : '历史事实',
+    'active-thread': locale === 'en-US' ? 'Active threads' : '活跃叙事线',
+    'immediate-handoff': locale === 'en-US' ? 'Immediate handoff' : '即时交接',
+    'knowledge-search': locale === 'en-US' ? 'Knowledge search' : '知识检索',
+  }
+  const groups = new Map<ContextReceipt['entries'][number]['layer'], ContextReceipt['entries']>()
+  for (const entry of receipt.entries) {
+    const list = groups.get(entry.layer) ?? []
+    list.push(entry)
+    groups.set(entry.layer, list)
+  }
+
   return (
     <details
       className="mx-2 mb-2 rounded-md border px-2 py-1.5 text-[0.68rem]"
@@ -298,12 +315,19 @@ function ContextReceiptSummary({ receipt, locale }: { receipt: ContextReceipt; l
         {locale === 'en-US' ? 'Context receipt' : '写前上下文收据'} · {included} {locale === 'en-US' ? 'included' : '项已纳入'}
         {omitted > 0 ? ` · ${omitted} ${locale === 'en-US' ? 'omitted' : '项省略'}` : ''}
       </summary>
-      <div className="mt-1 space-y-0.5" data-context-receipt="true">
-        {receipt.entries.map(entry => (
-          <div key={`${entry.id}:${entry.included ? 'in' : 'out'}`} className="flex gap-1.5">
-            <span aria-hidden="true">{entry.included ? <CheckCircle2 size={11} /> : '—'}</span>
-            <span className="truncate">{entry.label}</span>
-            {!entry.included && <span className="shrink-0 text-[var(--color-text-muted)]">{entry.reason}</span>}
+      <div className="mt-1 space-y-1.5" data-context-receipt="true">
+        {[...groups.entries()].map(([layer, entries]) => (
+          <div key={layer} data-context-layer={layer}>
+            <div className="font-medium opacity-80">{layerLabel[layer]} · {entries.filter(entry => entry.included).length}/{entries.length}</div>
+            <div className="space-y-0.5">
+              {entries.map(entry => (
+                <div key={`${entry.id}:${entry.included ? 'in' : 'out'}`} className="flex gap-1.5">
+                  <span aria-hidden="true">{entry.included ? <CheckCircle2 size={11} /> : '—'}</span>
+                  <span className="truncate">{entry.label}</span>
+                  {!entry.included && <span className="shrink-0 text-[var(--color-text-muted)]">{entry.reason}</span>}
+                </div>
+              ))}
+            </div>
           </div>
         ))}
       </div>
