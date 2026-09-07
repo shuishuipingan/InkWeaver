@@ -72,6 +72,15 @@ events remain in the Proposal until an author applies the change and never enter
 the model context. The client validates the closed DTO and the preview path
 rejects events that reference an unknown stable character ID.
 
+## Web companion qualification note
+
+The current DSH runtime is compatible with the official
+`@linxin666/dsh-web-all@0.3.17` companion. The older
+`@linxin666/dsh-web-ui-all@0.1.16` composition is not used: in the isolated
+profile it imports removed `dsh-settings` exports and prevents the Web profile
+from booting. The plugin qualification script pins `dsh-web-all@0.3.17` for
+this reason.
+
 ## Evidence and remaining gate
 
 Passed locally after the migration:

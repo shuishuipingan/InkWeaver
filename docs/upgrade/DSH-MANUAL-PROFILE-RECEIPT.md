@@ -12,9 +12,9 @@
 | 隔离 DSH_HOME | `C:\Users\shuishui\.cache\inkweaver-dsh-profile-manual\dsh-home` |
 | profile | `web` |
 | tarball | `ethanyoq-dsh-ai-novel-writer-0.1.0.tgz` |
-| tarball SHA-256 | `5b9685472823ac060fd76599a309704b54777f68e4ef63eb753dd1e2c74457e5` |
-| tarball bytes | `236082` |
-| web UI companion | `@linxin666/dsh-web-ui-all@0.1.16` |
+| tarball SHA-256 | `bcb343059851efa5b9e4807a604d62b281597c5c8c878f1697768f377c9f542a` |
+| tarball bytes | `236207` |
+| web UI companion | `@linxin666/dsh-web-all@0.3.17` |
 
 ## 已完成操作
 
@@ -24,7 +24,7 @@
 
    ```powershell
    dsh plugin --profile web add <tarball> --ignore-scripts
-   dsh plugin --profile web add @linxin666/dsh-web-ui-all@0.1.16 --save-exact --ignore-scripts
+   dsh plugin --profile web add @linxin666/dsh-web-all@0.3.17 --save-exact --ignore-scripts
    dsh --profile web --dump-config
    ```
 
@@ -39,6 +39,14 @@
    回读 `package.json` 后插件依赖与 bundle 已移除，web UI companion 保留。
 
 5. 再次从同一 tarball 安装并回读 `package.json` 与 dump-config；插件依赖、bundle 和 Host 条目恢复。
+
+6. 使用兼容的 `@linxin666/dsh-web-all@0.3.17` 启动真实 Web：
+
+   ```powershell
+   dsh web --no-open --host 127.0.0.1 --port 0
+   ```
+
+   Playwright 回读到页面标题 `DeepSeek Harness`，页面正文包含“小说工作台”。这证明当前 companion 与 DSH runtime 可以启动；旧的 `dsh-web-ui-all@0.1.16` 会因 `dsh-settings` 导出不匹配而启动失败，已从当前 qualification 目标中移除。
 
 ## 尚未完成的门禁
 

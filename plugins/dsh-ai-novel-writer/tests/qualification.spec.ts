@@ -375,13 +375,13 @@ describe('release qualification runner', () => {
       .rejects.toMatchObject({ stderr: expect.stringContaining('Qualification requires DeepSeek Harness commit') })
   })
 
-  it('rejects a disposable profile that omits the pinned dsh-web-ui-all bundle', async () => {
+  it('rejects a disposable profile that omits the pinned dsh-web-all bundle', async () => {
     const root = await makeTestWorkspace('qualification-profile-manifest-')
     const manifest = join(root, 'package.json')
     await writeFile(manifest, `${JSON.stringify({
       dependencies: {
         '@ethanyoq/dsh-ai-novel-writer': 'file:C:/owned/plugin.tgz',
-        '@linxin666/dsh-web-ui-all': '0.1.16',
+        '@linxin666/dsh-web-all': '0.3.17',
       },
       dsh: {
         profile: {
@@ -397,10 +397,10 @@ describe('release qualification runner', () => {
     await expect(execFileAsync(process.execPath, [
       runner, '--validate-profile', manifest, 'plugin.tgz',
     ], { cwd: packageRoot, encoding: 'utf8' }))
-      .rejects.toMatchObject({ stderr: expect.stringContaining('Profile bundle is missing: @linxin666/dsh-web-ui-all') })
+      .rejects.toMatchObject({ stderr: expect.stringContaining('Profile bundle is missing: @linxin666/dsh-web-all') })
   })
 
-  it('rejects a packed-profile request header that leaks a dsh-web-ui-all tool', async () => {
+  it('rejects a packed-profile request header that leaks a dsh-web-all tool', async () => {
     const root = await makeTestWorkspace('qualification-request-log-')
     const log = join(root, 'model-requests.jsonl')
     const schemas = join(root, 'installed-tool-schemas.json')

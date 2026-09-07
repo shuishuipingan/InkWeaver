@@ -15,8 +15,8 @@ const execFileAsync = promisify(execFile)
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const repositoryRoot = resolve(packageRoot, '..', '..')
 const packageName = '@ethanyoq/dsh-ai-novel-writer'
-const webUiAllPackage = '@linxin666/dsh-web-ui-all'
-const webUiAllVersion = '0.1.16'
+const webUiAllPackage = '@linxin666/dsh-web-all'
+const webUiAllVersion = '0.3.17'
 const profileName = 'web'
 const supportedHarnessCommit = '47f943859bef60e4160492346772ded9b24f765a'
 const qualificationTicket = 128
@@ -323,7 +323,7 @@ function assertProfileRemoved(manifest) {
     fail('Profile uninstall retained the AI novel dependency or bundle layer')
   }
   if (dependencies[webUiAllPackage] !== webUiAllVersion || !profile.bundles.includes(webUiAllPackage)) {
-    fail('Profile uninstall must retain the pinned dsh-web-ui-all dependency and bundle')
+    fail('Profile uninstall must retain the pinned dsh-web-all dependency and bundle')
   }
 }
 
@@ -1040,7 +1040,7 @@ async function qualify(options) {
 
     await runDsh(logRoot, 'profile-initialize', canonicalHarness, ['--profile', profileName, '--dump-config'], env, 120_000)
     await runDsh(logRoot, 'profile-install', canonicalHarness, ['plugin', '--profile', profileName, 'add', tarballInstallSpec, '--ignore-scripts'], env, 240_000)
-    await runDsh(logRoot, 'profile-install-web-ui-all', canonicalHarness, [
+    await runDsh(logRoot, 'profile-install-web-all', canonicalHarness, [
       'plugin', '--profile', profileName, 'add', `${webUiAllPackage}@${webUiAllVersion}`, '--save-exact', '--ignore-scripts',
     ], env, 240_000)
     const profileRoot = join(dshHome, 'profiles', profileName)
@@ -1058,7 +1058,7 @@ async function qualify(options) {
     }
     const preset = await qualifyPreset(installedRoot)
     const presetTools = await qualifyPresetTools(logRoot, profileRoot, installedRoot, env)
-    commands.push(await runPnpm(logRoot, 'web-ui-all-tool-isolation', [
+    commands.push(await runPnpm(logRoot, 'web-all-tool-isolation', [
       'exec', 'vitest', 'run', 'tests/web-ui-all-composition.spec.ts',
     ], {
       cwd: packageRoot,

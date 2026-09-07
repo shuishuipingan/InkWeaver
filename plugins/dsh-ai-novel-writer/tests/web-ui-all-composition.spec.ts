@@ -1,4 +1,4 @@
-/** Optional real-profile composition check for dsh-web-ui-all tool isolation. */
+/** Optional real-profile composition check for dsh-web-all tool isolation. */
 import { execFile } from 'node:child_process'
 import { access, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -13,14 +13,14 @@ const profileRoot = process.env.DSH_WEB_PROFILE_ROOT
 const installedPresetRoot = process.env.DSH_NOVEL_PRESET_ROOT
 const realProfileIt = profileRoot === undefined ? it.skip : it
 
-describe('dsh-web-ui-all installed-profile composition', () => {
+describe('dsh-web-all installed-profile composition', () => {
   realProfileIt('keeps only the two novel tools in every real request header', async () => {
     if (profileRoot === undefined) throw new Error('real-profile test requires DSH_WEB_PROFILE_ROOT')
     if (installedPresetRoot === undefined) throw new Error('real-profile test requires DSH_NOVEL_PRESET_ROOT')
     const workspace = await makeTestWorkspace('web-ui-all-composition-')
     const packageEntry = (packageName: string) => join(profileRoot, 'node_modules', ...packageName.split('/'), 'lib', 'index.js')
     const entries = {
-      DSH_WEB_UI_ALL_ENTRY: pathToFileURL(packageEntry('@linxin666/dsh-web-ui-all')).href,
+      DSH_WEB_UI_ALL_ENTRY: pathToFileURL(packageEntry('@linxin666/dsh-web-all')).href,
       DSH_WEB_UI_SSH_ENTRY: pathToFileURL(packageEntry('@linxin666/dsh-ssh')).href,
       DSH_WEB_UI_DESCRIBE_ENTRY: pathToFileURL(packageEntry('@linxin666/dsh-tool-describe-image')).href,
       DSH_SNAPSHOT_BACKEND_ENTRY: pathToFileURL(join(fixtureRoot, 'snapshot-backend.mjs')).href,
