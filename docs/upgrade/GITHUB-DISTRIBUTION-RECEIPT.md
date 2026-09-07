@@ -21,7 +21,11 @@
 
 GitHub API 已回读仓库 topic 包含：
 
-`cordis-plugin`、`deepseek-harness`、`dsh`、`dsh-plugin`、`novel-writing`。
+`cordis-plugin`、`deepseek-harness`、`dsh`、`dsh-plugin`、`novel-writing`、
+`web-novel`、`writing-assistant`、`writing-assistant-ai`、`ai-writing`、
+`creative-writing`、`creative-writing-ai`、`electron`、`fiction-writing`、
+`local-first`、`local-first-ai`、`long-form-fiction`、`novel-writing-windows`、
+`ollama`、`rag`、`worldbuilding`。
 
 公开主题页：[github.com/topics/dsh-plugin](https://github.com/topics/dsh-plugin)。2026-09-07 页面显示该主题约 13,983 个公开仓库；在当前“Most stars”首屏和抓取内容中尚未出现 `shuishuipingan/InkWeaver`。因此当前结论是“元数据已设置，实际索引可见性待发布后复核”，不是“已保证在主题页显示”。
 
