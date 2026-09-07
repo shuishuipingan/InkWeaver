@@ -85,6 +85,13 @@ export class ProjectSnapshotService {
     const missing: string[] = []
     const mismatched: string[] = []
     for (const file of manifest.files) {
+      if (
+        path.isAbsolute(file.relativePath)
+        || path.win32.isAbsolute(file.relativePath)
+        || file.relativePath.split(/[\\/]+/u).some(segment => segment === '..')
+      ) {
+        throw new Error('快照 manifest 包含越界路径')
+      }
       const target = path.join(root, file.relativePath)
       try {
         const bytes = await readFile(target)

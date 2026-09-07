@@ -45,4 +45,13 @@ describe('ProjectSnapshotService', () => {
     await require('node:fs').promises.writeFile(path.join(root, '.vela', 'snapshots', manifest.snapshotId, 'database.sqlite'), 'tampered')
     await expect(ProjectSnapshotService.verify(manifest.snapshotId)).resolves.toMatchObject({ valid: false, mismatched: ['database.sqlite'] })
   })
+
+  it('rejects a manifest path that escapes the snapshot root', async () => {
+    const manifest = await ProjectSnapshotService.create()
+    const manifestPath = path.join(root, '.vela', 'snapshots', manifest.snapshotId, 'manifest.json')
+    const parsed = JSON.parse(await readFile(manifestPath, 'utf8')) as { files: unknown[] }
+    parsed.files.push({ relativePath: '../outside', bytes: 0, sha256: '0'.repeat(64) })
+    await require('node:fs').promises.writeFile(manifestPath, JSON.stringify(parsed), 'utf8')
+    await expect(ProjectSnapshotService.verify(manifest.snapshotId)).rejects.toThrow(/越界路径/)
+  })
 })
