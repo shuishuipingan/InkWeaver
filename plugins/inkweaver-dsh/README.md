@@ -136,7 +136,7 @@ For the distinction between process-local Cordis Packages and persistently insta
 
 ## Release qualification
 
-The repository-level qualification command requires the clean DeepSeek Harness source checkout at commit `47f943859bef60e4160492346772ded9b24f765a`, `pnpm`, `tar`, and the locally installed Google Chrome browser. Pass the absolute Harness checkout path:
+The repository-level qualification command requires the clean DeepSeek Harness source checkout at commit `a66e4702047846cdaa10c66c9d3df3951f5ea70d`, `pnpm`, `tar`, and the locally installed Google Chrome browser. Pass the absolute Harness checkout path:
 
 ```powershell
 pnpm run qualify -- --harness-root '<path-to-deepseek-harness>'
