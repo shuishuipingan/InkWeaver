@@ -9,6 +9,7 @@
 | 项目 | 当前证据 |
 | --- | --- |
 | 仓库 | `shuishuipingan/InkWeaver` |
+| GitHub About Homepage | `https://github.com/shuishuipingan/InkWeaver#readme`（已回读；不指向未发布 Release） |
 | 开发分支 | `1.1.0-development` |
 | 本地/远端 SHA | `6903057`（本收据提交前的开发线父提交；提交后以 `git rev-parse HEAD` 和 `git ls-remote` 回读为准） |
 | 远端主线 | `main` 保持既有 v1.0.0 线，未被开发分支推送覆盖 |
