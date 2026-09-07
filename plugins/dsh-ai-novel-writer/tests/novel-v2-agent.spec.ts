@@ -380,12 +380,12 @@ describe('AI novel V2 agent tools', () => {
     }
     const description = parameters.properties.changes.description
 
-    expect(description).toContain('章节蓝图 aggregate.kind "chapter" 的 nextValue 必须且只能包含 chapter、title、purpose、plotBeats、characters、keyEvents、suspense、status')
+    expect(description).toContain('章节蓝图 aggregate.kind "chapter" 的 nextValue 必须包含且只能包含基础字段 chapter、title、purpose、plotBeats、characters、keyEvents、suspense、status，并可选包含 handoff 与 knowledgeEvents')
     expect(description).toContain('chapter 为正整数，且必须等于 aggregate.chapter 与作者请求的章节')
     expect(description).toContain('title 和 purpose 为非空字符串')
     expect(description).toContain('plotBeats、characters、keyEvents 都是字符串数组，characters 中的字符串必须唯一')
     expect(description).toContain('suspense 为字符串；status 只能是 "planned"、"drafting"、"reviewing"、"revising" 或 "finalized"')
-    expect(description).toContain('不得遗漏字段、加入 revision 或其他字段，也不得用字符串代替任一列表')
+    expect(description).toContain('不得遗漏基础字段、加入 revision 或其他字段，也不得用字符串代替任一列表')
     expect(description).not.toContain('可省略')
     expect(description).not.toContain('可用字符串代替')
   })

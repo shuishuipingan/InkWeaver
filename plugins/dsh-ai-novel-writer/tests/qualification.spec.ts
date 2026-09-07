@@ -230,7 +230,7 @@ describe('release qualification runner', () => {
     ])
   })
 
-  it('reads V2 schema 4, a partial proposal, and a user-selected final without V1 manifest assumptions', async () => {
+  it('reads V2 schema 5, a partial proposal, and a user-selected final without V1 manifest assumptions', async () => {
     const root = await makeTestWorkspace('qualification-v2-readback-')
     const workspaceId = WorkspaceId('qualification-v2-workspace')
     const signal = new AbortController().signal
@@ -285,7 +285,7 @@ describe('release qualification runner', () => {
       runner, '--readback', join(packageRoot, 'lib', 'index.js'), root,
     ], { cwd: packageRoot, encoding: 'utf8' })
     expect(JSON.parse(result.stdout)).toMatchObject({
-      schemaVersion: 4,
+      schemaVersion: 5,
       proposals: expect.arrayContaining([
         expect.objectContaining({ status: 'partial', itemCount: 5 }),
       ]),

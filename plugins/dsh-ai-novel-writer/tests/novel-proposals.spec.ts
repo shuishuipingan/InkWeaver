@@ -603,7 +603,7 @@ describe('NovelStore proposal inbox', () => {
     const migrated = await openNovelStore(root, WORKSPACE_ID)
     openStores.push(migrated)
     const proposal = (await migrated.listProposals(signal))[0]
-    expect((await migrated.read(signal)).storage.userVersion).toBe(4)
+    expect((await migrated.read(signal)).storage.userVersion).toBe(5)
     expect(proposal).toMatchObject({
       proposalId: submitted.proposal.proposalId,
       status: 'pending',

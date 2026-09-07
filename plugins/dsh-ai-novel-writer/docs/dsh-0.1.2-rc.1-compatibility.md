@@ -56,6 +56,22 @@ range expression must not replace them in a release commit.
   stable `id`/`order` registration at this compatibility seam and keeps the
   cast local; all other slots remain typed.
 
+## V2 continuity handoff extension
+
+The V2 SQLite store is now schema version 5. Opening a schema-4 database runs an
+idempotent migration that adds source-bound `handoff_json` and
+`knowledge_events_json` columns to the chapter aggregate. A chapter Proposal may
+carry an immediate or deliberate transition, source chapter/revision, scene,
+emotional state, open actions, and unresolved questions. It may also carry
+stable-ID knowledge events with acquisition method, fact/belief/rumor/misbelief
+kind, validity range, evidence, and candidate/confirmed status.
+
+`chapter/context` exposes the handoff for the selected chapter and filters the
+knowledge projection to confirmed events active at that chapter. Candidate
+events remain in the Proposal until an author applies the change and never enter
+the model context. The client validates the closed DTO and the preview path
+rejects events that reference an unknown stable character ID.
+
 ## Evidence and remaining gate
 
 Passed locally after the migration:
@@ -63,9 +79,10 @@ Passed locally after the migration:
 - `pnpm run typecheck`
 - `pnpm run build`
 - emitted Host/Agent/Client package verification in `scripts/verify-built.mjs`
-- 37 of 41 plugin test files / 417 tests in the full local run, with the
-  remaining failures limited to Windows symlink permission tests and the
-  pre-existing snapshot asset comparison now normalized for LF/CRLF.
+- 38 of 41 plugin test files / 419 tests in the full local run, with the two
+  remaining failures limited to Windows symlink permission tests requiring
+  SeCreateSymbolicLinkPrivilege. The qualification readback now verifies V2
+  schema 5 and the new continuity context contract.
 
 The symlink tests require the Windows SeCreateSymbolicLink privilege and must
 be rerun on a machine/profile that grants it before calling the full release

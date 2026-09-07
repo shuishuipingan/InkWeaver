@@ -57,6 +57,17 @@ No-replacement publication uses a hard link inside the same workspace; a cross-d
 
 V2 offers only the reviewed authoring sequence: project settings, story architecture, characters, whole-book outline, one chapter blueprint, and one chapter draft at a time. When the current V2 Session records a matching pending `novel_propose_change`, the workbench copies that proposal's generated values into the selected browser-local editor immediately. The author can inspect or edit those values before reviewing the Proposal. This local form draft is not a write, does not alter the pending Proposal, and is never restored as authority after reload; explicit Proposal application remains the only action that updates the project.
 
+The V2 chapter aggregate is schema version 5 and carries the continuous-writing
+handoff beside the ordinary blueprint. A Proposal can record whether the next
+chapter should continue immediately or make a deliberate transition, the source
+chapter/revision, scene, emotional state, open actions, and unresolved questions.
+It can also carry stable-character knowledge events with acquisition method,
+fact/belief/rumor/misbelief kind, validity range, evidence, and candidate or
+confirmed status. `novel_read` exposes only confirmed events that are active for
+the selected chapter; candidates remain reviewable in the Proposal inbox. The
+schema-4 to schema-5 migration is automatic and preserves existing chapter and
+artifact data.
+
 ### Agent preset
 
 The package installs the original `织墨` preset beside the independent `织墨 V2` preset. V1 keeps `novel_read` and approval-gated `novel_apply_change` for existing sessions. V2 exposes only `novel_read` and `novel_propose_change`; its proposal tool records a pending non-authoritative bundle and never changes authoritative project state. Neither preset mounts shell, general filesystem writing, text replacement, or Code Mode.

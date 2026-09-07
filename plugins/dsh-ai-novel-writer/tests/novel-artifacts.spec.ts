@@ -77,7 +77,7 @@ afterEach(async () => {
 describe('NovelStore artifact version chain', () => {
   it('persists draft, review, revision and final selection with bounded previous-final context', async () => {
     const { store } = await initializedStore()
-    expect((await store.read(signal)).storage.userVersion).toBe(4)
+    expect((await store.read(signal)).storage.userVersion).toBe(5)
 
     const draft = await store.submitProposal(proposal({
       changes: [{
@@ -142,6 +142,58 @@ describe('NovelStore artifact version chain', () => {
     })
   })
 
+  it('carries source-bound handoff and confirmed knowledge into the next chapter context', async () => {
+    const { store } = await initializedStore()
+    const beforeCharacters = await store.read(signal)
+    await store.applyChange({
+      changeSetId: 'continuity-character', operation: 'replace', aggregate: { kind: 'characters' },
+      baseAggregateRevision: beforeCharacters.characters.revision,
+      baseGlobalRevision: beforeCharacters.globalRevision,
+      nextValue: {
+        items: [{ characterId: 'hero', name: '阿澈', role: '主角', summary: '守灯人', goal: '守住灯塔', currentState: '警觉', notes: '' }],
+        relationships: [],
+      },
+      provenance: { origin: 'manual' },
+    }, signal)
+    const afterCharacters = await store.read(signal)
+    const chapterOne = afterCharacters.chapters.find(chapter => chapter.chapter === 1)!
+    await store.applyChange({
+      changeSetId: 'continuity-chapter-2', operation: 'replace', aggregate: { kind: 'chapter', chapter: 2 },
+      baseAggregateRevision: 0, baseGlobalRevision: afterCharacters.globalRevision,
+      nextValue: {
+        chapter: 2, title: '第二封信', purpose: '让秘密进入角色知情范围。', plotBeats: [], characters: ['hero'],
+        keyEvents: [], suspense: '谁在篡改信件？', status: 'drafting',
+        handoff: {
+          sourceChapter: 1, sourceRevision: chapterOne.revision, transition: 'deliberate',
+          scene: '灯塔下的信匣', emotionalState: '警觉但克制', openActions: ['核对信件来源'],
+          unresolvedQuestions: ['寄信人是谁？'],
+        },
+        knowledgeEvents: [
+          {
+            eventId: 'secret-confirmed', characterId: 'hero', statement: '信件来自未来', kind: 'fact',
+            acquisition: '亲自读取信件', sourceChapter: 1, validFromChapter: 2,
+            evidence: '第一章末尾的信件原文', status: 'confirmed',
+          },
+          {
+            eventId: 'rumor-candidate', characterId: 'hero', statement: '寄信人是海神', kind: 'rumor',
+            acquisition: '港口传闻', sourceChapter: 1, validFromChapter: 2,
+            evidence: '未核实的酒馆传闻', status: 'candidate',
+          },
+        ],
+      },
+      provenance: { origin: 'manual' },
+    }, signal)
+
+    await expect(store.readChapterContext(2, signal)).resolves.toMatchObject({
+      chapter: 2,
+      handoff: {
+        sourceChapter: 1, transition: 'deliberate', scene: '灯塔下的信匣',
+        unresolvedQuestions: ['寄信人是谁？'],
+      },
+      knowledgeEvents: [{ eventId: 'secret-confirmed', status: 'confirmed', characterId: 'hero' }],
+    })
+  })
+
   it('migrates V3 migrated drafts and proposal inbox records into V4 without loss', async () => {
     const { root, store } = await initializedStore()
     const draftPayload = {
@@ -177,7 +229,7 @@ describe('NovelStore artifact version chain', () => {
 
     const reopened = await openNovelStore(root, workspaceId)
     opened.push(reopened)
-    expect((await reopened.read(signal)).storage.userVersion).toBe(4)
+    expect((await reopened.read(signal)).storage.userVersion).toBe(5)
     expect((await reopened.read(signal)).artifacts).toEqual([
       expect.objectContaining({
         artifactId: 'v3-migrated-draft-1', content: 'V1 已迁移的第一章草稿。', summary: 'Migrated V1 draft.',

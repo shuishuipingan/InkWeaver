@@ -138,7 +138,7 @@ describe('NovelStore SQLite core', () => {
       readOnly: false,
       storage: {
         applicationId: 0x41_4e_4f_56,
-        userVersion: 4,
+        userVersion: 5,
         foreignKeys: true,
         journalMode: 'delete',
         synchronous: 'full',
@@ -561,7 +561,7 @@ describe('NovelStore SQLite core', () => {
       projectId: source.projectId,
       workspaceId: movedWorkspace,
       readOnly: false,
-      storage: { userVersion: 4 },
+      storage: { userVersion: 5 },
       project: source.project,
       changes: source.changes,
     })
@@ -613,7 +613,7 @@ describe('NovelStore SQLite core', () => {
       projectId: clone.projectId,
       workspaceId: clonedWorkspace,
       readOnly: false,
-      storage: { userVersion: 4 },
+      storage: { userVersion: 5 },
       project: source.project,
       changes: source.changes,
     })

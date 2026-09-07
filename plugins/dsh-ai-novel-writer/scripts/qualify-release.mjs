@@ -838,7 +838,7 @@ async function readback(installedEntry, workspaceRoot) {
   try {
     const state = await store.read(signal)
     const proposals = await store.listProposals(signal)
-    if (state.storage.userVersion !== 4) fail('Fresh-process readback requires V2 schema 4')
+    if (state.storage.userVersion !== 5) fail('Fresh-process readback requires V2 schema 5')
     const partials = proposals.filter(proposal => proposal.status === 'partial')
     const partial = partials[0]
     if (partials.length !== 1 || partial === undefined

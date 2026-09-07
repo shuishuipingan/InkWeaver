@@ -432,6 +432,9 @@ function previewIntegrityError(
     if (nextValue.characters.some(characterId => !known.has(characterId))) {
       return new NovelStoreError('INVALID_CONTENT', 'chapter characters must already exist')
     }
+    if (nextValue.knowledgeEvents?.some(event => !known.has(event.characterId))) {
+      return new NovelStoreError('INVALID_CONTENT', 'knowledge event references an unknown character')
+    }
     return undefined
   }
   if (command.aggregate.kind === 'characters') {

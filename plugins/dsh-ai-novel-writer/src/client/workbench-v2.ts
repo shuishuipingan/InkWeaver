@@ -105,6 +105,8 @@ export interface NovelChapterPanelState {
     readonly phase: 'idle' | 'loading' | 'ready' | 'failed'
     readonly chapter: number | undefined
     readonly previousFinal: NovelChapterContext['previousFinal']
+    readonly handoff?: NovelChapterContext['handoff']
+    readonly knowledgeEvents?: NovelChapterContext['knowledgeEvents']
     readonly message: string | undefined
   }
 }
@@ -159,7 +161,7 @@ const EMPTY_TASKS: NovelTaskPanelState = { items: [], selectedId: undefined, mes
 const EMPTY_CHAPTERS: NovelChapterPanelState = {
   selected: undefined,
   items: [],
-  context: { phase: 'idle', chapter: undefined, previousFinal: undefined, message: undefined },
+  context: { phase: 'idle', chapter: undefined, previousFinal: undefined, handoff: undefined, knowledgeEvents: undefined, message: undefined },
 }
 function defaultInitializationDraft(): NovelV2WorkspaceInitializationDraft {
   return {
@@ -763,7 +765,7 @@ export class NovelV2WorkbenchController {
           selected: selectedChapter,
           items: state.chapters,
           context: selectedChapter !== undefined && !selectedChapterPersisted
-            ? { phase: 'idle', chapter: selectedChapter, previousFinal: undefined, message: undefined }
+            ? { phase: 'idle', chapter: selectedChapter, previousFinal: undefined, handoff: undefined, knowledgeEvents: undefined, message: undefined }
             : undefined,
         },
         authoring: this.#authoringAfterRefresh(
@@ -925,7 +927,7 @@ export class NovelV2WorkbenchController {
         selected: chapter,
         context: persisted
           ? this.#state.chapters.context
-          : { phase: 'idle', chapter, previousFinal: undefined, message: undefined },
+          : { phase: 'idle', chapter, previousFinal: undefined, handoff: undefined, knowledgeEvents: undefined, message: undefined },
       },
     })
     if (persisted) void this.#readChapterContext(chapter)
@@ -946,7 +948,7 @@ export class NovelV2WorkbenchController {
       ...this.#state,
       chapters: {
         ...this.#state.chapters,
-        context: { phase: 'loading', chapter, previousFinal: undefined, message: undefined },
+        context: { phase: 'loading', chapter, previousFinal: undefined, handoff: undefined, knowledgeEvents: undefined, message: undefined },
       },
     })
     const pending = readChapterContext(workspaceId, chapter, abort.signal).then(context => {
@@ -956,7 +958,8 @@ export class NovelV2WorkbenchController {
         chapters: {
           ...this.#state.chapters,
           context: {
-            phase: 'ready', chapter: context.chapter, previousFinal: context.previousFinal, message: undefined,
+            phase: 'ready', chapter: context.chapter, previousFinal: context.previousFinal,
+            handoff: context.handoff, knowledgeEvents: context.knowledgeEvents, message: undefined,
           },
         },
       })
@@ -966,7 +969,7 @@ export class NovelV2WorkbenchController {
         ...this.#state,
         chapters: {
           ...this.#state.chapters,
-          context: { phase: 'failed', chapter, previousFinal: undefined, message: messageOf(error) },
+          context: { phase: 'failed', chapter, previousFinal: undefined, handoff: undefined, knowledgeEvents: undefined, message: messageOf(error) },
         },
       })
     }).finally(() => {

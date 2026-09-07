@@ -402,14 +402,48 @@ function isV2ChapterFinal(value: unknown): value is NovelChapterFinal {
     && isOpaqueIdentifier(value.artifactId) && isNonEmptyString(value.summary) && isTimestamp(value.selectedAt)
 }
 
+function isV2ChapterHandoff(value: unknown, requestedChapter: number): boolean {
+  return isRecord(value)
+    && exactKeysOf(value, ['sourceChapter', 'sourceRevision', 'transition', 'scene', 'emotionalState', 'openActions', 'unresolvedQuestions'])
+    && value.sourceChapter === requestedChapter - 1
+    && isNonNegativeInteger(value.sourceRevision)
+    && (value.transition === 'immediate' || value.transition === 'deliberate')
+    && isNonEmptyString(value.scene)
+    && typeof value.emotionalState === 'string'
+    && Array.isArray(value.openActions) && value.openActions.every(isNonEmptyString)
+    && Array.isArray(value.unresolvedQuestions) && value.unresolvedQuestions.every(isNonEmptyString)
+}
+
+function isV2KnowledgeEvent(value: unknown, requestedChapter: number): boolean {
+  if (!isRecord(value)) return false
+  const keys = Object.keys(value)
+  const allowed = ['eventId', 'characterId', 'statement', 'kind', 'acquisition', 'sourceChapter', 'validFromChapter', 'validUntilChapter', 'evidence', 'status']
+  if (keys.some(key => !allowed.includes(key))
+    || ['eventId', 'characterId', 'statement', 'kind', 'acquisition', 'sourceChapter', 'validFromChapter', 'evidence', 'status'].some(key => !(key in value))) return false
+  return isOpaqueIdentifier(value.eventId)
+    && isOpaqueIdentifier(value.characterId)
+    && isNonEmptyString(value.statement)
+    && (value.kind === 'fact' || value.kind === 'belief' || value.kind === 'rumor' || value.kind === 'misbelief')
+    && isNonEmptyString(value.acquisition)
+    && isNonNegativeInteger(value.sourceChapter) && value.sourceChapter > 0 && value.sourceChapter <= requestedChapter
+    && isNonNegativeInteger(value.validFromChapter) && value.validFromChapter > 0 && value.validFromChapter <= requestedChapter
+    && (value.validUntilChapter === undefined || (isNonNegativeInteger(value.validUntilChapter) && value.validUntilChapter >= value.validFromChapter))
+    && isNonEmptyString(value.evidence)
+    && value.status === 'confirmed'
+}
+
 function isV2ChapterContext(value: unknown, requestedChapter: number): value is NovelChapterContext {
-  if (!isRecord(value) || (!exactKeysOf(value, ['chapter']) && !exactKeysOf(value, ['chapter', 'previousFinal']))
+  if (!isRecord(value) || Object.keys(value).some(key => !['chapter', 'previousFinal', 'handoff', 'knowledgeEvents'].includes(key))
     || value.chapter !== requestedChapter || !isNonNegativeInteger(value.chapter) || value.chapter === 0) return false
-  if (value.previousFinal === undefined) return true
-  if (!isRecord(value.previousFinal) || !exactKeysOf(value.previousFinal, ['chapter', 'artifactId', 'content', 'summary'])) return false
-  return requestedChapter > 1 && value.previousFinal.chapter === requestedChapter - 1
-    && isOpaqueIdentifier(value.previousFinal.artifactId) && isNonEmptyString(value.previousFinal.content)
-    && isNonEmptyString(value.previousFinal.summary)
+  if (value.previousFinal !== undefined && (!isRecord(value.previousFinal) || !exactKeysOf(value.previousFinal, ['chapter', 'artifactId', 'content', 'summary'])
+    || requestedChapter <= 1 || value.previousFinal.chapter !== requestedChapter - 1
+    || !isOpaqueIdentifier(value.previousFinal.artifactId) || !isNonEmptyString(value.previousFinal.content)
+    || !isNonEmptyString(value.previousFinal.summary))) return false
+  if (value.handoff !== undefined && !isV2ChapterHandoff(value.handoff, requestedChapter)) return false
+  if (value.knowledgeEvents !== undefined && (!Array.isArray(value.knowledgeEvents)
+    || value.knowledgeEvents.length === 0
+    || value.knowledgeEvents.every(event => isV2KnowledgeEvent(event, requestedChapter)) === false)) return false
+  return value.previousFinal === undefined || requestedChapter > 1
 }
 
 function hasValidArtifactProjection(artifacts: readonly NovelArtifact[], chapterFinals: readonly NovelChapterFinal[]): boolean {
