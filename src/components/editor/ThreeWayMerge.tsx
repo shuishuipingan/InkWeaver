@@ -413,7 +413,7 @@ export default function ThreeWayMerge({
                     {seg.lines?.map((l, i) => <div key={i} className="twm-line-same">{l || '\u00A0'}</div>)}
                   </div>
                   <div className={`twm-cell twm-cell-center${locked[idx] ? ' twm-segment-locked' : ''}`}>
-                    <button type="button" className="twm-lock-toggle" onClick={() => toggleLock(idx)} aria-pressed={Boolean(locked[idx])} title={locked[idx] ? text('解锁此段', 'Unlock this segment') : text('锁定此段，保留原文', 'Lock this segment and preserve the text')}>
+                    <button type="button" className="twm-lock-toggle" onClick={() => toggleLock(idx)} aria-label={locked[idx] ? text('解锁此段', 'Unlock this segment') : text('锁定此段，保留原文', 'Lock this segment and preserve the text')} aria-pressed={Boolean(locked[idx])} title={locked[idx] ? text('解锁此段', 'Unlock this segment') : text('锁定此段，保留原文', 'Lock this segment and preserve the text')}>
                       {locked[idx] ? <Lock size={11} aria-hidden="true" /> : <Unlock size={11} aria-hidden="true" />}
                     </button>
                     <EditableCell key={`s${idx}`} text={segTexts[idx] ?? ''} locked={locked[idx]}
@@ -441,7 +441,7 @@ export default function ThreeWayMerge({
 
                 {/* 中栏 */}
                 <div className={`twm-cell twm-cell-center ${isApplied ? 'adopted' : 'pending'}${locked[idx] ? ' twm-segment-locked' : ''}`}>
-                  <button type="button" className="twm-lock-toggle" onClick={() => toggleLock(idx)} aria-pressed={Boolean(locked[idx])} title={locked[idx] ? text('解锁此段', 'Unlock this segment') : text('锁定此段，保留原文', 'Lock this segment and preserve the text')}>
+                  <button type="button" className="twm-lock-toggle" onClick={() => toggleLock(idx)} aria-label={locked[idx] ? text('解锁此段', 'Unlock this segment') : text('锁定此段，保留原文', 'Lock this segment and preserve the text')} aria-pressed={Boolean(locked[idx])} title={locked[idx] ? text('解锁此段', 'Unlock this segment') : text('锁定此段，保留原文', 'Lock this segment and preserve the text')}>
                     {locked[idx] ? <Lock size={11} aria-hidden="true" /> : <Unlock size={11} aria-hidden="true" />}
                   </button>
                   <EditableCell key={`h${idx}-${isApplied ? 1 : 0}`} text={segTexts[idx] ?? ''} locked={locked[idx]}
