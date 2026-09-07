@@ -353,7 +353,7 @@ export default function ThreeWayMerge({
   }, [])
 
   const applyAll = useCallback(() => {
-    const next: Record<number, boolean> = {}
+    const next: Record<number, boolean> = { ...applied }
     const texts: Record<number, string> = {}
     hunks.forEach(h => {
       const segmentIndex = hunkSegIdx[h.index]
@@ -362,16 +362,19 @@ export default function ThreeWayMerge({
       texts[segmentIndex] = h.modifiedLines.join('\n')
     })
     setApplied(next); setSegTexts(p => ({ ...p, ...texts }))
-  }, [hunks, hunkSegIdx, locked])
+  }, [applied, hunks, hunkSegIdx, locked])
 
   const revertAll = useCallback(() => {
+    const next: Record<number, boolean> = { ...applied }
     const texts: Record<number, string> = {}
     hunks.forEach(h => {
       const segmentIndex = hunkSegIdx[h.index]
-      if (!locked[segmentIndex]) texts[segmentIndex] = h.originalLines.join('\n')
+      if (locked[segmentIndex]) return
+      delete next[h.index]
+      texts[segmentIndex] = h.originalLines.join('\n')
     })
-    setApplied({}); setSegTexts(p => ({ ...p, ...texts }))
-  }, [hunks, hunkSegIdx, locked])
+    setApplied(next); setSegTexts(p => ({ ...p, ...texts }))
+  }, [applied, hunks, hunkSegIdx, locked])
 
   const processedCount = Object.values(applied).filter(Boolean).length
   const lockedCount = Object.values(locked).filter(Boolean).length
