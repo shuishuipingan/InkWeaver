@@ -698,6 +698,14 @@ import type {
 } from './import-global-facts'
 
 // ===== 数据库操作 =====
+export interface WritingStyleHistoryRecord {
+  id: number
+  previousStyle: string
+  nextStyle: string
+  sourceFingerprint: string
+  createdAt: string
+}
+
 export interface DatabaseChannels {
   'db:close': { args: [expectedProjectPath: string]; return: { success: boolean } }
 
@@ -709,6 +717,14 @@ export interface DatabaseChannels {
   'db:project-core-update': {
     args: [data: Partial<ProjectCoreData>, expectedProjectPath: string]
     return: { success: boolean; error?: string }
+  }
+  'db:writing-style-history-list': {
+    args: [expectedProjectPath: string]
+    return: WritingStyleHistoryRecord[]
+  }
+  'db:writing-style-history-record': {
+    args: [input: { previousStyle: string; nextStyle: string; sourceFingerprint: string }, expectedProjectPath: string]
+    return: { success: boolean; record?: WritingStyleHistoryRecord; error?: string }
   }
   'db:import-global-facts-commit': {
     args: [request: ImportGlobalFactsRequest, expectedProjectPath: string]

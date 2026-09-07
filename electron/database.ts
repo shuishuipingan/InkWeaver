@@ -98,6 +98,17 @@ function createTables(db: BetterSqlite3.Database, importSourceSecret?: Buffer) {
     );
 
     -- ============================================================
+    -- 1b. writing_style_history — AI 文风档案版本
+    -- ============================================================
+    CREATE TABLE IF NOT EXISTS writing_style_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      previous_style TEXT NOT NULL DEFAULT '',
+      next_style TEXT NOT NULL DEFAULT '',
+      source_fingerprint TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    -- ============================================================
     -- 2. blueprints — 章节蓝图
     -- ============================================================
     CREATE TABLE IF NOT EXISTS blueprints (

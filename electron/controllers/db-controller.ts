@@ -48,6 +48,7 @@ import { CharacterExtractionCandidateRepository } from '../repositories/characte
 import { ConsistencyExemptionRepository } from '../repositories/consistency-exemption-repository'
 import { NarrativeThreadRepository } from '../repositories/narrative-thread-repository'
 import { StoryContinuityRepository } from '../repositories/story-continuity-repository'
+import { StyleHistoryRepository } from '../repositories/style-history-repository'
 import { KnowledgeEventRepository } from '../repositories/knowledge-event-repository'
 import { ProjectSnapshotService } from '../services/project-snapshot-service'
 import { safeConsole } from '../utils/safe-console'
@@ -111,6 +112,7 @@ const MUTATING_DATABASE_CHANNELS = new Set([
   'db:character-extraction-candidates-save',
   'db:character-extraction-candidate-status',
   'db:character-extraction-candidates-stale',
+  'db:writing-style-history-record',
 ])
 
 function registerProjectDatabaseHandler(channel: string, handler: ProjectDatabaseHandler): void {
@@ -487,6 +489,24 @@ export function registerDatabaseController() {
   // ============================================================
   // 2. blueprints — 章节蓝图
   // ============================================================
+  ipcMain.handle('db:writing-style-history-list', async (_event, expectedProjectPath: string) => {
+    assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+    return StyleHistoryRepository.list()
+  })
+
+  ipcMain.handle('db:writing-style-history-record', async (_event, input: {
+    previousStyle: string
+    nextStyle: string
+    sourceFingerprint: string
+  }, expectedProjectPath: string) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      return { success: true, record: StyleHistoryRepository.record(input.previousStyle, input.nextStyle, input.sourceFingerprint) }
+    } catch (error) {
+      return { success: false, error: String(error) }
+    }
+  })
+
   ipcMain.handle('db:blueprint-get-all', async (_event, expectedProjectPath: string) => {
     assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
     return BlueprintRepository.getAll()

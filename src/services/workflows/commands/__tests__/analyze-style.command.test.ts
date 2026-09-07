@@ -31,6 +31,7 @@ function stubIpcInvoke(updateResult: { success: boolean; error?: string } = { su
   const invoke = vi.fn((channel: string) => {
     if (channel === 'prompt:load-global') return Promise.resolve({ templates: [], diagnostics: [] })
     if (channel === 'db:project-core-update') return Promise.resolve(updateResult)
+    if (channel === 'db:writing-style-history-record') return Promise.resolve({ success: true, record: { id: 1, previousStyle: '', nextStyle: '', sourceFingerprint: '', createdAt: '' } })
     return Promise.resolve(null)
   })
   vi.stubGlobal('window', {
@@ -100,6 +101,12 @@ describe('AnalyzeWritingStyleCommand with imported samples', () => {
     expect(invoke).toHaveBeenCalledWith(
       'db:project-core-update',
       { writingStyle: result },
+      context.projectPath,
+      context.projectSession,
+    )
+    expect(invoke).toHaveBeenCalledWith(
+      'db:writing-style-history-record',
+      expect.objectContaining({ previousStyle: '', nextStyle: result, sourceFingerprint: expect.any(String) }),
       context.projectPath,
       context.projectSession,
     )
