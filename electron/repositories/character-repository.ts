@@ -8,6 +8,7 @@ import {
     normalizeCharacterRole,
     type CharacterRole,
 } from '../../src/shared/character-role'
+import { rewriteRelationshipsAfterRename } from '../../src/shared/character-rename-references'
 
 /** 角色卡动态状态 */
 export interface CharacterStateData {
@@ -280,7 +281,33 @@ export class CharacterRepository {
                 }
             }
 
+            if (normalizedRenames.length > 0) {
+                const persistedOthers = db.prepare(
+                    'SELECT name, relationships FROM characters'
+                ).all() as Array<{ name: string; relationships: string }>
+                const savedNames = new Set(normalizedCharacters.map(character => character.name))
+                const updateRelationships = db.prepare(`
+                    UPDATE characters
+                    SET relationships = ?, updated_at = datetime('now')
+                    WHERE name = ?
+                `)
+                for (const persisted of persistedOthers) {
+                    if (savedNames.has(persisted.name)) continue
+                    const rewritten = rewriteRelationshipsAfterRename(
+                        persisted.relationships || '',
+                        normalizedRenames,
+                    )
+                    if (rewritten !== (persisted.relationships || '')) {
+                        updateRelationships.run(rewritten, persisted.name)
+                    }
+                }
+            }
+
             for (const char of normalizedCharacters) {
+                char.relationships = rewriteRelationshipsAfterRename(
+                    char.relationships || '',
+                    normalizedRenames,
+                )
                 CharacterRepository.upsert(char)
             }
         })

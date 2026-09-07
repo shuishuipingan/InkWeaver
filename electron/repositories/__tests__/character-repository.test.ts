@@ -135,6 +135,33 @@ describe('CharacterRepository transactional rename', () => {
     })
   })
 
+  it('rewrites structured JSON relationship targets when a character is renamed', () => {
+    CharacterRepository.upsert(character('林舟', '将被改名的角色'))
+    const shen = character('沈月')
+    shen.relationships = JSON.stringify([
+      { target: '林舟', relation: '挚友' },
+      { target: '路人', relation: '旧识' },
+    ])
+    CharacterRepository.upsert(shen)
+    const renamed = character('林澈', '改名后的角色')
+    renamed.relationships = '自由文本中的林舟不应被替换'
+
+    CharacterRepository.saveAll(
+      [renamed],
+      [{ originalName: '林舟', newName: '林澈' }],
+    )
+
+    const stored = JSON.parse(CharacterRepository.getByName('沈月')?.relationships ?? '[]') as Array<{
+      target: string
+      relation: string
+    }>
+    expect(stored).toEqual([
+      { target: '林澈', relation: '挚友' },
+      { target: '路人', relation: '旧识' },
+    ])
+    expect(CharacterRepository.getByName('林澈')?.relationships).toContain('自由文本中的林舟不应被替换')
+  })
+
   it('rolls back the whole transaction when the target name conflicts', () => {
     CharacterRepository.upsert(character('旧名', '不得改变'))
     CharacterRepository.upsert(character('已存在', '目标角色'))

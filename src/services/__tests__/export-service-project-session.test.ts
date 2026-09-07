@@ -246,7 +246,7 @@ describe('exportNovel project session ownership', () => {
 
   it('fails when the granted directory readback does not match what was written', async () => {
     let relativeReadback = ''
-    vi.mocked(ipc.invoke).mockImplementation((async (channel: string, _grantId?: string, relativePath?: string, content?: unknown) => {
+    vi.mocked(ipc.invoke).mockImplementation((async (channel: string, _grantId?: string, relativePath?: string, _content?: unknown) => {
       if (channel === 'fs:grant-write-file') {
         relativeReadback = String(relativePath ?? '')
         return { success: true }
