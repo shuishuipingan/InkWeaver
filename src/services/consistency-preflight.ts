@@ -1,6 +1,6 @@
 import type { ProjectSessionContext } from '../shared/ipc-channels'
 import type { BlueprintForPreflight, ConsistencyExemption, ConsistencyFinding } from '../shared/consistency-preflight'
-import { findBlueprintContinuityRisks } from '../shared/consistency-preflight'
+import { findBlueprintContinuityRisks, findMissingCharacterStateFindings } from '../shared/consistency-preflight'
 import { ipc } from './ipc-client'
 
 export interface ConsistencyPreflightResult {
@@ -19,7 +19,10 @@ export async function readConsistencyPreflight(
     const projections = await ipc.invokeWithProjectSession(
       session, 'db:continuity-list-before', blueprint.chapterNumber, session.projectPath,
     )
-    return findBlueprintContinuityRisks(projections, blueprint, exemptions)
+    return [
+      ...findBlueprintContinuityRisks(projections, blueprint, exemptions),
+      ...findMissingCharacterStateFindings(projections, blueprint),
+    ]
   }))).flat()
   return { findings, exemptions }
 }

@@ -6,9 +6,12 @@ export interface ConsistencyExemption {
   revoked: boolean
 }
 
+export type ConsistencyFindingCertainty = 'conflict' | 'suspected' | 'insufficient'
+
 export interface ConsistencyFinding {
   stableFactKey: string
   severity: 'warning'
+  certainty: ConsistencyFindingCertainty
   sourceChapter: number
   evidence: string
   issue: { zhCN: string; enUS: string }
@@ -143,6 +146,7 @@ export function findBlueprintContinuityRisks(
       return [{
         stableFactKey,
         severity: 'warning' as const,
+        certainty: 'conflict' as const,
         sourceChapter: fact.sourceChapter,
         evidence: fact.evidence,
         issue: {
@@ -166,6 +170,7 @@ export function findBlueprintContinuityRisks(
             return [{
               stableFactKey: timelineKey,
               severity: 'warning' as const,
+              certainty: 'conflict' as const,
               sourceChapter: fact.sourceChapter,
               evidence: fact.evidence,
               issue: {
@@ -192,6 +197,7 @@ export function findBlueprintContinuityRisks(
           return [{
             stableFactKey: knowledgeKey,
             severity: 'warning' as const,
+            certainty: 'conflict' as const,
             sourceChapter: fact.sourceChapter,
             evidence: fact.evidence,
             issue: {
@@ -216,6 +222,7 @@ export function findBlueprintContinuityRisks(
       return [{
         stableFactKey: locationKey,
         severity: 'warning' as const,
+        certainty: 'conflict' as const,
         sourceChapter: fact.sourceChapter,
         evidence: fact.evidence,
         issue: {
@@ -242,6 +249,7 @@ export function findBlueprintContinuityRisks(
         return [{
           stableFactKey: ownershipKey,
           severity: 'warning' as const,
+          certainty: 'conflict' as const,
           sourceChapter: fact.sourceChapter,
           evidence: fact.evidence,
           issue: {
@@ -264,13 +272,60 @@ export function mergeConsistencyFindingsIntoReview(
   findings: readonly ConsistencyFinding[],
   locale: 'zh-CN' | 'en-US',
 ): ReviewLike & { items: Array<Record<string, unknown>> } {
-  const mapped = findings.map(finding => ({
-    category: locale === 'en-US' ? 'Deterministic continuity preflight' : '确定性一致性预检',
-    severity: finding.severity,
+  const mapped = findings.map(finding => {
+    const certaintyLabel = finding.certainty === 'insufficient'
+      ? locale === 'en-US' ? ' [insufficient evidence]' : ' [信息不足]'
+      : finding.certainty === 'suspected'
+        ? locale === 'en-US' ? ' [suspected]' : ' [疑似]'
+        : ' [conflict]'
+    return {
+      category: (locale === 'en-US' ? 'Deterministic continuity preflight' : '确定性一致性预检') + certaintyLabel,
+      severity: finding.severity,
+      certainty: finding.certainty,
     description: locale === 'en-US' ? finding.issue.enUS : finding.issue.zhCN,
     quote: finding.evidence,
-    stableFactKey: finding.stableFactKey,
-    sourceChapter: finding.sourceChapter,
-  }))
+      stableFactKey: finding.stableFactKey,
+      sourceChapter: finding.sourceChapter,
+    }
+  })
   return { ...review, items: [...(Array.isArray(review.items) ? review.items : []), ...mapped] }
 }
+/**
+ * Report blueprint characters whose current state has no finalized evidence at
+ * all. This is deliberately an information-insufficient finding, never an
+ * assertion that the blueprint is wrong: the author may still be introducing
+ * the character or may have omitted an old fact deliberately.
+ */
+export function findMissingCharacterStateFindings(
+  projections: readonly FinalizedContinuityProjection[],
+  blueprint: BlueprintForPreflight,
+): ConsistencyFinding[] {
+  const known = new Set<string>()
+  for (const projection of projections) {
+    for (const fact of projection.facts ?? []) {
+      if (fact.category !== 'character-state' && fact.category !== 'timeline') continue
+      if (!factAppliesAtChapter(fact, blueprint.chapterNumber)) continue
+      for (const entity of fact.entities.map(normalizedKeyPart)) known.add(entity)
+    }
+  }
+  const characters = blueprint.characters.map(normalizedKeyPart).filter(Boolean)
+  const uniqueCharacters = [...new Set(characters)]
+  return uniqueCharacters
+    .filter(character => !known.has(character))
+    .map(character => ({
+      stableFactKey: `missing:state:${character}`,
+      severity: 'warning' as const,
+      certainty: 'insufficient' as const,
+      sourceChapter: blueprint.chapterNumber,
+      evidence: '',
+      issue: {
+        zhCN: `蓝图安排“${character}”出场，但已定稿连续性事实中没有该角色在当前章节有效的状态记录；需要补充状态或说明这是首次出场。`,
+        enUS: `Blueprint schedules “${character}”, but no finalized continuity fact records a current state for the character; add one or mark the appearance as a first introduction.`,
+      },
+      suggestion: {
+        zhCN: '补充角色当前地点/伤势/知识等状态事实，或明确这是首次出场。',
+        enUS: 'Add the character current state (location, injury, knowledge), or mark this as a first appearance.',
+      },
+    }))
+}
+

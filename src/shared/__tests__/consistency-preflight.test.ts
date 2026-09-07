@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { findBlueprintContinuityRisks, mergeConsistencyFindingsIntoReview } from '../consistency-preflight'
+import { findBlueprintContinuityRisks, findMissingCharacterStateFindings, mergeConsistencyFindingsIntoReview } from '../consistency-preflight'
 
 describe('findBlueprintContinuityRisks', () => {
   const projection = [{
@@ -216,9 +216,29 @@ describe('findBlueprintContinuityRisks', () => {
     }, [])[0]!
     const review = mergeConsistencyFindingsIntoReview({ summary: 'AI summary', items: [] }, [finding], 'en-US')
     expect(review.items).toEqual([expect.objectContaining({
-      category: 'Deterministic continuity preflight', severity: 'warning',
+      category: 'Deterministic continuity preflight [conflict]',
+      certainty: 'conflict',
+      severity: 'warning',
       quote: '表盖内侧刻着一组陌生坐标。',
     })])
     expect(review.items[0]?.description).toContain('顾舟')
   })
+
+  it('reports information-insufficient state for a blueprint character without finalized facts', () => {
+    const findings = findMissingCharacterStateFindings(projection, {
+      chapterNumber: 2,
+      title: '新人登场',
+      role: '发展',
+      purpose: '苏遥首次出现在车站',
+      keyEvents: '苏遥走进车站。',
+      characters: ['林岚', '苏遥'],
+      suspenseHook: '',
+      userGuidance: '',
+      notes: '',
+    })
+    expect(findings).toHaveLength(2)
+    expect(findings.every(finding => finding.certainty === 'insufficient' && finding.severity === 'warning')).toBe(true)
+    expect(findings.some(finding => finding.issue.zhCN.includes('苏遥') && finding.issue.enUS.includes('苏遥'))).toBe(true)
+  })
+
 })
