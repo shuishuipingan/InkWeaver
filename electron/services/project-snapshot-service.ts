@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto'
-import { copyFile, lstat, mkdir, readFile, readdir, stat, writeFile, cp } from 'node:fs/promises'
+import { copyFile, lstat, mkdir, readFile, readdir, rm, stat, writeFile, cp } from 'node:fs/promises'
 import path from 'node:path'
 import { getCurrentProjectPath, getProjectDb } from '../database'
 import type {
@@ -7,11 +7,15 @@ import type {
   ProjectSnapshotManifest,
   ProjectSnapshotRestorePreview,
   ProjectSnapshotRestoreResult,
+  ProjectSnapshotPruneOptions,
+  ProjectSnapshotPruneResult,
   ProjectSnapshotVerification,
 } from '../../src/shared/project-snapshot'
 
 const SNAPSHOT_DIR = path.join('.vela', 'snapshots')
 const DATABASE_FILE = 'database.sqlite'
+const DEFAULT_MAX_SNAPSHOTS = 20
+const DEFAULT_MAX_SNAPSHOT_BYTES = 2 * 1024 * 1024 * 1024
 
 function sha256(bytes: Buffer): string {
   return createHash('sha256').update(bytes).digest('hex')
@@ -110,6 +114,7 @@ export class ProjectSnapshotService {
       files,
     }
     await writeFile(path.join(root, 'manifest.json'), JSON.stringify(manifest, null, 2), 'utf8')
+    await this.prune(projectPath)
     return manifest
   }
 
@@ -127,6 +132,37 @@ export class ProjectSnapshotService {
       } catch { /* ignore incomplete snapshots */ }
     }
     return manifests.sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+  }
+
+  static async prune(
+    projectPath = getCurrentProjectPath(),
+    options: ProjectSnapshotPruneOptions = {},
+  ): Promise<ProjectSnapshotPruneResult> {
+    if (!projectPath) return { removed: [], remaining: [], totalBytes: 0 }
+    const maxSnapshots = options.maxSnapshots ?? DEFAULT_MAX_SNAPSHOTS
+    const maxBytes = options.maxBytes ?? DEFAULT_MAX_SNAPSHOT_BYTES
+    if (!Number.isSafeInteger(maxSnapshots) || maxSnapshots < 1) throw new Error('快照保留数量无效')
+    if (!Number.isSafeInteger(maxBytes) || maxBytes < 1) throw new Error('快照保留容量无效')
+    const manifests = await this.list(projectPath)
+    const kept: ProjectSnapshotManifest[] = []
+    const removed: string[] = []
+    let totalBytes = 0
+    for (const manifest of manifests) {
+      const bytes = manifest.files.reduce((sum, file) => sum + file.bytes, 0)
+      const mustKeepNewest = kept.length === 0
+      if (mustKeepNewest || (kept.length < maxSnapshots && totalBytes + bytes <= maxBytes)) {
+        kept.push(manifest)
+        totalBytes += bytes
+        continue
+      }
+      assertSnapshotId(manifest.snapshotId)
+      const snapshotsRoot = path.resolve(projectPath, SNAPSHOT_DIR)
+      const target = path.resolve(snapshotsRoot, manifest.snapshotId)
+      if (!isWithin(snapshotsRoot, target) || target === snapshotsRoot) throw new Error('快照清理目标无效')
+      await rm(target, { recursive: true, force: true })
+      removed.push(manifest.snapshotId)
+    }
+    return { removed, remaining: kept.map(manifest => manifest.snapshotId), totalBytes }
   }
 
   static async verify(snapshotId: string, projectPath = getCurrentProjectPath()): Promise<ProjectSnapshotVerification> {

@@ -45,3 +45,14 @@ export interface ProjectSnapshotRestoreResult {
   files: number
   manifest: ProjectSnapshotManifest
 }
+
+export interface ProjectSnapshotPruneOptions {
+  maxSnapshots?: number
+  maxBytes?: number
+}
+
+export interface ProjectSnapshotPruneResult {
+  removed: string[]
+  remaining: string[]
+  totalBytes: number
+}

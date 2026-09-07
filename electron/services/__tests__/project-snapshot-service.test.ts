@@ -99,4 +99,16 @@ describe('ProjectSnapshotService', () => {
     await expect(ProjectSnapshotService.restore(manifest.snapshotId, restoreTarget)).rejects.toThrow(/空目录/)
     await expect(ProjectSnapshotService.previewRestore(manifest.snapshotId, path.join(root, 'restored'))).rejects.toThrow(/源项目/)
   })
+
+  it('prunes only the oldest snapshot directories within an explicit retention budget', async () => {
+    const first = await ProjectSnapshotService.create()
+    const second = await ProjectSnapshotService.create()
+    const result = await ProjectSnapshotService.prune(root, { maxSnapshots: 1 })
+
+    expect(result.removed).toContain(first.snapshotId)
+    expect(result.removed).not.toContain(second.snapshotId)
+    expect(result.remaining).toEqual([second.snapshotId])
+    await expect(ProjectSnapshotService.verify(second.snapshotId)).resolves.toMatchObject({ valid: true })
+    await expect(ProjectSnapshotService.verify(first.snapshotId)).rejects.toThrow()
+  })
 })

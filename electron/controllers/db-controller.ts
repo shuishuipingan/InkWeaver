@@ -911,6 +911,11 @@ export function registerDatabaseController() {
     }
   })
 
+  ipcMain.handle('db:project-snapshot-prune', async (_event, options, expectedProjectPath: string) => {
+    assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+    return ProjectSnapshotService.prune(expectedProjectPath, options)
+  })
+
   ipcMain.handle('db:draft-next-version', async (_event, chapterNumber: number, expectedProjectPath: string) => {
     assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
     return DraftRepository.getNextVersion(chapterNumber)
