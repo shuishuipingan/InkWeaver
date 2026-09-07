@@ -20,7 +20,7 @@ afterEach(async () => {
 })
 
 describe('WritingStyleHistoryPanel', () => {
-  it('lists recorded AI style profile versions without editing them', async () => {
+  it('lists recorded AI style profile versions', async () => {
     const invoke = vi.fn(async (channel: string) => {
       if (channel === 'db:writing-style-history-list') return [
         { id: 2, previousStyle: '旧文风', nextStyle: '新文风', sourceFingerprint: 'abc', createdAt: '2026-09-07 00:00:00' },
@@ -28,7 +28,7 @@ describe('WritingStyleHistoryPanel', () => {
       throw new Error('Unexpected ' + channel)
     })
     Object.defineProperty(window, 'velaAPI', { configurable: true, value: { invoke, on: vi.fn(() => () => {}), once: vi.fn(), send: vi.fn(), setZoomLevel: vi.fn(), setZoomFactor: vi.fn(), getZoomLevel: vi.fn(() => 0) } })
-    useProjectStore.setState({ currentProject: { id: SESSION.projectId, sessionLease: SESSION.leaseId, path: PROJECT_PATH, novelConfig: { writingLanguage: 'zh-CN' } } as never })
+    useProjectStore.setState({ currentProject: { id: SESSION.projectId, sessionLease: SESSION.leaseId, path: PROJECT_PATH, novelConfig: { writingLanguage: 'zh-CN', writingStyle: '当前文风' } } as never })
     setActiveProjectSessionContext(SESSION)
     container = document.createElement('div')
     document.body.append(container)
@@ -40,5 +40,26 @@ describe('WritingStyleHistoryPanel', () => {
     expect(container.textContent).toContain('旧文风')
     expect(container.textContent).toContain('新文风')
     expect(invoke).toHaveBeenCalledWith('db:writing-style-history-list', PROJECT_PATH, expect.objectContaining({ projectId: SESSION.projectId }))
+  })
+
+  it('applies a historical version to the current project writing style', async () => {
+    const invoke = vi.fn(async (channel: string) => {
+      if (channel === 'db:writing-style-history-list') return [
+        { id: 2, previousStyle: '旧文风', nextStyle: '新文风', sourceFingerprint: 'abc', createdAt: '2026-09-07 00:00:00' },
+      ]
+      throw new Error('Unexpected ' + channel)
+    })
+    Object.defineProperty(window, 'velaAPI', { configurable: true, value: { invoke, on: vi.fn(() => () => {}), once: vi.fn(), send: vi.fn(), setZoomLevel: vi.fn(), setZoomFactor: vi.fn(), getZoomLevel: vi.fn(() => 0) } })
+    useProjectStore.setState({ currentProject: { id: SESSION.projectId, sessionLease: SESSION.leaseId, path: PROJECT_PATH, novelConfig: { writingLanguage: 'zh-CN', writingStyle: '当前文风' } } as never })
+    setActiveProjectSessionContext(SESSION)
+    container = document.createElement('div')
+    document.body.append(container)
+    root = createRoot(container)
+    await act(async () => root.render(<WritingStyleHistoryPanel projectKey={PROJECT_PATH} />))
+    await act(async () => container.querySelector('summary')?.dispatchEvent(new MouseEvent('click', { bubbles: true })))
+    const apply = [...container.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.includes('应用到当前'))
+    expect(apply).not.toBeUndefined()
+    await act(async () => apply?.click())
+    expect(useProjectStore.getState().currentProject?.novelConfig.writingStyle).toBe('新文风')
   })
 })
