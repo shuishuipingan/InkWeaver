@@ -48,6 +48,8 @@
 
    Playwright 回读到页面标题 `DeepSeek Harness`，页面正文包含“小说工作台”。这证明当前 companion 与 DSH runtime 可以启动；旧的 `dsh-web-ui-all@0.1.16` 会因 `dsh-settings` 导出不匹配而启动失败，已从当前 qualification 目标中移除。
 
+7. 使用该 profile 的 installed package/preset 路径运行 `web-all-composition.spec.ts`，真实 Loader 请求头隔离测试通过：每个模型请求只包含 `novel_read` 与 `novel_propose_change` 两个小说工具。
+
 ## 尚未完成的门禁
 
 - 当前插件 qualification 脚本还要求固定 Harness checkout、完整根项目测试、真实 `agentPreset.list`、mount、浏览器 Proposal 同页应用和重启读回。

@@ -1,6 +1,7 @@
 /** Optional real-profile composition check for dsh-web-all tool isolation. */
 import { execFile } from 'node:child_process'
-import { access, readFile, writeFile } from 'node:fs/promises'
+import { access, mkdir, readFile, symlink, writeFile } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { promisify } from 'node:util'
@@ -18,7 +19,30 @@ describe('dsh-web-all installed-profile composition', () => {
     if (profileRoot === undefined) throw new Error('real-profile test requires DSH_WEB_PROFILE_ROOT')
     if (installedPresetRoot === undefined) throw new Error('real-profile test requires DSH_NOVEL_PRESET_ROOT')
     const workspace = await makeTestWorkspace('web-ui-all-composition-')
-    const packageEntry = (packageName: string) => join(profileRoot, 'node_modules', ...packageName.split('/'), 'lib', 'index.js')
+    const packageRoot = (packageName: string): string => {
+      const profilePackage = join(profileRoot, 'node_modules', ...packageName.split('/'))
+      if (existsSync(profilePackage)) return profilePackage
+      return join(profileRoot, '..', 'node_modules', ...packageName.split('/'))
+    }
+    const packageEntry = (packageName: string) => join(packageRoot(packageName), 'lib', 'index.js')
+    const fallbackPackages = [
+      '@deepseek-ai/dsh-agent', '@deepseek-ai/dsh-agent-instructions', '@deepseek-ai/dsh-agent-loop',
+      '@deepseek-ai/dsh-agent-presets', '@deepseek-ai/dsh-host-webserver', '@deepseek-ai/dsh-llm',
+      '@deepseek-ai/dsh-persona',
+      '@deepseek-ai/dsh-session', '@deepseek-ai/dsh-session-projection', '@deepseek-ai/dsh-system-prompt',
+      '@deepseek-ai/dsh-tools', '@deepseek-ai/dsh-user-approval',
+    ]
+    for (const packageName of fallbackPackages) {
+      const [scope, name] = packageName.split('/')
+      const scopeRoot = join(workspace, 'node_modules', scope!)
+      await mkdir(scopeRoot, { recursive: true })
+      const target = join(scopeRoot, name!)
+      if (!existsSync(target)) await symlink(packageRoot(packageName), target, 'junction')
+    }
+    const pluginScope = join(workspace, 'node_modules', '@ethanyoq')
+    await mkdir(pluginScope, { recursive: true })
+    const pluginLink = join(pluginScope, 'dsh-ai-novel-writer')
+    if (!existsSync(pluginLink)) await symlink(packageRoot('@ethanyoq/dsh-ai-novel-writer'), pluginLink, 'junction')
     const entries = {
       DSH_WEB_UI_ALL_ENTRY: pathToFileURL(packageEntry('@linxin666/dsh-web-all')).href,
       DSH_WEB_UI_SSH_ENTRY: pathToFileURL(packageEntry('@linxin666/dsh-ssh')).href,
