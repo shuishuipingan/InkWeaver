@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs'
+import { createServer as createNetServer } from 'node:net'
 import path from 'node:path'
 
 import { chromium, type Browser, type Page } from 'playwright'
@@ -15,17 +16,36 @@ const VITE_SERVER_HOOK_TIMEOUT_MS = 30_000
 // assertion failures in the interaction itself.
 const COLD_BROWSER_INTERACTION_TIMEOUT_MS = 60_000
 
+async function findFreePort(): Promise<number> {
+  const probe = createNetServer()
+  await new Promise<void>((resolvePromise, rejectPromise) => {
+    probe.once('error', rejectPromise)
+    probe.listen(0, '127.0.0.1', () => resolvePromise())
+  })
+  const address = probe.address()
+  if (!address || typeof address === 'string') {
+    probe.close()
+    throw new Error('Unable to reserve a browser harness port')
+  }
+  const port = address.port
+  await new Promise<void>((resolvePromise, rejectPromise) => {
+    probe.close(error => error ? rejectPromise(error) : resolvePromise())
+  })
+  return port
+}
+
 describeWithChrome('UpdateSection browser interactions', () => {
   let server: ViteDevServer
   let browser: Browser
   let pageUrl: string
 
   beforeAll(async () => {
+    const port = await findFreePort()
     server = await createServer({
       root: repositoryRoot,
       configFile: false,
       plugins: [react()],
-      server: { host: '127.0.0.1', port: 0, strictPort: false },
+      server: { host: '127.0.0.1', port, strictPort: true },
       appType: 'spa',
     })
     await server.listen()
