@@ -705,7 +705,7 @@ async function startWeb(logRoot, label, harnessRoot, env, patchPath) {
   })
   try {
     const resolveTargetUrl = () => {
-      const tokenUrl = /dsh web:\s+(https?:\/\/[^\s?]+\?token=[^\s]+)/u.exec(stdout)?.[1]
+      const tokenUrl = /dsh web:\s+(https?:\/\/127\.0\.0\.1:\d+\/\?token=[A-Za-z0-9_-]+)/u.exec(stdout)?.[1]
       return tokenUrl ?? url
     }
     const ready = await waitForWeb(url, exited, resolveTargetUrl)
