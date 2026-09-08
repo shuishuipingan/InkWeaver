@@ -681,7 +681,9 @@ async function writeWebLogs(logRoot, label, stdout, stderr) {
 async function startWeb(logRoot, label, harnessRoot, env, patchPath) {
   const port = await availablePort()
   const url = `http://127.0.0.1:${port}`
-  const launch = dshLaunch(harnessRoot, ['--profile', profileName, '--patch', patchPath, '--port', String(port)])
+  const launch = dshLaunch(harnessRoot, [
+    '--profile', profileName, '--patch', patchPath, '--port', String(port), '--no-open',
+  ])
   const child = spawn(launch.file, launch.args, {
     cwd: harnessRoot,
     detached: process.platform !== 'win32',
