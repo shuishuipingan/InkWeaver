@@ -115,6 +115,11 @@ describe('V2 browser qualification journey', () => {
     expect(source).toContain("page.getByRole('button', { name: SEND_MESSAGE_BUTTON_NAME })")
   })
 
+  it('scopes the settings plugin navigation to the exact Plugin label', async () => {
+    const source = await readFile(browserJourney, 'utf8')
+    expect(source).toContain("settings.getByRole('button', { name: '插件', exact: true })")
+  })
+
   it('retries a freshly located review disclosure until the user-visible partial status is rendered', async () => {
     const source = await readFile(browserJourney, 'utf8')
     const apply = source.indexOf("await drawer.getByRole('button', { name: '依序应用未完成项', exact: true }).click()")

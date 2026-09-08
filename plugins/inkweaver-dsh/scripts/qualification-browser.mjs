@@ -221,7 +221,7 @@ async function ensurePresetInstalled(drawer) {
 async function settingsEvidence(page, screenshots) {
   await page.getByRole('button', { name: '设置', exact: true }).click()
   const settings = page.getByRole('dialog', { name: '设置' })
-  await settings.getByRole('button', { name: '插件' }).click()
+  await settings.getByRole('button', { name: '插件', exact: true }).click()
   await settings.getByRole('tab', { name: '插件配置' }).click()
   const card = settings.getByRole('listitem').filter({ hasText: '织墨' })
   await card.waitFor({ timeout: 30_000 })
