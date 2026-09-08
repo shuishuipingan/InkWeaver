@@ -172,10 +172,10 @@ async function connectWorkspace(page) {
   await page.getByRole('button', { name: `在“${workspaceName}”中新建会话` }).click()
 }
 
-async function selectNovelPreset(page) {
+async function selectNovelPreset(page, { forceRoster = false } = {}) {
   const preset = page.getByRole('button', { name: /^(?:标准模式|Standard mode|织墨 V2)$/ })
   await preset.waitFor({ state: 'visible', timeout: 30_000 })
-  if (await preset.innerText() !== '织墨 V2') {
+  if (forceRoster || await preset.innerText() !== '织墨 V2') {
     await preset.click()
     await page.getByRole('menuitem', { name: '织墨 V2', exact: true }).click()
   }
@@ -512,8 +512,8 @@ try {
   await page.waitForTimeout(1_000)
   await finishOnboarding(page)
   await connectWorkspace(page)
+  await selectNovelPreset(page, { forceRoster: true })
   await assertNovelPresetFromApi(await agentPresetResponse)
-  await selectNovelPreset(page)
   drawer = await openWorkbench(page)
   if (phase === 'first') {
     await initializeWorkspace(page, drawer, screenshots)

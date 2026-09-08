@@ -120,6 +120,17 @@ describe('V2 browser qualification journey', () => {
     expect(source).toContain("settings.getByRole('button', { name: '插件', exact: true })")
   })
 
+  it('triggers a fresh preset roster request before awaiting its response', async () => {
+    const source = await readFile(browserJourney, 'utf8')
+    const request = source.indexOf('const agentPresetResponse = page.waitForResponse')
+    const select = source.indexOf('await selectNovelPreset(page, { forceRoster: true })')
+    const roster = source.indexOf('await assertNovelPresetFromApi(await agentPresetResponse)')
+    expect(request).toBeGreaterThan(-1)
+    expect(select).toBeGreaterThan(request)
+    expect(roster).toBeGreaterThan(select)
+    expect(source).toContain('forceRoster')
+  })
+
   it('retries a freshly located review disclosure until the user-visible partial status is rendered', async () => {
     const source = await readFile(browserJourney, 'utf8')
     const apply = source.indexOf("await drawer.getByRole('button', { name: '依序应用未完成项', exact: true }).click()")
