@@ -470,6 +470,26 @@ async function runPnpm(logRoot, label, args, options) {
   return recordCommand(logRoot, label, launch.file, launch.args, options)
 }
 
+/** Reproduce the official CLI profile boot's flat dependency fallback. */
+async function healProfileModuleFallback(logRoot, harnessRoot, dshHome, env) {
+  const script = [
+    "import { healProfilesModuleFallback } from '@deepseek-ai/dsh-app-boot'",
+    "await healProfilesModuleFallback({ installAnchor: process.env.DSH_HEAL_INSTALL_ANCHOR, home: process.env.DSH_HEAL_HOME })",
+    "process.stdout.write('profile module fallback healed\\n')",
+  ].join(';')
+  return recordCommand(logRoot, 'profile-module-fallback', process.execPath, [
+    '--input-type=module', '-e', script,
+  ], {
+    cwd: join(harnessRoot, 'apps', 'cli'),
+    env: {
+      ...env,
+      DSH_HEAL_INSTALL_ANCHOR: join(harnessRoot, 'apps', 'cli', 'package.json'),
+      DSH_HEAL_HOME: dshHome,
+    },
+    timeout: 60_000,
+  })
+}
+
 function dshLaunch(harnessRoot, args) {
   return {
     file: process.execPath,
@@ -1057,6 +1077,7 @@ async function qualify(options) {
     if (!dump.stdout.includes(packageName) || dump.stdout.includes(canonicalRepository) || dump.stdout.includes('/src/index.ts')) {
       fail('Composed config did not resolve the installed bundle independently of development paths')
     }
+    commands.push(await healProfileModuleFallback(logRoot, canonicalHarness, dshHome, env))
     const preset = await qualifyPreset(installedRoot)
     const presetTools = await qualifyPresetTools(logRoot, profileRoot, installedRoot, env)
     commands.push(await runPnpm(logRoot, 'web-all-tool-isolation', [
@@ -1094,6 +1115,7 @@ async function qualify(options) {
     const reinstalledRoot = await realpath(join(profileRoot, 'node_modules', '@shuishuipingan', 'inkweaver-dsh'))
     assertProfileInstalled(JSON.parse(await readFile(profileManifestPath, 'utf8')), basename(tarball))
     const reinstalledContent = await assertInstalledTarballContent(packedPackageRoot, reinstalledRoot)
+    commands.push(await healProfileModuleFallback(logRoot, canonicalHarness, dshHome, env))
     const reinstalledPreset = await qualifyPreset(reinstalledRoot)
     const reinstalledPresetTools = await qualifyPresetTools(logRoot, profileRoot, reinstalledRoot, env)
     const finalDump = await runDsh(logRoot, 'profile-dump-reinstalled', canonicalHarness, ['--profile', profileName, '--dump-config'], env, 120_000)
