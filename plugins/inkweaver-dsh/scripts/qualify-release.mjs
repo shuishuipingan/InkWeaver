@@ -2,7 +2,7 @@
 /** Tarball, disposable-profile, browser, persistence, and Electron regression qualification. */
 import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { access, mkdir, readFile, realpath, stat, writeFile } from 'node:fs/promises'
+import { access, copyFile, mkdir, readFile, realpath, stat, symlink, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:net'
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import process from 'node:process'
@@ -907,8 +907,23 @@ async function readback(installedEntry, workspaceRoot) {
   }
 }
 
-async function writeQualificationOverlay(path) {
-  const backend = pathToFileURL(join(packageRoot, 'scripts', 'qualification-web-backend.mjs')).href
+async function prepareQualificationBackend(runRoot) {
+  const backendRoot = join(runRoot, 'qualification-backend')
+  await mkdir(backendRoot, { recursive: true })
+  await copyFile(
+    join(packageRoot, 'scripts', 'qualification-web-backend.mjs'),
+    join(backendRoot, 'index.mjs'),
+  )
+  await writeFile(join(backendRoot, 'package.json'), JSON.stringify({
+    name: '@inkweaver/qualification-backend',
+    private: true,
+    type: 'module',
+  }) + '\n', 'utf8')
+  await symlink(join(packageRoot, 'node_modules'), join(backendRoot, 'node_modules'), 'junction')
+  return pathToFileURL(join(backendRoot, 'index.mjs')).href
+}
+
+async function writeQualificationOverlay(path, backend) {
   await writeFile(path, [
     '- id: agent-default-model',
     '  config:',
@@ -1092,8 +1107,9 @@ async function qualify(options) {
       timeout: 90_000,
     }))
     const overlayPath = join(runRoot, 'qualification.overlay.yml')
+    const qualificationBackend = await prepareQualificationBackend(runRoot)
     const screenshotRoot = join(runRoot, 'design-qa', 'screenshots')
-    await writeQualificationOverlay(overlayPath)
+    await writeQualificationOverlay(overlayPath, qualificationBackend)
     const firstWeb = await probeWeb(
       logRoot, 'web-installed', canonicalHarness, env, overlayPath, workspaceRoot, screenshotRoot, 'first',
     )
@@ -1124,7 +1140,7 @@ async function qualify(options) {
       fileURLToPath(import.meta.url), '--readback', join(reinstalledRoot, 'lib', 'index.js'), workspaceRoot,
     ], { cwd: runRoot, env, timeout: 60_000 })
     const reinstalledReadbackData = JSON.parse(reinstalledReadbackResult.stdout.trim())
-    await writeQualificationOverlay(overlayPath, reinstalledRoot)
+    await writeQualificationOverlay(overlayPath, qualificationBackend)
     const secondWeb = await probeWeb(
       logRoot, 'web-reinstalled', canonicalHarness, env, overlayPath, workspaceRoot, screenshotRoot, 'reinstall',
     )
