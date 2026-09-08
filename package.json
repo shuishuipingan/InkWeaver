@@ -17,7 +17,7 @@
     "prepare:native-node": "node scripts/prepare-native-for-node.mjs",
     "typecheck": "tsc --noEmit",
     "check:i18n": "node scripts/check-i18n-coverage.mjs",
-    "test": "vitest run",
+    "test": "vitest run --maxWorkers=2",
     "test:browser": "vitest run --config vitest.browser.config.ts",
     "test:renderer-surface:e2e": "node scripts/renderer-surface-e2e.mjs",
     "build": "tsc && vite build",

@@ -5,6 +5,7 @@ import { createRoot, type Root } from 'react-dom/client'
 
 import type { FileNode, ModelExecutionLeaseReceipt, ModelProfile, ProjectData } from '../../../shared/ipc-channels'
 import { setActiveProjectSessionContext } from '../../../shared/project-session-context'
+import { emptyStoryContinuityDocument } from '../../../shared/story-continuity'
 import { clearProjectCustomPrompts } from '../../../services/prompt-templates'
 import { disposeProjectService, initProjectService } from '../../../services/project-service'
 import { useDraftStore } from '../../../stores/draft-store'
@@ -231,10 +232,31 @@ function installIpc() {
     if (channel === 'llm:close-execution-lease') return { success: true }
     if (channel === 'llm:generate-stream') {
       const requestId = String(args[0])
-      const request = args[1] as { purpose?: string; responseFormat?: { type?: string } }
+      const request = args[1] as {
+        purpose?: string
+        responseFormat?: { type?: string }
+        messages?: Array<{ content?: unknown }>
+      }
+      const isHandoffRequest = request.messages?.some(message => (
+        typeof message.content === 'string'
+        && (message.content.includes('章节交接') || message.content.includes('chapter handoff'))
+      )) ?? false
       const completion = request.purpose === 'post-process'
         ? request.responseFormat?.type === 'json_object'
-          ? '{"updates":[],"newCharacters":[]}'
+          ? isHandoffRequest
+            ? JSON.stringify({
+              sceneLocation: '雨夜街道',
+              viewpoint: '沈砺',
+              presentCharacters: ['沈砺'],
+              unfinishedActions: ['继续调查匿名信'],
+              immediateGoal: '继续调查匿名信',
+              emotionalState: '警惕',
+              constraints: [],
+              openQuestions: ['匿名信来自谁？'],
+              transition: 'continue-scene',
+              evidence: ['终。'],
+            })
+            : '{"updates":[],"newCharacters":[]}'
           : '本章收到匿名信并开始调查。'
         : draftCompletions[draftCompletionIndex++] ?? DRAFT_TEXT
       if (changeDefaultAfterFirstDraft && request.purpose === 'chapter-draft' && draftCompletionIndex === 1) {
@@ -256,7 +278,33 @@ function installIpc() {
     if (channel === 'db:blueprint-get-all') {
       return importedFinalizedDrafts ? [] : [blueprint(), blueprint(2)]
     }
-    if (channel === 'db:continuity-list-before' || channel === 'db:consistency-exemption-list') return []
+    if (channel === 'db:continuity-list-before') {
+      return [{
+        draftId: 1,
+        chapterNumber: 1,
+        chapterTitle: '前章',
+        chapterNotes: '沈砺在雨夜继续调查。',
+        facts: [{
+          category: 'character-state',
+          entities: ['沈砺'],
+          statement: '沈砺在雨夜继续调查。',
+          sourceChapter: 1,
+          evidence: '沈砺继续调查的定稿证据。',
+        }],
+      }]
+    }
+    if (channel === 'db:consistency-exemption-list') return []
+    if (channel === 'db:chapter-handoff-latest-before') return null
+    if (channel === 'db:narrative-thread-list-relevant') return []
+    if (channel === 'db:knowledge-event-list-for-chapter') return []
+    if (channel === 'db:story-continuity-read') return emptyStoryContinuityDocument(Number(args[0]))
+    if (channel === 'db:story-continuity-list-all') return []
+    if (channel === 'kb:search-writing-context') return []
+    if (channel === 'db:knowledge-event-list-review') return []
+    if (channel === 'db:chapter-handoff-save-candidate') {
+      const candidate = args[0] as Record<string, unknown>
+      return { success: true, handoff: candidate }
+    }
     if (channel === 'db:blueprint-get') {
       return importedFinalizedDrafts ? null : blueprint(Number(args[0]))
     }

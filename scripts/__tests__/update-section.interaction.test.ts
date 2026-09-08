@@ -10,7 +10,10 @@ const repositoryRoot = path.resolve('.')
 const chromeExecutable = process.env.CHROME_PATH ?? 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'
 const describeWithChrome = existsSync(chromeExecutable) ? describe : describe.skip
 const VITE_SERVER_HOOK_TIMEOUT_MS = 30_000
-const COLD_BROWSER_INTERACTION_TIMEOUT_MS = 30_000
+// The full desktop suite exercises native workers and PowerShell processes at
+// the same time; allow the first Chromium page to cold-start without hiding
+// assertion failures in the interaction itself.
+const COLD_BROWSER_INTERACTION_TIMEOUT_MS = 60_000
 
 describeWithChrome('UpdateSection browser interactions', () => {
   let server: ViteDevServer

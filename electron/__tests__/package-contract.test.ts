@@ -86,7 +86,7 @@ describe('release dependency contract', () => {
   })
 
   it('runs the full test suite before the outer monitor starts', () => {
-    expect(pkg.scripts?.test).toBe('vitest run')
+    expect(pkg.scripts?.test).toBe('vitest run --maxWorkers=2')
     expect(pkg.scripts?.['test:release-monitor-selftest']).toBeUndefined()
     expect(pkg.scripts?.['test:release-workload']).toBeUndefined()
 
