@@ -122,6 +122,19 @@ describe('release qualification runner', () => {
     })
   })
 
+  it('parses the current Harness globalThis boot graph syntax', async () => {
+    const root = await makeTestWorkspace('qualification-boot-graph-')
+    const html = join(root, 'index.html')
+    await writeFile(html, '<script>globalThis["__DSH_BOOT__"] = {"rev":"rev-1","entries":[{"id":"@shuishuipingan/inkweaver-dsh","url":"/plugins/inkweaver.js"}]}</script>\n', 'utf8')
+
+    await expect(execFileAsync(process.execPath, [runner, '--validate-boot-graph', html], {
+      cwd: packageRoot,
+      encoding: 'utf8',
+    })).resolves.toMatchObject({
+      stdout: expect.stringContaining('"rev":"rev-1"'),
+    })
+  })
+
   it('compares every required installed package artifact to the packed-content root after reinstall', async () => {
     const root = await makeTestWorkspace('qualification-installed-content-')
     const installedRoot = join(root, 'installed')

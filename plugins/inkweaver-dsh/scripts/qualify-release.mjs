@@ -550,9 +550,9 @@ async function waitForWeb(url, exited, resolveTargetUrl = () => url) {
 }
 
 function bootGraphFromHtml(html) {
-  const match = /<script>window\.__DSH_BOOT__ = ([\s\S]*?)<\/script>/.exec(html)
+  const match = /<script[^>]*>(?:window\.__DSH_BOOT__|globalThis(?:\.__DSH_BOOT__|\["__DSH_BOOT__"\]))\s*=\s*([\s\S]*?)<\/script>/u.exec(html)
   if (match?.[1] === undefined) fail('Web index did not contain the client boot graph')
-  return objectOf(JSON.parse(match[1]), 'Web client boot graph')
+  return objectOf(JSON.parse(match[1].trim().replace(/;$/u, '').trim()), 'Web client boot graph')
 }
 
 async function waitForExit(exit, timeoutMs) {
@@ -1274,6 +1274,12 @@ async function main() {
     if (serialized === undefined) fail('--validate-browser-result requires a browser result JSON object')
     assertBrowserQualificationResult(JSON.parse(serialized), phase)
     process.stdout.write('browser qualification result passed\n')
+    return
+  }
+  if (args[0] === '--validate-boot-graph') {
+    const path = args[1]
+    if (path === undefined) fail('--validate-boot-graph requires an HTML path')
+    process.stdout.write(`${JSON.stringify(bootGraphFromHtml(await readFile(resolve(path), 'utf8')))}\n`)
     return
   }
   if (args[0] === '--qualification-proposal') {
