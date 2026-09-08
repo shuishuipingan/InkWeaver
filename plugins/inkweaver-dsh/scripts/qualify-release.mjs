@@ -523,13 +523,14 @@ async function availablePort() {
   })
 }
 
-async function waitForWeb(url, exited) {
+async function waitForWeb(url, exited, resolveTargetUrl = () => url) {
   const deadline = Date.now() + 60_000
   while (Date.now() < deadline) {
     if (exited.value !== undefined) fail(`Web process exited before readiness: ${JSON.stringify(exited.value)}`)
+    const targetUrl = resolveTargetUrl()
     try {
-      const response = await fetch(url)
-      if (response.ok) return response.text()
+      const response = await fetch(targetUrl)
+      if (response.ok) return { url: targetUrl, html: await response.text() }
     } catch (error) {
       if (!(error instanceof TypeError)) throw error
     }
@@ -703,10 +704,14 @@ async function startWeb(logRoot, label, harnessRoot, env, patchPath) {
     })
   })
   try {
-    const html = await waitForWeb(url, exited)
+    const resolveTargetUrl = () => {
+      const tokenUrl = /dsh web:\s+(https?:\/\/[^\s?]+\?token=[^\s]+)/u.exec(stdout)?.[1]
+      return tokenUrl ?? url
+    }
+    const ready = await waitForWeb(url, exited, resolveTargetUrl)
     return {
-      url,
-      html,
+      url: ready.url,
+      html: ready.html,
       async stop() {
         let terminationError
         try {
