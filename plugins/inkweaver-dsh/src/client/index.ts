@@ -817,6 +817,7 @@ export function apply(ctx: ClientContext): void {
     // dsh@0.1.2-rc.1) still dispatches this slot as a list at runtime. Keep
     // the stable id/order contract and cast only this compatibility seam;
     // newer keyed hosts ignore the extra list metadata when they remount it.
+    key: 'inkweaver',
     id: 'inkweaver',
     order: 90,
     inject: workbenchInjected,

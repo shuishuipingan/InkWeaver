@@ -5,6 +5,7 @@ import { dirname, join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import type { ConnectionRpcHandler, HostConnectionHandle } from '@deepseek-ai/dsh-client-connection'
 import { dshHomePath } from '@deepseek-ai/dsh-home-paths'
+import type {} from '@deepseek-ai/dsh-settings'
 import { WorkspaceId } from '@deepseek-ai/dsh-workspace'
 import z from '@deepseek-ai/schemastery'
 import { createAiNovelCommandRpcHandler, type NovelWorkspaceRegistry } from './command-rpc.ts'
@@ -108,7 +109,10 @@ export type {
 export const name = 'inkweaver'
 
 /** Required Host services. */
-export const inject = ['connection', 'workspaceRegistry']
+export const inject = ['connection', 'workspaceRegistry', 'settings']
+
+/** Settings namespace owned by the browser status card. */
+const INKWEAVER_SETTINGS_NAMESPACE = 'inkweaver'
 
 /** Host configuration for the explicit preset setup surface. */
 export interface Config {
@@ -314,6 +318,9 @@ export function apply(ctx: Context, config: Config): void {
   const installer = createBundledPresetInstaller(templateRoot(), presetRoot)
   const connection = ctx.get('connection') as HostConnectionHandle
   const workspaces = ctx.get('workspaceRegistry') as NovelWorkspaceRegistry
+  ctx.inject(['settings'], settingsCtx => {
+    settingsCtx.settings.register(INKWEAVER_SETTINGS_NAMESPACE, z.object({}))
+  })
   ctx.effect(
     () => {
       const lifecycle = createAiNovelHostRpcLifecycle(createAiNovelRpcHandler(

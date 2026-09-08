@@ -5,6 +5,18 @@ import { apply, createAiNovelHostRpcLifecycle, inject } from '../src/index.ts'
 import { makeTestWorkspace } from './test-workspace.ts'
 
 describe('preset setup Host RPC', () => {
+  it('registers the InkWeaver settings namespace for the Host plugin card', () => {
+    const ctx = {
+      get: vi.fn(() => undefined),
+      inject: vi.fn(),
+      effect: vi.fn(),
+    } as unknown as Context
+
+    apply(ctx, { presetRoot: 'C:\\InkWeaver\\presets' })
+
+    expect(ctx.inject).toHaveBeenCalledWith(['settings'], expect.any(Function))
+  })
+
   it('rejects new commands during HMR disposal and waits for an in-flight command to settle', async () => {
     let release: (() => void) | undefined
     const started = Promise.withResolvers<void>()
@@ -46,6 +58,7 @@ describe('preset setup Host RPC', () => {
     const ctx = new Context()
     ctx.provide('connection', { rpc: { handle } } as unknown as HostConnectionHandle)
     ctx.provide('workspaceRegistry' as never, { get: () => undefined } as never)
+    ctx.provide('settings' as never, { register: vi.fn() } as never)
     const fiber = ctx.plugin({ inject: [...inject], apply }, { presetRoot })
     await fiber.await()
 
@@ -81,7 +94,11 @@ describe('preset setup Host RPC', () => {
       get(service: string): unknown {
         if (service === 'connection') return { rpc: { handle } }
         if (service === 'workspaceRegistry') return { get: () => undefined }
+        if (service === 'settings') return { register: vi.fn() }
         throw new Error(`unexpected Host service: ${service}`)
+      },
+      inject(_services: readonly string[], callback: (value: unknown) => void): void {
+        callback({ settings: { register: vi.fn() } })
       },
       effect(registration: () => () => Promise<void>): void {
         registrations.push(registration)
