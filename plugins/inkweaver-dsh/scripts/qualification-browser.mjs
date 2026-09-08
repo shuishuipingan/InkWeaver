@@ -9,7 +9,7 @@ import process from 'node:process'
 const V2_WORKSPACE_STATE_ENDPOINT = 'workspace/state/read'
 const V2_INITIALIZE_ENDPOINT = 'workspace/initialize'
 const QUALIFICATION_TOOL_NAMES = ['novel_read', 'novel_propose_change']
-const AGENT_PRESET_LIST_ENDPOINT = 'agentPreset.list'
+const AGENT_PRESET_LIST_ENDPOINT = 'agentPresets/list'
 const AGENT_PRESET_LIST_API_PATH = `/api/${AGENT_PRESET_LIST_ENDPOINT}`
 const V2_PRESET_ID = 'inkweaver-v2'
 const RESULT_FIELDS = ['phase', 'browser', 'pluginCard', 'geometry', 'screenshots']

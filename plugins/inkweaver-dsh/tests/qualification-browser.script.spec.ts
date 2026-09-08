@@ -49,7 +49,7 @@ describe('V2 browser qualification journey', () => {
       requiresHarnessRoot: true,
       directStoreBootstrap: false,
       userAppliesProposal: true,
-      presetPreflight: { endpoint: 'agentPreset.list', requiredPresetId: 'inkweaver-v2' },
+      presetPreflight: { endpoint: 'agentPresets/list', requiredPresetId: 'inkweaver-v2' },
     })
   })
 
