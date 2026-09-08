@@ -180,7 +180,7 @@ async function selectNovelPreset(page, { forceRoster = false } = {}) {
     await page.getByRole('menuitem', { name: /^织墨 V2(?:\s|$)/ }).click()
   }
   await page.getByRole('button', { name: '织墨 V2', exact: true }).waitFor({ state: 'visible', timeout: 30_000 })
-  await page.locator('textarea:enabled[placeholder="描述你想要构建的内容"]').waitFor({ timeout: 30_000 })
+  await page.locator('textarea:enabled[placeholder^="描述你想要构建的内容"]').waitFor({ timeout: 30_000 })
 }
 
 function isAgentPresetListResponse(response) {
@@ -360,7 +360,7 @@ function qualificationProposalPrompt() {
 
 async function submitProposalThroughSession(page, screenshots) {
   const prompt = qualificationProposalPrompt()
-  const composer = page.locator('textarea:enabled[placeholder="描述你想要构建的内容"]')
+  const composer = page.locator('textarea:enabled[placeholder^="描述你想要构建的内容"]')
   await composer.fill(prompt)
   const send = page.getByRole('button', { name: SEND_MESSAGE_BUTTON_NAME })
   await send.waitFor({ state: 'visible', timeout: 30_000 })

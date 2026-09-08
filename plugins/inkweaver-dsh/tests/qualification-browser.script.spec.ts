@@ -136,6 +136,11 @@ describe('V2 browser qualification journey', () => {
     expect(source).toContain("page.getByRole('menuitem', { name: /^织墨 V2(?:\\s|$)/ })")
   })
 
+  it('accepts the current Harness composer placeholder suffix', async () => {
+    const source = await readFile(browserJourney, 'utf8')
+    expect(source).toContain('textarea:enabled[placeholder^="描述你想要构建的内容"]')
+  })
+
   it('retries a freshly located review disclosure until the user-visible partial status is rendered', async () => {
     const source = await readFile(browserJourney, 'utf8')
     const apply = source.indexOf("await drawer.getByRole('button', { name: '依序应用未完成项', exact: true }).click()")
