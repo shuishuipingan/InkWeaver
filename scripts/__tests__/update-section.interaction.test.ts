@@ -62,7 +62,7 @@ describeWithChrome('UpdateSection browser interactions', () => {
 
   async function openHarness(): Promise<Page> {
     const page = await browser.newPage()
-    await page.goto(pageUrl)
+    await page.goto(pageUrl, { timeout: COLD_BROWSER_INTERACTION_TIMEOUT_MS })
     await page.getByRole('button', { name: '立即重启更新' }).waitFor()
     return page
   }
