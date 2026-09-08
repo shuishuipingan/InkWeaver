@@ -131,6 +131,11 @@ describe('V2 browser qualification journey', () => {
     expect(source).toContain('forceRoster')
   })
 
+  it('matches the V2 preset menu item when Harness includes its description', async () => {
+    const source = await readFile(browserJourney, 'utf8')
+    expect(source).toContain("page.getByRole('menuitem', { name: /^织墨 V2(?:\\s|$)/ })")
+  })
+
   it('retries a freshly located review disclosure until the user-visible partial status is rendered', async () => {
     const source = await readFile(browserJourney, 'utf8')
     const apply = source.indexOf("await drawer.getByRole('button', { name: '依序应用未完成项', exact: true }).click()")

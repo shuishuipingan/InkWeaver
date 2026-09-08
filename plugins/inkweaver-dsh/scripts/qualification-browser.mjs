@@ -177,7 +177,7 @@ async function selectNovelPreset(page, { forceRoster = false } = {}) {
   await preset.waitFor({ state: 'visible', timeout: 30_000 })
   if (forceRoster || await preset.innerText() !== '织墨 V2') {
     await preset.click()
-    await page.getByRole('menuitem', { name: '织墨 V2', exact: true }).click()
+    await page.getByRole('menuitem', { name: /^织墨 V2(?:\s|$)/ }).click()
   }
   await page.getByRole('button', { name: '织墨 V2', exact: true }).waitFor({ state: 'visible', timeout: 30_000 })
   await page.locator('textarea:enabled[placeholder="描述你想要构建的内容"]').waitFor({ timeout: 30_000 })
