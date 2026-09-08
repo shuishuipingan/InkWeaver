@@ -529,7 +529,17 @@ async function waitForWeb(url, exited, resolveTargetUrl = () => url) {
     if (exited.value !== undefined) fail(`Web process exited before readiness: ${JSON.stringify(exited.value)}`)
     const targetUrl = resolveTargetUrl()
     try {
-      const response = await fetch(targetUrl)
+      const response = await fetch(targetUrl, { redirect: 'manual' })
+      if (response.status === 303) {
+        const cookie = response.headers.get('set-cookie')?.split(';', 1)[0]
+        const location = response.headers.get('location')
+        if (cookie !== undefined && location !== null) {
+          const authenticated = await fetch(new URL(location, targetUrl), {
+            headers: { cookie },
+          })
+          if (authenticated.ok) return { url: targetUrl, html: await authenticated.text() }
+        }
+      }
       if (response.ok) return { url: targetUrl, html: await response.text() }
     } catch (error) {
       if (!(error instanceof TypeError)) throw error
