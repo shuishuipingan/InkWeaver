@@ -138,7 +138,23 @@ describe('V2 browser qualification journey', () => {
 
   it('accepts the current Harness composer placeholder suffix', async () => {
     const source = await readFile(browserJourney, 'utf8')
-    expect(source).toContain('textarea:enabled[placeholder^="描述你想要构建的内容"]')
+    expect(source).toContain("page.getByRole('textbox', { name: /^描述你想要构建的内容/ })")
+  })
+
+  it('selects the V2 preset before creating the current Harness session', async () => {
+    const source = await readFile(browserJourney, 'utf8')
+    const connect = source.indexOf('await connectWorkspace(page, { createSession: false })')
+    const select = source.indexOf('await selectNovelPreset(page, { forceRoster: true })')
+    const create = source.lastIndexOf('await createWorkspaceSession(page, basename(workspaceRoot))')
+    expect(connect).toBeGreaterThan(-1)
+    expect(select).toBeGreaterThan(connect)
+    expect(create).toBeGreaterThan(select)
+  })
+
+  it('falls back to the top-level New session control when the workspace row has no action', async () => {
+    const source = await readFile(browserJourney, 'utf8')
+    expect(source).toContain("page.getByRole('button', { name: '新建会话', exact: true })")
+    expect(source).toContain("button[data-dsh-part=\"new-session\"]")
   })
 
   it('retries a freshly located review disclosure until the user-visible partial status is rendered', async () => {

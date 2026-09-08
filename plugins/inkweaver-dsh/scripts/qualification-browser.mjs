@@ -155,7 +155,7 @@ async function capture(page, name) {
   return path
 }
 
-async function connectWorkspace(page) {
+async function connectWorkspace(page, { createSession = true } = {}) {
   const workspaceName = basename(workspaceRoot)
   const existing = page.getByRole('treeitem', { name: workspaceName, exact: true })
   if (!(await existing.isVisible().catch(() => false))) {
@@ -169,7 +169,21 @@ async function connectWorkspace(page) {
     await dialog.getByRole('button', { name: '打开', exact: true }).click()
   }
   await existing.click()
-  await page.getByRole('button', { name: `在“${workspaceName}”中新建会话` }).click()
+  if (createSession) await createWorkspaceSession(page, workspaceName)
+}
+
+async function createWorkspaceSession(page, workspaceName) {
+  const workspaceAction = page.getByRole('button', { name: `在“${workspaceName}”中新建会话` })
+  if (await workspaceAction.isVisible().catch(() => false)) {
+    await workspaceAction.click()
+    return
+  }
+  const topNewSession = page.locator('button[data-dsh-part="new-session"]')
+  if (await topNewSession.isVisible().catch(() => false)) {
+    await topNewSession.click()
+    return
+  }
+  await page.getByRole('button', { name: '新建会话', exact: true }).last().click()
 }
 
 async function selectNovelPreset(page, { forceRoster = false } = {}) {
@@ -180,7 +194,7 @@ async function selectNovelPreset(page, { forceRoster = false } = {}) {
     await page.getByRole('menuitem', { name: /^织墨 V2(?:\s|$)/ }).click()
   }
   await page.getByRole('button', { name: '织墨 V2', exact: true }).waitFor({ state: 'visible', timeout: 30_000 })
-  await page.locator('textarea:enabled[placeholder^="描述你想要构建的内容"]').waitFor({ timeout: 30_000 })
+  await page.getByRole('textbox', { name: /^描述你想要构建的内容/ }).waitFor({ timeout: 30_000 })
 }
 
 function isAgentPresetListResponse(response) {
@@ -360,7 +374,7 @@ function qualificationProposalPrompt() {
 
 async function submitProposalThroughSession(page, screenshots) {
   const prompt = qualificationProposalPrompt()
-  const composer = page.locator('textarea:enabled[placeholder^="描述你想要构建的内容"]')
+  const composer = page.getByRole('textbox', { name: /^描述你想要构建的内容/ })
   await composer.fill(prompt)
   const send = page.getByRole('button', { name: SEND_MESSAGE_BUTTON_NAME })
   await send.waitFor({ state: 'visible', timeout: 30_000 })
@@ -511,9 +525,10 @@ try {
   await page.locator('[class*="frame"]').waitFor({ state: 'visible', timeout: 30_000 })
   await page.waitForTimeout(1_000)
   await finishOnboarding(page)
-  await connectWorkspace(page)
+  await connectWorkspace(page, { createSession: false })
   await selectNovelPreset(page, { forceRoster: true })
   await assertNovelPresetFromApi(await agentPresetResponse)
+  await createWorkspaceSession(page, basename(workspaceRoot))
   drawer = await openWorkbench(page)
   if (phase === 'first') {
     await initializeWorkspace(page, drawer, screenshots)
