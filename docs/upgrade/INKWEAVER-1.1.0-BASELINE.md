@@ -67,8 +67,8 @@ historical checkpoint above is intentionally retained.
 
 | Item | Current value |
 | --- | --- |
-| local source HEAD | `0584113` |
-| GitHub development ref | `origin/1.1.0-development` = `0584113` |
+| local source HEAD | `f1e9f6b` |
+| GitHub development ref | `origin/1.1.0-development` = `f1e9f6b` |
 | desktop package version | `0.9.2` (still not frozen) |
 | DSH plugin package version | `0.1.0` (still not frozen) |
 | tracker status | 4 待验收 / 30 开发中 / 4 未开始 / 0 通过 |
@@ -99,3 +99,7 @@ valid after full roadmap acceptance and the version-freeze review.
 The plugin distribution handoff checklist is tracked at
 `plugins/inkweaver-dsh/docs/1.1.0-release-checklist.md`; it documents the
 tarball, npm, topic-index, and rollback gates without claiming they are done.
+
+The character candidate panel now also exposes a dedicated growth-arc/state
+review section (`f1e9f6b`); the underlying merge and author-confirmation gates
+remain unchanged.
