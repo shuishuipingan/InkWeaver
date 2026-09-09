@@ -69,6 +69,7 @@ export default function ChapterHandoffPanel({ records, loading = false, confirmi
           <MapPin size={12} className="mt-0.5 shrink-0" aria-hidden="true" />
           <span>{record.sceneLocation} · {record.viewpoint}</span>
         </div>
+        {record.presentCharacters.length > 0 && <div><strong>{text('在场人物：', 'Present characters:')}</strong>{record.presentCharacters.join('、')}</div>}
         <div><strong>{text('即时目标：', 'Immediate goal:')}</strong>{record.immediateGoal}</div>
         <div><strong>{text('情绪：', 'Emotion:')}</strong>{record.emotionalState}</div>
         <div><strong>{text('承接方式：', 'Transition:')}</strong>{transitionText(record.transition, text)}</div>

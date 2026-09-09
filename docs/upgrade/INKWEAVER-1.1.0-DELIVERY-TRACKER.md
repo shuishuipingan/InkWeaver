@@ -16,7 +16,7 @@
 
 | 需求 | 功能 | 主工单 | 验收必须回答的问题 | 状态 | 负责人 / 实现 / 证据 |
 | --- | --- | --- | --- | --- | --- |
-| A01 | 章节交接记录 | 04 | 现场和情绪有原文证据吗？来源修订后是否过期？ | 开发中 | `7ba46f6`：source-bound handoff repository/IPC；`de9d1dd`：structured extraction command；`d76f852`：定稿后非阻塞候选步骤；`257df5d`/`98db05e`：编辑审核面板/浏览器测试；`eed0921`：新 finalized draft 使旧交接失效；ChapterHandoffPanel 现在显示现场、即时目标、情绪、限制、承接方式、未完成动作、问题和证据；`scripts/quality-fixtures.ts` 与 `docs/upgrade/INKWEAVER-1.1.0-QUALITY-SAMPLE-SET.md` 已建立 24 对章节盲评样本入口；真实长篇阅读验收仍未完成 |
+| A01 | 章节交接记录 | 04 | 现场和情绪有原文证据吗？来源修订后是否过期？ | 开发中 | `7ba46f6`：source-bound handoff repository/IPC；`de9d1dd`：structured extraction command；`d76f852`：定稿后非阻塞候选步骤；`257df5d`/`98db05e`：编辑审核面板/浏览器测试；`eed0921`：新 finalized draft 使旧交接失效；ChapterHandoffPanel 现在显示现场、视角、在场人物、即时目标、情绪、限制、承接方式、未完成动作、问题和证据；`scripts/quality-fixtures.ts` 与 `docs/upgrade/INKWEAVER-1.1.0-QUALITY-SAMPLE-SET.md` 已建立 24 对章节盲评样本入口；真实长篇阅读验收仍未完成 |
 | A02 | 承接与转场策略 | 04 | 即时承接和刻意转场都自然吗？能由作者选择吗？ | 开发中 | `7ba46f6`：transition contract；`de9d1dd`：prompt 携带作者选择的 transition；`chapter-handoff.command.ts` 与定稿后处理均保存候选并等待确认；`ChapterHandoffPanel` 现在显示紧接/跨时段/换地点/换视角/倒叙/并行事件的本地化承接方式；盲评和刻意转场误报率验收仍待完成 |
 | A03 | 相邻章节检查与局部修稿 | 04 | 问题能定位两端原文吗？旧版本修改被拒绝吗？ | 开发中 | `a586971`：相邻章节证据检查已接入审稿报告，记录前章/本章证据和局部范围；审稿报告来源章节现在可通过项目会话打开对应 finalized 原文，浏览器回归覆盖；局部修稿 Proposal 固定 base hash 并拒绝正文变化；审稿报告统一承载相邻问题、确定性预检与 AI 分类，作者可编辑/忽略/确认问题清单并启动审稿修稿工作流；真实长篇盲评与刻意转场误报率验收仍待完成 |
 | A04 | 场景因果链 | 06 | 能记录选择和后果吗？是否区分计划与实际事件？ | 开发中 | 章节连续性工作单已提供计划/候选/已确认/正文实际场景卡，以及进入状态→目标→阻碍→选择→后果→离开状态字段；`df16a42` 新增 `findSceneCausalityGaps`，对已确认/正文实际但缺少后果或离开状态的场景显示非阻塞提醒，并保留证据；新增显式“从定稿提取候选”入口，按正文段落边界生成带原文证据的 `candidate` 场景卡，语义字段保持空白且不会自动确认；模型语义观察候选、跨章因果质量评测仍待接入 |
