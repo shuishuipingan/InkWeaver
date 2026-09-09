@@ -16,6 +16,7 @@ let reviewEvents: Array<Record<string, unknown>>
 let timelineFixtures: unknown[]
 let finalizedContent: string | null
 let allDocumentsFixture: unknown[]
+let currentDocumentFixture: ReturnType<typeof emptyStoryContinuityDocument>
 
 beforeEach(() => {
   ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -23,12 +24,13 @@ beforeEach(() => {
   useCharacterStore.setState({ characters: [], loaded: false, dataProjectKey: null, dataProjectSession: null } as never)
   setActiveProjectSessionContext(SESSION)
   const empty = emptyStoryContinuityDocument(2)
+  currentDocumentFixture = empty
   reviewEvents = []
   timelineFixtures = []
   finalizedContent = null
   allDocumentsFixture = []
   invoke = vi.fn(async (channel: string, ...args: unknown[]) => {
-    if (channel === 'db:story-continuity-read') return empty
+    if (channel === 'db:story-continuity-read') return currentDocumentFixture
     if (channel === 'db:continuity-list-before') return timelineFixtures
     if (channel === 'db:story-continuity-list-all') return allDocumentsFixture
     if (channel === 'db:blueprint-get-all') return []
@@ -151,6 +153,25 @@ describe('StoryContinuityPanel', () => {
     await vi.waitFor(() => expect(container.textContent).toContain('已加入 3 个场景候选'))
     expect([...container.querySelectorAll<HTMLSelectElement>('select')].some(select => select.value === 'candidate')).toBe(true)
     expect(container.textContent).toContain('码头')
+  })
+
+  it('warns when confirmed or observed scenes are missing a consequence or exit state', async () => {
+    currentDocumentFixture.sceneBeats = [{
+      id: 'observed-gap', sceneNumber: 1, status: 'observed', entryState: '码头', goal: '找钥匙', obstacle: '守门人',
+      choice: '交涉', consequence: '', exitState: '进入仓库', evidence: ['她说服守门人。'],
+    }, {
+      id: 'confirmed-gap', sceneNumber: 2, status: 'confirmed', entryState: '仓库', goal: '开门', obstacle: '',
+      choice: '点灯', consequence: '发现地图', exitState: '', evidence: ['灯光照出地图。'],
+    }]
+
+    await act(async () => root.render(<StoryContinuityPanel projectKey={PROJECT_PATH} chapterNumber={2} />))
+    await vi.waitFor(() => expect(container.querySelector('[data-scene-causality-gaps="true"]')).not.toBeNull())
+    const warning = container.querySelector('[data-scene-causality-gaps="true"]')
+    expect(warning?.textContent).toContain('场景因果待补充')
+    expect(warning?.textContent).toContain('场景 1')
+    expect(warning?.textContent).toContain('缺少后果')
+    expect(warning?.textContent).toContain('场景 2')
+    expect(warning?.textContent).toContain('缺少离开状态')
   })
 
   it('surfaces dormant and overdue thread alerts in the writing preparation summary', async () => {

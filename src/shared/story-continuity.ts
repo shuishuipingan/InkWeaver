@@ -16,6 +16,12 @@ export interface SceneBeat {
   evidence: string[]
 }
 
+export interface SceneCausalityGap {
+  sceneId: string
+  sceneNumber: number
+  missing: Array<'consequence' | 'exitState'>
+}
+
 export interface ArcContribution {
   volume: string
   mainline: string
@@ -245,4 +251,23 @@ export function storyContinuityProgress(document: StoryContinuityDocument): {
     activeExpectations: document.readerExpectations.filter(item => item.status === 'open' || item.status === 'progressing').length,
     viewpointHooks: document.viewpointThreads.reduce((total, thread) => total + thread.unresolvedHooks.length, 0),
   }
+}
+
+/**
+ * Finds author-reviewable gaps in scenes that are already confirmed or
+ * observed. Planned/candidate scenes are intentionally ignored because their
+ * causal fields may still be blank by design.
+ */
+export function findSceneCausalityGaps(document: StoryContinuityDocument): SceneCausalityGap[] {
+  return document.sceneBeats
+    .filter(scene => scene.status === 'confirmed' || scene.status === 'observed')
+    .map(scene => ({
+      sceneId: scene.id,
+      sceneNumber: scene.sceneNumber,
+      missing: [
+        ...(scene.consequence.trim() ? [] : ['consequence' as const]),
+        ...(scene.exitState.trim() ? [] : ['exitState' as const]),
+      ],
+    }))
+    .filter(gap => gap.missing.length > 0)
 }

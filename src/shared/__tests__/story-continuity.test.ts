@@ -4,6 +4,7 @@ import {
   normalizeStoryContinuityDocument,
   suggestSceneCandidatesFromText,
   storyContinuityProgress,
+  findSceneCausalityGaps,
 } from '../story-continuity'
 
 describe('story continuity document', () => {
@@ -60,5 +61,19 @@ describe('story continuity document', () => {
     expect(candidates.every(scene => scene.status === 'candidate')).toBe(true)
     expect(candidates.every(scene => scene.goal === '' && scene.consequence === '' && scene.evidence.length === 1)).toBe(true)
     expect(candidates[0]?.evidence[0]).toContain('码头')
+  })
+
+  it('flags confirmed or observed scenes missing a consequence or exit state without blocking the document', () => {
+    const base = emptyStoryContinuityDocument(3)
+    base.sceneBeats = [
+      { id: 'complete', sceneNumber: 1, status: 'observed', entryState: '港口', goal: '找钥匙', obstacle: '守门人', choice: '交涉', consequence: '获得钥匙', exitState: '进入仓库', evidence: ['她拿到钥匙。'] },
+      { id: 'missing-consequence', sceneNumber: 2, status: 'observed', entryState: '仓库', goal: '开门', obstacle: '暗锁', choice: '尝试开锁', consequence: '', exitState: '停在门前', evidence: ['她试了三次。'] },
+      { id: 'missing-exit', sceneNumber: 3, status: 'confirmed', entryState: '门内', goal: '寻找信件', obstacle: '', choice: '点灯', consequence: '看见墙上地图', exitState: '', evidence: ['灯光照出地图。'] },
+      { id: 'planned', sceneNumber: 4, status: 'planned', entryState: '', goal: '', obstacle: '', choice: '', consequence: '', exitState: '', evidence: [] },
+    ]
+    expect(findSceneCausalityGaps(base)).toEqual([
+      { sceneId: 'missing-consequence', sceneNumber: 2, missing: ['consequence'] },
+      { sceneId: 'missing-exit', sceneNumber: 3, missing: ['exitState'] },
+    ])
   })
 })

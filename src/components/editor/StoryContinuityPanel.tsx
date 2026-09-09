@@ -15,6 +15,7 @@ import {
 } from '../project-session-gate'
 import {
   emptyStoryContinuityDocument,
+  findSceneCausalityGaps,
   type EmotionalCarryOver,
   type ReaderExpectation,
   type SceneBeat,
@@ -343,6 +344,7 @@ export default function StoryContinuityPanel({ projectKey, chapterNumber }: Stor
     return groups
   }, new Map<number, NonNullable<FinalizedContinuityProjection['facts']>>())].sort(([left], [right]) => left - right)
   const volumeTrends = deriveVolumeTrends(volumeProgress)
+  const sceneCausalityGaps = findSceneCausalityGaps(document)
 
   return (
     <details className="mt-3 rounded-lg border" data-story-continuity-panel="true" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-panel)' }}>
@@ -471,6 +473,15 @@ export default function StoryContinuityPanel({ projectKey, chapterNumber }: Stor
                 {item.evidence.length > 0 && <div className="text-[var(--color-text-muted)]">{text('证据：', 'Evidence: ')}{item.evidence.slice(0, 2).join('；')}</div>}
               </li>)}
             </ol>
+          </section>
+        )}
+        {sceneCausalityGaps.length > 0 && (
+          <section data-scene-causality-gaps="true" role="status" className="rounded border p-2 text-xs" style={{ borderColor: 'var(--color-warning)', backgroundColor: 'var(--color-raised)' }}>
+            <div className="font-semibold">{text('场景因果待补充', 'Scene causality needs review')}</div>
+            <p className="mt-1 text-[var(--color-text-muted)]">{text('这些场景已被标记为确认/正文实际，但还缺少后果或离开状态；这是提醒，不会阻止保存。', 'These scenes are confirmed/observed but still miss a consequence or exit state. This is a reminder and does not block saving.')}</p>
+            <ul className="mt-1 space-y-0.5 text-[var(--color-warning-text)]">
+              {sceneCausalityGaps.map(gap => <li key={gap.sceneId}>{text(`场景 ${gap.sceneNumber}：${gap.missing.includes('consequence') ? '缺少后果' : ''}${gap.missing.length > 1 ? '、' : ''}${gap.missing.includes('exitState') ? '缺少离开状态' : ''}`, `Scene ${gap.sceneNumber}: ${gap.missing.includes('consequence') ? 'missing consequence' : ''}${gap.missing.length > 1 ? ', ' : ''}${gap.missing.includes('exitState') ? 'missing exit state' : ''}`)}</li>)}
+            </ul>
           </section>
         )}
         {timelineGroups.length > 0 && <section data-continuity-timeline="true" className="rounded border p-2" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-raised)' }}>
