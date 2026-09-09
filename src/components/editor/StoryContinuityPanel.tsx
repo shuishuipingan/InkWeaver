@@ -304,6 +304,12 @@ export default function StoryContinuityPanel({ projectKey, chapterNumber }: Stor
       .filter(thread => thread.readerKnowledge.trim() || thread.unresolvedHooks.length > 0)
       .map(thread => ({ ...thread, fromChapter: doc.chapterNumber })))
     .slice(0, 8)
+  const readerKnowledgeLedger = previousDocuments
+    .flatMap(doc => doc.viewpointThreads
+      .filter(thread => thread.readerKnowledge.trim() || thread.unresolvedHooks.length > 0)
+      .map(thread => ({ ...thread, fromChapter: doc.chapterNumber })))
+    .sort((left, right) => left.fromChapter - right.fromChapter)
+    .slice(0, 24)
   const timelineFacts = timeline.flatMap(projection => (projection.facts ?? [])
     .filter(fact => factAppliesAtChapter(fact, chapterNumber)))
   const timelineGroups = [...timelineFacts.reduce((groups, fact) => {
@@ -399,6 +405,22 @@ export default function StoryContinuityPanel({ projectKey, chapterNumber }: Stor
               {dueExpectations.map(item => <div key={item.id}>{text('第' + item.fromChapter + '章埋设：', 'Planted in Chapter ' + item.fromChapter + ': ')}{item.question}{item.expectedProgress ? ' · ' + item.expectedProgress : ''}</div>)}
             </div>
             <p className="mt-1 text-[var(--color-text-muted)]">{text('如果本章不推进这些期待，可主动延后并写明理由。', 'If this chapter does not advance these expectations, delay them explicitly with a reason.')}</p>
+          </section>
+        )}
+        {readerKnowledgeLedger.length > 0 && (
+          <section data-reader-knowledge-ledger="true" className="rounded border p-2 text-xs" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-raised)' }}>
+            <div className="mb-1 flex items-center justify-between gap-2">
+              <h4 className="font-semibold">{text('读者知识账本', 'Reader-knowledge ledger')}</h4>
+              <span className="text-[0.68rem] font-normal text-[var(--color-text-muted)]">{text('只读 · 不等同于角色知情', 'Read-only · separate from character knowledge')}</span>
+            </div>
+            <ol className="space-y-1.5" aria-label={text('按章节排列的读者知识', 'Reader knowledge ordered by chapter')}>
+              {readerKnowledgeLedger.map((thread, index) => <li key={`${thread.fromChapter}:${thread.viewpoint}:${index}`} className="rounded border px-2 py-1.5" style={{ borderColor: 'var(--color-border)' }}>
+                <div className="font-medium">{text(`第${thread.fromChapter}章 · ${thread.viewpoint || '未命名视角'}`, `Chapter ${thread.fromChapter} · ${thread.viewpoint || 'Unnamed viewpoint'}`)}</div>
+                {thread.readerKnowledge && <div className="text-[var(--color-text-secondary)]">{text('读者已知：', 'Reader knows: ')}{thread.readerKnowledge}</div>}
+                {thread.unresolvedHooks.length > 0 && <div className="text-[var(--color-text-muted)]">{text(`未解钩子：${thread.unresolvedHooks.join('、')}`, `Open hooks: ${thread.unresolvedHooks.join(', ')}`)}</div>}
+                {thread.nextLanding && <div className="text-[var(--color-text-muted)]">{text(`下次落点：${thread.nextLanding}`, `Next landing: ${thread.nextLanding}`)}</div>}
+              </li>)}
+            </ol>
           </section>
         )}
         {previousCarryOver.length > 0 && (

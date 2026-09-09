@@ -207,6 +207,29 @@ describe('StoryContinuityPanel', () => {
     expect(container.textContent).toContain('信是谁寄出的')
   })
 
+  it('shows a chronological reader-knowledge ledger separate from character knowledge', async () => {
+    const first = emptyStoryContinuityDocument(1)
+    first.viewpointThreads = [{
+      viewpoint: '林夏', lastChapter: 1, unresolvedHooks: ['信是谁寄出的'],
+      readerKnowledge: '读者知道信来自未来', nextLanding: '第二章回码头',
+    }]
+    const second = emptyStoryContinuityDocument(2)
+    second.viewpointThreads = [{
+      viewpoint: '顾舟', lastChapter: 2, unresolvedHooks: ['谁在跟踪他'],
+      readerKnowledge: '读者知道跟踪者拿着旧钥匙', nextLanding: '第三章切回林夏',
+    }]
+    allDocumentsFixture = [first, second]
+
+    await act(async () => root.render(<StoryContinuityPanel projectKey={PROJECT_PATH} chapterNumber={3} />))
+    await vi.waitFor(() => expect(container.querySelector('[data-reader-knowledge-ledger="true"]')).not.toBeNull())
+    const ledger = container.querySelector('[data-reader-knowledge-ledger="true"]')
+    expect(ledger?.textContent).toContain('读者知识账本')
+    expect(ledger?.textContent).toContain('第1章')
+    expect(ledger?.textContent).toContain('读者知道信来自未来')
+    expect(ledger?.textContent).toContain('谁在跟踪他')
+    expect(container.querySelector('[data-knowledge-boundary="true"]')).toBeNull()
+  })
+
   it('shows cross-volume trends as an accessible progression of continuing and new threads', async () => {
     const firstVolume = emptyStoryContinuityDocument(1)
     firstVolume.arcContribution = {
