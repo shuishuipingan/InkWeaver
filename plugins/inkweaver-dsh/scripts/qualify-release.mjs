@@ -531,7 +531,10 @@ async function waitForWeb(url, exited, resolveTargetUrl = () => url) {
     try {
       const response = await fetch(targetUrl, { redirect: 'manual' })
       if (response.status === 303) {
-        const cookie = response.headers.get('set-cookie')?.split(';', 1)[0]
+        const setCookies = typeof response.headers.getSetCookie === 'function'
+          ? response.headers.getSetCookie()
+          : [response.headers.get('set-cookie')].filter(Boolean)
+        const cookie = setCookies[0]?.split(';', 1)[0]
         const location = response.headers.get('location')
         if (cookie !== undefined && location !== null) {
           const authenticated = await fetch(new URL(location, targetUrl), {

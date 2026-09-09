@@ -92,6 +92,11 @@ describe('release qualification runner', () => {
     expect(overlay).not.toContain("'    roots:'")
   })
 
+  it('reads the authenticated Web cookie through Node Headers getSetCookie when available', async () => {
+    const source = await readFile(runner, 'utf8')
+    expect(source).toContain('getSetCookie')
+  })
+
   it('heals the official profile module fallback before the standalone preset tool probe', async () => {
     const source = await readFile(runner, 'utf8')
     expect(source).toContain('healProfilesModuleFallback')
