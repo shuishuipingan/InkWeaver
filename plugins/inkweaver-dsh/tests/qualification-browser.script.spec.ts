@@ -189,7 +189,7 @@ describe('V2 browser qualification journey', () => {
     expect(source).not.toContain("'已定稿'")
     expect(source).toContain("drawer.getByRole('region', { name: '当前创作步骤', exact: true })")
     expect(source).toContain("currentStage.getByRole('heading', { name: '第 2 章蓝图', exact: true, level: 3 })")
-    expect(source).toContain("drawer.getByRole('region', { name: `第 ${chapter} 章的上一章定稿上下文`, exact: true })")
+    expect(source).toContain("name: new RegExp(`^第 ${chapter} 章的(?:上一章定稿上下文|连续性上下文)$`)")
     expect(source.match(/chapterContextRegion\(drawer, 2\)\.getByText\('潮水退去，信件显露。', \{ exact: true \}\)/g)).toHaveLength(2)
   })
 

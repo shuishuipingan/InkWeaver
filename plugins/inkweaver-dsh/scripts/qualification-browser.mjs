@@ -359,7 +359,9 @@ async function waitForVisiblePartialProposalResult(drawer) {
 
 /** Scope prior-final assertions to the current chapter's author-facing context panel. */
 function chapterContextRegion(drawer, chapter) {
-  return drawer.getByRole('region', { name: `第 ${chapter} 章的上一章定稿上下文`, exact: true })
+  return drawer.getByRole('region', {
+    name: new RegExp(`^第 ${chapter} 章的(?:上一章定稿上下文|连续性上下文)$`),
+  })
 }
 
 /** Verify direct stage navigation preserves an unsent local project edit across another stage. */
