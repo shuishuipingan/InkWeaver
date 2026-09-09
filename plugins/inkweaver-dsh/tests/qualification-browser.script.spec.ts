@@ -146,9 +146,11 @@ describe('V2 browser qualification journey', () => {
     const connect = source.indexOf('await connectWorkspace(page, { createSession: false })')
     const select = source.indexOf('await selectNovelPreset(page, { forceRoster: true })')
     const create = source.lastIndexOf('await createWorkspaceSession(page, basename(workspaceRoot))')
+    const reselect = source.lastIndexOf('await selectNovelPreset(page, { forceRoster: true })')
     expect(connect).toBeGreaterThan(-1)
     expect(select).toBeGreaterThan(connect)
     expect(create).toBeGreaterThan(select)
+    expect(reselect).toBeGreaterThan(create)
   })
 
   it('falls back to the top-level New session control when the workspace row has no action', async () => {

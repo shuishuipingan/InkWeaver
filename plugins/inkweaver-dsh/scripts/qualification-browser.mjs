@@ -531,6 +531,7 @@ try {
   await selectNovelPreset(page, { forceRoster: true })
   await assertNovelPresetFromApi(await agentPresetResponse)
   await createWorkspaceSession(page, basename(workspaceRoot))
+  await selectNovelPreset(page, { forceRoster: true })
   drawer = await openWorkbench(page)
   if (phase === 'first') {
     await initializeWorkspace(page, drawer, screenshots)
