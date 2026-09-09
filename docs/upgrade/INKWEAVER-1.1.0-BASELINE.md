@@ -67,8 +67,8 @@ historical checkpoint above is intentionally retained.
 
 | Item | Current value |
 | --- | --- |
-| local source HEAD | `1de0e2b` |
-| GitHub development ref | `origin/1.1.0-development` = `1de0e2b` |
+| local source HEAD | `3a2ca5e` |
+| GitHub development ref | `origin/1.1.0-development` = `3a2ca5e` |
 | desktop package version | `0.9.2` (still not frozen) |
 | DSH plugin package version | `0.1.0` (still not frozen) |
 | tracker status | 4 待验收 / 30 开发中 / 4 未开始 / 0 通过 |
@@ -85,3 +85,13 @@ order warning was removed in `8282f8e`; the deterministic 24-pair/100-chapter
 quality fixture and review protocol were added in `a490427`; the full renderer
 suite remains green. The desktop/plugin final-version freeze gate was added in
 `1de0e2b`; it is a pre-release guard and has not changed the current versions.
+
+To verify the gate before freezing, run:
+
+```text
+node scripts/release-version-sync.mjs --expected-version 1.1.0
+```
+
+At this checkpoint the command correctly returns `ok: false` because desktop
+is still `0.9.2` and the plugin is still `0.1.0`; a successful result is only
+valid after full roadmap acceptance and the version-freeze review.
