@@ -67,8 +67,8 @@ historical checkpoint above is intentionally retained.
 
 | Item | Current value |
 | --- | --- |
-| local source HEAD | `c14f2ec` |
-| GitHub development ref | `origin/1.1.0-development` = `c14f2ec` |
+| local source HEAD | `8282f8e` |
+| GitHub development ref | `origin/1.1.0-development` = `8282f8e` |
 | desktop package version | `0.9.2` (still not frozen) |
 | DSH plugin package version | `0.1.0` (still not frozen) |
 | tracker status | 4 待验收 / 30 开发中 / 4 未开始 / 0 通过 |
@@ -80,4 +80,5 @@ ledger (`a622847`), character-growth ledger (`4a0fbe5`), relationship history
 and evidence panel (`8a20fe9`), cross-volume narrative-thread summary
 (`d1b26e5`), historical-state chapter query (`f3f2d2d`), and scene causality
 gap warnings (`df16a42`). These have browser regression coverage and are still
-subject to long-form human review; they are not release claims.
+subject to long-form human review; they are not release claims. The CSS import
+order warning was removed in `8282f8e`; the full renderer suite remains green.
