@@ -53,6 +53,7 @@ describe('ChapterHandoffPanel', () => {
     expect(container.textContent).toContain('紧接现场')
     expect(container.textContent).toContain('不能遗失钥匙')
     expect(container.textContent).toContain('在场人物：林舟')
+    expect(container.textContent).toContain('来源指纹：dddddddddddd')
     const button = Array.from(container.querySelectorAll('button'))
       .find(node => node.textContent?.includes('确认并用于下一章'))
     expect(button).toBeTruthy()
