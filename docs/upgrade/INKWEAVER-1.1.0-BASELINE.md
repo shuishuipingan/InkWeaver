@@ -67,8 +67,8 @@ historical checkpoint above is intentionally retained.
 
 | Item | Current value |
 | --- | --- |
-| local source HEAD | `ff874eb` |
-| GitHub development ref | `origin/1.1.0-development` = `ff874eb` |
+| local source HEAD | `8b6dce5` |
+| GitHub development ref | `origin/1.1.0-development` = `8b6dce5` |
 | desktop package version | `0.9.2` (still not frozen) |
 | DSH plugin package version | `0.1.0` (still not frozen) |
 | tracker status | 4 待验收 / 30 开发中 / 4 未开始 / 0 通过 |
@@ -125,7 +125,8 @@ Chapter handoff displays its author-recorded constraints in the same evidence
 surface (`dbde7ec`).
 
 Relationship history now has an as-of-chapter filter that excludes future
-sourceChapter entries (`ff874eb`).
+sourceChapter entries (`ff874eb`) and a two-chapter comparison summary
+(`8b6dce5`).
 
 The G04 CLI now uses Windows-safe `fileURLToPath` entry detection and has a
 regression test proving it cannot silently exit zero without executing the
