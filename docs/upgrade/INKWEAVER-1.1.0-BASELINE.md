@@ -67,8 +67,8 @@ historical checkpoint above is intentionally retained.
 
 | Item | Current value |
 | --- | --- |
-| local source HEAD | `85d0844` |
-| GitHub development ref | `origin/1.1.0-development` = `85d0844` |
+| local source HEAD | `89ecb6e` |
+| GitHub development ref | `origin/1.1.0-development` = `89ecb6e` |
 | desktop package version | `0.9.2` (still not frozen) |
 | DSH plugin package version | `0.1.0` (still not frozen) |
 | tracker status | 4 待验收 / 30 开发中 / 4 未开始 / 0 通过 |
@@ -114,6 +114,9 @@ reasons in the continuity sheet (`d7184c5`).
 
 Chapter handoff now displays present characters alongside scene, constraints,
 transition and evidence (`85d0844`).
+
+The G04 asset-contract regression suite now also covers missing `dsh-plugin`
+topic metadata (`89ecb6e`).
 
 Review-report source evidence can now open the matching finalized chapter via
 the project session (`ccaa669`).
