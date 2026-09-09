@@ -67,8 +67,8 @@ historical checkpoint above is intentionally retained.
 
 | Item | Current value |
 | --- | --- |
-| local source HEAD | `3a2ca5e` |
-| GitHub development ref | `origin/1.1.0-development` = `3a2ca5e` |
+| local source HEAD | `0584113` |
+| GitHub development ref | `origin/1.1.0-development` = `0584113` |
 | desktop package version | `0.9.2` (still not frozen) |
 | DSH plugin package version | `0.1.0` (still not frozen) |
 | tracker status | 4 待验收 / 30 开发中 / 4 未开始 / 0 通过 |
@@ -95,3 +95,7 @@ node scripts/release-version-sync.mjs --expected-version 1.1.0
 At this checkpoint the command correctly returns `ok: false` because desktop
 is still `0.9.2` and the plugin is still `0.1.0`; a successful result is only
 valid after full roadmap acceptance and the version-freeze review.
+
+The plugin distribution handoff checklist is tracked at
+`plugins/inkweaver-dsh/docs/1.1.0-release-checklist.md`; it documents the
+tarball, npm, topic-index, and rollback gates without claiming they are done.
