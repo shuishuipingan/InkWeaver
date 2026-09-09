@@ -67,8 +67,8 @@ historical checkpoint above is intentionally retained.
 
 | Item | Current value |
 | --- | --- |
-| local source HEAD | `d7184c5` |
-| GitHub development ref | `origin/1.1.0-development` = `d7184c5` |
+| local source HEAD | `462b5bd` |
+| GitHub development ref | `origin/1.1.0-development` = `462b5bd` |
 | desktop package version | `0.9.2` (still not frozen) |
 | DSH plugin package version | `0.1.0` (still not frozen) |
 | tracker status | 4 待验收 / 30 开发中 / 4 未开始 / 0 通过 |
@@ -114,7 +114,8 @@ reasons in the continuity sheet (`d7184c5`).
 
 The G04 CLI now uses Windows-safe `fileURLToPath` entry detection and has a
 regression test proving it cannot silently exit zero without executing the
-backread request (`57707c2`).
+backread request (`57707c2`). Relationship evidence can now open the matching
+finalized chapter through the project session (`462b5bd`).
 
 The Windows release plan was also re-read on this line; it includes native
 dependency preparation, package/update verification, app/installer/upgrade
