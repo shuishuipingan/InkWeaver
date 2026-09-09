@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 import { Context, Service } from '@deepseek-ai/cordis'
+import { readFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { WorkspaceId } from '@deepseek-ai/dsh-workspace'
@@ -120,6 +122,12 @@ function provideNovelContextSources(ctx: Context, selected = false, agentPreset 
 }
 
 describe('preset setup browser integration', () => {
+  it('keeps the V2 focused workbench compatible with the official toggleSidebar layout face', async () => {
+    const source = await readFile(join(import.meta.dirname, '../src/client/index.ts'), 'utf8')
+    expect(source).toContain("typeof railLayout.toggleSidebar === 'function'")
+    expect(source).toContain('railLayout.toggleSidebar!()')
+  })
+
   it('maps the opaque context read endpoint and rejects invalid wire values', async () => {
     const ready = {
       status: 'ready',

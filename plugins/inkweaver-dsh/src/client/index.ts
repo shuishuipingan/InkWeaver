@@ -109,7 +109,8 @@ export const inject = ['slots', 'connection', 'sessions', 'workspaces', 'layout'
  * to emulate the rail through sidebar preferences, DOM state, or Host layout CSS.
  */
 type SidebarRailLayout = Readonly<{
-  acquireSidebarRail: () => () => void
+  acquireSidebarRail?: () => () => void
+  toggleSidebar?: () => void
 }>
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -119,12 +120,28 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 /** Return the official idempotent sidebar-rail lease factory, or an explicit V2 compatibility failure. */
 function sidebarRailLeaseFactory(ctx: ClientContext): () => () => void {
   const layout = (ctx as unknown as { readonly layout?: unknown }).layout
-  if (!isRecord(layout) || typeof layout.acquireSidebarRail !== 'function') {
+  if (!isRecord(layout)) {
     return () => {
-      throw new Error('AI novel V2 focused workbench requires a Harness Host with layout.acquireSidebarRail()')
+      throw new Error('AI novel V2 focused workbench requires the Harness layout panel service')
     }
   }
-  return (layout as SidebarRailLayout).acquireSidebarRail.bind(layout)
+  const railLayout = layout as SidebarRailLayout
+  if (typeof railLayout.acquireSidebarRail === 'function') {
+    return railLayout.acquireSidebarRail.bind(layout)
+  }
+  if (typeof railLayout.toggleSidebar === 'function') {
+    return () => {
+      const frame = typeof document === 'undefined'
+        ? undefined
+        : document.querySelector<HTMLElement>('[data-shell-overlay]')?.parentElement
+      const wasCollapsed = frame?.hasAttribute('data-sidebar-collapsed') ?? false
+      if (!wasCollapsed) railLayout.toggleSidebar!()
+      return () => { if (!wasCollapsed) railLayout.toggleSidebar!() }
+    }
+  }
+  return () => {
+    throw new Error('AI novel V2 focused workbench requires a Harness Host with layout panel actions')
+  }
 }
 
 function readStatus(value: unknown): { readonly status: 'not-installed' | 'installed' | 'conflict' } {
