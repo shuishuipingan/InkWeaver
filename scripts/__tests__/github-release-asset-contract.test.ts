@@ -57,6 +57,16 @@ describe('GitHub 1.1.0 release asset contract', () => {
     expect(result.invalid.some(message => message.includes('inkweaver-setup-1.1.0.exe'))).toBe(true)
   })
 
+  it('requires dsh-plugin topic metadata when topic data is available', () => {
+    const result = verifyGithubReleaseAssetContract({
+      expectedVersion: VERSION,
+      topics: ['electron', 'writing-assistant'],
+      release: { tag_name: `v${VERSION}`, draft: false, prerelease: false, assets: assets() },
+    })
+    expect(result.ok).toBe(false)
+    expect(result.invalid).toContain('repository topics do not include dsh-plugin')
+  })
+
   it('actually enters the CLI on Windows instead of silently exiting zero', () => {
     const scriptPath = fileURLToPath(new URL('../verify-github-release-assets.mjs', import.meta.url))
     const run = spawnSync(process.execPath, [path.resolve(scriptPath), '--version', VERSION, '--api-base', 'http://127.0.0.1:1'], { encoding: 'utf8' })
