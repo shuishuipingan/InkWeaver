@@ -173,6 +173,8 @@ async function connectWorkspace(page, { createSession = true } = {}) {
 }
 
 async function createWorkspaceSession(page, workspaceName) {
+  const existing = page.getByRole('treeitem', { name: workspaceName, exact: true })
+  await existing.hover().catch(() => undefined)
   const workspaceAction = page.getByRole('button', { name: `在“${workspaceName}”中新建会话` })
   if (await workspaceAction.isVisible().catch(() => false)) {
     await workspaceAction.click()

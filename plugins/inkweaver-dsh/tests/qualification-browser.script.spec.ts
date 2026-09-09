@@ -155,6 +155,7 @@ describe('V2 browser qualification journey', () => {
     const source = await readFile(browserJourney, 'utf8')
     expect(source).toContain("page.getByRole('button', { name: '新建会话', exact: true })")
     expect(source).toContain("button[data-dsh-part=\"new-session\"]")
+    expect(source).toContain('await existing.hover()')
   })
 
   it('retries a freshly located review disclosure until the user-visible partial status is rendered', async () => {
