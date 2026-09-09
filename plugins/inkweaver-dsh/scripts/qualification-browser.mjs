@@ -11,7 +11,6 @@ const V2_INITIALIZE_ENDPOINT = 'workspace/initialize'
 const QUALIFICATION_TOOL_NAMES = ['novel_read', 'novel_propose_change']
 const AGENT_PRESET_LIST_ENDPOINT = 'agentPresets/list'
 const AGENT_PRESET_LIST_API_PATH = `/api/${AGENT_PRESET_LIST_ENDPOINT}`
-const AGENT_PRESET_SELECT_API_PATH = '/api/agentPresets/select'
 const V2_PRESET_ID = 'inkweaver-v2'
 const RESULT_FIELDS = ['phase', 'browser', 'pluginCard', 'geometry', 'screenshots']
 const QUALIFICATION_PROPOSAL_ENVIRONMENT = 'DSH_NOVEL_QUALIFICATION_PROPOSAL_JSON'
@@ -204,10 +203,6 @@ function isAgentPresetListResponse(response) {
   return response.request().method() === 'POST' && new URL(response.url()).pathname === AGENT_PRESET_LIST_API_PATH
 }
 
-function isAgentPresetSelectResponse(response) {
-  return response.request().method() === 'POST' && new URL(response.url()).pathname === AGENT_PRESET_SELECT_API_PATH
-}
-
 async function assertNovelPresetFromApi(response) {
   if (!response.ok()) throw new Error(`agentPreset.list returned HTTP ${response.status()}`)
   let payload
@@ -217,6 +212,38 @@ async function assertNovelPresetFromApi(response) {
     throw new Error('agentPreset.list did not return JSON')
   }
   return assertNovelPresetAvailable(payload)
+}
+
+async function waitForServerPreset(page, presetId, timeoutMs = 30_000) {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    const found = await page.evaluate(async id => {
+      try {
+        const response = await fetch('/api/session/list', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            type: 'client-request',
+            rpcId: 'inkweaver-qualification-session-projection',
+            method: 'session/list',
+            payload: { args: { _request: {} } },
+          }),
+        })
+        if (!response.ok) return false
+        const payload = await response.json()
+        const items = payload?.result?.value?.items
+        return Array.isArray(items) && items.some(item => {
+          const values = item?.projections?.values
+          return values?.agentPreset === id || item?.agentPreset === id
+        })
+      } catch {
+        return false
+      }
+    }, presetId)
+    if (found) return
+    await page.waitForTimeout(250)
+  }
+  throw new Error(`Harness session roster did not expose preset ${presetId}`)
 }
 
 async function openWorkbench(page) {
@@ -536,9 +563,14 @@ try {
   await selectNovelPreset(page, { forceRoster: true })
   await assertNovelPresetFromApi(await agentPresetResponse)
   await createWorkspaceSession(page, basename(workspaceRoot))
-  const sessionPresetResponse = page.waitForResponse(isAgentPresetSelectResponse, { timeout: 30_000 })
   await selectNovelPreset(page, { forceRoster: true })
-  await sessionPresetResponse
+  await waitForServerPreset(page, V2_PRESET_ID)
+  await page.reload({ waitUntil: 'load', timeout: 60_000 })
+  await page.locator('[class*="frame"]').waitFor({ state: 'visible', timeout: 30_000 })
+  await finishOnboarding(page)
+  await connectWorkspace(page, { createSession: false })
+  const currentBlankSession = page.getByRole('treeitem', { name: '新会话', exact: true })
+  if (await currentBlankSession.isVisible().catch(() => false)) await currentBlankSession.click()
   drawer = await openWorkbench(page)
   if (phase === 'first') {
     await initializeWorkspace(page, drawer, screenshots)

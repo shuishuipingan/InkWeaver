@@ -153,11 +153,10 @@ describe('V2 browser qualification journey', () => {
     expect(reselect).toBeGreaterThan(create)
   })
 
-  it('waits for the Host preset-select response after the blank session is created', async () => {
+  it('waits for the authoritative Harness session projection after the blank session is created', async () => {
     const source = await readFile(browserJourney, 'utf8')
-    expect(source).toContain('isAgentPresetSelectResponse')
-    expect(source).toContain('const sessionPresetResponse = page.waitForResponse(isAgentPresetSelectResponse')
-    expect(source).toContain('await sessionPresetResponse')
+    expect(source).toContain('waitForServerPreset')
+    expect(source).toContain('await waitForServerPreset(page, V2_PRESET_ID)')
   })
 
   it('falls back to the top-level New session control when the workspace row has no action', async () => {
