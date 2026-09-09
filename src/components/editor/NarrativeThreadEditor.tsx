@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CheckCircle2, Clock3, Loader2, Pencil, Plus, Sparkles, Trash2 } from 'lucide-react'
 
 import type { DatabaseChannels, ModelProfile } from '../../shared/ipc-channels'
+import type { StoryContinuityDocument } from '../../shared/story-continuity'
 import {
   resolveNarrativeThreadDormantThreshold,
   type NarrativeThreadEventType,
@@ -70,6 +71,7 @@ export default function NarrativeThreadEditor({
   const loadedModels = useLLMStore(s => s.loaded)
   const loadModels = useLLMStore(s => s.loadModels)
   const [threads, setThreads] = useState<NarrativeThreadView[]>([])
+  const [continuityDocuments, setContinuityDocuments] = useState<StoryContinuityDocument[]>([])
   const [finalizedDrafts, setFinalizedDrafts] = useState<DatabaseChannels['db:draft-list-all']['return']>([])
   const [blueprints, setBlueprints] = useState<DatabaseChannels['db:blueprint-get-all']['return']>([])
   const [plan, setPlan] = useState<NarrativeThreadPlanInput>(EMPTY_PLAN)
@@ -111,19 +113,61 @@ export default function NarrativeThreadEditor({
         )
       : ''
 
+  const threadVolumeSummaries = useMemo(() => {
+    const unassignedVolume = text('未分卷', 'Unassigned volume')
+    const volumeByChapter = new Map(continuityDocuments.map(document => [
+      document.chapterNumber,
+      document.arcContribution.volume.trim() || unassignedVolume,
+    ]))
+    const groups = new Map<string, Map<number, {
+      id: number
+      title: string
+      status: NarrativeThreadView['status']
+      eventCount: number
+      overdue: boolean
+    }>>()
+    for (const thread of threads) {
+      const chapters = thread.events.length > 0
+        ? thread.events.map(event => event.chapterNumber)
+        : [thread.targetStartChapter]
+      const volumes = [...new Set(chapters.map(chapter => volumeByChapter.get(chapter) ?? unassignedVolume))]
+      for (const volume of volumes) {
+        const volumeEvents = thread.events.filter(event => (volumeByChapter.get(event.chapterNumber) ?? unassignedVolume) === volume)
+        const rows = groups.get(volume) ?? new Map<number, {
+          id: number
+          title: string
+          status: NarrativeThreadView['status']
+          eventCount: number
+          overdue: boolean
+        }>()
+        rows.set(thread.id, {
+          id: thread.id,
+          title: thread.title,
+          status: thread.status,
+          eventCount: volumeEvents.length,
+          overdue: thread.overdue,
+        })
+        groups.set(volume, rows)
+      }
+    }
+    return [...groups.entries()].map(([volume, rows]) => ({ volume, threads: [...rows.values()] }))
+  }, [continuityDocuments, text, threads])
+
   const reload = useCallback(async () => {
     const session = captureProjectSession(useProjectStore.getState().currentProject)
     if (!session || !isProjectSessionPath(session, projectKey)) return
     try {
-      const [nextThreads, drafts, nextBlueprints] = await Promise.all([
+      const [nextThreads, drafts, nextBlueprints, nextContinuityDocuments] = await Promise.all([
         ipc.invokeWithProjectSession(session, 'db:narrative-thread-list', projectKey),
         ipc.invokeWithProjectSession(session, 'db:draft-list-all', projectKey),
         ipc.invokeWithProjectSession(session, 'db:blueprint-get-all', projectKey),
+        ipc.invokeWithProjectSession(session, 'db:story-continuity-list-all', projectKey),
       ])
       if (!isProjectSessionCurrent(session)) return
       const finalized = drafts.filter(draft => draft.status === 'finalized')
       setFinalizedDrafts(finalized)
       setThreads(nextThreads)
+      setContinuityDocuments(nextContinuityDocuments)
       setBlueprints(nextBlueprints)
       setEventDraftId(previous => previous || finalized[0]?.id || 0)
       setAiBlueprintChapter(previous => previous || nextBlueprints[0]?.chapterNumber || 0)
@@ -363,6 +407,28 @@ export default function NarrativeThreadEditor({
             <Sparkles size={13} />{text('AI 建议伏笔与线索', 'Suggest foreshadowing with AI')}
           </Button>
         </header>
+
+        {threadVolumeSummaries.length > 0 && (
+          <section data-narrative-thread-volume-summary="true" className="rounded-lg border p-4 space-y-3" style={{ borderColor: 'var(--color-border)', background: 'var(--color-raised)' }}>
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="font-semibold">{text('跨卷伏笔进展', 'Cross-volume foreshadowing progress')}</h3>
+              <span className="text-xs text-[var(--color-text-muted)]">{text('只读 · 事件仍以人工确认记录为准', 'Read-only · events remain bound to author confirmations')}</span>
+            </div>
+            <div className="space-y-2 text-xs">
+              {threadVolumeSummaries.map(summary => <div key={summary.volume} className="rounded border px-2 py-1.5" style={{ borderColor: 'var(--color-border)' }}>
+                <div className="font-medium">{summary.volume}</div>
+                <div className="mt-1 space-y-0.5 text-[var(--color-text-secondary)]">
+                  {summary.threads.map(thread => <div key={thread.id}>
+                    <span className="font-medium">{thread.title}</span>
+                    <span> · {text(...STATUS_LABELS[thread.status])}</span>
+                    {thread.eventCount > 0 && <span> · {text(`事件 ${thread.eventCount}`, `${thread.eventCount} event${thread.eventCount === 1 ? '' : 's'}`)}</span>}
+                    {thread.overdue && <span className="text-[var(--color-warning-text)]"> · {text('已逾期', 'Overdue')}</span>}
+                  </div>)}
+                </div>
+              </div>)}
+            </div>
+          </section>
+        )}
 
         <section className="rounded-lg border p-4 space-y-3" style={{ borderColor: 'var(--color-border)', background: 'var(--color-panel)' }}>
           <div className="flex items-center gap-2 font-medium"><Plus size={16} />{editingId === null ? text('新建计划', 'New plan') : text('编辑计划', 'Edit plan')}</div>

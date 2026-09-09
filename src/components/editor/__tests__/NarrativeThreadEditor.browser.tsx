@@ -9,11 +9,13 @@ import { useLocaleStore } from '../../../stores/locale-store'
 import { useLLMStore } from '../../../stores/llm-store'
 import type { NarrativeThreadCandidateGenerator } from '../../../services/narrative-thread-candidate-generator'
 import NarrativeThreadEditor from '../NarrativeThreadEditor'
+import { emptyStoryContinuityDocument } from '../../../shared/story-continuity'
 
 const PROJECT_PATH = 'C:\\novels\\narrative-thread'
 let root: Root | undefined
 let container: HTMLDivElement | undefined
 let plans: Array<Record<string, unknown>> = []
+let continuityDocuments: ReturnType<typeof emptyStoryContinuityDocument>[] = []
 let eventFailure = ''
 let invoke: ReturnType<typeof vi.fn>
 const originalProjectState = useProjectStore.getState()
@@ -38,6 +40,7 @@ function installIpc() {
       keyEvents: '林岚再次发现相同刻痕。', characters: ['林岚'], suspenseHook: '',
       userGuidance: '', notes: '', notesUpdatedAt: '',
     }]
+    if (channel === 'db:story-continuity-list-all') return continuityDocuments
     if (channel === 'db:narrative-thread-list') return plans
     if (channel === 'db:narrative-thread-plan-create') {
       const input = args[0] as Record<string, unknown>
@@ -67,6 +70,7 @@ function installIpc() {
 
 beforeEach(() => {
   plans = []
+  continuityDocuments = []
   eventFailure = ''
   useLocaleStore.setState({ locale: 'zh-CN' })
   const project: ProjectData = {
@@ -152,6 +156,32 @@ describe('NarrativeThreadEditor', () => {
       expect(container?.textContent).toContain('Chapter 1')
       expect(container?.textContent).toContain('Confirm finalized event')
     })
+  })
+
+  it('summarizes narrative-thread events across saved volumes without changing their status', async () => {
+    const firstVolume = emptyStoryContinuityDocument(1)
+    firstVolume.arcContribution.volume = '第一卷'
+    const secondVolume = emptyStoryContinuityDocument(3)
+    secondVolume.arcContribution.volume = '第二卷'
+    continuityDocuments = [firstVolume, secondVolume]
+    plans = [{
+      id: 9, title: '灯塔暗语', type: '悬念', targetStartChapter: 1, targetEndChapter: 5,
+      authorIntent: '跨卷逐步揭示。', status: 'progressing', dormantChapters: 0, overdue: false,
+      createdAt: '', updatedAt: '', events: [
+        { id: 9, planId: 9, draftId: 7, chapterNumber: 1, chapterTitle: '第一章', type: 'planted', evidence: '灯塔亮了一次。', reason: '埋设', createdAt: '' },
+        { id: 10, planId: 9, draftId: 8, chapterNumber: 3, chapterTitle: '第三章', type: 'progressing', evidence: '灯塔再次熄灭。', reason: '推进', createdAt: '' },
+      ],
+    }]
+
+    await act(async () => root?.render(<NarrativeThreadEditor projectKey={PROJECT_PATH} />))
+    await vi.waitFor(() => expect(container?.querySelector('[data-narrative-thread-volume-summary="true"]')).not.toBeNull())
+    const summary = container?.querySelector('[data-narrative-thread-volume-summary="true"]')
+    expect(summary?.textContent).toContain('跨卷伏笔进展')
+    expect(summary?.textContent).toContain('第一卷')
+    expect(summary?.textContent).toContain('第二卷')
+    expect(summary?.textContent).toContain('灯塔暗语')
+    expect(summary?.textContent).toContain('事件 1')
+    expect(summary?.textContent).toContain('推进中')
   })
 
   it('explains the evidence boundary and shows only the controlled actionable failure', async () => {
