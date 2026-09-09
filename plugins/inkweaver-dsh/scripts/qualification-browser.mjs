@@ -11,6 +11,7 @@ const V2_INITIALIZE_ENDPOINT = 'workspace/initialize'
 const QUALIFICATION_TOOL_NAMES = ['novel_read', 'novel_propose_change']
 const AGENT_PRESET_LIST_ENDPOINT = 'agentPresets/list'
 const AGENT_PRESET_LIST_API_PATH = `/api/${AGENT_PRESET_LIST_ENDPOINT}`
+const AGENT_PRESET_SELECT_API_PATH = '/api/agentPresets/select'
 const V2_PRESET_ID = 'inkweaver-v2'
 const RESULT_FIELDS = ['phase', 'browser', 'pluginCard', 'geometry', 'screenshots']
 const QUALIFICATION_PROPOSAL_ENVIRONMENT = 'DSH_NOVEL_QUALIFICATION_PROPOSAL_JSON'
@@ -201,6 +202,10 @@ async function selectNovelPreset(page, { forceRoster = false } = {}) {
 
 function isAgentPresetListResponse(response) {
   return response.request().method() === 'POST' && new URL(response.url()).pathname === AGENT_PRESET_LIST_API_PATH
+}
+
+function isAgentPresetSelectResponse(response) {
+  return response.request().method() === 'POST' && new URL(response.url()).pathname === AGENT_PRESET_SELECT_API_PATH
 }
 
 async function assertNovelPresetFromApi(response) {
@@ -531,7 +536,9 @@ try {
   await selectNovelPreset(page, { forceRoster: true })
   await assertNovelPresetFromApi(await agentPresetResponse)
   await createWorkspaceSession(page, basename(workspaceRoot))
+  const sessionPresetResponse = page.waitForResponse(isAgentPresetSelectResponse, { timeout: 30_000 })
   await selectNovelPreset(page, { forceRoster: true })
+  await sessionPresetResponse
   drawer = await openWorkbench(page)
   if (phase === 'first') {
     await initializeWorkspace(page, drawer, screenshots)

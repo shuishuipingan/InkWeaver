@@ -153,6 +153,13 @@ describe('V2 browser qualification journey', () => {
     expect(reselect).toBeGreaterThan(create)
   })
 
+  it('waits for the Host preset-select response after the blank session is created', async () => {
+    const source = await readFile(browserJourney, 'utf8')
+    expect(source).toContain('isAgentPresetSelectResponse')
+    expect(source).toContain('const sessionPresetResponse = page.waitForResponse(isAgentPresetSelectResponse')
+    expect(source).toContain('await sessionPresetResponse')
+  })
+
   it('falls back to the top-level New session control when the workspace row has no action', async () => {
     const source = await readFile(browserJourney, 'utf8')
     expect(source).toContain("page.getByRole('button', { name: '新建会话', exact: true })")
