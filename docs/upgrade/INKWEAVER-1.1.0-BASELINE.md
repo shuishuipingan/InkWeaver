@@ -59,3 +59,22 @@ The following focused evidence exists at this source SHA:
 This checkpoint does not prove the 38-row 1.1.0 tracker, cross-platform
 installers, npm publication, GitHub Release, or topic-page discovery. Those
 remain explicit later gates.
+
+## Latest development checkpoint
+
+Recorded: 2026-09-09 (Asia/Hong_Kong). This is an additive progress note; the
+historical checkpoint above is intentionally retained.
+
+| Item | Current value |
+| --- | --- |
+| local source HEAD | `a8fc69b` |
+| GitHub development ref | `origin/1.1.0-development` = `a8fc69b` |
+| desktop package version | `0.9.2` (still not frozen) |
+| DSH plugin package version | `0.1.0` (still not frozen) |
+| tracker status | 4 待验收 / 30 开发中 / 4 未开始 / 0 通过 |
+| latest full DSH qualification | `passed`, run `2026-09-09T11-44-24-930Z-24004` |
+
+Since the historical checkpoint, the development line has also added the
+read-only cross-volume trend view (`681fa15`) and the chronological
+reader-knowledge ledger (`a622847`). Both have browser regression coverage and
+are still subject to long-form human review; they are not release claims.
