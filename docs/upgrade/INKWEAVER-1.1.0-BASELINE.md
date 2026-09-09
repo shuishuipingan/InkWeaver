@@ -67,8 +67,8 @@ historical checkpoint above is intentionally retained.
 
 | Item | Current value |
 | --- | --- |
-| local source HEAD | `8282f8e` |
-| GitHub development ref | `origin/1.1.0-development` = `8282f8e` |
+| local source HEAD | `a490427` |
+| GitHub development ref | `origin/1.1.0-development` = `a490427` |
 | desktop package version | `0.9.2` (still not frozen) |
 | DSH plugin package version | `0.1.0` (still not frozen) |
 | tracker status | 4 待验收 / 30 开发中 / 4 未开始 / 0 通过 |
@@ -81,4 +81,6 @@ and evidence panel (`8a20fe9`), cross-volume narrative-thread summary
 (`d1b26e5`), historical-state chapter query (`f3f2d2d`), and scene causality
 gap warnings (`df16a42`). These have browser regression coverage and are still
 subject to long-form human review; they are not release claims. The CSS import
-order warning was removed in `8282f8e`; the full renderer suite remains green.
+order warning was removed in `8282f8e`; the deterministic 24-pair/100-chapter
+quality fixture and review protocol were added in `a490427`; the full renderer
+suite remains green.
