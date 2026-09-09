@@ -67,8 +67,8 @@ historical checkpoint above is intentionally retained.
 
 | Item | Current value |
 | --- | --- |
-| local source HEAD | `ccaa669` |
-| GitHub development ref | `origin/1.1.0-development` = `ccaa669` |
+| local source HEAD | `dbde7ec` |
+| GitHub development ref | `origin/1.1.0-development` = `dbde7ec` |
 | desktop package version | `0.9.2` (still not frozen) |
 | DSH plugin package version | `0.1.0` (still not frozen) |
 | tracker status | 4 待验收 / 30 开发中 / 4 未开始 / 0 通过 |
@@ -114,6 +114,9 @@ reasons in the continuity sheet (`d7184c5`).
 
 Review-report source evidence can now open the matching finalized chapter via
 the project session (`ccaa669`).
+
+Chapter handoff displays its author-recorded constraints in the same evidence
+surface (`dbde7ec`).
 
 The G04 CLI now uses Windows-safe `fileURLToPath` entry detection and has a
 regression test proving it cannot silently exit zero without executing the
