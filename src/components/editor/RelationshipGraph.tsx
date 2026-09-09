@@ -112,6 +112,7 @@ export default function RelationshipGraph({ characters, projectKey, onOpenEviden
   const [searchQuery, setSearchQuery] = useState('')
   const [relationFilter, setRelationFilter] = useState<RelationKind | 'all'>('all')
   const [focusDepth, setFocusDepth] = useState<0 | 1 | 2>(1)
+  const [historyChapterFilter, setHistoryChapterFilter] = useState<number | 'all'>('all')
   const [layoutEpoch, setLayoutEpoch] = useState(0)
   const [pinVersion, setPinVersion] = useState(0)
   const [tooltip, setTooltip] = useState<{
@@ -237,6 +238,18 @@ export default function RelationshipGraph({ characters, projectKey, onOpenEviden
       .flatMap(edge => edge.items)
       .sort((left, right) => (left.sourceChapter ?? Number.MAX_SAFE_INTEGER) - (right.sourceChapter ?? Number.MAX_SAFE_INTEGER)),
     [visibleGraph.edges],
+  )
+  const historyChapterOptions = useMemo(
+    () => [...new Set(relationshipHistoryRows
+      .map(item => item.sourceChapter)
+      .filter((chapter): chapter is number => chapter !== undefined))].sort((left, right) => left - right),
+    [relationshipHistoryRows],
+  )
+  const visibleRelationshipHistoryRows = useMemo(
+    () => historyChapterFilter === 'all'
+      ? relationshipHistoryRows
+      : relationshipHistoryRows.filter(item => item.sourceChapter === undefined || item.sourceChapter <= historyChapterFilter),
+    [historyChapterFilter, relationshipHistoryRows],
   )
   const layoutStorageKey = projectKey ? `inkweaver.relationship-layout:${projectKey}` : null
 
@@ -1147,10 +1160,20 @@ export default function RelationshipGraph({ characters, projectKey, onOpenEviden
           style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-panel)', color: 'var(--color-text)' }}
         >
           <summary className="cursor-pointer select-none px-2 py-1.5">
-            {text('关系历史与证据', 'Relationship history & evidence')} · {relationshipHistoryRows.length}
+            <span>{text('关系历史与证据', 'Relationship history & evidence')} · {visibleRelationshipHistoryRows.length}</span>
+            {historyChapterOptions.length > 0 && <select
+              aria-label={text('关系历史截至章节', 'Relationship history through chapter')}
+              value={historyChapterFilter}
+              onChange={event => setHistoryChapterFilter(event.target.value === 'all' ? 'all' : Number(event.target.value))}
+              className="ml-2 rounded border bg-transparent px-1 py-0.5 text-[0.68rem] text-[var(--color-text)]"
+              style={{ borderColor: 'var(--color-border)' }}
+            >
+              <option value="all">{text('全部章节', 'All chapters')}</option>
+              {historyChapterOptions.map(chapter => <option key={chapter} value={chapter}>{text(`截至第${chapter}章`, `Through Chapter ${chapter}`)}</option>)}
+            </select>}
           </summary>
           <div className="max-h-52 overflow-y-auto border-t p-1" style={{ borderColor: 'var(--color-border)' }} role="list">
-            {relationshipHistoryRows.slice(0, 120).map((item, index) => {
+            {visibleRelationshipHistoryRows.slice(0, 120).map((item, index) => {
               const arrow = item.direction === 'mutual' ? '↔' : item.direction === 'outgoing' ? '→' : item.direction === 'incoming' ? '←' : '·'
               return (
                 <div key={`${item.from}:${item.to}:${item.label}:${item.sourceChapter ?? 'unknown'}:${index}`} role="listitem" className="rounded px-1.5 py-1">
@@ -1166,7 +1189,7 @@ export default function RelationshipGraph({ characters, projectKey, onOpenEviden
                 </div>
               )
             })}
-            {relationshipHistoryRows.length > 120 && <div className="px-1.5 py-1 text-[var(--color-text-muted)]">{text(`还有 ${relationshipHistoryRows.length - 120} 条…`, `+${relationshipHistoryRows.length - 120} more…`)}</div>}
+            {visibleRelationshipHistoryRows.length > 120 && <div className="px-1.5 py-1 text-[var(--color-text-muted)]">{text(`还有 ${visibleRelationshipHistoryRows.length - 120} 条…`, `+${visibleRelationshipHistoryRows.length - 120} more…`)}</div>}
           </div>
         </details>
       )}

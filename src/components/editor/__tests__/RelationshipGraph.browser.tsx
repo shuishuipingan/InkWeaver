@@ -466,4 +466,26 @@ describe('RelationshipGraph relation kinds', () => {
     await act(async () => evidence?.click())
     expect(onOpenEvidence).toHaveBeenCalledWith(3)
   })
+
+  it('filters relationship history to the state known by a selected chapter', async () => {
+    await act(async () => root.render(
+      <RelationshipGraph characters={[{
+        name: '林墨', role: 'protagonist',
+        relationships: JSON.stringify([
+          { target: '周砧', relation: '信任', direction: 'outgoing', sourceChapter: 3, evidence: '第三章交付钥匙。' },
+          { target: '周砧', relation: '敌对', direction: 'incoming', sourceChapter: 9, evidence: '第九章关系反转。' },
+        ]),
+      }, { name: '周砧', role: 'supporting', relationships: '' }]} />,
+    ))
+    const history = container.querySelector('[data-relationship-history="true"]')
+    const chapter = history?.querySelector<HTMLSelectElement>('select[aria-label="关系历史截至章节"]')
+    expect(chapter).not.toBeNull()
+    expect([...chapter!.options].map(option => option.value)).toEqual(['all', '3', '9'])
+    await act(async () => {
+      chapter!.value = '3'
+      chapter!.dispatchEvent(new Event('change', { bubbles: true }))
+    })
+    expect(history?.textContent).toContain('第三章交付钥匙')
+    expect(history?.textContent).not.toContain('第九章关系反转')
+  })
 })
