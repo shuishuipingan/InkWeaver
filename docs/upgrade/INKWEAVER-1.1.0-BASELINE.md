@@ -67,8 +67,8 @@ historical checkpoint above is intentionally retained.
 
 | Item | Current value |
 | --- | --- |
-| local source HEAD | `8b6dce5` |
-| GitHub development ref | `origin/1.1.0-development` = `8b6dce5` |
+| local source HEAD | `f7d9138` |
+| GitHub development ref | `origin/1.1.0-development` = `f7d9138` |
 | desktop package version | `0.9.2` (still not frozen) |
 | DSH plugin package version | `0.1.0` (still not frozen) |
 | tracker status | 4 待验收 / 30 开发中 / 4 未开始 / 0 通过 |
@@ -123,6 +123,9 @@ the project session (`ccaa669`).
 
 Chapter handoff displays its author-recorded constraints in the same evidence
 surface (`dbde7ec`).
+
+The same handoff surface now shows a privacy-safe source hash prefix for the
+bound finalized draft (`f7d9138`).
 
 Relationship history now has an as-of-chapter filter that excludes future
 sourceChapter entries (`ff874eb`) and a two-chapter comparison summary
