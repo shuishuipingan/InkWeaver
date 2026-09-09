@@ -29,6 +29,7 @@ import { useLocaleStore } from '../../stores/locale-store'
 import { useLLMStore } from '../../stores/llm-store'
 import { ipc } from '../../services/ipc-client'
 import { requireIpcSuccess } from '../../services/ipc-result'
+import { openChapterFile } from '../panels/sidebar/sidebar-file-openers'
 import type { ModelProfile } from '../../shared/ipc-channels'
 import { resolveWritingLanguage, type WritingLanguage } from '../../shared/writing-language'
 import {
@@ -379,6 +380,18 @@ function ReviewReportSession({
   const [confirming, setConfirming] = useState(false)
   const [showRevisionDialog, setShowRevisionDialog] = useState(false)
   const [processing, setProcessing] = useState(false)
+
+  const openReviewSource = async (sourceChapter: number) => {
+    const projectSession = captureProjectSession(useProjectStore.getState().currentProject)
+    if (!projectSession || !isProjectSessionPath(projectSession, projectKey)) return
+    const finalized = await ipc.invokeWithProjectSession(projectSession, 'db:draft-get-finalized', sourceChapter, projectKey)
+    if (!isProjectSessionCurrent(projectSession)) return
+    if (finalized?.id) {
+      await openChapterFile(`vela://manuscript/${finalized.id}`, text(`第${sourceChapter}章`, `Chapter ${sourceChapter}`))
+      return
+    }
+    await openChapterFile(`${projectKey}\\manuscript\\chapter_${sourceChapter}.md`, text(`第${sourceChapter}章`, `Chapter ${sourceChapter}`))
+  }
   const [showLegend, setShowLegend] = useState(false)
   const sourceReviewId = confirmationSourceReviewId(initialSnapshot, reviewId)
   const summary = initialSnapshot?.summary ?? parsedReport.summary
@@ -861,10 +874,12 @@ function ReviewReportSession({
                             )}
                             {item.sourceChapter && (
                               <p className="text-[0.7rem] text-[var(--color-text-muted)]">
-                                {text(
-                                  `来源：第${item.sourceChapter}章`,
-                                  `Source: Chapter ${item.sourceChapter}`,
-                                )}
+                                <button type="button" data-review-source="true" className="text-left text-[var(--color-accent)] underline-offset-2 hover:underline" onClick={() => void openReviewSource(item.sourceChapter!)}>
+                                  {text(
+                                    `打开来源：第${item.sourceChapter}章`,
+                                    `Open source: Chapter ${item.sourceChapter}`,
+                                  )}
+                                </button>
                               </p>
                             )}
                             {!editingChecklist && (item.previousEvidence || item.currentEvidence) && (

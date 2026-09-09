@@ -118,6 +118,7 @@ function installIpc(confirmationId: number) {
         source: 'write',
       }
     }
+    if (channel === 'db:draft-get-finalized') return { id: 1, chapterNumber: 7, status: 'finalized' }
     if (channel === 'db:draft-get-full') return { id: 1, content: '这是尚未合并的原始草稿正文。' }
     if (channel === 'db:review-next-index') return 2
     if (channel === 'db:review-create') return { success: true, id: confirmationId }
@@ -163,6 +164,21 @@ function selectedModel(): HTMLSelectElement {
 }
 
 async function renderReport() {
+  await act(async () => {
+    root?.render(
+      <ReviewReport
+        projectKey={PROJECT_PATH}
+        reportText={RAW_AI_REPORT}
+        draftPath="vela://draft/1"
+        chapterNumber={1}
+        chapterDir="vela://draft/ch1"
+        reviewId={41}
+      />,
+    )
+  })
+}
+
+async function renderReportForSourceNavigation() {
   await act(async () => {
     root?.render(
       <ReviewReport
@@ -246,6 +262,16 @@ afterEach(async () => {
 })
 
 describe('ReviewReport human-confirmed revision flow', () => {
+  it('opens a review source chapter through the project session', async () => {
+    installIpc(41)
+    await renderReportForSourceNavigation()
+    const source = document.querySelector<HTMLButtonElement>('[data-review-source="true"]')
+    expect(source).not.toBeNull()
+    await act(async () => source?.click())
+    await vi.waitFor(() => expect(invoke.mock.calls.some(([channel, chapter]) => channel === 'db:draft-get-finalized' && chapter === 7)).toBe(true))
+    await vi.waitFor(() => expect(invoke.mock.calls.some(([channel, draftId]) => channel === 'db:draft-get-full' && draftId === 1)).toBe(true))
+  })
+
   it('preserves the raw AI report while an author edits, ignores, restores, adds, confirms, and routes a Grok revision without changing the global default', async () => {
     installIpc(91)
     await renderReport()
