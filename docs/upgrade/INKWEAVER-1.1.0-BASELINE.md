@@ -67,8 +67,8 @@ historical checkpoint above is intentionally retained.
 
 | Item | Current value |
 | --- | --- |
-| local source HEAD | `ce2b61e` |
-| GitHub development ref | `origin/1.1.0-development` = `ce2b61e` |
+| local source HEAD | `31b5e5d` |
+| GitHub development ref | `origin/1.1.0-development` = `31b5e5d` |
 | desktop package version | `0.9.2` (still not frozen) |
 | DSH plugin package version | `0.1.0` (still not frozen) |
 | tracker status | 4 待验收 / 30 开发中 / 4 未开始 / 0 通过 |
@@ -109,3 +109,8 @@ The Windows release plan was also re-read on this line; it includes native
 dependency preparation, package/update verification, app/installer/upgrade
 smoke checks, native restoration, and a quiet final stage. This is a plan
 check only, not a built 1.1.0 artifact.
+
+The safe provider qualification dry-run now exercises three adapters, six
+simulated calls, one model lease per provider, budget/usage receipts and
+checksums without credentials or billing; price snapshots remain unavailable
+until a separately authorized real-provider run.
