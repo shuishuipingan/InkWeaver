@@ -1,4 +1,7 @@
 import { createHash } from 'node:crypto'
+import { spawnSync } from 'node:child_process'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
@@ -52,5 +55,12 @@ describe('GitHub 1.1.0 release asset contract', () => {
     expect(result.ok).toBe(false)
     expect(result.invalid).toEqual(expect.arrayContaining(['tag v1.0.0 does not match v1.1.0']))
     expect(result.invalid.some(message => message.includes('inkweaver-setup-1.1.0.exe'))).toBe(true)
+  })
+
+  it('actually enters the CLI on Windows instead of silently exiting zero', () => {
+    const scriptPath = fileURLToPath(new URL('../verify-github-release-assets.mjs', import.meta.url))
+    const run = spawnSync(process.execPath, [path.resolve(scriptPath), '--version', VERSION, '--api-base', 'http://127.0.0.1:1'], { encoding: 'utf8' })
+    expect(run.status).not.toBe(0)
+    expect(`${run.stdout}${run.stderr}`).toMatch(/request failed|fetch failed/u)
   })
 })

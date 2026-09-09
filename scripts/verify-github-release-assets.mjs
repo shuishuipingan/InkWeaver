@@ -2,6 +2,9 @@
 
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const scriptPath = fileURLToPath(import.meta.url)
 
 export function expectedReleaseAssetNames(version) {
   return [
@@ -67,7 +70,7 @@ async function main() {
   if (!result.ok) process.exitCode = 1
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(new URL(import.meta.url).pathname)) {
+if (process.argv[1] && path.resolve(process.argv[1]) === scriptPath) {
   main().catch(error => {
     process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`)
     process.exitCode = 1
