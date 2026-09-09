@@ -111,4 +111,30 @@ describe('CharacterExtractionCandidatesPanel', () => {
     expect(growth?.textContent).toContain('从回避真相转向主动追查')
     expect(growth?.textContent).toContain('谨慎但坚定')
   })
+
+  it('shows source coverage and a privacy-safe fingerprint for the candidate batch', async () => {
+    container = document.createElement('div')
+    document.body.append(container)
+    root = createRoot(container)
+    const text = (zh: string, _en: string) => zh
+    await act(async () => root.render(
+      <CharacterExtractionCandidatesPanel
+        candidates={[{
+          ...candidate,
+          candidateId: 'coverage-ui-1',
+          source: { sourceId: 'import-run-1', sourceHash: 'b'.repeat(64), kind: 'chapter-range', chapterNumbers: [2, 3, 18] },
+        }]}
+        onRefresh={vi.fn()}
+        onStatus={vi.fn(async () => {})}
+        onApply={vi.fn(async () => {})}
+        text={text}
+      />,
+    ))
+    const coverage = container.querySelector('[data-character-extraction-source="true"]')
+    expect(coverage).not.toBeNull()
+    expect(coverage?.textContent).toContain('章节范围')
+    expect(coverage?.textContent).toContain('第2、3、18章')
+    expect(coverage?.textContent).toContain('bbbbbbbbbbbb')
+    expect(coverage?.textContent).not.toContain('import-run-1')
+  })
 })

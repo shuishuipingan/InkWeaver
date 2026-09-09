@@ -30,6 +30,16 @@ export default function CharacterExtractionCandidatesPanel({
   const visible = candidates.filter(candidate => candidate.status !== 'stale')
   const accepted = visible.filter(candidate => candidate.status === 'accepted')
   const unresolvedAmbiguity = accepted.some(candidate => candidate.disposition === 'ambiguous' && !matchSelection[candidate.candidateId]?.trim())
+  const source = visible[0]?.source
+  const sourceKind = source?.kind === 'chapter-range'
+    ? text('章节范围', 'Chapter range')
+    : source?.kind === 'import'
+      ? text('导入全文', 'Imported full text')
+      : source?.kind === 'selection'
+        ? text('选中文本', 'Selected text')
+        : source?.kind === 'chapter'
+          ? text('单章全文', 'Full chapter')
+          : ''
   if (!loading && visible.length === 0) return null
 
   return (
@@ -44,6 +54,12 @@ export default function CharacterExtractionCandidatesPanel({
         </Button>
       </div>
       {loading && <div className="py-2" style={{ color: 'var(--color-text-muted)' }}>{text('正在读取候选…', 'Loading candidates…')}</div>}
+      {source && <div data-character-extraction-source="true" className="mt-2 rounded border px-2 py-1.5" style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-muted)' }}>
+        <span className="font-medium" style={{ color: 'var(--color-text-secondary)' }}>{text('本批次来源：', 'Batch source: ')}</span>
+        {sourceKind}
+        {source.chapterNumbers.length > 0 && <span> · {text(`第${source.chapterNumbers.join('、')}章`, `Chapters ${source.chapterNumbers.join(', ')}`)}</span>}
+        <span> · {text(`指纹 ${source.sourceHash.slice(0, 12)}`, `fingerprint ${source.sourceHash.slice(0, 12)}`)}</span>
+      </div>}
       <div className="mt-2 space-y-2">
         {visible.map(candidate => (
           <div key={candidate.candidateId} className="rounded border p-2" style={{ borderColor: 'var(--color-border)' }}>
