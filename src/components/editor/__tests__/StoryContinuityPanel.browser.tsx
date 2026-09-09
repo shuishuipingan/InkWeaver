@@ -230,6 +230,31 @@ describe('StoryContinuityPanel', () => {
     expect(container.querySelector('[data-knowledge-boundary="true"]')).toBeNull()
   })
 
+  it('shows a chronological emotional-growth ledger with choices, costs, and evidence', async () => {
+    const first = emptyStoryContinuityDocument(1)
+    first.emotionalCarryOver = [{
+      character: '林夏', previousState: '恐惧', trigger: '看见暗门', choice: '继续追查',
+      cost: '放弃回港', nextState: '执拗', evidence: ['她没有回头。'],
+    }]
+    const second = emptyStoryContinuityDocument(2)
+    second.emotionalCarryOver = [{
+      character: '林夏', previousState: '执拗', trigger: '得知真相', choice: '暂时隐瞒',
+      cost: '失去同伴信任', nextState: '谨慎', evidence: ['她把信折回袖口。'],
+    }]
+    allDocumentsFixture = [first, second]
+
+    await act(async () => root.render(<StoryContinuityPanel projectKey={PROJECT_PATH} chapterNumber={3} />))
+    await vi.waitFor(() => expect(container.querySelector('[data-emotional-growth-ledger="true"]')).not.toBeNull())
+    const ledger = container.querySelector('[data-emotional-growth-ledger="true"]')
+    expect(ledger?.textContent).toContain('人物成长轨迹')
+    expect(ledger?.textContent).toContain('第1章')
+    expect(ledger?.textContent).toContain('恐惧 → 执拗')
+    expect(ledger?.textContent).toContain('放弃回港')
+    expect(ledger?.textContent).toContain('第2章')
+    expect(ledger?.textContent).toContain('执拗 → 谨慎')
+    expect(ledger?.textContent).toContain('她把信折回袖口')
+  })
+
   it('shows cross-volume trends as an accessible progression of continuing and new threads', async () => {
     const firstVolume = emptyStoryContinuityDocument(1)
     firstVolume.arcContribution = {

@@ -293,6 +293,14 @@ export default function StoryContinuityPanel({ projectKey, chapterNumber }: Stor
     .filter(item => item.character.trim() && item.nextState.trim())
     .filter(item => !currentCarryCharacters.has(item.character.trim()))
     .slice(0, 8)
+  const emotionalGrowthLedger = previousDocuments
+    .flatMap(doc => doc.emotionalCarryOver
+      .filter(item => item.character.trim() && (
+        item.previousState.trim() || item.nextState.trim() || item.trigger.trim() || item.choice.trim() || item.cost.trim() || item.evidence.length > 0
+      ))
+      .map(item => ({ ...item, fromChapter: doc.chapterNumber })))
+    .sort((left, right) => left.fromChapter - right.fromChapter)
+    .slice(0, 24)
   const dueExpectations = previousDocuments
     .flatMap(doc => doc.readerExpectations
       .filter(item => (item.status === 'open' || item.status === 'progressing'))
@@ -427,9 +435,27 @@ export default function StoryContinuityPanel({ projectKey, chapterNumber }: Stor
           <section data-emotional-carryover-alert="true" className="rounded border p-2 text-xs" style={{ borderColor: 'var(--color-warning)', backgroundColor: 'var(--color-raised)' }}>
             <div className="font-medium">{text('上一章情绪余波待承接', 'Previous-chapter emotional carry-over awaiting continuity')}</div>
             <div className="mt-1 space-y-0.5 text-[var(--color-warning-text)]">
-                          {previousCarryOver.map(item => <div key={item.character}>{item.character} · {text('后状态：' + item.nextState, 'next state: ' + item.nextState)}</div>)}
+                          {previousCarryOver.map((item, index) => <div key={`${item.character}:${index}`}>{item.character} · {text('后状态：' + item.nextState, 'next state: ' + item.nextState)}</div>)}
             </div>
             <p className="mt-1 text-[var(--color-text-muted)]">{text('如果本章没有承接这些情绪余波，可在下方“情绪余波与人物成长”补记，或保留刻意跳切。', 'If this chapter does not continue these emotional states, add them under “Emotional carry-over and growth” below, or keep an intentional cutaway.')}</p>
+          </section>
+        )}
+        {emotionalGrowthLedger.length > 0 && (
+          <section data-emotional-growth-ledger="true" className="rounded border p-2 text-xs" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-raised)' }}>
+            <div className="mb-1 flex items-center justify-between gap-2">
+              <h4 className="font-semibold">{text('人物成长轨迹', 'Character-growth ledger')}</h4>
+              <span className="text-[0.68rem] font-normal text-[var(--color-text-muted)]">{text('只读 · 来自已保存工作单', 'Read-only · from saved continuity sheets')}</span>
+            </div>
+            <ol className="space-y-1.5" aria-label={text('按章节排列的人物情绪与成长', 'Character emotion and growth ordered by chapter')}>
+              {emotionalGrowthLedger.map((item, index) => <li key={`${item.fromChapter}:${item.character}:${index}`} className="rounded border px-2 py-1.5" style={{ borderColor: 'var(--color-border)' }}>
+                <div className="font-medium">{text(`第${item.fromChapter}章 · ${item.character}`, `Chapter ${item.fromChapter} · ${item.character}`)}</div>
+                {(item.previousState.trim() || item.nextState.trim()) && <div className="text-[var(--color-text-secondary)]">{item.previousState || text('未记录前状态', 'Previous state not recorded')} → {item.nextState || text('未记录后状态', 'Next state not recorded')}</div>}
+                {item.trigger.trim() && <div className="text-[var(--color-text-muted)]">{text('触发：', 'Trigger: ')}{item.trigger}</div>}
+                {item.choice.trim() && <div className="text-[var(--color-text-muted)]">{text('选择：', 'Choice: ')}{item.choice}</div>}
+                {item.cost.trim() && <div className="text-[var(--color-text-muted)]">{text('代价：', 'Cost: ')}{item.cost}</div>}
+                {item.evidence.length > 0 && <div className="text-[var(--color-text-muted)]">{text('证据：', 'Evidence: ')}{item.evidence.slice(0, 2).join('；')}</div>}
+              </li>)}
+            </ol>
           </section>
         )}
         {timelineGroups.length > 0 && <section data-continuity-timeline="true" className="rounded border p-2" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-raised)' }}>
