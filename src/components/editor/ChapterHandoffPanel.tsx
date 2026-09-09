@@ -72,6 +72,7 @@ export default function ChapterHandoffPanel({ records, loading = false, confirmi
         <div><strong>{text('即时目标：', 'Immediate goal:')}</strong>{record.immediateGoal}</div>
         <div><strong>{text('情绪：', 'Emotion:')}</strong>{record.emotionalState}</div>
         <div><strong>{text('承接方式：', 'Transition:')}</strong>{transitionText(record.transition, text)}</div>
+        {record.constraints.length > 0 && <div><strong>{text('限制：', 'Constraints:')}</strong>{record.constraints.join('；')}</div>}
         {record.unfinishedActions.length > 0 && (
           <div><strong>{text('未完成动作：', 'Unfinished actions:')}</strong>{record.unfinishedActions.join('；')}</div>
         )}
