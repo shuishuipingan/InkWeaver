@@ -146,4 +146,13 @@ This maintainer-only command packs the plugin, installs those bytes into an isol
 
 The precise runtime gates, evidence order, and failure triage live in [V2 development gates](docs/v2-development-gates.md). Logs, screenshots, and the machine-readable receipt live under `.runtime/.cache/dsh-ai-novel-qualification-128` with `.vibe-owner.json` ownership and expiry. This keyless snapshot does not replace native gpt-5.6-terra manual qualification.
 
+The latest complete local receipt was produced on 2026-09-09 from source commit
+`3be4604c4d58cbb6ac3f7fbd3bb2fbbc20ec820d` against Harness commit
+`a66e4702047846cdaa10c66c9d3df3951f5ea70d`. It verified the packed tarball
+(`11859a1d8cebf6e2c3f250cbec5a36e6b190607b2d92dadd865be1f1773ec92a`), the
+isolated profile add/remove/reinstall cycle, the `inkweaver-v2` roster and
+Host/Client mount, three Chrome journeys, model-tool isolation, and schema-5
+persistence readback. This is development-line evidence for the DSH gate; it
+does not mean the desktop 1.1.0 release or npm publication has happened.
+
 The package does not modify DeepSeek Harness upstream or its agent loop.

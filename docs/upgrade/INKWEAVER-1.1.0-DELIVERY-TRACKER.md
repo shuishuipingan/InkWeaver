@@ -1,6 +1,6 @@
 # InkWeaver 1.1.0 开发执行与验收追踪表
 
-日期：2026-09-06。配套需求：[完整功能图与开发交接书](INKWEAVER-1.1.0-FULL-FEATURE-MAP.md)。本表不增加发布范围，不代表功能已开发。 
+日期：2026-09-09。配套需求：[完整功能图与开发交接书](INKWEAVER-1.1.0-FULL-FEATURE-MAP.md)。本表不增加发布范围，不代表功能已开发。
 
 ## 使用方式
 
@@ -46,7 +46,7 @@
 | E08 | 导出完整性 | 08 | 无蓝图原稿也能导出全部定稿且顺序正确吗？ | 开发中 | `169ff10`：导出始终以 finalized authority 和定稿事实枚举章节，不再让蓝图改变顺序；拒绝缺章/重复/越界、空正文、标题漂移和字数不一致，并保留无蓝图原稿路径；当前新增不含正文的 `.manifest.json`，记录 authority 指纹、章节标题/字数、输出路径和内容 SHA-256；导出目录授权新增受限 read，并在写入主文件、分章文件和清单后逐字节回读校验，内容不一致即失败 |
 | E09 | 双语与可访问性 | 10 | 新入口、错误、审核和恢复流程都有双语与键盘支持吗？ | 开发中 | 新增连续阅读、连续性工作单、关系图列表、知情边界和快照入口均使用中英文文案、可聚焦按钮/表单标签/键盘列表替代；全量 a11y 审计和恢复流程的键盘回归仍待完成 |
 | F01 | DSH 兼容版本 | 11 | 核对的是官方默认分发渠道且固定准确版本吗？ | 开发中 | 官方 npm 查询确认 `@deepseek-ai/dsh` latest/next=`0.1.2-rc.1`、alpha=`0.1.2-alpha.5`；插件依赖与锁文件已升级并固定；迁移/版本/测试证据见 `plugins/inkweaver-dsh/docs/dsh-0.1.2-rc.1-compatibility.md`；隔离 profile 和真实浏览器 qualification 仍待完成 |
-| F02 | 插件接口与安装 | 11 | InkWeaver tarball 在隔离 profile 的 roster、mount 和浏览器链通过吗？ | 开发中 | 插件身份已统一迁移到 `@shuishuipingan/inkweaver-dsh`、目录 `plugins/inkweaver-dsh`、Host/preset `inkweaver`；官方 0.1.2-rc.1 API 迁移后，当前源码已再次通过 `pnpm run typecheck`、`pnpm run build`、emitted-package Loader/roster verification 与 `pnpm pack --dry-run`；新的隔离 `DSH_HOME` 已完成该包的 add/remove/reinstall、bundle/Host `dump-config` 回读，并用外部 DSH prerequisite `@linxin666/dsh-web-all@0.3.17` 启动真实 Web、Playwright 回读 `DeepSeek Harness`/“小说工作台”；新的 installed profile tool-isolation 回归也已通过；收据见 `docs/upgrade/DSH-MANUAL-PROFILE-RECEIPT.md`；最新干净 worktree 完整 qualification 已通过插件完整测试、electron typecheck/renderer 测试，推进到 harness-build；该阶段在 Windows 上因固定 Harness commit 要求 pnpm 11.7.0 而全局 PATH 是 11.11.0 失败，属于外部 Corepack/pnpm 环境差异，需在 Linux CI 或正确 Corepack 环境继续；完整 roster/mount、keyless 浏览器链仍待运行 |
+| F02 | 插件接口与安装 | 11 | InkWeaver tarball 在隔离 profile 的 roster、mount 和浏览器链通过吗？ | 待验收 | 插件身份已统一迁移到 `@shuishuipingan/inkweaver-dsh`、目录 `plugins/inkweaver-dsh`、Host/preset `inkweaver`；官方 0.1.2-rc.1 API 迁移、`settings.plugin.item` keyed/legacy 兼容和 `projectionValues.agentPreset` 兼容已落地；完整 receipt：`.runtime/.cache/dsh-ai-novel-qualification-128/runs/2026-09-09T11-44-24-930Z-24004/qualification-receipt.json`，源码 `3be4604c`，Harness `a66e4702`，tarball SHA-256 `11859a1d8cebf6e2c3f250cbec5a36e6b190607b2d92dadd865be1f1773ec92a`；插件 40 文件/431 passed/6 skipped、Electron typecheck/renderer/main/release、Harness build、tarball content、隔离 profile add/remove/reinstall、V2 roster/mount、三次真实 Chrome Web journey、model-tool isolation 与 schema-5 persistence readback 全部通过；外部 prerequisite `@linxin666/dsh-web-all@0.3.17` 仅作为宿主依赖，不属于 InkWeaver 包；待评阅人验收并将本项移入“通过” |
 | F03 | 插件对应创作功能 | 12 | 交接/人物候选/事实上下文和 Proposal 审核形成闭环吗？ | 开发中 | DSH V2 已扩展 schema 5：`NovelChapterHandoff` 与 `NovelKnowledgeEvent` 进入章节 Proposal/SQLite，`chapter/context` 只返回当前章节有效且 confirmed 的知识；`f03` 回归覆盖候选隔离、稳定角色 ID、迁移和客户端 DTO 校验；真实 tarball Session/浏览器回归仍待完成 |
 | F04 | 插件版本与分发 | 13 | 1.1.0 可实际安装且公开兼容与升级说明吗？ | 未开始 | — |
 | F05 | 主题发现 | 13 | dsh-plugin 元数据和实际索引结果分别有证据吗？ | 开发中 | GitHub API 已回读仓库 topic 含 `dsh-plugin`；2026-09-07 公开主题页显示 13,983 个匹配仓库，但当前页面首屏/可检索内容未出现 `shuishuipingan/InkWeaver`，因此不能宣称已完成实际索引可见性；发布 1.1.0 后需按同一链接复核并留档 |

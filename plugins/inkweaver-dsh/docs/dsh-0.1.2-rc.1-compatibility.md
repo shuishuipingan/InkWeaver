@@ -1,6 +1,6 @@
 # DSH 0.1.2-rc.1 compatibility receipt
 
-Verification date: 2026-09-07 (Asia/Hong_Kong)
+Verification date: 2026-09-09 (Asia/Hong_Kong)
 
 ## Official distribution anchor
 
@@ -51,10 +51,11 @@ range expression must not replace them in a release commit.
 - `AgentPresets` now requires the `sessionProjections` service and its config
   explicitly includes `includeShippedRoot`. The qualification composition and
   tests load the projection service and set this flag deliberately.
-- The current runtime still dispatches `settings.plugin.item` as a list while
-  the companion declaration exposes a keyed contract. The client uses the
-  stable `id`/`order` registration at this compatibility seam and keeps the
-  cast local; all other slots remain typed.
+- The official Web settings surface pairs keyed `settings.plugin.item` entries
+  with Host settings namespaces. InkWeaver registers the `inkweaver` namespace
+  on the Host and supplies both the keyed `key` and legacy `id`/`order` fields
+  in its Client entry, keeping the compatibility cast local for older embedded
+  runtimes; all other slots remain typed.
 
 ## V2 continuity handoff extension
 
@@ -84,22 +85,39 @@ This package is owned and released by the DSH Web host ecosystem; InkWeaver
 does not modify, version, publish, or promise support for that package beyond
 recording the compatibility prerequisite used by qualification.
 
-## Evidence and remaining gate
+## Qualification receipt (development line)
 
-Passed locally after the migration:
+The complete isolated qualification receipt is retained at:
+
+`.runtime/.cache/dsh-ai-novel-qualification-128/runs/2026-09-09T11-44-24-930Z-24004/qualification-receipt.json`
+
+It records source commit `3be4604c4d58cbb6ac3f7fbd3bb2fbbc20ec820d`, the clean
+Harness commit `a66e4702047846cdaa10c66c9d3df3951f5ea70d`, and tarball SHA-256
+`11859a1d8cebf6e2c3f250cbec5a36e6b190607b2d92dadd865be1f1773ec92a`. The run
+passed the plugin suite (40 files, 431 tests passed, 6 skipped), Electron
+typecheck and renderer/main/release suites, clean Harness build, tarball
+content comparison, isolated profile add/remove/reinstall, V2 preset tools,
+three Chrome Web journeys, and durable schema-5 readback. The six skipped
+plugin tests are Windows symlink-privilege cases and are explicitly recorded
+by the test runner; they are not treated as failed product behavior.
+
+## Evidence and remaining release gates
+
+Passed locally after the migration and the official Harness qualification:
 
 - `pnpm run typecheck`
 - `pnpm run build`
 - emitted Host/Agent/Client package verification in `scripts/verify-built.mjs`
-- 38 of 41 plugin test files / 419 tests in the full local run, with the two
-  remaining failures limited to Windows symlink permission tests requiring
-  SeCreateSymbolicLinkPrivilege. The qualification readback now verifies V2
-  schema 5 and the new continuity context contract.
+- 40 of 41 plugin test files / 431 tests in the full qualification run, with
+  six skipped Windows symlink-privilege cases. The qualification receipt
+  verifies V2 schema 5, the continuity context contract, real Chrome mount and
+  proposal flow, and persistence after restart/reinstall.
 
-The symlink tests require the Windows SeCreateSymbolicLink privilege and must
-be rerun on a machine/profile that grants it before calling the full release
-qualification complete. The keyless Loader snapshot, focused browser checks,
-and actual isolated DSH profile install remain required release gates.
+The symlink tests require the Windows SeCreateSymbolicLink privilege and should
+be rerun on a machine/profile that grants it before calling the Windows test
+matrix completely green. The complete DSH qualification is now passed, but
+desktop version freeze, Windows/macOS installers, npm publication, GitHub
+Release assets, and release back-read remain separate 1.1.0 gates.
 
 Official sources:
 
