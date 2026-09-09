@@ -86,6 +86,15 @@ export default function CharacterExtractionCandidatesPanel({
                 placeholder={text('输入现有角色的完整姓名', 'Type the exact existing character name')}
               />
             </div>}
+            {((candidate.fields.arc?.trim() ?? '') || Object.values(candidate.currentState ?? {}).some(value => Boolean(value?.trim()))) && (
+              <details data-character-growth-arc="true" className="mt-1 rounded border px-2 py-1.5" style={{ borderColor: 'var(--color-accent)' }}>
+                <summary className="cursor-pointer font-medium">{text('人物成长弧与状态', 'Character growth arc and state')}</summary>
+                <div className="mt-1 space-y-1" style={{ color: 'var(--color-text-secondary)' }}>
+                  {candidate.fields.arc?.trim() && <div><strong>{text('成长弧：', 'Growth arc:')}</strong>{candidate.fields.arc}</div>}
+                  {Object.entries(candidate.currentState ?? {}).filter(([, value]) => Boolean(value?.trim())).map(([field, value]) => <div key={field}><strong>{field}：</strong>{value}</div>)}
+                </div>
+              </details>
+            )}
             <div className="mt-1 space-y-0.5" style={{ color: 'var(--color-text-secondary)' }}>
               {Object.entries(candidate.fields).map(([field, value]) => {
                 const selected = fieldSelection[candidate.candidateId]?.has(field) ?? true

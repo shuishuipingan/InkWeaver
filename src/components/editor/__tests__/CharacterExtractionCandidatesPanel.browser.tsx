@@ -84,4 +84,31 @@ describe('CharacterExtractionCandidatesPanel', () => {
     await act(async () => enabledApply?.click())
     expect(onApply).toHaveBeenCalledWith(expect.anything(), { 'ambiguous-ui-1': '沈月' })
   })
+
+  it('shows a dedicated growth-arc and current-state review section', async () => {
+    container = document.createElement('div')
+    document.body.append(container)
+    root = createRoot(container)
+    const text = (zh: string, _en: string) => zh
+    await act(async () => root.render(
+      <CharacterExtractionCandidatesPanel
+        candidates={[{
+          ...candidate,
+          candidateId: 'growth-arc-ui-1',
+          status: 'accepted',
+          fields: { arc: '从回避真相转向主动追查' },
+          currentState: { mentalState: '谨慎但坚定', recentEvents: '发现旧钥匙与信件有关' },
+        }]}
+        onRefresh={vi.fn()}
+        onStatus={vi.fn(async () => {})}
+        onApply={vi.fn(async () => {})}
+        text={text}
+      />,
+    ))
+    const growth = container.querySelector('[data-character-growth-arc="true"]')
+    expect(growth).not.toBeNull()
+    expect(growth?.textContent).toContain('人物成长弧与状态')
+    expect(growth?.textContent).toContain('从回避真相转向主动追查')
+    expect(growth?.textContent).toContain('谨慎但坚定')
+  })
 })
