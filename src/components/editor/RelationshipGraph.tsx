@@ -113,6 +113,8 @@ export default function RelationshipGraph({ characters, projectKey, onOpenEviden
   const [relationFilter, setRelationFilter] = useState<RelationKind | 'all'>('all')
   const [focusDepth, setFocusDepth] = useState<0 | 1 | 2>(1)
   const [historyChapterFilter, setHistoryChapterFilter] = useState<number | 'all'>('all')
+  const [historyCompareFrom, setHistoryCompareFrom] = useState<number | 'all'>('all')
+  const [historyCompareTo, setHistoryCompareTo] = useState<number | 'all'>('all')
   const [layoutEpoch, setLayoutEpoch] = useState(0)
   const [pinVersion, setPinVersion] = useState(0)
   const [tooltip, setTooltip] = useState<{
@@ -251,6 +253,19 @@ export default function RelationshipGraph({ characters, projectKey, onOpenEviden
       : relationshipHistoryRows.filter(item => item.sourceChapter === undefined || item.sourceChapter <= historyChapterFilter),
     [historyChapterFilter, relationshipHistoryRows],
   )
+  const relationshipHistoryComparison = useMemo(() => {
+    if (historyCompareFrom === 'all' || historyCompareTo === 'all') return null
+    const rowsAt = (chapter: number) => relationshipHistoryRows.filter(item => item.sourceChapter === undefined || item.sourceChapter <= chapter)
+    const identity = (item: typeof relationshipHistoryRows[number]) => `${item.from}\u0000${item.to}\u0000${item.label}\u0000${item.direction ?? ''}\u0000${item.sourceChapter ?? ''}\u0000${item.evidence ?? ''}`
+    const from = rowsAt(historyCompareFrom)
+    const to = rowsAt(historyCompareTo)
+    const fromKeys = new Set(from.map(identity))
+    const toKeys = new Set(to.map(identity))
+    return {
+      added: to.filter(item => !fromKeys.has(identity(item))),
+      removed: from.filter(item => !toKeys.has(identity(item))),
+    }
+  }, [historyCompareFrom, historyCompareTo, relationshipHistoryRows])
   const layoutStorageKey = projectKey ? `inkweaver.relationship-layout:${projectKey}` : null
 
   const readStoredLayout = (): { positions: Record<string, { x: number; y: number }>; pinned: string[] } => {
@@ -1172,6 +1187,24 @@ export default function RelationshipGraph({ characters, projectKey, onOpenEviden
               {historyChapterOptions.map(chapter => <option key={chapter} value={chapter}>{text(`截至第${chapter}章`, `Through Chapter ${chapter}`)}</option>)}
             </select>}
           </summary>
+          {historyChapterOptions.length > 1 && <div data-relationship-history-compare="true" className="border-b px-2 py-1.5 text-[0.68rem]" style={{ borderColor: 'var(--color-border)' }}>
+            <div className="mb-1 font-medium text-[var(--color-text-secondary)]">{text('比较两个章节的关系变化', 'Compare relationship changes')}</div>
+            <div className="flex flex-wrap items-center gap-1">
+              <select aria-label={text('关系历史比较起始章节', 'Relationship history comparison start chapter')} value={historyCompareFrom} onChange={event => setHistoryCompareFrom(event.target.value === 'all' ? 'all' : Number(event.target.value))} className="rounded border bg-transparent px-1 py-0.5 text-[0.68rem]" style={{ borderColor: 'var(--color-border)' }}>
+                <option value="all">{text('起始章节', 'Start chapter')}</option>
+                {historyChapterOptions.map(chapter => <option key={chapter} value={chapter}>{text(`第${chapter}章`, `Chapter ${chapter}`)}</option>)}
+              </select>
+              <span>→</span>
+              <select aria-label={text('关系历史比较结束章节', 'Relationship history comparison end chapter')} value={historyCompareTo} onChange={event => setHistoryCompareTo(event.target.value === 'all' ? 'all' : Number(event.target.value))} className="rounded border bg-transparent px-1 py-0.5 text-[0.68rem]" style={{ borderColor: 'var(--color-border)' }}>
+                <option value="all">{text('结束章节', 'End chapter')}</option>
+                {historyChapterOptions.map(chapter => <option key={chapter} value={chapter}>{text(`第${chapter}章`, `Chapter ${chapter}`)}</option>)}
+              </select>
+            </div>
+            {relationshipHistoryComparison && <div className="mt-1 space-y-0.5 text-[var(--color-text-muted)]">
+              <div>{text(`新增关系：${relationshipHistoryComparison.added.length} 条`, `New relationships: ${relationshipHistoryComparison.added.length}`)}{relationshipHistoryComparison.added.slice(0, 3).map(item => <span key={`${item.from}:${item.label}:${item.sourceChapter}`}> · {item.evidence || item.label}</span>)}</div>
+              <div>{text(`不再出现：${relationshipHistoryComparison.removed.length} 条`, `No longer present: ${relationshipHistoryComparison.removed.length}`)}</div>
+            </div>}
+          </div>}
           <div className="max-h-52 overflow-y-auto border-t p-1" style={{ borderColor: 'var(--color-border)' }} role="list">
             {visibleRelationshipHistoryRows.slice(0, 120).map((item, index) => {
               const arrow = item.direction === 'mutual' ? '↔' : item.direction === 'outgoing' ? '→' : item.direction === 'incoming' ? '←' : '·'

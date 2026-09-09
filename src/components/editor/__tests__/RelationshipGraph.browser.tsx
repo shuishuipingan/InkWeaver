@@ -488,4 +488,30 @@ describe('RelationshipGraph relation kinds', () => {
     expect(history?.textContent).toContain('第三章交付钥匙')
     expect(history?.textContent).not.toContain('第九章关系反转')
   })
+
+  it('compares relationship history between two chapters and lists newly introduced evidence', async () => {
+    await act(async () => root.render(
+      <RelationshipGraph characters={[{
+        name: '林墨', role: 'protagonist',
+        relationships: JSON.stringify([
+          { target: '周砧', relation: '信任', direction: 'outgoing', sourceChapter: 3, evidence: '第三章交付钥匙。' },
+          { target: '周砧', relation: '敌对', direction: 'incoming', sourceChapter: 9, evidence: '第九章关系反转。' },
+        ]),
+      }, { name: '周砧', role: 'supporting', relationships: '' }]} />,
+    ))
+    const compare = container.querySelector('[data-relationship-history-compare="true"]')
+    expect(compare).not.toBeNull()
+    const left = compare?.querySelector<HTMLSelectElement>('select[aria-label="关系历史比较起始章节"]')
+    const right = compare?.querySelector<HTMLSelectElement>('select[aria-label="关系历史比较结束章节"]')
+    expect(left).not.toBeNull()
+    expect(right).not.toBeNull()
+    await act(async () => {
+      left!.value = '3'
+      left!.dispatchEvent(new Event('change', { bubbles: true }))
+      right!.value = '9'
+      right!.dispatchEvent(new Event('change', { bubbles: true }))
+    })
+    expect(compare?.textContent).toContain('新增关系')
+    expect(compare?.textContent).toContain('第九章关系反转')
+  })
 })
