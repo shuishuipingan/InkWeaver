@@ -67,8 +67,8 @@ historical checkpoint above is intentionally retained.
 
 | Item | Current value |
 | --- | --- |
-| local source HEAD | `fe7df5a` |
-| GitHub development ref | `origin/1.1.0-development` = `fe7df5a` |
+| local source HEAD | `ce2b61e` |
+| GitHub development ref | `origin/1.1.0-development` = `ce2b61e` |
 | desktop package version | `0.9.2` (still not frozen) |
 | DSH plugin package version | `0.1.0` (still not frozen) |
 | tracker status | 4 待验收 / 30 开发中 / 4 未开始 / 0 通过 |
@@ -104,3 +104,8 @@ The character candidate panel now also exposes a dedicated growth-arc/state
 review section (`f1e9f6b`); the underlying merge and author-confirmation gates
 remain unchanged. C01 source coverage is now visible in the candidate panel
 with a privacy-safe source fingerprint (`fe7df5a`).
+
+The Windows release plan was also re-read on this line; it includes native
+dependency preparation, package/update verification, app/installer/upgrade
+smoke checks, native restoration, and a quiet final stage. This is a plan
+check only, not a built 1.1.0 artifact.
