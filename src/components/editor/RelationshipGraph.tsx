@@ -231,6 +231,12 @@ export default function RelationshipGraph({ characters, projectKey }: Relationsh
     () => relationshipListRows(visibleGraph.characters, visibleGraph.edges),
     [pinVersion, visibleGraph.characters, visibleGraph.edges],
   )
+  const relationshipHistoryRows = useMemo(
+    () => visibleGraph.edges
+      .flatMap(edge => edge.items)
+      .sort((left, right) => (left.sourceChapter ?? Number.MAX_SAFE_INTEGER) - (right.sourceChapter ?? Number.MAX_SAFE_INTEGER)),
+    [visibleGraph.edges],
+  )
   const layoutStorageKey = projectKey ? `inkweaver.relationship-layout:${projectKey}` : null
 
   const readStoredLayout = (): { positions: Record<string, { x: number; y: number }>; pinned: string[] } => {
@@ -1133,6 +1139,34 @@ export default function RelationshipGraph({ characters, projectKey }: Relationsh
           <RotateCcw size={14} aria-hidden="true" />
         </button>
       </div>
+      {relationshipHistoryRows.length > 0 && (
+        <details
+          data-relationship-history="true"
+          className="absolute left-3 top-14 z-10 max-w-[min(20rem,calc(100%-24px))] rounded-md border text-[11px]"
+          style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-panel)', color: 'var(--color-text)' }}
+        >
+          <summary className="cursor-pointer select-none px-2 py-1.5">
+            {text('关系历史与证据', 'Relationship history & evidence')} · {relationshipHistoryRows.length}
+          </summary>
+          <div className="max-h-52 overflow-y-auto border-t p-1" style={{ borderColor: 'var(--color-border)' }} role="list">
+            {relationshipHistoryRows.slice(0, 120).map((item, index) => {
+              const arrow = item.direction === 'mutual' ? '↔' : item.direction === 'outgoing' ? '→' : item.direction === 'incoming' ? '←' : '·'
+              return (
+                <div key={`${item.from}:${item.to}:${item.label}:${item.sourceChapter ?? 'unknown'}:${index}`} role="listitem" className="rounded px-1.5 py-1">
+                  <div className="flex items-center gap-1 whitespace-nowrap">
+                    <span aria-hidden="true" className="inline-block h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: `var(--color-rel-${item.kind})` }} />
+                    <span className="truncate">{item.from} {arrow} {item.to}</span>
+                    <span className="shrink-0 text-[var(--color-text-secondary)]">{item.label}</span>
+                    {item.sourceChapter !== undefined && <span className="shrink-0 text-[var(--color-text-muted)]">· {text(`第${item.sourceChapter}章`, `Ch. ${item.sourceChapter}`)}</span>}
+                  </div>
+                  {item.evidence && <div className="mt-0.5 truncate pl-3 text-[var(--color-text-muted)]" title={item.evidence}>{item.evidence}</div>}
+                </div>
+              )
+            })}
+            {relationshipHistoryRows.length > 120 && <div className="px-1.5 py-1 text-[var(--color-text-muted)]">{text(`还有 ${relationshipHistoryRows.length - 120} 条…`, `+${relationshipHistoryRows.length - 120} more…`)}</div>}
+          </div>
+        </details>
+      )}
       {legendKinds.length > 0 && (
         <div
           data-relationship-legend="true"

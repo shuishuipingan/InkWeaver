@@ -425,4 +425,28 @@ describe('RelationshipGraph relation kinds', () => {
     const labelCalls = fillTextCalls.filter((call) => call.text.includes('搭档'))
     expect(new Set(labelCalls.map(call => call.text))).toEqual(new Set(['关系：搭档 / 搭档']))
   })
+
+  it('exposes directed relationship history with source chapters and evidence in an accessible panel', async () => {
+    await act(async () => root.render(
+      <RelationshipGraph characters={[
+        {
+          name: '林墨',
+          role: 'protagonist',
+          relationships: JSON.stringify([
+            { target: '周砧', relation: '信任', direction: 'outgoing', sourceChapter: 3, evidence: '林墨把钥匙交给周砧。' },
+            { target: '周砧', relation: '信任', direction: 'incoming', sourceChapter: 9, evidence: '周砧在危急时刻替林墨挡刀。' },
+          ]),
+        },
+        { name: '周砧', role: 'supporting', relationships: '' },
+      ]} />,
+    ))
+
+    const history = container.querySelector('[data-relationship-history="true"]')
+    expect(history).not.toBeNull()
+    expect(history?.textContent).toContain('关系历史与证据')
+    expect(history?.textContent).toContain('第3章')
+    expect(history?.textContent).toContain('第9章')
+    expect(history?.textContent).toContain('林墨把钥匙交给周砧')
+    expect(history?.textContent).toContain('周砧在危急时刻替林墨挡刀')
+  })
 })
