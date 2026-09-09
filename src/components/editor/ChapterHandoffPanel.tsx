@@ -21,6 +21,22 @@ function statusText(
   return text('来源已过期', 'Source is stale')
 }
 
+function transitionText(
+  transition: ChapterHandoffRecord['transition'],
+  text: ChapterHandoffPanelProps['text'],
+): string {
+  const labels: Record<ChapterHandoffRecord['transition'], [string, string]> = {
+    'continue-scene': ['紧接现场', 'Continue the scene'],
+    'time-jump': ['跨时段', 'Time jump'],
+    'location-change': ['换地点', 'Location change'],
+    'viewpoint-change': ['换视角', 'Viewpoint change'],
+    flashback: ['倒叙', 'Flashback'],
+    'parallel-event': ['并行事件', 'Parallel event'],
+  }
+  const label = labels[transition]
+  return label ? text(...label) : transition
+}
+
 export default function ChapterHandoffPanel({ records, loading = false, confirmingId = null, onConfirm, text }: ChapterHandoffPanelProps) {
   const record = records.find(candidate => candidate.status === 'candidate')
     ?? records.find(candidate => candidate.status === 'confirmed')
@@ -55,6 +71,7 @@ export default function ChapterHandoffPanel({ records, loading = false, confirmi
         </div>
         <div><strong>{text('即时目标：', 'Immediate goal:')}</strong>{record.immediateGoal}</div>
         <div><strong>{text('情绪：', 'Emotion:')}</strong>{record.emotionalState}</div>
+        <div><strong>{text('承接方式：', 'Transition:')}</strong>{transitionText(record.transition, text)}</div>
         {record.unfinishedActions.length > 0 && (
           <div><strong>{text('未完成动作：', 'Unfinished actions:')}</strong>{record.unfinishedActions.join('；')}</div>
         )}
