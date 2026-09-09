@@ -56,6 +56,7 @@ interface RelationshipGraphProps {
     aliases?: readonly string[]
   }>
   projectKey?: string
+  onOpenEvidence?: (chapterNumber: number) => void
 }
 
 /** 关系类型 → 连线线型（canvas setLineDash）与图例样式 */
@@ -90,7 +91,7 @@ const TOOLTIP_ITEMS_LIMIT = 5
  *     所以"适配视图"的目标缩放是 1.8 * w / boxW（0.9 填充率 × 2 倍空间）。
  */
 
-export default function RelationshipGraph({ characters, projectKey }: RelationshipGraphProps) {
+export default function RelationshipGraph({ characters, projectKey, onOpenEvidence }: RelationshipGraphProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const nodesRef = useRef<CharacterNode[]>([])
   const resolvedEdgesRef = useRef<ResolvedEdge[]>([])
@@ -1159,7 +1160,9 @@ export default function RelationshipGraph({ characters, projectKey }: Relationsh
                     <span className="shrink-0 text-[var(--color-text-secondary)]">{item.label}</span>
                     {item.sourceChapter !== undefined && <span className="shrink-0 text-[var(--color-text-muted)]">· {text(`第${item.sourceChapter}章`, `Ch. ${item.sourceChapter}`)}</span>}
                   </div>
-                  {item.evidence && <div className="mt-0.5 truncate pl-3 text-[var(--color-text-muted)]" title={item.evidence}>{item.evidence}</div>}
+                  {item.evidence && (onOpenEvidence && item.sourceChapter !== undefined
+                    ? <button type="button" data-relationship-evidence="true" className="mt-0.5 block max-w-full truncate pl-3 text-left text-[var(--color-accent)] underline-offset-2 hover:underline" title={text(`打开第${item.sourceChapter}章证据`, `Open evidence in Chapter ${item.sourceChapter}`)} onClick={() => onOpenEvidence(item.sourceChapter!)}>{item.evidence}</button>
+                    : <div className="mt-0.5 truncate pl-3 text-[var(--color-text-muted)]" title={item.evidence}>{item.evidence}</div>)}
                 </div>
               )
             })}

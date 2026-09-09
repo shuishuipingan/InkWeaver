@@ -449,4 +449,21 @@ describe('RelationshipGraph relation kinds', () => {
     expect(history?.textContent).toContain('林墨把钥匙交给周砧')
     expect(history?.textContent).toContain('周砧在危急时刻替林墨挡刀')
   })
+
+  it('offers a keyboard-accessible evidence action for the source chapter', async () => {
+    const onOpenEvidence = vi.fn()
+    await act(async () => root.render(
+      <RelationshipGraph
+        onOpenEvidence={onOpenEvidence}
+        characters={[{
+          name: '林墨', role: 'protagonist',
+          relationships: JSON.stringify([{ target: '周砧', relation: '信任', direction: 'outgoing', sourceChapter: 3, evidence: '林墨把钥匙交给周砧。' }]),
+        }, { name: '周砧', role: 'supporting', relationships: '' }]}
+      />,
+    ))
+    const evidence = container.querySelector<HTMLButtonElement>('[data-relationship-evidence="true"]')
+    expect(evidence).not.toBeNull()
+    await act(async () => evidence?.click())
+    expect(onOpenEvidence).toHaveBeenCalledWith(3)
+  })
 })
