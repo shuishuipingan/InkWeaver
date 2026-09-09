@@ -236,6 +236,21 @@ describe('StoryContinuityPanel', () => {
     expect(container.textContent).toContain('门后的人是谁？')
   })
 
+  it('lets the author review and edit an expectation deadline and explicit delay reason', async () => {
+    currentDocumentFixture.readerExpectations = [{
+      id: 'expect-delay', question: '谁寄来的信？', introducedChapter: 1,
+      expectedProgress: '找到来源', dueChapter: 4, status: 'progressing',
+      delayReason: '先完成钥匙转交，再回收信件线索。', evidence: [],
+    }]
+
+    await act(async () => root.render(<StoryContinuityPanel projectKey={PROJECT_PATH} chapterNumber={2} />))
+    await vi.waitFor(() => expect(container.querySelector('input[aria-label="期待期限"]')).not.toBeNull())
+    const due = container.querySelector<HTMLInputElement>('input[aria-label="期待期限"]')
+    const reason = container.querySelector<HTMLInputElement>('input[aria-label="期待延后理由"]')
+    expect(due?.value).toBe('4')
+    expect(reason?.value).toBe('先完成钥匙转交，再回收信件线索。')
+  })
+
 
   it('shows previous viewpoint landing points and reader knowledge', async () => {
     timelineFixtures = []
