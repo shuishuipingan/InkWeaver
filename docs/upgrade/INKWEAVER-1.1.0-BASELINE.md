@@ -67,8 +67,8 @@ historical checkpoint above is intentionally retained.
 
 | Item | Current value |
 | --- | --- |
-| local source HEAD | `31b5e5d` |
-| GitHub development ref | `origin/1.1.0-development` = `31b5e5d` |
+| local source HEAD | `9464c35` |
+| GitHub development ref | `origin/1.1.0-development` = `9464c35` |
 | desktop package version | `0.9.2` (still not frozen) |
 | DSH plugin package version | `0.1.0` (still not frozen) |
 | tracker status | 4 待验收 / 30 开发中 / 4 未开始 / 0 通过 |
@@ -114,3 +114,7 @@ The safe provider qualification dry-run now exercises three adapters, six
 simulated calls, one model lease per provider, budget/usage receipts and
 checksums without credentials or billing; price snapshots remain unavailable
 until a separately authorized real-provider run.
+
+The formal-release backread gate was added in `9464c35`; it checks the seven
+Windows/macOS asset names, final tag state, GitHub SHA-256 digests, and the
+`dsh-plugin` topic. It is not a claim that a public Release exists yet.
