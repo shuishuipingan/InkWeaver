@@ -462,9 +462,10 @@ async function measureWorkbench(page, drawer, screenshots) {
     background: getComputedStyle(root).backgroundColor,
   }))
   const wideRootOverflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
+  const wideMetrics = { drawer: drawerBox, center: centerBox, oneColumn, wideRootOverflow }
   if (Math.abs(drawerBox.x - 386) > 1 || Math.abs(drawerBox.width - 1054) > 1
     || centerBox.x + centerBox.width > drawerBox.x + 1 || oneColumn.overflow > 1 || wideRootOverflow > 1) {
-    throw new Error('Workbench did not preserve the wide native rail, visible conversation, and unclipped authoring canvas')
+    throw new Error(`Workbench did not preserve the wide native rail, visible conversation, and unclipped authoring canvas: ${JSON.stringify(wideMetrics)}`)
   }
   screenshots.push(await capture(page, 'v2-sidebar-wide'))
 
