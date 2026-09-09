@@ -67,8 +67,8 @@ historical checkpoint above is intentionally retained.
 
 | Item | Current value |
 | --- | --- |
-| local source HEAD | `dbde7ec` |
-| GitHub development ref | `origin/1.1.0-development` = `dbde7ec` |
+| local source HEAD | `85d0844` |
+| GitHub development ref | `origin/1.1.0-development` = `85d0844` |
 | desktop package version | `0.9.2` (still not frozen) |
 | DSH plugin package version | `0.1.0` (still not frozen) |
 | tracker status | 4 待验收 / 30 开发中 / 4 未开始 / 0 通过 |
@@ -111,6 +111,9 @@ remain unchanged.
 
 Reader expectations now also expose editable due chapters and explicit delay
 reasons in the continuity sheet (`d7184c5`).
+
+Chapter handoff now displays present characters alongside scene, constraints,
+transition and evidence (`85d0844`).
 
 Review-report source evidence can now open the matching finalized chapter via
 the project session (`ccaa669`).
