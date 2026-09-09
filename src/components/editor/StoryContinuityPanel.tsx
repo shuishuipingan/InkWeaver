@@ -23,7 +23,7 @@ import {
   suggestSceneCandidatesFromText,
 } from '../../shared/story-continuity'
 import { factAppliesAtChapter, type FinalizedContinuityProjection } from '../../shared/finalized-continuity'
-import { aggregateStoryContinuity, type VolumeProgressSummary } from '../../shared/story-continuity-aggregation'
+import { aggregateStoryContinuity, deriveVolumeTrends, type VolumeProgressSummary } from '../../shared/story-continuity-aggregation'
 import { knowledgeEventAppliesAtChapter, type KnowledgeEvent } from '../../shared/knowledge-event'
 import type { ChapterHandoffRecord } from '../../shared/chapter-handoff'
 import { resolveNarrativeThreadDormantThreshold, type NarrativeThreadView } from '../../shared/narrative-thread'
@@ -313,6 +313,7 @@ export default function StoryContinuityPanel({ projectKey, chapterNumber }: Stor
     groups.set(chapter, current)
     return groups
   }, new Map<number, NonNullable<FinalizedContinuityProjection['facts']>>())].sort(([left], [right]) => left - right)
+  const volumeTrends = deriveVolumeTrends(volumeProgress)
 
   return (
     <details className="mt-3 rounded-lg border" data-story-continuity-panel="true" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-panel)' }}>
@@ -431,6 +432,21 @@ export default function StoryContinuityPanel({ projectKey, chapterNumber }: Stor
             {summary.activeExpectationCount > 0 && <div className="text-[var(--color-text-muted)]">{text(`活跃读者期待：${summary.activeExpectationCount} 条`, `Active reader expectations: ${summary.activeExpectationCount}`)}</div>}
             {summary.unresolvedQuestions.length > 0 && <div className="text-[var(--color-text-muted)]">{text(`待回应：${summary.unresolvedQuestions.join('；')}`, `Open questions: ${summary.unresolvedQuestions.join('; ')}`)}</div>}
           </div>)}</div>
+        </section>}
+        {volumeTrends.length > 1 && <section data-volume-trends="true" className="rounded border p-2" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-raised)' }}>
+          <div className="mb-1 flex items-center justify-between gap-2">
+            <h4 className="text-xs font-semibold">{text('跨卷趋势', 'Cross-volume trends')}</h4>
+            <span className="text-[0.68rem] font-normal text-[var(--color-text-muted)]">{text('只读 · 来自已保存工作单', 'Read-only · from saved continuity sheets')}</span>
+          </div>
+          <ol className="space-y-1.5 text-xs" aria-label={text('跨卷主线与支线趋势', 'Cross-volume mainline and subplot trends')}>
+            {volumeTrends.map((trend, index) => <li key={trend.volume} className="rounded border px-2 py-1.5" style={{ borderColor: 'var(--color-border)' }}>
+              <div className="font-medium">{index + 1}. {trend.volume}</div>
+              {trend.newMainlineItems.length > 0 && <div className="text-[var(--color-text-secondary)]">{text(`新主线：${trend.newMainlineItems.join('；')}`, `New mainline: ${trend.newMainlineItems.join('; ')}`)}</div>}
+              {trend.continuedMainlineItems.length > 0 && <div className="text-[var(--color-text-secondary)]">{text(`延续主线：${trend.continuedMainlineItems.join('；')}`, `Continuing mainline: ${trend.continuedMainlineItems.join('; ')}`)}</div>}
+              {trend.newSubplots.length > 0 && <div className="text-[var(--color-text-muted)]">{text(`新支线：${trend.newSubplots.join('；')}`, `New subplot: ${trend.newSubplots.join('; ')}`)}</div>}
+              {trend.newMainlineItems.length === 0 && trend.continuedMainlineItems.length === 0 && trend.newSubplots.length === 0 && <div className="text-[var(--color-text-muted)]">{text('本卷暂未记录新的主线或支线变化', 'No new mainline or subplot change recorded for this volume')}</div>}
+            </li>)}
+          </ol>
         </section>}
         <section>
           <div className="mb-2 flex items-center justify-between gap-2">

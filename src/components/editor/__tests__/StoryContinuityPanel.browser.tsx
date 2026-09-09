@@ -206,4 +206,30 @@ describe('StoryContinuityPanel', () => {
     expect(container.textContent).toContain('读者知道信来自未来')
     expect(container.textContent).toContain('信是谁寄出的')
   })
+
+  it('shows cross-volume trends as an accessible progression of continuing and new threads', async () => {
+    const firstVolume = emptyStoryContinuityDocument(1)
+    firstVolume.arcContribution = {
+      ...firstVolume.arcContribution,
+      volume: '第一卷',
+      mainline: '建立日常',
+      subplots: ['神秘信'],
+    }
+    const secondVolume = emptyStoryContinuityDocument(2)
+    secondVolume.arcContribution = {
+      ...secondVolume.arcContribution,
+      volume: '第二卷',
+      mainline: '建立日常',
+      subplots: ['神秘信', '新支线'],
+    }
+    allDocumentsFixture = [firstVolume, secondVolume]
+
+    await act(async () => root.render(<StoryContinuityPanel projectKey={PROJECT_PATH} chapterNumber={3} />))
+    await vi.waitFor(() => expect(container.querySelector('[data-volume-trends="true"]')).not.toBeNull())
+    expect(container.textContent).toContain('跨卷趋势')
+    expect(container.textContent).toContain('第一卷')
+    expect(container.textContent).toContain('第二卷')
+    expect(container.textContent).toContain('延续主线：建立日常')
+    expect(container.textContent).toContain('新支线：新支线')
+  })
 })
