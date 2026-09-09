@@ -67,8 +67,8 @@ historical checkpoint above is intentionally retained.
 
 | Item | Current value |
 | --- | --- |
-| local source HEAD | `9b03a2f` |
-| GitHub development ref | `origin/1.1.0-development` = `9b03a2f` |
+| local source HEAD | `57707c2` |
+| GitHub development ref | `origin/1.1.0-development` = `57707c2` |
 | desktop package version | `0.9.2` (still not frozen) |
 | DSH plugin package version | `0.1.0` (still not frozen) |
 | tracker status | 4 待验收 / 30 开发中 / 4 未开始 / 0 通过 |
@@ -108,6 +108,10 @@ with a privacy-safe source fingerprint (`fe7df5a`).
 Chapter handoff UI now also displays the selected transition strategy in both
 languages (`9b03a2f`), while the author confirmation and source-binding rules
 remain unchanged.
+
+The G04 CLI now uses Windows-safe `fileURLToPath` entry detection and has a
+regression test proving it cannot silently exit zero without executing the
+backread request (`57707c2`).
 
 The Windows release plan was also re-read on this line; it includes native
 dependency preparation, package/update verification, app/installer/upgrade
