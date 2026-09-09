@@ -53,7 +53,7 @@
 | G01 | 详细文档 | 13 | 主页、指南、截图和更新日志是否真实对应实现？ | 开发中 | 中英文主页已明确 1.1.0 未发布开发线、连续叙事/人物/关系/快照能力和限制；新增 `docs/PROJECT-FILE-GUIDE.md`、`CHANGELOG.md`、DSH 兼容收据、GitHub 分发收据、固定质量样本集、插件 1.1.0 分发清单和 tracker；中英文主页新增 5 分钟快速上手和迁移 FAQ（旧项目、签名、历史修改影响、AI 写入边界、插件关系）；真实新版本截图仍待补齐 |
 | G02 | 版本冻结 | 13 | 桌面、插件、tag、锁文件和构建源码是否一致？ | 开发中 | 新增 `scripts/release-version-sync.mjs` 与 3 项测试，冻结前会校验 desktop/plugin 同一 final semver、正式插件包名 `@shuishuipingan/inkweaver-dsh`，并拒绝 prerelease；当前仍保持桌面 `0.9.2`、插件 `0.1.0`，尚未冻结、打 tag 或构建发布资产 |
 | G03 | 安装包与分发 | 13 | Windows 和两种 macOS 架构同 SHA 资格通过吗？ | 开发中 | 已回读 Windows 资格计划：`test → prepare:native-node → clean:build → build:win:artifacts → verify update/package → smoke app/installer/upgrade → restore native-node → final`；macOS ARM64/x64 workflow 与统一提升合同已存在；当前尚未在 1.1.0 冻结 SHA 上构建或发布任何安装包 |
-| G04 | 发布回读 | 13 | 远端源码、资产、哈希、更新元数据和安装链接核验了吗？ | 未开始 | — |
+| G04 | 发布回读 | 13 | 远端源码、资产、哈希、更新元数据和安装链接核验了吗？ | 开发中 | 新增 `scripts/verify-github-release-assets.mjs` 与 3 项测试，冻结后可回读七项 Windows/macOS Release 资产、final tag、非 draft/prerelease 状态、GitHub SHA-256 digest 和 `dsh-plugin` topic；当前没有正式 Release，实际远端回读仍待发布后执行 |
 
 ## 2. 工单创建模板
 
