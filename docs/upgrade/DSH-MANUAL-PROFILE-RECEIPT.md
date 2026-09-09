@@ -1,6 +1,6 @@
 # DSH 隔离 profile 子门禁收据
 
-日期：2026-09-07（Asia/Hong_Kong）
+日期：2026-09-09（Asia/Hong_Kong）
 
 这是一份开发线子门禁收据，不是正式插件 1.1.0 发布收据。
 `@linxin666/dsh-web-all` 是 DSH 宿主侧的外部 UI companion，不属于 InkWeaver
@@ -10,13 +10,14 @@
 
 | 项目 | 值 |
 | --- | --- |
-| DSH CLI | 本机 `dsh.ps1` |
-| 隔离 DSH_HOME | `C:\Users\shuishui\AppData\Local\Temp\inkweaver-dsh-profile-identity-d10a663ebdd343aead23c05b65b2ddca` |
+| DSH CLI | 官方 Harness commit `a66e4702047846cdaa10c66c9d3df3951f5ea70d` |
+| 隔离 DSH_HOME | `.runtime/.cache/dsh-ai-novel-qualification-128/runs/2026-09-09T11-44-24-930Z-24004/dsh-home` |
 | profile | `web` |
 | tarball | `shuishuipingan-inkweaver-dsh-0.1.0.tgz` |
-| tarball SHA-256 | `D5610294587756B195F78B7197CAC9BA29282B76376D01F51DC5575FA510EEB7` |
-| tarball bytes | `236384` |
+| tarball SHA-256 | `11859a1d8cebf6e2c3f250cbec5a36e6b190607b2d92dadd865be1f1773ec92a` |
+| tarball bytes | `236661` |
 | web UI companion | `@linxin666/dsh-web-all@0.3.17` |
+| machine-readable receipt | `.runtime/.cache/dsh-ai-novel-qualification-128/runs/2026-09-09T11-44-24-930Z-24004/qualification-receipt.json` |
 
 ## 已完成操作
 
@@ -53,8 +54,8 @@
 7. 使用该 profile 启动 `dsh web --no-open --host 127.0.0.1 --port 0`，Playwright 回读页面标题 `DeepSeek Harness`，并看到“小说工作台”入口；页面控制台仍有宿主预览版自身的已知警告，未把它们计为插件失败。
 8. 使用该 profile 的 installed package/preset 路径运行 `web-all-composition.spec.ts`，真实 Loader 请求头隔离测试通过：每个模型请求只包含 `novel_read` 与 `novel_propose_change` 两个小说工具。
 
-## 尚未完成的门禁
+## 当前结论与剩余发布门禁
 
-- 当前插件 qualification 脚本还要求固定 Harness checkout、完整根项目测试、真实 `agentPreset.list`、mount、浏览器 Proposal 同页应用和重启读回。
-- 为保持用户未提交修改不被提交，qualification 使用临时干净 worktree；该 worktree 的 pnpm 安装在下载 `app-builder-bin-5.0.0-alpha.12.tgz` 时超时，因此完整脚本没有被误报为通过。
-- 本收据只证明 tarball/profile add/remove/reinstall 和 dump-config 子门禁；不能替代正式 F02/F03/F04 资格。
+最新完整 qualification 已通过：插件 40 个测试文件、431 tests passed、6 个 Windows symlink privilege tests skipped；Electron typecheck、renderer/main/release suites、Harness build、tarball content、profile add/remove/reinstall、V2 roster/mount、三次 Chrome Web journey、model-tool isolation 和 schema-5 persistence readback 均有 receipt 记录。
+
+这份收据仍然不是桌面 1.1.0 发布收据。版本冻结、Windows/macOS 安装包、npm 发布、GitHub Release 资产和 `dsh-plugin` 主题索引回读仍属于后续发布门禁。
