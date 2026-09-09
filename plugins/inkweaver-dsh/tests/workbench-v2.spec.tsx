@@ -649,6 +649,23 @@ describe('V2 author-first workbench controller', () => {
     })
   })
 
+  it('routes a current session when Harness exposes its preset under projectionValues', () => {
+    const sessions = source({
+      current: SESSION_ID as SessionId | undefined,
+      byId: { [SESSION_ID]: { projectionValues: { agentPreset: 'inkweaver-v2' } } },
+    })
+    const workspaces = source({ items: [{ workspaceId: WORKSPACE_ID, sessionIds: [SESSION_ID] }] })
+    const route = new NovelWorkbenchRouteController()
+    const stop = observeNovelV2Workspace({
+      sessions: { list: sessions, binding: () => undefined },
+      workspaces: { list: workspaces },
+    }, controller(), route)
+
+    expect(route.getSnapshot()).toBe('v2')
+    stop()
+    route.dispose()
+  })
+
   it('does not settle a same-stage retry from an earlier readable request', async () => {
     const prompt = vi.fn().mockResolvedValue({ ok: true as const, value: { accepted: true as const } })
     const workbench = controller({ prompt })
