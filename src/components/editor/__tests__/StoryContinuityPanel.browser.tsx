@@ -115,6 +115,33 @@ describe('StoryContinuityPanel', () => {
     expect(container.textContent).toContain('证据：她看见灯塔熄灭。')
   })
 
+  it('queries effective historical facts for a selected chapter without changing the current sheet', async () => {
+    timelineFixtures = [
+      {
+        draftId: 1, chapterNumber: 1, chapterTitle: '第一章', chapterNotes: '',
+        facts: [{ category: 'item', entities: ['林夏'], statement: '林夏拿到旧钥匙', sourceChapter: 1, validFromChapter: 1, validUntilChapter: 1, evidence: '她把旧钥匙收进口袋。' }],
+      },
+      {
+        draftId: 2, chapterNumber: 2, chapterTitle: '第二章', chapterNotes: '',
+        facts: [{ category: 'location', entities: ['林夏'], statement: '林夏抵达码头', sourceChapter: 2, validFromChapter: 2, evidence: '她在码头等到天亮。' }],
+      },
+    ]
+
+    await act(async () => root.render(<StoryContinuityPanel projectKey={PROJECT_PATH} chapterNumber={3} />))
+    await vi.waitFor(() => expect(container.querySelector('[data-continuity-timeline="true"]')).not.toBeNull())
+    const query = container.querySelector<HTMLSelectElement>('select[aria-label="查询历史状态章节"]')
+    expect(query).not.toBeNull()
+    expect([...query!.options].map(option => option.value)).toEqual(['1', '2', '3'])
+
+    await act(async () => {
+      query!.value = '1'
+      query!.dispatchEvent(new Event('change', { bubbles: true }))
+    })
+    await vi.waitFor(() => expect(container.textContent).toContain('林夏拿到旧钥匙'))
+    expect(container.textContent).not.toContain('林夏抵达码头')
+    expect(container.textContent).toContain('查询第1章时有效事实')
+  })
+
   it('adds evidence-only scene candidates from finalized prose without auto-confirming them', async () => {
     finalizedContent = '她在码头停下，听见仓门里的金属声。\n\n林夏没有推门，先观察守门人的手势。\n\n潮水退去后，暗锁露出一角。'
     await act(async () => root.render(<StoryContinuityPanel projectKey={PROJECT_PATH} chapterNumber={2} />))

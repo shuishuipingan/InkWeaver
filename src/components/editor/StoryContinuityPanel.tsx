@@ -83,12 +83,17 @@ export default function StoryContinuityPanel({ projectKey, chapterNumber }: Stor
   const [notice, setNotice] = useState<string | null>(null)
   const [knowledgeEvents, setKnowledgeEvents] = useState<KnowledgeEvent[]>([])
   const [timeline, setTimeline] = useState<FinalizedContinuityProjection[]>([])
+  const [timelineQueryChapter, setTimelineQueryChapter] = useState(chapterNumber)
   const [volumeProgress, setVolumeProgress] = useState<VolumeProgressSummary[]>([])
   const [previousDocuments, setPreviousDocuments] = useState<StoryContinuityDocument[]>([])
   const [knowledgeReviewEvents, setKnowledgeReviewEvents] = useState<KnowledgeEvent[]>([])
   const [knowledgeUpdatingId, setKnowledgeUpdatingId] = useState<string | null>(null)
   const [extractingScenes, setExtractingScenes] = useState(false)
   const [preparation, setPreparation] = useState<WritingPreparationSummary>({ blueprint: null, handoff: null, narrativeThreads: [] })
+
+  useEffect(() => {
+    setTimelineQueryChapter(chapterNumber)
+  }, [chapterNumber])
 
   const load = async () => {
     const session = captureProjectSession(currentProject)
@@ -318,8 +323,18 @@ export default function StoryContinuityPanel({ projectKey, chapterNumber }: Stor
       .map(thread => ({ ...thread, fromChapter: doc.chapterNumber })))
     .sort((left, right) => left.fromChapter - right.fromChapter)
     .slice(0, 24)
+  const timelineQueryChapters = useMemo(() => {
+    const chapters = new Set<number>([chapterNumber])
+    for (const projection of timeline) {
+      if (Number.isSafeInteger(projection.chapterNumber) && projection.chapterNumber > 0) chapters.add(projection.chapterNumber)
+      for (const fact of projection.facts ?? []) {
+        if (Number.isSafeInteger(fact.sourceChapter) && fact.sourceChapter > 0) chapters.add(fact.sourceChapter)
+      }
+    }
+    return [...chapters].sort((left, right) => left - right)
+  }, [chapterNumber, timeline])
   const timelineFacts = timeline.flatMap(projection => (projection.facts ?? [])
-    .filter(fact => factAppliesAtChapter(fact, chapterNumber)))
+    .filter(fact => factAppliesAtChapter(fact, timelineQueryChapter)))
   const timelineGroups = [...timelineFacts.reduce((groups, fact) => {
     const chapter = fact.sourceChapter
     const current = groups.get(chapter) ?? []
@@ -459,7 +474,22 @@ export default function StoryContinuityPanel({ projectKey, chapterNumber }: Stor
           </section>
         )}
         {timelineGroups.length > 0 && <section data-continuity-timeline="true" className="rounded border p-2" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-raised)' }}>
-          <h4 className="mb-2 text-xs font-semibold">{text('跨章事实时间线', 'Cross-chapter fact timeline')}</h4>
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <h4 className="text-xs font-semibold">{text('跨章事实时间线', 'Cross-chapter fact timeline')}</h4>
+            <label className="flex items-center gap-1 text-[0.68rem] font-normal text-[var(--color-text-muted)]">
+              <span>{text('查询历史状态', 'Query historical state')}</span>
+              <select
+                aria-label={text('查询历史状态章节', 'Chapter for historical state query')}
+                value={timelineQueryChapter}
+                onChange={event => setTimelineQueryChapter(Number(event.target.value))}
+                className="rounded border bg-transparent px-1 py-0.5 text-[0.68rem] text-[var(--color-text)]"
+                style={{ borderColor: 'var(--color-border)' }}
+              >
+                {timelineQueryChapters.map(chapter => <option key={chapter} value={chapter}>{text(`第${chapter}章`, `Chapter ${chapter}`)}</option>)}
+              </select>
+            </label>
+          </div>
+          <div className="mb-2 text-[0.68rem] text-[var(--color-text-muted)]">{text(`查询第${timelineQueryChapter}章时有效事实`, `Facts effective at Chapter ${timelineQueryChapter}`)}</div>
           <div className="space-y-1.5">{timelineGroups.map(([sourceChapter, facts]) => <details key={sourceChapter} open className="rounded border px-2 py-1.5" style={{ borderColor: 'var(--color-border)' }}>
             <summary className="cursor-pointer text-xs font-medium">{text(`第${sourceChapter}章 · ${facts.length} 条有效事实`, `Chapter ${sourceChapter} · ${facts.length} active facts`)}</summary>
             <div className="mt-2 space-y-2">{facts.map((fact, index) => <div key={`${sourceChapter}:${fact.category}:${index}`} className="border-l-2 pl-2 text-xs" style={{ borderColor: 'var(--color-accent)' }}>
