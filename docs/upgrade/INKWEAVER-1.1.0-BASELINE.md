@@ -67,8 +67,8 @@ historical checkpoint above is intentionally retained.
 
 | Item | Current value |
 | --- | --- |
-| local source HEAD | `f1e9f6b` |
-| GitHub development ref | `origin/1.1.0-development` = `f1e9f6b` |
+| local source HEAD | `fe7df5a` |
+| GitHub development ref | `origin/1.1.0-development` = `fe7df5a` |
 | desktop package version | `0.9.2` (still not frozen) |
 | DSH plugin package version | `0.1.0` (still not frozen) |
 | tracker status | 4 待验收 / 30 开发中 / 4 未开始 / 0 通过 |
@@ -102,4 +102,5 @@ tarball, npm, topic-index, and rollback gates without claiming they are done.
 
 The character candidate panel now also exposes a dedicated growth-arc/state
 review section (`f1e9f6b`); the underlying merge and author-confirmation gates
-remain unchanged.
+remain unchanged. C01 source coverage is now visible in the candidate panel
+with a privacy-safe source fingerprint (`fe7df5a`).
