@@ -67,8 +67,8 @@ historical checkpoint above is intentionally retained.
 
 | Item | Current value |
 | --- | --- |
-| local source HEAD | `7db8b7e` |
-| GitHub development ref | `origin/1.1.0-development` = `7db8b7e` |
+| local source HEAD | `c14f2ec` |
+| GitHub development ref | `origin/1.1.0-development` = `c14f2ec` |
 | desktop package version | `0.9.2` (still not frozen) |
 | DSH plugin package version | `0.1.0` (still not frozen) |
 | tracker status | 4 待验收 / 30 开发中 / 4 未开始 / 0 通过 |
@@ -77,7 +77,7 @@ historical checkpoint above is intentionally retained.
 Since the historical checkpoint, the development line has also added the
 read-only cross-volume trend view (`681fa15`), chronological reader-knowledge
 ledger (`a622847`), character-growth ledger (`4a0fbe5`), relationship history
-and evidence panel (`8a20fe9`), and cross-volume narrative-thread summary
-(`d1b26e5`), and historical-state chapter query (`f3f2d2d`). These have browser
-regression coverage and are still subject to long-form human review; they are
-not release claims.
+and evidence panel (`8a20fe9`), cross-volume narrative-thread summary
+(`d1b26e5`), historical-state chapter query (`f3f2d2d`), and scene causality
+gap warnings (`df16a42`). These have browser regression coverage and are still
+subject to long-form human review; they are not release claims.
