@@ -1,6 +1,6 @@
 # 1.1.0 GitHub / 分发核验收据（开发线）
 
-核验日期：2026-09-10（Asia/Hong_Kong）
+核验日期：2026-09-11（Asia/Hong_Kong）
 
 这不是正式 Release 收据。它记录当前开发线已经完成的远端同步与发现性检查，避免把开发分支、npm 兼容性或 GitHub topic 元数据误写成 1.1.0 正式发布。
 
@@ -11,7 +11,7 @@
 | 仓库 | `shuishuipingan/InkWeaver` |
 | GitHub About Homepage | `https://github.com/shuishuipingan/InkWeaver#readme`（已回读；不指向未发布 Release） |
 | 开发分支 | `1.1.0-development` |
-| 本地/远端 SHA | 最近一次回读：本地 HEAD 与 `origin/1.1.0-development` 均为 `0f0c4ec`；每次后续推送仍需重新执行 `git rev-parse HEAD` 与 `git ls-remote --heads origin 1.1.0-development`，本收据不把旧父提交冒充为永久当前 SHA。 |
+| 本地/远端 SHA | 最近一次回读：本地 HEAD 与 `origin/1.1.0-development` 均为 `69ea3c6`；每次后续推送仍需重新执行 `git rev-parse HEAD` 与 `git ls-remote --heads origin 1.1.0-development`，本收据不把旧父提交冒充为永久当前 SHA。 |
 | 远端主线 | `main` 保持既有 v1.0.0 线，未被开发分支推送覆盖 |
 | 开发 PR | GitHub 为该分支提供 `https://github.com/shuishuipingan/InkWeaver/pull/new/1.1.0-development` |
 
