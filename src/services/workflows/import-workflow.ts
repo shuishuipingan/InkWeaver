@@ -25,6 +25,11 @@ import { retryDirectoryCharacterSync } from './directory-character-sync-recovery
 import type { WritingLanguage } from '../../shared/writing-language'
 import { countDraftUnits } from '../../shared/draft-units'
 import { FINALIZATION_SHARED_WRITE_RESOURCE_KINDS } from '../../shared/workflow-resource-claims'
+import {
+  canResumeWorkflowCheckpoint,
+  type WorkflowRecoveryCheckpoint,
+} from '../../shared/workflow-recovery'
+import { randomUUID } from '../../utils/id'
 
 export interface ImportWorkflowParams {
   projectPath: string
@@ -34,6 +39,45 @@ export interface ImportWorkflowParams {
   executionOwner: string
   /** Durable manifest chapter numbers; required for author-manuscript writes. */
   authorChapterNumbers?: readonly number[]
+}
+
+/**
+ * Rebuild a complete import definition from the durable run after an app
+ * restart. The recovery checkpoint itself contains no source prose or model
+ * output; SQLite remains the authority for the frozen import manifest.
+ */
+export async function resumeImportWorkflowFromCheckpoint(
+  checkpoint: WorkflowRecoveryCheckpoint,
+  currentSession: ProjectSessionContext,
+): Promise<WorkflowDefinition> {
+  if (checkpoint.type !== 'novel_import') {
+    throw new Error('该恢复收据不是小说导入工作流，不能由导入恢复入口处理')
+  }
+  if (!canResumeWorkflowCheckpoint(checkpoint, currentSession)) {
+    throw new Error('恢复收据所属项目会话已变化，已拒绝继续导入')
+  }
+  const run = await ipc.invokeWithProjectSession(
+    currentSession,
+    'db:import-run-get',
+    checkpoint.runId,
+    currentSession.projectPath,
+  )
+  if (!run || run.id !== checkpoint.runId) {
+    throw new Error('持久化导入运行不存在，无法恢复')
+  }
+  if (run.status === 'completed' || !run.resumable) {
+    throw new Error('该导入运行已完成或不可恢复')
+  }
+  const authorChapterNumbers = run.purpose === 'author-manuscript'
+    ? await loadAuthorImportChapterNumbers(run, currentSession, currentSession.projectPath)
+    : undefined
+  return createImportWorkflow({
+    projectPath: currentSession.projectPath,
+    projectSession: currentSession,
+    run,
+    executionOwner: `workflow-recovery:${run.id}:${randomUUID()}`,
+    ...(authorChapterNumbers === undefined ? {} : { authorChapterNumbers }),
+  })
 }
 
 function textForLocale(locale: ImportRunSnapshot['locale'], zhCNText: string, enUSText: string): string {
