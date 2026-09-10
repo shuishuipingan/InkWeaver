@@ -145,7 +145,8 @@ describe('release qualification runner', () => {
     const installedRoot = join(root, 'installed')
     await cp(packageRoot, installedRoot, {
       recursive: true,
-      filter: source => !source.includes(`${sep}node_modules`),
+      filter: source => !source.includes(`${sep}node_modules`)
+        && !source.includes(`${sep}.runtime-v2-recompose-`),
     })
 
     await expect(execFileAsync(process.execPath, [
