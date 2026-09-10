@@ -11,7 +11,7 @@
 | 仓库 | `shuishuipingan/InkWeaver` |
 | GitHub About Homepage | `https://github.com/shuishuipingan/InkWeaver#readme`（已回读；不指向未发布 Release） |
 | 开发分支 | `1.1.0-development` |
-| 本地/远端 SHA | 最近一次回读：本地 HEAD 与 `origin/1.1.0-development` 均为 `07bcbda`；每次后续推送仍需重新执行 `git rev-parse HEAD` 与 `git ls-remote --heads origin 1.1.0-development`，本收据不把旧父提交冒充为永久当前 SHA。 |
+| 功能源码 SHA | 本次分发收据更新前已回读为 `07bcbda`；本文件随后只做收据文字更新，不改变功能源码。每次后续推送仍需重新执行 `git rev-parse HEAD` 与 `git ls-remote --heads origin 1.1.0-development`，本收据不把旧父提交冒充为永久当前 SHA。 |
 | 远端主线 | `main` 保持既有 v1.0.0 线，未被开发分支推送覆盖 |
 | 开发 PR | GitHub 为该分支提供 `https://github.com/shuishuipingan/InkWeaver/pull/new/1.1.0-development` |
 
