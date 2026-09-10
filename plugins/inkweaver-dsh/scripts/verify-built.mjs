@@ -65,6 +65,7 @@ host.provide('connection', {
 })
 host.provide('workspaceRegistry', { get: () => undefined })
 host.provide('settings', { register: () => ({}) })
+host.provide('webServer', { register: () => async () => {} })
 await host.plugin(Loader)
 host.loader.builtins.include = Include
 const builtModule = await import(pathToFileURL(join(root, manifest.main)).href)
