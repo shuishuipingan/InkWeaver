@@ -16,7 +16,11 @@ const UPDATE_SECTION_VITE_CACHE_DIR = path.join(repositoryRoot, '.runtime', '.ca
 // the same time. On a clean Windows checkout Vite may also rebuild its React
 // dependency cache before the first page can execute; allow that cold start
 // without hiding assertion failures in the interaction itself.
-const COLD_BROWSER_INTERACTION_TIMEOUT_MS = 180_000
+// The first Vite transform of the full renderer graph can exceed three minutes
+// on a clean Windows release checkout. This is a cold-start budget, not an
+// assertion retry: once the page is ready every interaction remains bounded by
+// Playwright's normal locator/function timeouts.
+const COLD_BROWSER_INTERACTION_TIMEOUT_MS = 300_000
 
 async function findFreePort(): Promise<number> {
   const probe = createNetServer()
