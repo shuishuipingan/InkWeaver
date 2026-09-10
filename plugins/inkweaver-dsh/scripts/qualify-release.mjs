@@ -19,7 +19,6 @@ const webUiAllPackage = '@linxin666/dsh-web-all'
 const webUiAllVersion = '0.3.20'
 const directoryPickerPackages = [
   '@deepseek-ai/dsh-host-directory-picker-browse',
-  '@deepseek-ai/dsh-client-ui-directory-picker-browse',
 ]
 const directoryPickerVersion = '0.1.5-rc.1'
 const profileName = 'web'
@@ -966,9 +965,6 @@ async function writeQualificationOverlay(path, backend) {
     "  name: '@deepseek-ai/dsh-host-directory-picker-browse'",
     '',
     '- insert:',
-    '    - id: ui-directory-picker-browse',
-    "      name: '@deepseek-ai/dsh-client-ui-directory-picker-browse'",
-    '',
     '    - id: ai-novel-qualification-model',
     `      name: ${JSON.stringify(backend)}`,
     '',
