@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const ipcMocks = vi.hoisted(() => ({ invoke: vi.fn() }))
 vi.mock('../../ipc-client', () => ({ ipc: { invokeWithProjectSession: ipcMocks.invoke } }))
 
-import { resumeChapterRefineWorkflowFromCheckpoint, resumeChapterReviewWorkflowFromCheckpoint } from '../chapter-workflow'
+import { resumeChapterFinalizeWorkflowFromCheckpoint, resumeChapterRefineWorkflowFromCheckpoint, resumeChapterReviewWorkflowFromCheckpoint } from '../chapter-workflow'
 
 const session = { projectId: 'review-project', leaseId: 'lease-a', projectPath: 'C:\\review-project' } as const
 
@@ -68,6 +68,34 @@ describe('chapter review workflow recovery', () => {
         chapterNumber: 3,
         chapterTitle: '雾港',
         userRefinePrompt: '加强节奏和情绪余波',
+      },
+    }, session)
+
+    expect(workflow).toMatchObject({ type: 'chapter_creation', projectSession: session })
+    expect(workflow.steps).toHaveLength(1)
+  })
+
+  it('reloads draft authority for a finalize-only recovery without persisting prose', async () => {
+    const workflow = await resumeChapterFinalizeWorkflowFromCheckpoint({
+      schemaVersion: 1,
+      runId: 'finalize-run',
+      projectPath: session.projectPath,
+      projectSession: session,
+      type: 'chapter_creation',
+      title: '定稿 — 第3章 雾港',
+      writingLanguage: 'zh-CN',
+      uiLocale: 'zh-CN',
+      boundary: 'failed',
+      currentStepIndex: 0,
+      steps: [],
+      createdAt: '2026-01-01',
+      updatedAt: '2026-01-01',
+      resumeMetadata: {
+        kind: 'chapter-finalize',
+        draftPath: 'vela://draft/9',
+        chapterNumber: 3,
+        chapterTitle: '雾港',
+        enableChapterHandoff: true,
       },
     }, session)
 

@@ -24,7 +24,7 @@ import { resumeImportWorkflowFromCheckpoint } from '../../services/workflows/imp
 import { resumeBatchChapterWorkflowFromCheckpoint } from '../../services/workflows/batch-chapter-workflow'
 import { resumeChapterDraftWorkflowFromCheckpoint } from '../../services/workflows/chapter-workflow'
 import { resumeCharacterExtractionWorkflowFromCheckpoint } from '../../services/workflows/character-extraction-workflow'
-import { resumeChapterRefineWorkflowFromCheckpoint, resumeChapterReviewWorkflowFromCheckpoint } from '../../services/workflows/chapter-workflow'
+import { resumeChapterFinalizeWorkflowFromCheckpoint, resumeChapterRefineWorkflowFromCheckpoint, resumeChapterReviewWorkflowFromCheckpoint } from '../../services/workflows/chapter-workflow'
 import {
   coarseRuntimePlatform,
   formatSafeCallDiagnostic,
@@ -276,8 +276,9 @@ function WorkflowRecoveryReceipts() {
     const isChapterDraft = checkpoint.type === 'chapter_creation' && checkpoint.resumeMetadata?.kind === 'chapter-draft'
     const isChapterReview = checkpoint.type === 'chapter_creation' && checkpoint.resumeMetadata?.kind === 'chapter-review'
     const isChapterRefine = checkpoint.type === 'chapter_creation' && checkpoint.resumeMetadata?.kind === 'chapter-refine'
+    const isChapterFinalize = checkpoint.type === 'chapter_creation' && checkpoint.resumeMetadata?.kind === 'chapter-finalize'
     const isCharacterExtraction = checkpoint.type === 'character_extraction' && checkpoint.resumeMetadata?.kind === 'character-extraction'
-    if (!session || (!['novel_import', 'batch_generate'].includes(checkpoint.type) && !isChapterDraft && !isChapterReview && !isChapterRefine && !isCharacterExtraction)) return
+    if (!session || (!['novel_import', 'batch_generate'].includes(checkpoint.type) && !isChapterDraft && !isChapterReview && !isChapterRefine && !isChapterFinalize && !isCharacterExtraction)) return
     setResumingRunId(checkpoint.runId)
     try {
       const workflow = checkpoint.type === 'novel_import'
@@ -289,6 +290,8 @@ function WorkflowRecoveryReceipts() {
                 ? await resumeChapterReviewWorkflowFromCheckpoint(checkpoint, session)
                 : checkpoint.resumeMetadata?.kind === 'chapter-refine'
                   ? await resumeChapterRefineWorkflowFromCheckpoint(checkpoint, session)
+                  : checkpoint.resumeMetadata?.kind === 'chapter-finalize'
+                    ? await resumeChapterFinalizeWorkflowFromCheckpoint(checkpoint, session)
                 : resumeChapterDraftWorkflowFromCheckpoint(checkpoint, session)
               : await resumeCharacterExtractionWorkflowFromCheckpoint(checkpoint, session)
       void useWorkflowStore.getState().startWorkflow(workflow, false).catch(error => {
@@ -327,6 +330,7 @@ function WorkflowRecoveryReceipts() {
             || (checkpoint.type === 'chapter_creation' && checkpoint.resumeMetadata?.kind === 'chapter-draft')
             || (checkpoint.type === 'chapter_creation' && checkpoint.resumeMetadata?.kind === 'chapter-review')
             || (checkpoint.type === 'chapter_creation' && checkpoint.resumeMetadata?.kind === 'chapter-refine')
+            || (checkpoint.type === 'chapter_creation' && checkpoint.resumeMetadata?.kind === 'chapter-finalize')
             || (checkpoint.type === 'character_extraction' && checkpoint.resumeMetadata?.kind === 'character-extraction')
           )
           const completed = checkpoint.steps.filter(step => step.status === 'completed').length
@@ -366,6 +370,8 @@ function WorkflowRecoveryReceipts() {
                         ? text('继续审稿', 'Resume review')
                         : checkpoint.resumeMetadata?.kind === 'chapter-refine'
                           ? text('继续修稿', 'Resume revision')
+                          : checkpoint.resumeMetadata?.kind === 'chapter-finalize'
+                            ? text('继续定稿', 'Resume finalization')
                         : text('继续写稿', 'Resume draft writing')
                       : checkpoint.type === 'character_extraction'
                         ? text('继续提取人物', 'Resume character extraction')
