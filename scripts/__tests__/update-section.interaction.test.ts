@@ -12,9 +12,10 @@ const chromeExecutable = process.env.CHROME_PATH ?? 'C:\\Program Files\\Google\\
 const describeWithChrome = existsSync(chromeExecutable) ? describe : describe.skip
 const VITE_SERVER_HOOK_TIMEOUT_MS = 30_000
 // The full desktop suite exercises native workers and PowerShell processes at
-// the same time; allow the first Chromium page to cold-start without hiding
-// assertion failures in the interaction itself.
-const COLD_BROWSER_INTERACTION_TIMEOUT_MS = 60_000
+// the same time. On a clean Windows checkout Vite may also rebuild its React
+// dependency cache before the first page can execute; allow that cold start
+// without hiding assertion failures in the interaction itself.
+const COLD_BROWSER_INTERACTION_TIMEOUT_MS = 120_000
 
 async function findFreePort(): Promise<number> {
   const probe = createNetServer()
