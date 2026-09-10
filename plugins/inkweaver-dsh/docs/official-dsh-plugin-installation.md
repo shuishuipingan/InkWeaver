@@ -1,6 +1,6 @@
 # DeepSeek Harness 插件安装：官方流程与本机验证
 
-> 调研基线：DeepSeek Harness `a66e4702047846cdaa10c66c9d3df3951f5ea70d`，2026-08-16。本文只依据固定版本仓库中的官方 CLI、测试与内置 Cordis Skills，以及 DeepSeek Harness 官方 GitHub 仓库。
+> 调研基线：DeepSeek Harness `183f08e9c6dde7e36cd2318eaee70b0da08fb35e`（`dsh-v0.1.5-rc.1`），2026-09-11。本文只依据固定版本仓库中的官方 CLI、测试与内置 Cordis Skills，以及 DeepSeek Harness 官方 GitHub 仓库。
 
 ## 结论
 

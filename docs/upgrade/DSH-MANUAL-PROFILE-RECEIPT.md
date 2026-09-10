@@ -10,7 +10,7 @@
 
 | 项目 | 值 |
 | --- | --- |
-| DSH CLI | 官方 Harness commit `a66e4702047846cdaa10c66c9d3df3951f5ea70d` |
+| DSH CLI | 官方 Harness commit `183f08e9c6dde7e36cd2318eaee70b0da08fb35e` (`dsh-v0.1.5-rc.1`) |
 | 隔离 DSH_HOME | `.runtime/.cache/dsh-ai-novel-qualification-128/runs/2026-09-09T11-44-24-930Z-24004/dsh-home` |
 | profile | `web` |
 | tarball | `shuishuipingan-inkweaver-dsh-0.1.0.tgz` |

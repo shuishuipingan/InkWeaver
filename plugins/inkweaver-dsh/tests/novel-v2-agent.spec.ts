@@ -83,7 +83,7 @@ async function executeV2ReadThroughToolRuntime(root: string): Promise<unknown> {
 
 /** Build a real preset recompose path, including one unrelated inherited Host tool. */
 async function createV1ToV2RecomposeHarness(root: string): Promise<{ readonly ctx: Context; readonly agent: NonNullable<ReturnType<Context['agents']['roots']>[number]> }> {
-  // dsh-agent-presets@0.1.2-rc.1 validates package rows relative to the
+  // dsh-agent-presets@0.1.5-rc.1 validates package rows relative to the
   // Loader composition base. Keep this temporary composition beside the
   // installed package dependencies; the novel workspace remains isolated.
   const configPath = join(PLUGIN_ROOT, `.runtime-v2-recompose-${Date.now()}.cordis.yml`)
