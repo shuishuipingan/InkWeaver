@@ -172,6 +172,33 @@ async function connectWorkspace(page, { createSession = true } = {}) {
   if (createSession) await createWorkspaceSession(page, workspaceName)
 }
 
+/**
+ * Register the disposable qualification workspace through the official
+ * workspace-controller Remote before opening the shell picker. DSH 0.1.5
+ * ships the directory-picker seam as an optional host composition; the
+ * InkWeaver qualification is about the plugin's roster/mount/browser flow,
+ * so it must not fail on an unrelated native/browse picker package.
+ */
+async function registerQualificationWorkspace(page) {
+  const response = await page.evaluate(async path => {
+    const result = await fetch('/api/workspace/create', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        type: 'client-request',
+        rpcId: crypto.randomUUID(),
+        method: 'workspace/create',
+        payload: { path },
+      }),
+    })
+    if (!result.ok) throw new Error(`workspace/create transport failed: HTTP ${result.status}`)
+    return result.json()
+  }, workspaceRoot)
+  if (response?.result?.ok !== true || response.result.value?.workspace?.path !== workspaceRoot) {
+    throw new Error(`workspace/create did not register the qualification path: ${JSON.stringify(response)}`)
+  }
+}
+
 async function createWorkspaceSession(page, workspaceName) {
   const existing = page.getByRole('treeitem', { name: workspaceName, exact: true })
   await existing.hover().catch(() => undefined)
@@ -551,6 +578,7 @@ try {
   await page.locator('[class*="frame"]').waitFor({ state: 'visible', timeout: 30_000 })
   await page.waitForTimeout(1_000)
   await finishOnboarding(page)
+  await registerQualificationWorkspace(page)
   await connectWorkspace(page)
   const screenshots = []
   const pluginCard = await settingsEvidence(page, screenshots)
