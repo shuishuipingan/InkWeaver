@@ -67,12 +67,12 @@ historical checkpoint above is intentionally retained.
 
 | Item | Current value |
 | --- | --- |
-| local source HEAD | `399c682` |
+| local source HEAD | `585eb2f` |
 | GitHub development ref | `origin/1.1.0-development` = `37de02c` (local qualification commits are not pushed yet) |
 | desktop package version | `0.9.2` (still not frozen) |
 | DSH plugin package version | `0.1.0` (still not frozen) |
 | tracker status | 4 待验收 / 34 开发中 / 0 未开始 / 0 通过 |
-| latest full DSH qualification | `passed`, run `2026-09-10T16-21-03-366Z-25984` against source `399c682`, Harness `a66e4702`, tarball SHA-256 `c155963bad245f4f939732eee2bc57006a9046d4eb0440f29f1295cbba1d907d` |
+| latest full DSH qualification | `passed`, run `2026-09-10T16-21-03-366Z-25984` against source `399c682`, Harness `a66e4702`; docs-only commits `cd256bd` and `585eb2f` follow; tarball SHA-256 `c155963bad245f4f939732eee2bc57006a9046d4eb0440f29f1295cbba1d907d` |
 
 Since the historical checkpoint, the development line has also added the
 read-only cross-volume trend view (`681fa15`), chronological reader-knowledge
