@@ -47,6 +47,43 @@ export interface ConfigGenerationWorkflowParams {
   onGenerated: (config: Partial<NovelConfig>) => void
 }
 
+/** Rebuild configuration generation from the serialized user inputs only. */
+export function resumeConfigGenerationWorkflowFromCheckpoint(
+  checkpoint: WorkflowRecoveryCheckpoint,
+  currentSession: ProjectSessionContext,
+): WorkflowDefinition {
+  if (checkpoint.type !== 'config_generation' || checkpoint.resumeMetadata?.kind !== 'config-generation') {
+    throw new Error('该恢复收据不是配置生成工作流，不能由配置恢复入口处理')
+  }
+  if (!canResumeWorkflowCheckpoint(checkpoint, currentSession)) {
+    throw new Error('恢复收据所属项目会话已变化，已拒绝继续配置生成')
+  }
+
+  const metadata = checkpoint.resumeMetadata
+  const idea = typeof metadata.idea === 'string' ? metadata.idea.trim() : ''
+  if (!idea) throw new Error('配置恢复收据缺少创作脑洞')
+  const totalChapters = parsePositiveInteger(metadata.totalChapters, '总章数')
+  const wordsPerChapter = parsePositiveInteger(metadata.wordsPerChapter, '每章字数')
+
+  return createConfigGenerationWorkflow({
+    projectPath: currentSession.projectPath,
+    projectSession: currentSession,
+    idea,
+    totalChapters,
+    wordsPerChapter,
+    onGenerated: (config) => {
+      useProjectStore.getState().updateNovelConfig(config, currentSession)
+    },
+  })
+}
+
+function parsePositiveInteger(value: unknown, label: string): number {
+  if (!Number.isSafeInteger(value) || Number(value) < 1) {
+    throw new Error(`配置恢复收据的${label}无效`)
+  }
+  return Number(value)
+}
+
 /** Rebuild architecture generation from selected steps and safe guidance only. */
 export function resumeArchitectureWorkflowFromCheckpoint(
   checkpoint: WorkflowRecoveryCheckpoint,
@@ -205,6 +242,12 @@ export function createConfigGenerationWorkflow(params: ConfigGenerationWorkflowP
     title: text('AI 生成小说配置', 'Generate novel configuration with AI'),
     projectPath: params.projectPath,
     projectSession,
+    resumeMetadata: {
+      kind: 'config-generation',
+      idea: params.idea,
+      totalChapters: params.totalChapters,
+      wordsPerChapter: params.wordsPerChapter,
+    },
     resourceKeys: [workflowResourceKey('novel-config')],
     steps: [
       {

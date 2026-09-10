@@ -20,6 +20,7 @@ import type {
 } from '../../../electron/repositories/blueprint-repository'
 import { stripThinkingTags } from './workflow-utils'
 import { requireWorkflowProjectSession } from './workflow-project-session'
+import { canResumeWorkflowCheckpoint, type WorkflowRecoveryCheckpoint } from '../../shared/workflow-recovery'
 
 // ==========================================
 // 1. 结构与类型导出 (保留对外的向后兼容)
@@ -42,6 +43,49 @@ export interface DirectoryWorkflowProjectSnapshot {
     globalGuidance?: string
     genre?: string
   }>
+}
+
+/** Rebuild chapter blueprint generation from safe inputs and current SQLite authority. */
+export function resumeDirectoryWorkflowFromCheckpoint(
+  checkpoint: WorkflowRecoveryCheckpoint,
+  currentSession: ProjectSessionContext,
+): WorkflowDefinition {
+  if (checkpoint.type !== 'directory' || checkpoint.resumeMetadata?.kind !== 'directory-generation') {
+    throw new Error('该恢复收据不是章节蓝图生成工作流，不能由蓝图恢复入口处理')
+  }
+  if (!canResumeWorkflowCheckpoint(checkpoint, currentSession)) {
+    throw new Error('恢复收据所属项目会话已变化，已拒绝继续章节蓝图生成')
+  }
+
+  const metadata = checkpoint.resumeMetadata
+  const mode = metadata.mode
+  if (mode !== 'full' && mode !== 'append') {
+    throw new Error('蓝图恢复收据的生成模式无效')
+  }
+  const startChapter = parseOptionalPositiveInteger(metadata.startChapter, '起始章节')
+  const count = parseOptionalPositiveInteger(metadata.count, '章节数量')
+  const pacingGuidance = typeof metadata.pacingGuidance === 'string'
+    ? metadata.pacingGuidance
+    : undefined
+
+  return createDirectoryWorkflow(
+    {
+      mode,
+      ...(startChapter === undefined ? {} : { startChapter }),
+      ...(count === undefined ? {} : { count }),
+      ...(pacingGuidance === undefined ? {} : { pacingGuidance }),
+    },
+    currentSession.projectPath,
+    currentSession,
+  )
+}
+
+function parseOptionalPositiveInteger(value: unknown, label: string): number | undefined {
+  if (value === undefined) return undefined
+  if (!Number.isSafeInteger(value) || Number(value) < 1) {
+    throw new Error(`蓝图恢复收据的${label}无效`)
+  }
+  return Number(value)
 }
 
 // ==========================================
@@ -264,6 +308,13 @@ export function createDirectoryWorkflow(
       title: params.mode === 'append' ? `续写章节蓝图${params.startChapter ? `（从第 ${params.startChapter} 章）` : ''}` : '生成章节蓝图（全量）',
     projectPath: expectedProjectPath,
     projectSession,
+    resumeMetadata: {
+      kind: 'directory-generation',
+      mode: params.mode,
+      ...(params.startChapter === undefined ? {} : { startChapter: params.startChapter }),
+      ...(params.count === undefined ? {} : { count: params.count }),
+      ...(params.pacingGuidance === undefined ? {} : { pacingGuidance: params.pacingGuidance }),
+    },
     resourceKeys: [
       workflowResourceKey('blueprints'),
       workflowResourceKey('character-roster'),

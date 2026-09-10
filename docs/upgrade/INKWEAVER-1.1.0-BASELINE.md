@@ -62,13 +62,13 @@ remain explicit later gates.
 
 ## Latest development checkpoint
 
-Recorded: 2026-09-09 (Asia/Hong_Kong). This is an additive progress note; the
+Recorded: 2026-09-11 (Asia/Hong_Kong). This is an additive progress note; the
 historical checkpoint above is intentionally retained.
 
 | Item | Current value |
 | --- | --- |
-| local source HEAD | `585eb2f` |
-| GitHub development ref | `origin/1.1.0-development` = `37de02c` (local qualification commits are not pushed yet) |
+| local source HEAD | `31d3c2e` |
+| GitHub development ref | local `origin/1.1.0-development` = `ffe3ddd`; local HEAD is one documentation-only commit ahead and still needs a network push |
 | desktop package version | `0.9.2` (still not frozen) |
 | DSH plugin package version | `0.1.0` (still not frozen) |
 | tracker status | 4 待验收 / 34 开发中 / 0 未开始 / 0 通过 |
@@ -111,6 +111,12 @@ remain unchanged.
 
 Reader expectations now also expose editable due chapters and explicit delay
 reasons in the continuity sheet (`d7184c5`).
+
+The workflow recovery surface now also has workflow-specific factories for
+configuration generation and chapter-blueprint generation, including recovery
+panel actions and safe-input validation. These additions are covered by the
+generation recovery test; the E05 row remains in development until the
+complete cross-workflow audit and human acceptance are recorded.
 
 Chapter handoff now displays present characters alongside scene, constraints,
 transition and evidence (`85d0844`).

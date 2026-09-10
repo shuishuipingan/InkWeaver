@@ -24,7 +24,8 @@ import { resumeImportWorkflowFromCheckpoint } from '../../services/workflows/imp
 import { resumeBatchChapterWorkflowFromCheckpoint } from '../../services/workflows/batch-chapter-workflow'
 import { resumeChapterDraftWorkflowFromCheckpoint } from '../../services/workflows/chapter-workflow'
 import { resumeCharacterExtractionWorkflowFromCheckpoint } from '../../services/workflows/character-extraction-workflow'
-import { resumeArchitectureWorkflowFromCheckpoint } from '../../services/workflows/architecture-workflow'
+import { resumeArchitectureWorkflowFromCheckpoint, resumeConfigGenerationWorkflowFromCheckpoint } from '../../services/workflows/architecture-workflow'
+import { resumeDirectoryWorkflowFromCheckpoint } from '../../services/workflows/directory-workflow'
 import { resumeChapterFinalizeWorkflowFromCheckpoint, resumeChapterRefineWorkflowFromCheckpoint, resumeChapterReviewWorkflowFromCheckpoint } from '../../services/workflows/chapter-workflow'
 import {
   coarseRuntimePlatform,
@@ -280,7 +281,9 @@ function WorkflowRecoveryReceipts() {
     const isChapterFinalize = checkpoint.type === 'chapter_creation' && checkpoint.resumeMetadata?.kind === 'chapter-finalize'
     const isCharacterExtraction = checkpoint.type === 'character_extraction' && checkpoint.resumeMetadata?.kind === 'character-extraction'
     const isArchitecture = checkpoint.type === 'architecture_generation' && checkpoint.resumeMetadata?.kind === 'architecture'
-    if (!session || (!['novel_import', 'batch_generate'].includes(checkpoint.type) && !isChapterDraft && !isChapterReview && !isChapterRefine && !isChapterFinalize && !isCharacterExtraction && !isArchitecture)) return
+    const isConfigGeneration = checkpoint.type === 'config_generation' && checkpoint.resumeMetadata?.kind === 'config-generation'
+    const isDirectoryGeneration = checkpoint.type === 'directory' && checkpoint.resumeMetadata?.kind === 'directory-generation'
+    if (!session || (!['novel_import', 'batch_generate'].includes(checkpoint.type) && !isChapterDraft && !isChapterReview && !isChapterRefine && !isChapterFinalize && !isCharacterExtraction && !isArchitecture && !isConfigGeneration && !isDirectoryGeneration)) return
     setResumingRunId(checkpoint.runId)
     try {
       const workflow = checkpoint.type === 'novel_import'
@@ -297,7 +300,11 @@ function WorkflowRecoveryReceipts() {
                 : resumeChapterDraftWorkflowFromCheckpoint(checkpoint, session)
             : checkpoint.type === 'character_extraction'
               ? await resumeCharacterExtractionWorkflowFromCheckpoint(checkpoint, session)
-              : await resumeArchitectureWorkflowFromCheckpoint(checkpoint, session)
+              : checkpoint.type === 'architecture_generation'
+                ? resumeArchitectureWorkflowFromCheckpoint(checkpoint, session)
+                : checkpoint.type === 'config_generation'
+                  ? resumeConfigGenerationWorkflowFromCheckpoint(checkpoint, session)
+                  : await resumeDirectoryWorkflowFromCheckpoint(checkpoint, session)
       void useWorkflowStore.getState().startWorkflow(workflow, false).catch(error => {
         toast.error(text(`恢复任务失败：${String(error)}`, `Could not resume the workflow: ${String(error)}`))
       })
@@ -337,6 +344,8 @@ function WorkflowRecoveryReceipts() {
             || (checkpoint.type === 'chapter_creation' && checkpoint.resumeMetadata?.kind === 'chapter-finalize')
             || (checkpoint.type === 'character_extraction' && checkpoint.resumeMetadata?.kind === 'character-extraction')
             || (checkpoint.type === 'architecture_generation' && checkpoint.resumeMetadata?.kind === 'architecture')
+            || (checkpoint.type === 'config_generation' && checkpoint.resumeMetadata?.kind === 'config-generation')
+            || (checkpoint.type === 'directory' && checkpoint.resumeMetadata?.kind === 'directory-generation')
           )
           const completed = checkpoint.steps.filter(step => step.status === 'completed').length
           return (
@@ -382,6 +391,10 @@ function WorkflowRecoveryReceipts() {
                         ? text('继续提取人物', 'Resume character extraction')
                         : checkpoint.type === 'architecture_generation'
                           ? text('继续生成架构', 'Resume architecture generation')
+                          : checkpoint.type === 'config_generation'
+                            ? text('继续生成配置', 'Resume configuration generation')
+                            : checkpoint.type === 'directory'
+                              ? text('继续生成蓝图', 'Resume blueprint generation')
                         : text('继续导入', 'Resume import')}
               </Button>}
               <button type="button" className="flex-shrink-0 rounded border px-2 py-1 text-[0.68rem]" onClick={() => remove(checkpoint.runId)}>
