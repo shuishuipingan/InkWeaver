@@ -9,6 +9,7 @@ import { sameProjectPathKey } from '../../shared/project-session-context'
 import { FINALIZATION_SHARED_WRITE_RESOURCE_KINDS } from '../../shared/workflow-resource-claims'
 import { normalizeChapterWordsTarget } from './chapter-creation-parameters'
 import { canResumeWorkflowCheckpoint, type WorkflowRecoveryCheckpoint } from '../../shared/workflow-recovery'
+import { parseHumanConfirmedReviewSnapshot } from '../../shared/human-confirmed-review'
 
 // ==========================================
 // 1. 结构与类型导出 (保留对外的向后兼容)
@@ -354,6 +355,79 @@ export async function resumeChapterFinalizeWorkflowFromCheckpoint(
   }, currentSession)
 }
 
+/** Rebuild a review-driven revision from the current draft and saved confirmation row. */
+export async function resumeChapterReviewFixWorkflowFromCheckpoint(
+  checkpoint: WorkflowRecoveryCheckpoint,
+  currentSession: ProjectSessionContext,
+): Promise<WorkflowDefinition> {
+  if (checkpoint.type !== 'chapter_creation' || checkpoint.resumeMetadata?.kind !== 'chapter-review-fix') {
+    throw new Error('该恢复收据不是审稿修复工作流，不能由审稿修复恢复入口处理')
+  }
+  if (!canResumeWorkflowCheckpoint(checkpoint, currentSession)) {
+    throw new Error('恢复收据所属项目会话已变化，已拒绝继续审稿修复')
+  }
+  const metadata = checkpoint.resumeMetadata
+  const draftPath = typeof metadata.draftPath === 'string' ? metadata.draftPath : ''
+  const chapterNumber = Number(metadata.chapterNumber)
+  const chapterTitle = typeof metadata.chapterTitle === 'string' ? metadata.chapterTitle : ''
+  const reviewSourceId = Number(metadata.reviewSourceId)
+  if (
+    !draftPath
+    || !Number.isSafeInteger(chapterNumber)
+    || chapterNumber < 1
+    || !chapterTitle.trim()
+    || !Number.isSafeInteger(reviewSourceId)
+    || reviewSourceId < 1
+  ) throw new Error('审稿修复恢复收据缺少完整的冻结参数')
+
+  const meta = await parseDraftMeta(draftPath, currentSession.projectPath, currentSession)
+  if (!meta || meta.chapterNumber !== chapterNumber) throw new Error('审稿修复来源草稿不存在或章节已变化')
+  const full = await ipc.invokeWithProjectSession(
+    currentSession, 'db:draft-get-full', meta.id, currentSession.projectPath,
+  ) as { content?: string } | null
+  if (!full?.content) throw new Error('审稿修复来源正文不存在，不能恢复')
+  const persistedReview = await ipc.invokeWithProjectSession(
+    currentSession, 'db:review-get-full', reviewSourceId, currentSession.projectPath,
+  )
+  if (
+    !persistedReview
+    || persistedReview.id !== reviewSourceId
+    || typeof persistedReview.content !== 'string'
+    || !parseHumanConfirmedReviewSnapshot(persistedReview.content)
+  ) throw new Error('找不到有效的人工确认审稿快照，不能恢复审稿修复')
+
+  return createRefineFromReviewWorkflow({
+    projectPath: currentSession.projectPath,
+    chapterNumber,
+    chapterTitle,
+    draftPath,
+    draftContent: full.content,
+    confirmedReviewContent: persistedReview.content,
+    reviewSourceId,
+    generationModelId: typeof metadata.generationModelId === 'string'
+      ? metadata.generationModelId
+      : undefined,
+  }, currentSession)
+}
+
+/** Rebuild finalization post-process repair from the authoritative chapter number. */
+export function resumeChapterRepairWorkflowFromCheckpoint(
+  checkpoint: WorkflowRecoveryCheckpoint,
+  currentSession: ProjectSessionContext,
+): WorkflowDefinition {
+  if (checkpoint.type !== 'chapter_creation' || checkpoint.resumeMetadata?.kind !== 'chapter-repair') {
+    throw new Error('该恢复收据不是定稿后处理修复工作流，不能由修复恢复入口处理')
+  }
+  if (!canResumeWorkflowCheckpoint(checkpoint, currentSession)) {
+    throw new Error('恢复收据所属项目会话已变化，已拒绝继续定稿后处理修复')
+  }
+  const chapterNumber = Number(checkpoint.resumeMetadata.chapterNumber)
+  if (!Number.isSafeInteger(chapterNumber) || chapterNumber < 1) {
+    throw new Error('定稿后处理修复恢复收据缺少有效章节号')
+  }
+  return createRepairFinalizeWorkflow(chapterNumber, currentSession.projectPath, currentSession)
+}
+
 export function createChapterWorkflow(
   chapterInfo: ChapterInfo,
   sourceProjectSession: ProjectSessionContext,
@@ -448,6 +522,14 @@ export function createRefineFromReviewWorkflow(
     projectPath: params.projectPath,
     projectSession: workflowProjectSession(params.projectPath, sourceProjectSession),
     ...(generationModelId ? { generationModelId } : {}),
+    resumeMetadata: {
+      kind: 'chapter-review-fix',
+      draftPath: params.draftPath,
+      chapterNumber: params.chapterNumber,
+      chapterTitle: params.chapterTitle,
+      ...(params.reviewSourceId === undefined ? {} : { reviewSourceId: params.reviewSourceId }),
+      ...(generationModelId ? { generationModelId } : {}),
+    },
     resourceKeys: [workflowResourceKey('chapter', params.chapterNumber)],
     readResourceKeys: CHAPTER_CONTEXT_READ_RESOURCE_KEYS,
     title: `审稿修复 — 第${params.chapterNumber}章 ${params.chapterTitle}`,
@@ -566,6 +648,10 @@ export function createRepairFinalizeWorkflow(
     type: 'chapter_creation',
     projectPath,
     projectSession: workflowProjectSession(projectPath, sourceProjectSession),
+    resumeMetadata: {
+      kind: 'chapter-repair',
+      chapterNumber,
+    },
     resourceKeys: finalizeWriteResourceKeys(chapterNumber),
     readResourceKeys: CHAPTER_CONTEXT_READ_RESOURCE_KEYS,
     title: `修复后处理 — 第${chapterNumber}章`,

@@ -26,7 +26,7 @@ import { resumeChapterDraftWorkflowFromCheckpoint } from '../../services/workflo
 import { resumeCharacterExtractionWorkflowFromCheckpoint } from '../../services/workflows/character-extraction-workflow'
 import { resumeArchitectureWorkflowFromCheckpoint, resumeConfigGenerationWorkflowFromCheckpoint } from '../../services/workflows/architecture-workflow'
 import { resumeDirectoryWorkflowFromCheckpoint } from '../../services/workflows/directory-workflow'
-import { resumeChapterFinalizeWorkflowFromCheckpoint, resumeChapterRefineWorkflowFromCheckpoint, resumeChapterReviewWorkflowFromCheckpoint } from '../../services/workflows/chapter-workflow'
+import { resumeChapterFinalizeWorkflowFromCheckpoint, resumeChapterRefineWorkflowFromCheckpoint, resumeChapterRepairWorkflowFromCheckpoint, resumeChapterReviewFixWorkflowFromCheckpoint, resumeChapterReviewWorkflowFromCheckpoint } from '../../services/workflows/chapter-workflow'
 import {
   coarseRuntimePlatform,
   formatSafeCallDiagnostic,
@@ -279,11 +279,13 @@ function WorkflowRecoveryReceipts() {
     const isChapterReview = checkpoint.type === 'chapter_creation' && checkpoint.resumeMetadata?.kind === 'chapter-review'
     const isChapterRefine = checkpoint.type === 'chapter_creation' && checkpoint.resumeMetadata?.kind === 'chapter-refine'
     const isChapterFinalize = checkpoint.type === 'chapter_creation' && checkpoint.resumeMetadata?.kind === 'chapter-finalize'
+    const isChapterReviewFix = checkpoint.type === 'chapter_creation' && checkpoint.resumeMetadata?.kind === 'chapter-review-fix'
+    const isChapterRepair = checkpoint.type === 'chapter_creation' && checkpoint.resumeMetadata?.kind === 'chapter-repair'
     const isCharacterExtraction = checkpoint.type === 'character_extraction' && checkpoint.resumeMetadata?.kind === 'character-extraction'
     const isArchitecture = checkpoint.type === 'architecture_generation' && checkpoint.resumeMetadata?.kind === 'architecture'
     const isConfigGeneration = checkpoint.type === 'config_generation' && checkpoint.resumeMetadata?.kind === 'config-generation'
     const isDirectoryGeneration = checkpoint.type === 'directory' && checkpoint.resumeMetadata?.kind === 'directory-generation'
-    if (!session || (!['novel_import', 'batch_generate'].includes(checkpoint.type) && !isChapterDraft && !isChapterReview && !isChapterRefine && !isChapterFinalize && !isCharacterExtraction && !isArchitecture && !isConfigGeneration && !isDirectoryGeneration)) return
+    if (!session || (!['novel_import', 'batch_generate'].includes(checkpoint.type) && !isChapterDraft && !isChapterReview && !isChapterRefine && !isChapterFinalize && !isChapterReviewFix && !isChapterRepair && !isCharacterExtraction && !isArchitecture && !isConfigGeneration && !isDirectoryGeneration)) return
     setResumingRunId(checkpoint.runId)
     try {
       const workflow = checkpoint.type === 'novel_import'
@@ -295,8 +297,12 @@ function WorkflowRecoveryReceipts() {
                 ? await resumeChapterReviewWorkflowFromCheckpoint(checkpoint, session)
                 : checkpoint.resumeMetadata?.kind === 'chapter-refine'
                   ? await resumeChapterRefineWorkflowFromCheckpoint(checkpoint, session)
-                  : checkpoint.resumeMetadata?.kind === 'chapter-finalize'
-                    ? await resumeChapterFinalizeWorkflowFromCheckpoint(checkpoint, session)
+                : checkpoint.resumeMetadata?.kind === 'chapter-finalize'
+                  ? await resumeChapterFinalizeWorkflowFromCheckpoint(checkpoint, session)
+                  : checkpoint.resumeMetadata?.kind === 'chapter-review-fix'
+                    ? await resumeChapterReviewFixWorkflowFromCheckpoint(checkpoint, session)
+                    : checkpoint.resumeMetadata?.kind === 'chapter-repair'
+                      ? resumeChapterRepairWorkflowFromCheckpoint(checkpoint, session)
                 : resumeChapterDraftWorkflowFromCheckpoint(checkpoint, session)
             : checkpoint.type === 'character_extraction'
               ? await resumeCharacterExtractionWorkflowFromCheckpoint(checkpoint, session)
@@ -342,6 +348,8 @@ function WorkflowRecoveryReceipts() {
             || (checkpoint.type === 'chapter_creation' && checkpoint.resumeMetadata?.kind === 'chapter-review')
             || (checkpoint.type === 'chapter_creation' && checkpoint.resumeMetadata?.kind === 'chapter-refine')
             || (checkpoint.type === 'chapter_creation' && checkpoint.resumeMetadata?.kind === 'chapter-finalize')
+            || (checkpoint.type === 'chapter_creation' && checkpoint.resumeMetadata?.kind === 'chapter-review-fix')
+            || (checkpoint.type === 'chapter_creation' && checkpoint.resumeMetadata?.kind === 'chapter-repair')
             || (checkpoint.type === 'character_extraction' && checkpoint.resumeMetadata?.kind === 'character-extraction')
             || (checkpoint.type === 'architecture_generation' && checkpoint.resumeMetadata?.kind === 'architecture')
             || (checkpoint.type === 'config_generation' && checkpoint.resumeMetadata?.kind === 'config-generation')
@@ -386,6 +394,10 @@ function WorkflowRecoveryReceipts() {
                           ? text('继续修稿', 'Resume revision')
                           : checkpoint.resumeMetadata?.kind === 'chapter-finalize'
                             ? text('继续定稿', 'Resume finalization')
+                            : checkpoint.resumeMetadata?.kind === 'chapter-review-fix'
+                              ? text('继续审稿修复', 'Resume review fix')
+                              : checkpoint.resumeMetadata?.kind === 'chapter-repair'
+                                ? text('继续修复后处理', 'Resume post-process repair')
                         : text('继续写稿', 'Resume draft writing')
                         : checkpoint.type === 'character_extraction'
                         ? text('继续提取人物', 'Resume character extraction')

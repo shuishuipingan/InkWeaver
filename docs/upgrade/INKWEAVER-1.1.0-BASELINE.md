@@ -113,10 +113,11 @@ Reader expectations now also expose editable due chapters and explicit delay
 reasons in the continuity sheet (`d7184c5`).
 
 The workflow recovery surface now also has workflow-specific factories for
-configuration generation and chapter-blueprint generation, including recovery
-panel actions and safe-input validation. These additions are covered by the
-generation recovery test; the E05 row remains in development until the
-complete cross-workflow audit and human acceptance are recorded.
+configuration generation, chapter-blueprint generation, review-driven
+revision, and finalization post-process repair, including recovery panel
+actions and safe-input validation. These additions are covered by the
+generation/review recovery tests; the E05 row remains in development until
+the complete cross-workflow audit and human acceptance are recorded.
 
 Chapter handoff now displays present characters alongside scene, constraints,
 transition and evidence (`85d0844`).
