@@ -6,12 +6,15 @@ import {
   type CharacterExtractionCandidate,
   type CharacterExtractionChunk,
   type CharacterExtractionSource,
+  planCharacterExtractionChunks,
+  textFingerprint,
 } from '../../shared/character-extraction'
 import { BaseWorkflowCommand, type CommandExecuteParams, type WorkflowGenerationRuntimeDependencies } from './commands/base-command'
 import { ipc } from '../ipc-client'
 import { requireIpcSuccess } from '../ipc-result'
 import { requireWorkflowProjectSession, workflowWritingLanguage } from './workflow-project-session'
 import { workflowResourceKey, type WorkflowContext, type WorkflowDefinition, type StepCallbacks } from '../../stores/workflow-store'
+import { canResumeWorkflowCheckpoint, type WorkflowRecoveryCheckpoint } from '../../shared/workflow-recovery'
 
 export interface CharacterExtractionWorkflowParams {
   projectPath: string
@@ -20,6 +23,84 @@ export interface CharacterExtractionWorkflowParams {
   chunks: readonly CharacterExtractionChunk[]
   existingNames: readonly string[]
   persistCandidates?: boolean
+}
+
+/** Rebuild a chapter-bound extraction from the finalized draft authority. */
+export async function resumeCharacterExtractionWorkflowFromCheckpoint(
+  checkpoint: WorkflowRecoveryCheckpoint,
+  currentSession: ProjectSessionContext,
+): Promise<WorkflowDefinition> {
+  if (checkpoint.type !== 'character_extraction' || checkpoint.resumeMetadata?.kind !== 'character-extraction') {
+    throw new Error('该恢复收据不是人物提取工作流，不能由人物提取恢复入口处理')
+  }
+  if (!canResumeWorkflowCheckpoint(checkpoint, currentSession)) {
+    throw new Error('恢复收据所属项目会话已变化，已拒绝继续人物提取')
+  }
+  const metadata = checkpoint.resumeMetadata
+  if (metadata.sourceKind !== 'chapter' || typeof metadata.sourceId !== 'string' || typeof metadata.sourceHash !== 'string') {
+    throw new Error('人物提取恢复收据缺少章节来源指纹')
+  }
+  const match = /^chapter:(\d+):draft:(\d+)$/u.exec(metadata.sourceId)
+  const chapterNumber = Number(match?.[1])
+  const draftId = Number(match?.[2])
+  if (!match || !Number.isSafeInteger(chapterNumber) || !Number.isSafeInteger(draftId)) {
+    throw new Error('人物提取恢复收据来源 ID 无效')
+  }
+  const chapterNumbers = parseNumberArray(metadata.chapterNumbersJson)
+  const existingNames = parseStringArray(metadata.existingNamesJson)
+  if (chapterNumbers.length !== 1 || chapterNumbers[0] !== chapterNumber) {
+    throw new Error('人物提取恢复收据章节范围无效')
+  }
+  const finalized = await ipc.invokeWithProjectSession(
+    currentSession, 'db:draft-get-finalized', chapterNumber, currentSession.projectPath,
+  )
+  if (!finalized || finalized.id !== draftId) throw new Error('人物提取来源定稿已变化，不能恢复')
+  const full = await ipc.invokeWithProjectSession(
+    currentSession, 'db:draft-get-full', draftId, currentSession.projectPath,
+  ) as { content?: string } | null
+  if (!full?.content || textFingerprint(full.content) !== metadata.sourceHash) {
+    throw new Error('人物提取来源正文指纹已变化，不能恢复')
+  }
+  const source: CharacterExtractionSource = {
+    sourceId: metadata.sourceId,
+    sourceHash: metadata.sourceHash,
+    kind: 'chapter',
+    chapterNumbers,
+  }
+  return createCharacterExtractionWorkflow({
+    projectPath: currentSession.projectPath,
+    projectSession: currentSession,
+    source,
+    chunks: planCharacterExtractionChunks(full.content, {
+      sourceId: source.sourceId,
+      kind: source.kind,
+      chapterNumbers: source.chapterNumbers,
+    }),
+    existingNames,
+    persistCandidates: metadata.persistCandidates === true,
+  })
+}
+
+function parseStringArray(value: unknown): string[] {
+  if (typeof value !== 'string') throw new Error('人物提取恢复收据列表参数缺失')
+  try {
+    const parsed = JSON.parse(value) as unknown
+    if (!Array.isArray(parsed) || !parsed.every(item => typeof item === 'string')) throw new Error('invalid list')
+    return parsed
+  } catch {
+    throw new Error('人物提取恢复收据列表参数无效')
+  }
+}
+
+function parseNumberArray(value: unknown): number[] {
+  if (typeof value !== 'string') throw new Error('人物提取恢复收据章节列表缺失')
+  try {
+    const parsed = JSON.parse(value) as unknown
+    if (!Array.isArray(parsed) || !parsed.every(item => Number.isSafeInteger(item) && item >= 1)) throw new Error('invalid chapters')
+    return parsed
+  } catch {
+    throw new Error('人物提取恢复收据章节列表无效')
+  }
 }
 
 function promptLanguage(language: WritingLanguage, zh: string, en: string): string {
@@ -106,6 +187,15 @@ export function createCharacterExtractionWorkflow(
     type: 'character_extraction',
     projectPath: params.projectPath,
     projectSession: params.projectSession,
+    resumeMetadata: {
+      kind: 'character-extraction',
+      sourceId: params.source.sourceId,
+      sourceHash: params.source.sourceHash,
+      sourceKind: params.source.kind,
+      chapterNumbersJson: JSON.stringify(params.source.chapterNumbers),
+      existingNamesJson: JSON.stringify(params.existingNames),
+      persistCandidates: params.persistCandidates === true,
+    },
     resourceKeys: [],
     readResourceKeys: [
       workflowResourceKey('character-roster'),
