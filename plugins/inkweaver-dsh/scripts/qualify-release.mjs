@@ -17,6 +17,11 @@ const repositoryRoot = resolve(packageRoot, '..', '..')
 const packageName = '@shuishuipingan/inkweaver-dsh'
 const webUiAllPackage = '@linxin666/dsh-web-all'
 const webUiAllVersion = '0.3.20'
+const directoryPickerPackages = [
+  '@deepseek-ai/dsh-host-directory-picker-browse',
+  '@deepseek-ai/dsh-client-ui-directory-picker-browse',
+]
+const directoryPickerVersion = '0.1.5-rc.1'
 const profileName = 'web'
 const supportedHarnessCommit = '183f08e9c6dde7e36cd2318eaee70b0da08fb35e'
 const qualificationTicket = 128
@@ -1100,6 +1105,11 @@ async function qualify(options) {
     await runDsh(logRoot, 'profile-install-web-all', canonicalHarness, [
       'plugin', '--profile', profileName, 'add', `${webUiAllPackage}@${webUiAllVersion}`, '--save-exact', '--ignore-scripts',
     ], env, 240_000)
+    for (const pickerPackage of directoryPickerPackages) {
+      await runDsh(logRoot, `profile-install-${pickerPackage.split('/').at(-1)}`, canonicalHarness, [
+        'plugin', '--profile', profileName, 'add', `${pickerPackage}@${directoryPickerVersion}`, '--save-exact', '--ignore-scripts',
+      ], env, 240_000)
+    }
     const profileRoot = join(dshHome, 'profiles', profileName)
     const profileManifestPath = join(profileRoot, 'package.json')
     const installedRoot = await realpath(join(profileRoot, 'node_modules', '@shuishuipingan', 'inkweaver-dsh'))
