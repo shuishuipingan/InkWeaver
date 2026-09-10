@@ -149,9 +149,9 @@ describe('preset setup browser integration', () => {
     await expect(port.read(WORKSPACE_ID, 1, signals[1]!)).rejects.toThrow('context response is invalid')
     await expect(port.read(WORKSPACE_ID, 1, signals[2]!)).rejects.toMatchObject({ name: 'NovelWorkbenchDisconnectedError' })
     expect(call.mock.calls.map(args => args.slice(0, 3))).toEqual([
-      ['/inkweaver', 'context/read', { workspaceId: WORKSPACE_ID, chapter: 1 }],
-      ['/inkweaver', 'context/read', { workspaceId: WORKSPACE_ID, chapter: 1 }],
-      ['/inkweaver', 'context/read', { workspaceId: WORKSPACE_ID, chapter: 1 }],
+      ['/api', 'inkweaver/context/read', { workspaceId: WORKSPACE_ID, chapter: 1 }],
+      ['/api', 'inkweaver/context/read', { workspaceId: WORKSPACE_ID, chapter: 1 }],
+      ['/api', 'inkweaver/context/read', { workspaceId: WORKSPACE_ID, chapter: 1 }],
     ])
     expect(call.mock.calls.map(args => args[3])).toEqual(signals)
   })
@@ -187,7 +187,7 @@ describe('preset setup browser integration', () => {
       target: { kind: 'characters' }, revision: 'absent', text,
     })
     expect(call).toHaveBeenCalledWith(
-      '/inkweaver', 'asset/read', { workspaceId: WORKSPACE_ID, target: { kind: 'characters' } }, signal,
+      '/api', 'inkweaver/asset/read', { workspaceId: WORKSPACE_ID, target: { kind: 'characters' } }, signal,
     )
   })
 
@@ -205,10 +205,10 @@ describe('preset setup browser integration', () => {
     await expect(port.status(signals[2]!)).rejects.toThrow('internal: host failed')
     await expect(port.status(signals[3]!)).rejects.toMatchObject({ name: 'PresetSetupDisconnectedError' })
     expect(call.mock.calls.map(callArgs => callArgs.slice(0, 3))).toEqual([
-      ['/inkweaver', 'preset/status', {}],
-      ['/inkweaver', 'preset/install', {}],
-      ['/inkweaver', 'preset/status', {}],
-      ['/inkweaver', 'preset/status', {}],
+      ['/api', 'inkweaver/preset/status', {}],
+      ['/api', 'inkweaver/preset/install', {}],
+      ['/api', 'inkweaver/preset/status', {}],
+      ['/api', 'inkweaver/preset/status', {}],
     ])
     expect(call.mock.calls.map(callArgs => callArgs[3])).toEqual(signals)
   })
@@ -271,7 +271,7 @@ describe('preset setup browser integration', () => {
             finishes.set(endpoint, () => {
               resolve({
                 ok: true,
-                value: endpoint === 'context/read' ? { status: 'not-initialized' } : { status: 'not-installed' },
+                value: endpoint === 'inkweaver/context/read' ? { status: 'not-initialized' } : { status: 'not-installed' },
               })
             })
           })
@@ -317,7 +317,7 @@ describe('preset setup browser integration', () => {
     const hostDescription = mutableSource<object | undefined>({})
     const call = vi.fn((_channel: string, endpoint: string) => Promise.resolve({
       ok: true,
-      value: endpoint === 'context/read' ? { status: 'not-initialized' } : { status: 'installed' },
+      value: endpoint === 'inkweaver/context/read' ? { status: 'not-initialized' } : { status: 'installed' },
     }))
     ctx.provide('connection' as never, {
       rpc: { call },
@@ -334,8 +334,8 @@ describe('preset setup browser integration', () => {
     await vi.waitFor(() => { expect(call.mock.calls.length).toBeGreaterThan(beforeDisconnect) })
     await controllers.workbenchController.whenIdle()
 
-    expect(call.mock.calls.filter(args => args[1] === 'preset/status')).toHaveLength(2)
-    expect(call.mock.calls.filter(args => args[1] === 'context/read').length).toBeGreaterThanOrEqual(3)
+    expect(call.mock.calls.filter(args => args[1] === 'inkweaver/preset/status')).toHaveLength(2)
+    expect(call.mock.calls.filter(args => args[1] === 'inkweaver/context/read').length).toBeGreaterThanOrEqual(3)
     await fiber.dispose()
   })
 
@@ -363,9 +363,9 @@ describe('preset setup browser integration', () => {
     const hostDescription = mutableSource<object | undefined>({})
     const call = vi.fn((_channel: string, endpoint: string) => Promise.resolve({
       ok: true,
-      value: endpoint === 'workspace/state/read'
+      value: endpoint === 'inkweaver/workspace/state/read'
         ? { status: 'ready', workspaceId: WORKSPACE_ID, state: v2State }
-        : endpoint === 'proposal/list' ? { proposals: [] } : { status: 'installed' },
+        : endpoint === 'inkweaver/proposal/list' ? { proposals: [] } : { status: 'installed' },
     }))
     ctx.provide('connection' as never, { rpc: { call }, hostDescription } as never)
     const fiber = ctx.plugin({ inject: [...inject], apply })
@@ -373,13 +373,13 @@ describe('preset setup browser integration', () => {
     const controller = entries[0]!.options.inject!().v2WorkbenchController
     await controller.open()
     expect(controller.getSnapshot()).toMatchObject({ status: 'ready', open: true })
-    const stateReadsBeforeDisconnect = call.mock.calls.filter(args => args[1] === 'workspace/state/read').length
+    const stateReadsBeforeDisconnect = call.mock.calls.filter(args => args[1] === 'inkweaver/workspace/state/read').length
 
     hostDescription.set(undefined)
     expect(controller.getSnapshot()).toMatchObject({ status: 'error', open: true, message: expect.stringContaining('Harness 连接已断开') })
     hostDescription.set({})
     await vi.waitFor(() => {
-      expect(call.mock.calls.filter(args => args[1] === 'workspace/state/read').length).toBeGreaterThan(stateReadsBeforeDisconnect)
+      expect(call.mock.calls.filter(args => args[1] === 'inkweaver/workspace/state/read').length).toBeGreaterThan(stateReadsBeforeDisconnect)
     })
     await controller.whenIdle()
     expect(controller.getSnapshot()).toMatchObject({ status: 'ready', open: true })
@@ -410,9 +410,9 @@ describe('preset setup browser integration', () => {
     const hostDescription = mutableSource<object | undefined>({})
     const call = vi.fn((_channel: string, endpoint: string) => Promise.resolve({
       ok: true,
-      value: endpoint === 'workspace/state/read'
+      value: endpoint === 'inkweaver/workspace/state/read'
         ? { status: 'ready', workspaceId: WORKSPACE_ID, state: v2State }
-        : endpoint === 'proposal/list' ? { proposals: [] } : { status: 'installed' },
+        : endpoint === 'inkweaver/proposal/list' ? { proposals: [] } : { status: 'installed' },
     }))
     ctx.provide('connection' as never, { rpc: { call }, hostDescription } as never)
     const fiber = ctx.plugin({ inject: [...inject], apply })
@@ -457,7 +457,7 @@ describe('preset setup browser integration', () => {
     const contextSources = provideNovelContextSources(ctx, true)
     const call = vi.fn((_channel: string, endpoint: string) => Promise.resolve({
       ok: true,
-      value: endpoint === 'context/read' ? { status: 'not-initialized' } : { status: 'not-installed' },
+      value: endpoint === 'inkweaver/context/read' ? { status: 'not-initialized' } : { status: 'not-installed' },
     }))
     const connection = {
       rpc: { call },
@@ -521,12 +521,12 @@ describe('preset setup browser integration', () => {
     expect(container.querySelector('[data-test-shell-frame]')?.classList.contains('aiNovelWorkbenchFrameOpen')).toBe(true)
     expect(dialog.textContent).toContain('初始化小说项目')
     expect(call).toHaveBeenCalledWith(
-      '/inkweaver', 'context/read', { workspaceId: WORKSPACE_ID, chapter: 1 }, expect.any(AbortSignal),
+      '/api', 'inkweaver/context/read', { workspaceId: WORKSPACE_ID, chapter: 1 }, expect.any(AbortSignal),
     )
-    expect(call.mock.calls.map(args => args[1])).not.toContain('state/read')
-    expect(call.mock.calls.map(args => args[1])).not.toContain('proposal/list')
+    expect(call.mock.calls.map(args => args[1])).not.toContain('inkweaver/state/read')
+    expect(call.mock.calls.map(args => args[1])).not.toContain('inkweaver/proposal/list')
     expect(contextSources.prompt).not.toHaveBeenCalled()
-    expect(call.mock.calls.map(args => args[1])).not.toContain('command/commit')
+    expect(call.mock.calls.map(args => args[1])).not.toContain('inkweaver/command/commit')
     await act(async () => {
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))
     })
@@ -560,7 +560,7 @@ describe('preset setup browser integration', () => {
     provideNovelContextSources(ctx, true)
     const call = vi.fn((_channel: string, endpoint: string) => Promise.resolve({
       ok: true,
-      value: endpoint === 'context/read' ? { status: 'not-initialized' } : { status: 'installed' },
+      value: endpoint === 'inkweaver/context/read' ? { status: 'not-initialized' } : { status: 'installed' },
     }))
     ctx.provide('connection' as never, {
       rpc: { call },
@@ -618,7 +618,7 @@ describe('preset setup browser integration', () => {
     expect(document.body.querySelector('[role="dialog"]')).toBeNull()
     expect(document.activeElement).toBe(open)
     expect(slots.entries('settings.plugin.item').map(item => item.options.id)).toEqual(['inkweaver'])
-    expect(call.mock.calls.some(args => args[1] === 'context/read')).toBe(true)
+    expect(call.mock.calls.some(args => args[1] === 'inkweaver/context/read')).toBe(true)
 
     await act(async () => {
       root.unmount()

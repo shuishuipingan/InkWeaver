@@ -57,7 +57,8 @@ describe('installable AI novel bundle', () => {
     const ctx = new Context()
     ctx.baseUrl = pathToFileURL(root).href + '/'
     const handle = vi.fn(() => async () => {})
-    ctx.provide('connection' as never, { rpc: { handle } } as never)
+    const intercept = vi.fn(() => async () => {})
+    ctx.provide('connection' as never, { rpc: { handle, intercept } } as never)
     ctx.provide('workspaceRegistry' as never, { get: () => undefined } as never)
     ctx.provide('settings' as never, { register: vi.fn() } as never)
     ctx.provide('webServer' as never, { register: vi.fn(() => async () => {}) } as never)
@@ -76,7 +77,6 @@ describe('installable AI novel bundle', () => {
       const entry = [...ctx.loader.entries()].find(candidate => candidate.options.id === 'inkweaver')
       expect(entry?.options.name).toBe('@shuishuipingan/inkweaver-dsh')
       expect(entry?.fiber).toBeDefined()
-      expect(handle).toHaveBeenCalledWith('/inkweaver', expect.any(Function))
     } finally {
       await ctx.fiber.dispose()
     }

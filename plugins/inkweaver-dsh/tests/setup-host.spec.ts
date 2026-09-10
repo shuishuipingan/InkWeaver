@@ -99,13 +99,13 @@ describe('preset setup Host RPC', () => {
     const handlers: ConnectionRpcHandler[] = []
     const registrations: Array<() => () => Promise<void>> = []
     const unregister = vi.fn(async () => {})
-    const handle = vi.fn((_channel: string, handler: ConnectionRpcHandler) => {
-      handlers.push(handler)
+    const intercept = vi.fn((_channel: string, _matches: unknown, handler: ConnectionRpcHandler) => {
+      handlers.push((endpoint, payload, signal) => handler(`inkweaver/${endpoint}`, payload, signal))
       return unregister
     })
     const ctx = {
       get(service: string): unknown {
-        if (service === 'connection') return { rpc: { handle } }
+        if (service === 'connection') return { rpc: { intercept } }
         if (service === 'workspaceRegistry') return { get: () => undefined }
         if (service === 'settings') return { register: vi.fn() }
         if (service === 'webServer') return { register: vi.fn(() => async () => {}) }
@@ -114,7 +114,7 @@ describe('preset setup Host RPC', () => {
       inject(services: readonly string[], callback: (value: unknown) => void): void {
         callback(services[0] === 'connection'
           ? {
-              connection: { rpc: { handle } },
+              connection: { rpc: { intercept } },
               webServer: { register: vi.fn(() => async () => {}) },
               get: (service: string) => service === 'workspaceRegistry' ? { get: () => undefined } : undefined,
               effect: (registration: () => () => Promise<void>) => { registrations.push(registration) },
@@ -132,7 +132,7 @@ describe('preset setup Host RPC', () => {
     await firstDispose()
     const secondDispose = registrations[0]!()
 
-    expect(handle).toHaveBeenCalledTimes(2)
+    expect(intercept).toHaveBeenCalledTimes(2)
     await expect(handlers[0]!('preset/status', {}, new AbortController().signal)).resolves.toMatchObject({
       ok: false,
       error: { code: 'internal' },

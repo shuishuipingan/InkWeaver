@@ -327,14 +327,24 @@ export function apply(ctx: Context, config: Config): void {
   ctx.inject(['connection', 'webServer'], webCtx => {
     webCtx.effect(
       () => {
-        const connection = webCtx.connection as HostConnectionHandle
         const workspaces = webCtx.get('workspaceRegistry') as NovelWorkspaceRegistry
         const lifecycle = createAiNovelHostRpcLifecycle(createAiNovelRpcHandler(
           installer,
           workspaces,
           error => { ctx.logger.error('inkweaver: request failed: %o', error) },
         ))
-        const unregister = connection.rpc.handle('/inkweaver', lifecycle.handler)
+        const rpc = webCtx.connection.rpc
+        const unregister = typeof rpc.intercept === 'function'
+          ? rpc.intercept(
+              '/api',
+              endpoint => endpoint === 'inkweaver' || endpoint.startsWith('inkweaver/'),
+              (endpoint, payload, signal) => lifecycle.handler(
+                endpoint.slice('inkweaver/'.length),
+                payload,
+                signal,
+              ),
+            )
+          : (rpc as HostConnectionHandle['rpc']).handle('/inkweaver', lifecycle.handler)
         return async () => {
           await lifecycle.dispose()
           await unregister()

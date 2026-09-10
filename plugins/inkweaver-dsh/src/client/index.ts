@@ -20,6 +20,13 @@ import {
 import { observeNovelContextSources, type NovelContextSelectionSources } from './context-observer.ts'
 import { NovelWorkbenchRouteController, observeNovelV2Workspace } from './workbench-v2-observer.ts'
 import { installNovelContextStyle } from './setup-style.ts'
+
+const INKWEAVER_RPC_CHANNEL = '/api'
+const INKWEAVER_RPC_PREFIX = 'inkweaver'
+
+function inkweaverRpcEndpoint(endpoint: string): string {
+  return `${INKWEAVER_RPC_PREFIX}/${endpoint}`
+}
 import {
   NovelWorkbenchController,
   NovelWorkbenchDisconnectedError,
@@ -168,7 +175,7 @@ async function callSetup(
 ): Promise<unknown> {
   let result
   try {
-    result = await rpc.call('/inkweaver', endpoint, {}, signal)
+    result = await rpc.call(INKWEAVER_RPC_CHANNEL, inkweaverRpcEndpoint(endpoint), {}, signal)
   } catch (error) {
     throw new PresetSetupDisconnectedError(error)
   }
@@ -205,7 +212,7 @@ export function createNovelContextPort(
     read: async (workspaceId, chapter, signal) => {
       let result
       try {
-        result = await rpc.call('/inkweaver', 'context/read', { workspaceId, chapter }, signal)
+        result = await rpc.call(INKWEAVER_RPC_CHANNEL, inkweaverRpcEndpoint('context/read'), { workspaceId, chapter }, signal)
       } catch (error) {
         throw new NovelWorkbenchDisconnectedError(error)
       }
@@ -215,7 +222,7 @@ export function createNovelContextPort(
     readAsset: async (workspaceId, target, signal) => {
       let result
       try {
-        result = await rpc.call('/inkweaver', 'asset/read', { workspaceId, target }, signal)
+        result = await rpc.call(INKWEAVER_RPC_CHANNEL, inkweaverRpcEndpoint('asset/read'), { workspaceId, target }, signal)
       } catch (error) {
         throw new NovelWorkbenchDisconnectedError(error)
       }
@@ -622,7 +629,7 @@ async function callV2Workbench(
 ): Promise<unknown> {
   let result
   try {
-    result = await rpc.call('/inkweaver', endpoint, payload, signal)
+    result = await rpc.call(INKWEAVER_RPC_CHANNEL, inkweaverRpcEndpoint(endpoint), payload, signal)
   } catch (error) {
     throw new NovelWorkbenchDisconnectedError(error)
   }
