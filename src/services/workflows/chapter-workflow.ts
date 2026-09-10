@@ -286,6 +286,40 @@ export async function resumeChapterReviewWorkflowFromCheckpoint(
   }, currentSession)
 }
 
+/** Rebuild a refine-only workflow from the current draft authority. */
+export async function resumeChapterRefineWorkflowFromCheckpoint(
+  checkpoint: WorkflowRecoveryCheckpoint,
+  currentSession: ProjectSessionContext,
+): Promise<WorkflowDefinition> {
+  if (checkpoint.type !== 'chapter_creation' || checkpoint.resumeMetadata?.kind !== 'chapter-refine') {
+    throw new Error('该恢复收据不是修稿工作流，不能由修稿恢复入口处理')
+  }
+  if (!canResumeWorkflowCheckpoint(checkpoint, currentSession)) {
+    throw new Error('恢复收据所属项目会话已变化，已拒绝继续修稿')
+  }
+  const metadata = checkpoint.resumeMetadata
+  const draftPath = typeof metadata.draftPath === 'string' ? metadata.draftPath : ''
+  const chapterNumber = Number(metadata.chapterNumber)
+  const chapterTitle = typeof metadata.chapterTitle === 'string' ? metadata.chapterTitle : ''
+  if (!draftPath || !Number.isSafeInteger(chapterNumber) || chapterNumber < 1 || !chapterTitle.trim()) {
+    throw new Error('修稿恢复收据缺少完整的冻结参数')
+  }
+  const meta = await parseDraftMeta(draftPath, currentSession.projectPath, currentSession)
+  if (!meta || meta.chapterNumber !== chapterNumber) throw new Error('修稿来源草稿不存在或章节已变化')
+  const full = await ipc.invokeWithProjectSession(
+    currentSession, 'db:draft-get-full', meta.id, currentSession.projectPath,
+  ) as { content?: string } | null
+  if (!full?.content) throw new Error('修稿来源正文不存在，不能恢复')
+  return createRefineOnlyWorkflow({
+    projectPath: currentSession.projectPath,
+    chapterNumber,
+    chapterTitle,
+    draftPath,
+    draftContent: full.content,
+    userRefinePrompt: typeof metadata.userRefinePrompt === 'string' ? metadata.userRefinePrompt : undefined,
+  }, currentSession)
+}
+
 export function createChapterWorkflow(
   chapterInfo: ChapterInfo,
   sourceProjectSession: ProjectSessionContext,
@@ -339,6 +373,13 @@ export function createRefineOnlyWorkflow(
     type: 'chapter_creation',
     projectPath: params.projectPath,
     projectSession: workflowProjectSession(params.projectPath, sourceProjectSession),
+    resumeMetadata: {
+      kind: 'chapter-refine',
+      draftPath: params.draftPath,
+      chapterNumber: params.chapterNumber,
+      chapterTitle: params.chapterTitle,
+      ...(params.userRefinePrompt === undefined ? {} : { userRefinePrompt: params.userRefinePrompt }),
+    },
     resourceKeys: [workflowResourceKey('chapter', params.chapterNumber)],
     readResourceKeys: CHAPTER_CONTEXT_READ_RESOURCE_KEYS,
     title: `修稿 — 第${params.chapterNumber}章 ${params.chapterTitle}`,
