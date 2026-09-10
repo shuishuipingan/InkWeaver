@@ -7,7 +7,9 @@ import { makeTestWorkspace } from './test-workspace.ts'
 describe('preset setup Host RPC', () => {
   it('registers the InkWeaver settings namespace for the Host plugin card', () => {
     const ctx = {
-      get: vi.fn(() => undefined),
+      get: vi.fn((service: string) => service === 'connection'
+        ? { rpc: { intercept: vi.fn(() => async () => {}) } }
+        : service === 'workspaceRegistry' ? { get: () => undefined } : undefined),
       inject: vi.fn(),
       effect: vi.fn(),
     } as unknown as Context
@@ -17,16 +19,8 @@ describe('preset setup Host RPC', () => {
     expect(ctx.inject).toHaveBeenCalledWith(['settings'], expect.any(Function))
   })
 
-  it('registers the loopback RPC only inside a webServer-injected Fiber', () => {
-    const ctx = {
-      get: vi.fn(() => undefined),
-      inject: vi.fn(),
-      effect: vi.fn(),
-    } as unknown as Context
-
-    apply(ctx, { presetRoot: 'C:\\InkWeaver\\presets' })
-
-    expect(ctx.inject).toHaveBeenCalledWith(['connection'], expect.any(Function))
+  it('requires WebServer in the Host plugin dependency contract for the shared API gateway', () => {
+    expect(inject).toContain('webServer')
   })
 
   it('rejects new commands during HMR disposal and waits for an in-flight command to settle', async () => {

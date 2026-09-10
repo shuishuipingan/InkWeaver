@@ -109,7 +109,7 @@ export type {
 export const name = 'inkweaver'
 
 /** Required Host services. */
-export const inject = ['connection', 'workspaceRegistry', 'settings']
+export const inject = ['connection', 'workspaceRegistry', 'settings', 'webServer']
 
 /** Settings namespace owned by the browser status card. */
 const INKWEAVER_SETTINGS_NAMESPACE = 'inkweaver'
@@ -320,34 +320,33 @@ export function apply(ctx: Context, config: Config): void {
     settingsCtx.settings.register(INKWEAVER_SETTINGS_NAMESPACE, z.object({}))
   })
   // DSH 0.1.5 carries logical plugin channels through the shared `/api`
-  // gateway. Follow the official Gateway pattern and register the interceptor
-  // from the connection-injected Fiber; direct `/inkweaver` registration is
-  // retained only for older hosts that do not expose `rpc.intercept`.
-  ctx.inject(['connection'], connectionCtx => {
-    const workspaces = ctx.get('workspaceRegistry') as NovelWorkspaceRegistry
-    const lifecycle = createAiNovelHostRpcLifecycle(createAiNovelRpcHandler(
-      installer,
-      workspaces,
-      error => { ctx.logger.error('inkweaver: request failed: %o', error) },
-    ))
-    const rpc = connectionCtx.connection.rpc
-    const unregister = typeof rpc.intercept === 'function'
-      ? rpc.intercept(
-          '/api',
-          endpoint => endpoint === 'inkweaver' || endpoint.startsWith('inkweaver/'),
-          (endpoint, payload, signal) => lifecycle.handler(
-            endpoint.slice('inkweaver/'.length),
-            payload,
-            signal,
-          ),
-        )
-      : (rpc as HostConnectionHandle['rpc']).handle('/inkweaver', lifecycle.handler)
-    connectionCtx.effect(
-      () => async () => {
-        await lifecycle.dispose()
-        await unregister()
-      },
-      'inkweaver: setup and read-only context RPC',
-    )
-  })
+  // gateway. The Host plugin itself injects `webServer`, matching the
+  // official Gateway pattern so the Connection service owns a Web-capable
+  // Fiber. Direct `/inkweaver` registration remains a fallback for older
+  // hosts that do not expose `rpc.intercept`.
+  const workspaces = ctx.get('workspaceRegistry') as NovelWorkspaceRegistry
+  const lifecycle = createAiNovelHostRpcLifecycle(createAiNovelRpcHandler(
+    installer,
+    workspaces,
+    error => { ctx.logger.error('inkweaver: request failed: %o', error) },
+  ))
+  const rpc = (ctx.get('connection') as HostConnectionHandle).rpc
+  const unregister = typeof rpc.intercept === 'function'
+    ? rpc.intercept(
+        '/api',
+        endpoint => endpoint === 'inkweaver' || endpoint.startsWith('inkweaver/'),
+        (endpoint, payload, signal) => lifecycle.handler(
+          endpoint.slice('inkweaver/'.length),
+          payload,
+          signal,
+        ),
+      )
+    : rpc.handle('/inkweaver', lifecycle.handler)
+  ctx.effect(
+    () => async () => {
+      await lifecycle.dispose()
+      await unregister()
+    },
+    'inkweaver: setup and read-only context RPC',
+  )
 }
