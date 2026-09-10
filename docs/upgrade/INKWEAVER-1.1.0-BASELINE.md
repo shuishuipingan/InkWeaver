@@ -67,8 +67,8 @@ historical checkpoint above is intentionally retained.
 
 | Item | Current value |
 | --- | --- |
-| local source HEAD | `710f336` |
-| GitHub development ref | `origin/1.1.0-development` = `710f336` (qualification and receipt documentation synchronized) |
+| functional source baseline | `710f336` |
+| GitHub development ref | `origin/1.1.0-development` contains the same functional baseline plus documentation-only receipt commits; re-read with `git ls-remote` before any version freeze |
 | desktop package version | `0.9.2` (still not frozen) |
 | DSH plugin package version | `0.1.0` (still not frozen) |
 | tracker status | 1 待验收 / 34 开发中 / 3 通过 / 0 未开始 |
