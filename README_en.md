@@ -40,7 +40,7 @@ InkWeaver is not a hosted model service or an online fiction platform. It includ
 - **Human-confirmed review loop** keeps AI findings editable and non-authoritative until the author confirms them, revises, and inspects the diff.
 - **Reference material and knowledge retrieval** support TXT, Markdown, and EPUB import, semantic search, and SQLite full-text fallback.
 - **Character cards and relationship graph** keep structured character facts and support zoom, pan, or clear operations.
-- **Recoverable operations** record progress for long generation, batch writing, imports, finalization, and post-processing.
+- **Recoverable operations** record safe-boundary progress for long generation, batch writing, imports, drafting, character extraction, review, revision, finalization, and architecture generation. Resume actions reload authoritative sources and validate the current project lease without storing prose in the checkpoint.
 - **Independent UI and writing languages** let the interface and the novel use different languages.
 - **More precise failure messages** distinguish content restrictions, provider failures, prompt-budget exhaustion, and resource conflicts from successful output.
 
