@@ -86,7 +86,11 @@ async function createV1ToV2RecomposeHarness(root: string): Promise<{ readonly ct
   // dsh-agent-presets@0.1.5-rc.1 validates package rows relative to the
   // Loader composition base. Keep this temporary composition beside the
   // installed package dependencies; the novel workspace remains isolated.
-  const configPath = join(PLUGIN_ROOT, `.runtime-v2-recompose-${Date.now()}.cordis.yml`)
+  // Keep the temporary composition in the isolated novel workspace. The
+  // package-content qualification test copies PLUGIN_ROOT concurrently; a
+  // file created and removed beside the package can otherwise disappear
+  // halfway through that recursive copy on Windows.
+  const configPath = join(root, '.runtime-v2-recompose.cordis.yml')
   await writeFile(configPath, [
     "- id: llm\n  name: '@deepseek-ai/dsh-llm'",
     "- id: sessions\n  name: '@deepseek-ai/dsh-session'",
