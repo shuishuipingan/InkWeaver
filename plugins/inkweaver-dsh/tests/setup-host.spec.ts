@@ -17,6 +17,18 @@ describe('preset setup Host RPC', () => {
     expect(ctx.inject).toHaveBeenCalledWith(['settings'], expect.any(Function))
   })
 
+  it('registers the loopback RPC only inside a webServer-injected Fiber', () => {
+    const ctx = {
+      get: vi.fn(() => undefined),
+      inject: vi.fn(),
+      effect: vi.fn(),
+    } as unknown as Context
+
+    apply(ctx, { presetRoot: 'C:\\InkWeaver\\presets' })
+
+    expect(ctx.inject).toHaveBeenCalledWith(['webServer'], expect.any(Function))
+  })
+
   it('rejects new commands during HMR disposal and waits for an in-flight command to settle', async () => {
     let release: (() => void) | undefined
     const started = Promise.withResolvers<void>()
@@ -59,6 +71,7 @@ describe('preset setup Host RPC', () => {
     ctx.provide('connection', { rpc: { handle } } as unknown as HostConnectionHandle)
     ctx.provide('workspaceRegistry' as never, { get: () => undefined } as never)
     ctx.provide('settings' as never, { register: vi.fn() } as never)
+    ctx.provide('webServer' as never, { register: vi.fn(() => async () => {}) } as never)
     const fiber = ctx.plugin({ inject: [...inject], apply }, { presetRoot })
     await fiber.await()
 
@@ -95,10 +108,16 @@ describe('preset setup Host RPC', () => {
         if (service === 'connection') return { rpc: { handle } }
         if (service === 'workspaceRegistry') return { get: () => undefined }
         if (service === 'settings') return { register: vi.fn() }
+        if (service === 'webServer') return { register: vi.fn(() => async () => {}) }
         throw new Error(`unexpected Host service: ${service}`)
       },
-      inject(_services: readonly string[], callback: (value: unknown) => void): void {
-        callback({ settings: { register: vi.fn() } })
+      inject(services: readonly string[], callback: (value: unknown) => void): void {
+        callback(services[0] === 'webServer'
+          ? {
+              webServer: { register: vi.fn(() => async () => {}) },
+              effect: (registration: () => () => Promise<void>) => { registrations.push(registration) },
+            }
+          : { settings: { register: vi.fn() } })
       },
       effect(registration: () => () => Promise<void>): void {
         registrations.push(registration)

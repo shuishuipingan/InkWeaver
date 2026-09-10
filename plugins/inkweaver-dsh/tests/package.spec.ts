@@ -60,6 +60,7 @@ describe('installable AI novel bundle', () => {
     ctx.provide('connection' as never, { rpc: { handle } } as never)
     ctx.provide('workspaceRegistry' as never, { get: () => undefined } as never)
     ctx.provide('settings' as never, { register: vi.fn() } as never)
+    ctx.provide('webServer' as never, { register: vi.fn(() => async () => {}) } as never)
     await ctx.plugin(Loader)
     ctx.loader.builtins.include = Include
     await ctx.plugin(SessionProjection)

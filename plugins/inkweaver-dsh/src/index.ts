@@ -321,19 +321,26 @@ export function apply(ctx: Context, config: Config): void {
   ctx.inject(['settings'], settingsCtx => {
     settingsCtx.settings.register(INKWEAVER_SETTINGS_NAMESPACE, z.object({}))
   })
-  ctx.effect(
-    () => {
-      const lifecycle = createAiNovelHostRpcLifecycle(createAiNovelRpcHandler(
-        installer,
-        workspaces,
-        error => { ctx.logger.error('inkweaver: request failed: %o', error) },
-      ))
-      const unregister = connection.rpc.handle('/inkweaver', lifecycle.handler)
-      return async () => {
-        await lifecycle.dispose()
-        await unregister()
-      }
-    },
-    'inkweaver: setup and read-only context RPC',
-  )
+  // DSH 0.1.5 resolves the Web transport through the owning Fiber's
+  // `webServer` injection. Registering the channel from the root Fiber makes
+  // HostConnectionService reach for a property that is not present and aborts
+  // the whole Web profile before readiness. Keep the host plugin loadable in
+  // non-Web profiles, but defer the route registration until Web is available.
+  ctx.inject(['webServer'], webCtx => {
+    webCtx.effect(
+      () => {
+        const lifecycle = createAiNovelHostRpcLifecycle(createAiNovelRpcHandler(
+          installer,
+          workspaces,
+          error => { ctx.logger.error('inkweaver: request failed: %o', error) },
+        ))
+        const unregister = connection.rpc.handle('/inkweaver', lifecycle.handler)
+        return async () => {
+          await lifecycle.dispose()
+          await unregister()
+        }
+      },
+      'inkweaver: setup and read-only context RPC',
+    )
+  })
 }
