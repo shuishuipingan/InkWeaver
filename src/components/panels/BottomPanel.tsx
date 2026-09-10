@@ -24,6 +24,7 @@ import { resumeImportWorkflowFromCheckpoint } from '../../services/workflows/imp
 import { resumeBatchChapterWorkflowFromCheckpoint } from '../../services/workflows/batch-chapter-workflow'
 import { resumeChapterDraftWorkflowFromCheckpoint } from '../../services/workflows/chapter-workflow'
 import { resumeCharacterExtractionWorkflowFromCheckpoint } from '../../services/workflows/character-extraction-workflow'
+import { resumeArchitectureWorkflowFromCheckpoint } from '../../services/workflows/architecture-workflow'
 import { resumeChapterFinalizeWorkflowFromCheckpoint, resumeChapterRefineWorkflowFromCheckpoint, resumeChapterReviewWorkflowFromCheckpoint } from '../../services/workflows/chapter-workflow'
 import {
   coarseRuntimePlatform,
@@ -278,7 +279,8 @@ function WorkflowRecoveryReceipts() {
     const isChapterRefine = checkpoint.type === 'chapter_creation' && checkpoint.resumeMetadata?.kind === 'chapter-refine'
     const isChapterFinalize = checkpoint.type === 'chapter_creation' && checkpoint.resumeMetadata?.kind === 'chapter-finalize'
     const isCharacterExtraction = checkpoint.type === 'character_extraction' && checkpoint.resumeMetadata?.kind === 'character-extraction'
-    if (!session || (!['novel_import', 'batch_generate'].includes(checkpoint.type) && !isChapterDraft && !isChapterReview && !isChapterRefine && !isChapterFinalize && !isCharacterExtraction)) return
+    const isArchitecture = checkpoint.type === 'architecture_generation' && checkpoint.resumeMetadata?.kind === 'architecture'
+    if (!session || (!['novel_import', 'batch_generate'].includes(checkpoint.type) && !isChapterDraft && !isChapterReview && !isChapterRefine && !isChapterFinalize && !isCharacterExtraction && !isArchitecture)) return
     setResumingRunId(checkpoint.runId)
     try {
       const workflow = checkpoint.type === 'novel_import'
@@ -293,7 +295,9 @@ function WorkflowRecoveryReceipts() {
                   : checkpoint.resumeMetadata?.kind === 'chapter-finalize'
                     ? await resumeChapterFinalizeWorkflowFromCheckpoint(checkpoint, session)
                 : resumeChapterDraftWorkflowFromCheckpoint(checkpoint, session)
-              : await resumeCharacterExtractionWorkflowFromCheckpoint(checkpoint, session)
+            : checkpoint.type === 'character_extraction'
+              ? await resumeCharacterExtractionWorkflowFromCheckpoint(checkpoint, session)
+              : await resumeArchitectureWorkflowFromCheckpoint(checkpoint, session)
       void useWorkflowStore.getState().startWorkflow(workflow, false).catch(error => {
         toast.error(text(`恢复任务失败：${String(error)}`, `Could not resume the workflow: ${String(error)}`))
       })
@@ -332,6 +336,7 @@ function WorkflowRecoveryReceipts() {
             || (checkpoint.type === 'chapter_creation' && checkpoint.resumeMetadata?.kind === 'chapter-refine')
             || (checkpoint.type === 'chapter_creation' && checkpoint.resumeMetadata?.kind === 'chapter-finalize')
             || (checkpoint.type === 'character_extraction' && checkpoint.resumeMetadata?.kind === 'character-extraction')
+            || (checkpoint.type === 'architecture_generation' && checkpoint.resumeMetadata?.kind === 'architecture')
           )
           const completed = checkpoint.steps.filter(step => step.status === 'completed').length
           return (
@@ -373,9 +378,11 @@ function WorkflowRecoveryReceipts() {
                           : checkpoint.resumeMetadata?.kind === 'chapter-finalize'
                             ? text('继续定稿', 'Resume finalization')
                         : text('继续写稿', 'Resume draft writing')
-                      : checkpoint.type === 'character_extraction'
+                        : checkpoint.type === 'character_extraction'
                         ? text('继续提取人物', 'Resume character extraction')
-                      : text('继续导入', 'Resume import')}
+                        : checkpoint.type === 'architecture_generation'
+                          ? text('继续生成架构', 'Resume architecture generation')
+                        : text('继续导入', 'Resume import')}
               </Button>}
               <button type="button" className="flex-shrink-0 rounded border px-2 py-1 text-[0.68rem]" onClick={() => remove(checkpoint.runId)}>
                 {text('清除收据', 'Clear receipt')}

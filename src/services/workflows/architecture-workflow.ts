@@ -13,6 +13,7 @@ import {
 import { randomUUID } from '../../utils/id'
 import { requireWorkflowProjectSession } from './workflow-project-session'
 import type { ArchitectureProjectSnapshot } from './commands/architecture.command'
+import { canResumeWorkflowCheckpoint, type WorkflowRecoveryCheckpoint } from '../../shared/workflow-recovery'
 
 // ==========================================
 // 1. 类型定义
@@ -44,6 +45,51 @@ export interface ConfigGenerationWorkflowParams {
   totalChapters: number
   wordsPerChapter: number
   onGenerated: (config: Partial<NovelConfig>) => void
+}
+
+/** Rebuild architecture generation from selected steps and safe guidance only. */
+export function resumeArchitectureWorkflowFromCheckpoint(
+  checkpoint: WorkflowRecoveryCheckpoint,
+  currentSession: ProjectSessionContext,
+): WorkflowDefinition {
+  if (checkpoint.type !== 'architecture_generation' || checkpoint.resumeMetadata?.kind !== 'architecture') {
+    throw new Error('该恢复收据不是架构生成工作流，不能由架构恢复入口处理')
+  }
+  if (!canResumeWorkflowCheckpoint(checkpoint, currentSession)) {
+    throw new Error('恢复收据所属项目会话已变化，已拒绝继续架构生成')
+  }
+  const metadata = checkpoint.resumeMetadata
+  const selectedSteps = parseArchitectureSteps(metadata.selectedStepsJson)
+  const stepGuidance = parseArchitectureGuidance(metadata.stepGuidanceJson)
+  return createArchitectureWorkflow({
+    projectPath: currentSession.projectPath,
+    projectSession: currentSession,
+    selectedSteps,
+    stepGuidance,
+  })
+}
+
+function parseArchitectureSteps(value: unknown): Array<'premise' | 'characters' | 'worldbuilding' | 'synopsis'> {
+  if (typeof value !== 'string') throw new Error('架构恢复收据缺少步骤参数')
+  try {
+    const parsed = JSON.parse(value) as unknown
+    const allowed = new Set(['premise', 'characters', 'worldbuilding', 'synopsis'])
+    if (!Array.isArray(parsed) || !parsed.every(item => typeof item === 'string' && allowed.has(item))) throw new Error('invalid steps')
+    return [...new Set(parsed)] as Array<'premise' | 'characters' | 'worldbuilding' | 'synopsis'>
+  } catch {
+    throw new Error('架构恢复收据步骤参数无效')
+  }
+}
+
+function parseArchitectureGuidance(value: unknown): Record<string, string> {
+  if (typeof value !== 'string') return {}
+  try {
+    const parsed = JSON.parse(value) as unknown
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('invalid guidance')
+    return Object.fromEntries(Object.entries(parsed).filter(([, item]) => typeof item === 'string'))
+  } catch {
+    throw new Error('架构恢复收据指导参数无效')
+  }
 }
 
 // ==========================================
@@ -126,6 +172,11 @@ export function createArchitectureWorkflow(params: ArchitectureWorkflowParams): 
     title: text('生成故事架构', 'Generate story architecture'),
     projectPath: expectedProjectPath,
     projectSession,
+    resumeMetadata: {
+      kind: 'architecture',
+      selectedStepsJson: JSON.stringify(sel),
+      stepGuidanceJson: JSON.stringify(guidance),
+    },
     resourceKeys: [
       workflowResourceKey('architecture'),
       ...(sel.includes('characters') ? [workflowResourceKey('character-roster')] : []),
