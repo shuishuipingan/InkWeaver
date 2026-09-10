@@ -109,7 +109,7 @@ export type {
 export const name = 'inkweaver'
 
 /** Required Host services. */
-export const inject = ['connection', 'workspaceRegistry', 'settings']
+export const inject = ['connection', 'workspaceRegistry', 'settings', 'webServer']
 
 /** Settings namespace owned by the browser status card. */
 const INKWEAVER_SETTINGS_NAMESPACE = 'inkweaver'
