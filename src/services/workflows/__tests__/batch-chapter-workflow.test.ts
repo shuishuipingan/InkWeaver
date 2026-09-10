@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
   createBatchChapterWorkflow,
+  resumeBatchChapterWorkflowFromCheckpoint,
   MAX_BATCH_CHAPTERS,
   MIN_BATCH_CHAPTERS,
   normalizeBatchChapterCount,
@@ -152,6 +153,40 @@ describe('batch chapter workflow limits', () => {
 })
 
 describe('batch chapter workflow generation model selection', () => {
+  it('rebuilds frozen batch parameters from a current-session recovery checkpoint', () => {
+    const workflow = resumeBatchChapterWorkflowFromCheckpoint({
+      schemaVersion: 1,
+      runId: 'batch-recovery',
+      projectPath,
+      projectSession: projectSession(),
+      type: 'batch_generate',
+      title: '批量恢复',
+      writingLanguage: 'zh-CN',
+      uiLocale: 'zh-CN',
+      boundary: 'failed',
+      currentStepIndex: 1,
+      steps: [],
+      createdAt: '2026-01-01',
+      updatedAt: '2026-01-01',
+      resumeMetadata: {
+        startChapterNumber: 3,
+        chapterCount: 2,
+        completionMode: 'auto_finalize',
+        generationModelId: 'frozen-model',
+        chapterWordsTarget: 4200,
+      },
+    }, projectSession())
+
+    expect(workflow).toMatchObject({
+      type: 'batch_generate',
+      generationModelId: 'frozen-model',
+      chapterWordsTarget: 4200,
+      completionMode: 'auto_finalize',
+      resumeMetadata: expect.objectContaining({ startChapterNumber: 3, chapterCount: 2 }),
+    })
+    expect(workflow.steps).toHaveLength(2)
+  })
+
   it('freezes one per-chapter target into the definition and every draft command', async () => {
     const input = {
       projectPath,
@@ -169,6 +204,13 @@ describe('batch chapter workflow generation model selection', () => {
       chapterWordsTarget: 4200,
       resourceKeys: ['chapter:1', 'chapter:2'],
       readResourceKeys: ['novel-config', 'architecture', 'blueprints'],
+      resumeMetadata: {
+        startChapterNumber: 1,
+        chapterCount: 2,
+        completionMode: 'draft_review',
+        generationModelId: 'grok-selected-model',
+        chapterWordsTarget: 4200,
+      },
     })
 
     await useWorkflowStore.getState().startWorkflow(workflow)

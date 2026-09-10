@@ -33,6 +33,7 @@ import {
   checkpointFromRun,
   saveWorkflowRecoveryCheckpoint,
   type WorkflowRecoveryBoundary,
+  type WorkflowRecoveryMetadata,
 } from '../shared/workflow-recovery'
 
 // ===== 工作流数据模型 =====
@@ -108,6 +109,8 @@ export interface WorkflowRun {
   generationReceipt?: GenerationReceiptSummary
   /** Safe restart metadata; never contains step result/prose. */
   recoveryCheckpoint?: import('../shared/workflow-recovery').WorkflowRecoveryCheckpoint
+  /** JSON-safe frozen inputs for a workflow-specific recovery factory. */
+  resumeMetadata?: WorkflowRecoveryMetadata
   /** 已请求在当前步骤完成后的安全边界暂停 */
   pauseRequested?: boolean
 }
@@ -207,6 +210,8 @@ export interface WorkflowDefinition {
   readResourceKeys?: readonly string[]
   /** Persisted workflows may freeze the UI locale independently of the current app setting. */
   uiLocale?: Locale
+  /** JSON-safe frozen inputs that the owning workflow can use after restart. */
+  resumeMetadata?: WorkflowRecoveryMetadata
   steps: Array<{
     name: string
     description: string
@@ -524,6 +529,7 @@ export const useWorkflowStore = create<WorkflowState>()((set, get) => ({
       ...(chapterWordsTarget ? { chapterWordsTarget } : {}),
       ...(resourceKeys ? { resourceKeys } : {}),
       ...(readResourceKeys ? { readResourceKeys } : {}),
+      ...(definition.resumeMetadata ? { resumeMetadata: { ...definition.resumeMetadata } } : {}),
       type: definition.type,
       title: definition.title,
       status: 'running',

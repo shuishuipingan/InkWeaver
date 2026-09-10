@@ -4,6 +4,7 @@ import type { WritingLanguage } from './writing-language'
 
 export const WORKFLOW_RECOVERY_SCHEMA_VERSION = 1 as const
 export type WorkflowRecoveryBoundary = 'started' | 'step-completed' | 'paused' | 'failed' | 'cancelled' | 'completed'
+export type WorkflowRecoveryMetadata = Readonly<Record<string, string | number | boolean>>
 
 export interface WorkflowRecoveryStep {
   id: string
@@ -27,6 +28,8 @@ export interface WorkflowRecoveryCheckpoint {
   steps: WorkflowRecoveryStep[]
   createdAt: string
   updatedAt: string
+  /** JSON-safe frozen inputs owned by a workflow-specific resume factory. */
+  resumeMetadata?: WorkflowRecoveryMetadata
 }
 
 const STORAGE_KEY = 'inkweaver.workflow-recovery.v1'
@@ -44,6 +47,7 @@ export function checkpointFromRun(run: {
   steps: readonly WorkflowRecoveryStep[]
   createdAt: string
   completedAt?: string
+  resumeMetadata?: WorkflowRecoveryMetadata
 }, boundary: WorkflowRecoveryBoundary, now = new Date().toISOString()): WorkflowRecoveryCheckpoint | null {
   if (!run.projectSession) return null
   return {
@@ -66,6 +70,7 @@ export function checkpointFromRun(run: {
     })),
     createdAt: run.createdAt,
     updatedAt: now,
+    ...(run.resumeMetadata ? { resumeMetadata: { ...run.resumeMetadata } } : {}),
   }
 }
 
