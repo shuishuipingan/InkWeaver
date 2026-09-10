@@ -26,7 +26,7 @@ describe('preset setup Host RPC', () => {
 
     apply(ctx, { presetRoot: 'C:\\InkWeaver\\presets' })
 
-    expect(ctx.inject).toHaveBeenCalledWith(['webServer'], expect.any(Function))
+    expect(ctx.inject).toHaveBeenCalledWith(['connection', 'webServer'], expect.any(Function))
   })
 
   it('rejects new commands during HMR disposal and waits for an in-flight command to settle', async () => {
@@ -112,9 +112,11 @@ describe('preset setup Host RPC', () => {
         throw new Error(`unexpected Host service: ${service}`)
       },
       inject(services: readonly string[], callback: (value: unknown) => void): void {
-        callback(services[0] === 'webServer'
+        callback(services[0] === 'connection'
           ? {
+              connection: { rpc: { handle } },
               webServer: { register: vi.fn(() => async () => {}) },
+              get: (service: string) => service === 'workspaceRegistry' ? { get: () => undefined } : undefined,
               effect: (registration: () => () => Promise<void>) => { registrations.push(registration) },
             }
           : { settings: { register: vi.fn() } })

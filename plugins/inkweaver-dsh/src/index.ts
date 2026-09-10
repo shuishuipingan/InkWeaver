@@ -316,8 +316,6 @@ export function createAiNovelHostRpcLifecycle(handler: ConnectionRpcHandler): No
 export function apply(ctx: Context, config: Config): void {
   const presetRoot = config.presetRoot ?? dshHomePath('.agent-presets')
   const installer = createBundledPresetInstaller(templateRoot(), presetRoot)
-  const connection = ctx.get('connection') as HostConnectionHandle
-  const workspaces = ctx.get('workspaceRegistry') as NovelWorkspaceRegistry
   ctx.inject(['settings'], settingsCtx => {
     settingsCtx.settings.register(INKWEAVER_SETTINGS_NAMESPACE, z.object({}))
   })
@@ -326,9 +324,11 @@ export function apply(ctx: Context, config: Config): void {
   // HostConnectionService reach for a property that is not present and aborts
   // the whole Web profile before readiness. Keep the host plugin loadable in
   // non-Web profiles, but defer the route registration until Web is available.
-  ctx.inject(['webServer'], webCtx => {
+  ctx.inject(['connection', 'webServer'], webCtx => {
     webCtx.effect(
       () => {
+        const connection = webCtx.connection as HostConnectionHandle
+        const workspaces = webCtx.get('workspaceRegistry') as NovelWorkspaceRegistry
         const lifecycle = createAiNovelHostRpcLifecycle(createAiNovelRpcHandler(
           installer,
           workspaces,
