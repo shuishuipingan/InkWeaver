@@ -70,7 +70,7 @@ describe('RelationshipGraph canvas label hit evidence', () => {
       if (currentFrame?.pendingSegment) currentFrame.segments.push(currentFrame.pendingSegment)
       if (currentFrame) currentFrame.pendingStart = null
       if (currentFrame) currentFrame.pendingSegment = null
-      return callOriginalStroke.call(this, path)
+      return path === undefined ? callOriginalStroke.call(this) : callOriginalStroke.call(this, path)
     }
     contextPrototype.fillText = function (this: CanvasRenderingContext2D, text: string, x: number, y: number, ...args: [maxWidth?: number]) {
       currentFrame?.labels.push({ text, x, y })
