@@ -10,12 +10,13 @@ import react from '@vitejs/plugin-react'
 const repositoryRoot = path.resolve('.')
 const chromeExecutable = process.env.CHROME_PATH ?? 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'
 const describeWithChrome = existsSync(chromeExecutable) ? describe : describe.skip
-const VITE_SERVER_HOOK_TIMEOUT_MS = 30_000
+const VITE_SERVER_HOOK_TIMEOUT_MS = 120_000
+const UPDATE_SECTION_VITE_CACHE_DIR = path.join(repositoryRoot, '.runtime', '.cache', 'update-section-vite-v2')
 // The full desktop suite exercises native workers and PowerShell processes at
 // the same time. On a clean Windows checkout Vite may also rebuild its React
 // dependency cache before the first page can execute; allow that cold start
 // without hiding assertion failures in the interaction itself.
-const COLD_BROWSER_INTERACTION_TIMEOUT_MS = 120_000
+const COLD_BROWSER_INTERACTION_TIMEOUT_MS = 180_000
 
 async function findFreePort(): Promise<number> {
   const probe = createNetServer()
@@ -46,6 +47,26 @@ describeWithChrome('UpdateSection browser interactions', () => {
       root: repositoryRoot,
       configFile: false,
       plugins: [react()],
+      // Keep this fixture's optimizer metadata isolated from the other script
+      // browser suites. Discovery of the desktop index caused a clean run to
+      // rebuild hundreds of unrelated dependencies before the first button
+      // could render.
+      cacheDir: UPDATE_SECTION_VITE_CACHE_DIR,
+      optimizeDeps: {
+        noDiscovery: true,
+        include: [
+          'react',
+          'react-dom/client',
+          'react/jsx-dev-runtime',
+          'lucide-react',
+          '@radix-ui/react-dialog',
+          '@radix-ui/react-slot',
+          'class-variance-authority',
+          'clsx',
+          'tailwind-merge',
+          'zustand',
+        ],
+      },
       server: { host: '127.0.0.1', port, strictPort: true },
       appType: 'spa',
     })
@@ -101,7 +122,7 @@ describeWithChrome('UpdateSection browser interactions', () => {
       expect(await page.getByText('请先处理未保存的修改').count()).toBe(0)
       await page.close()
     },
-    15_000,
+    COLD_BROWSER_INTERACTION_TIMEOUT_MS,
   )
 
   it('rechecks workflows before the final discard-and-install action', async () => {
@@ -118,7 +139,7 @@ describeWithChrome('UpdateSection browser interactions', () => {
     expect(await page.getByText('创作任务尚未结束，暂不能更新').isVisible()).toBe(true)
     expect(await page.evaluate(() => window.__updateHarness.installCalls)).toBe(0)
     await page.close()
-  }, 15_000)
+  }, COLD_BROWSER_INTERACTION_TIMEOUT_MS)
 
   it('does not recheck after download and offers an explicit seven-day later action', async () => {
     const page = await openHarness()
@@ -131,7 +152,7 @@ describeWithChrome('UpdateSection browser interactions', () => {
     expect(await page.evaluate(() => window.__updateHarness.deferCalls)).toEqual([7])
     expect(await page.getByText('更新已准备就绪').count()).toBe(0)
     await page.close()
-  }, 15_000)
+  }, COLD_BROWSER_INTERACTION_TIMEOUT_MS)
 
   it('uses the visible thirty-day action to postpone a downloaded update', async () => {
     const page = await openHarness()
@@ -142,7 +163,7 @@ describeWithChrome('UpdateSection browser interactions', () => {
     expect(await page.evaluate(() => window.__updateHarness.deferCalls)).toEqual([30])
     expect(await page.getByText('更新已准备就绪').count()).toBe(0)
     await page.close()
-  }, 15_000)
+  }, COLD_BROWSER_INTERACTION_TIMEOUT_MS)
 
   it('treats closing the update card as a seven-day reminder postponement', async () => {
     const page = await openHarness()
@@ -153,7 +174,7 @@ describeWithChrome('UpdateSection browser interactions', () => {
     expect(await page.evaluate(() => window.__updateHarness.deferCalls)).toEqual([7])
     expect(await page.getByText('更新已准备就绪').count()).toBe(0)
     await page.close()
-  }, 15_000)
+  }, COLD_BROWSER_INTERACTION_TIMEOUT_MS)
 
   it('keeps the official homepage beside the update action and invokes its fixed no-argument intent', async () => {
     const page = await openHarness()
@@ -179,7 +200,7 @@ describeWithChrome('UpdateSection browser interactions', () => {
       (window as unknown as { __updateHarness: { officialHomepageRequests: unknown[] } }).__updateHarness.officialHomepageRequests
     ))).toEqual([{ channel: 'official-homepage:open', args: [] }])
     await page.close()
-  }, 15_000)
+  }, COLD_BROWSER_INTERACTION_TIMEOUT_MS)
 
   it('uses English homepage copy and shows a localized error when its trusted intent fails', async () => {
     const page = await openHarness()
@@ -198,5 +219,5 @@ describeWithChrome('UpdateSection browser interactions', () => {
     await page.getByRole('button', { name: 'Official Website' }).click()
     expect(await page.getByText('Unable to open the official homepage. Please try again later.').isVisible()).toBe(true)
     await page.close()
-  }, 15_000)
+  }, COLD_BROWSER_INTERACTION_TIMEOUT_MS)
 })

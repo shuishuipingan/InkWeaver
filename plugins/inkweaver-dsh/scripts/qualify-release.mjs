@@ -1078,7 +1078,7 @@ async function qualify(options) {
     commands.push(await runPnpm(logRoot, 'electron-main-tests', ['exec', 'vitest', 'run', 'electron', '--maxWorkers=1'], { cwd: canonicalRepository, timeout: 300_000 }))
     commands.push(await runPnpm(logRoot, 'electron-release-tests', [
       'exec', 'vitest', 'run', 'scripts', '--maxWorkers=1',
-    ], { cwd: canonicalRepository, timeout: 300_000 }))
+    ], { cwd: canonicalRepository, timeout: 600_000 }))
     commands.push(await runPnpm(logRoot, 'harness-build', ['run', 'build'], { cwd: canonicalHarness, timeout: 300_000 }))
 
     const tarball = join(artifactsRoot, 'shuishuipingan-inkweaver-dsh-0.1.0.tgz')
