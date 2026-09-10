@@ -76,7 +76,7 @@ describe('preset setup Host RPC', () => {
       const response = await route.fetch(new Request(`http://dsh.test${route.path}`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ type: 'client-request', rpcId: `rpc-${endpoint}`, method: endpoint, payload }),
+        body: JSON.stringify({ type: 'client-request', rpcId: `rpc-${endpoint}`, method: `inkweaver/${endpoint}`, payload }),
       }))
       return (await response.json() as { result: unknown }).result
     }

@@ -185,6 +185,7 @@ function createInkWeaverFetchRoute(
   endpoint: string,
   lifecycle: NovelHostRpcLifecycle,
 ): ConnectionFetchRoute {
+  const wireEndpoint = `inkweaver/${endpoint}`
   return {
     path: `/api/inkweaver/${endpoint}`,
     methods: ['POST'],
@@ -201,8 +202,8 @@ function createInkWeaverFetchRoute(
         return rpcResponse('invalid-request', rpcErrorResult('request envelope must be valid JSON'))
       }
       const rpcId = typeof body.rpcId === 'string' ? body.rpcId : 'invalid-request'
-      if (body.type !== 'client-request' || body.method !== endpoint) {
-        return rpcResponse(rpcId, rpcErrorResult(`method ${JSON.stringify(body.method)} does not match endpoint ${JSON.stringify(endpoint)}`))
+      if (body.type !== 'client-request' || body.method !== wireEndpoint) {
+        return rpcResponse(rpcId, rpcErrorResult(`method ${JSON.stringify(body.method)} does not match endpoint ${JSON.stringify(wireEndpoint)}`))
       }
       return rpcResponse(rpcId, await lifecycle.handler(endpoint, body.payload, request.signal))
     },
