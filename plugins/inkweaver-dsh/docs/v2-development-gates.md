@@ -2,7 +2,7 @@
 
 本文件只记录本插件已经遇到的运行时陷阱和相应门禁。Harness 通用安装、固定上游基线与动态 Cordis Package 的说明仍由 [official-dsh-plugin-installation.md](official-dsh-plugin-installation.md) 负责；不要把同一套规则复制到多个地方。
 
-## 官方接口依据（当前插件依赖的 DSH 0.1.2-rc.1）
+## 官方接口依据（当前插件依赖的 DSH 0.1.5-rc.1）
 
 以下是本插件接口决策的外部依据；它们定义 DSH 或 Playwright 的合同，不能用个人经验替代。浏览器脚本中的具体等待顺序则是本项目的资格策略，会在下文单独标明。
 

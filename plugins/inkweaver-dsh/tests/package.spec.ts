@@ -103,7 +103,7 @@ describe('installable AI novel bundle', () => {
     const rows = await yamlList(join(presetRoot, 'agent.cordis.yml')) as Array<{
       id?: string
       name?: string
-      config?: { text?: string }
+      config?: { prefix?: string }
     }>
     expect(rows.map(row => [row.id, row.name])).toEqual([
       ['persona', '@deepseek-ai/dsh-persona'],
@@ -113,7 +113,7 @@ describe('installable AI novel bundle', () => {
     const metadata = yaml.load(await readFile(join(presetRoot, 'preset.yml'), 'utf8'))
     expect(metadata).toMatchObject({ name: '织墨' })
     expect(JSON.stringify(rows)).not.toMatch(/bash|shell|tool-fs|str-replace|code-mode/i)
-    const persona = rows.find(row => row.id === 'persona')?.config?.text ?? ''
+    const persona = rows.find(row => row.id === 'persona')?.config?.prefix ?? ''
     expect(persona).toContain('auto：')
     expect(persona).toContain('fluent-drafting：')
     expect(persona).toContain('consistency-first：')

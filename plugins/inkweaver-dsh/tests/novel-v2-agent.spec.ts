@@ -91,7 +91,7 @@ async function createV1ToV2RecomposeHarness(root: string): Promise<{ readonly ct
     "- id: llm\n  name: '@deepseek-ai/dsh-llm'",
     "- id: sessions\n  name: '@deepseek-ai/dsh-session'",
     "- id: session-projection\n  name: '@deepseek-ai/dsh-session-projection'",
-    "- id: system-prompt\n  name: '@deepseek-ai/dsh-system-prompt'\n  config:\n    persona: ''",
+    "- id: system-prompt\n  name: '@deepseek-ai/dsh-system-prompt'\n  config:\n    personaPrefix: ''",
     "- id: tools\n  name: '@deepseek-ai/dsh-tools'",
     "- id: approval\n  name: '@deepseek-ai/dsh-user-approval'\n  config:\n    policy: ask",
     "- id: agents\n  name: '@deepseek-ai/dsh-agent'",

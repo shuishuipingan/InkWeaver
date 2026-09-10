@@ -1,4 +1,8 @@
-# DSH 0.1.2-rc.1 compatibility receipt
+# DSH 0.1.2-rc.1 compatibility receipt (historical)
+
+> Superseded by [the DSH 0.1.5-rc.1 compatibility receipt](dsh-0.1.5-rc.1-compatibility.md).
+> This file remains only to explain the previous migration checkpoint and is
+> not a current release target.
 
 Verification date: 2026-09-09 (Asia/Hong_Kong)
 

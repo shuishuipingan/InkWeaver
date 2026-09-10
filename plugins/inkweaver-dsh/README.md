@@ -28,11 +28,11 @@ The desktop application at the repository root is separate and is not an activat
 
 ## DSH compatibility
 
-The current plugin line is qualified against the official npm default channel
-`@deepseek-ai/dsh@0.1.2-rc.1` (the channel is still an official release
-candidate, not a stable semver release). The exact dependency pins, API
+The current plugin line targets the official npm default channel
+`@deepseek-ai/dsh@0.1.5-rc.1` (the channel is still an official release
+candidate, not a stable semver release). The exact dependency pins, 0.1.5 API
 migrations, and qualification status are recorded in
-[the DSH compatibility receipt](docs/dsh-0.1.2-rc.1-compatibility.md). Do not
+[the DSH compatibility receipt](docs/dsh-0.1.5-rc.1-compatibility.md). Do not
 replace the pins with an unverified GitHub `main` checkout or a floating
 `next` range.
 

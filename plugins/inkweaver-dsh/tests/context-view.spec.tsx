@@ -164,6 +164,7 @@ describe('novel workbench context summary', () => {
     const standard = {
       useSessions: (() => undefined) as never,
       useWorkspaces: (() => undefined) as never,
+      usePanelInfo: (() => undefined) as never,
     }
     const acquireSidebarRail = vi.fn(() => vi.fn())
     route.setPreset('other-preset')
@@ -307,7 +308,11 @@ describe('novel workbench context summary', () => {
     const v1 = { getSnapshot: () => v1State, subscribe: () => () => {}, close: vi.fn() }
     const setupState = { status: 'installed' as const, open: false, changed: false }
     const setup = { getSnapshot: () => setupState, subscribe: () => () => {}, close: vi.fn() }
-    const standard = { useSessions: (() => undefined) as never, useWorkspaces: (() => undefined) as never }
+    const standard = {
+      useSessions: (() => undefined) as never,
+      useWorkspaces: (() => undefined) as never,
+      usePanelInfo: (() => undefined) as never,
+    }
     const { container, root } = mountDomTestRoot()
     container.dataset.shellOverlay = ''
     await act(async () => {
@@ -447,6 +452,7 @@ describe('novel workbench context summary', () => {
     await act(async () => {
       root.render(<NovelWorkbenchOverlay
         useSessions={(() => undefined) as never} useWorkspaces={(() => undefined) as never}
+        usePanelInfo={(() => undefined) as never}
         workbenchController={v1 as never} v2WorkbenchController={v2 as never} workbenchRoute={route}
         setupController={setup as never} acquireSidebarRail={vi.fn(() => vi.fn())}
       />)

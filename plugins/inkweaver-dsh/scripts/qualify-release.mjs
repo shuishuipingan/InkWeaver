@@ -144,8 +144,9 @@ function parsePreset(text) {
   }
   const persona = objectOf(rows[0], 'Persona row')
   const config = objectOf(persona.config, 'Persona config')
-  if (typeof config.text !== 'string') fail('Preset persona must describe the V2 tool surface')
-  const personaToolNames = [...new Set([...config.text.matchAll(/\bnovel_[a-z_]+\b/g)].map(match => match[0]))].sort()
+  const personaText = typeof config.prefix === 'string' ? config.prefix : config.text
+  if (typeof personaText !== 'string') fail('Preset persona must describe the V2 tool surface')
+  const personaToolNames = [...new Set([...personaText.matchAll(/\bnovel_[a-z_]+\b/g)].map(match => match[0]))].sort()
   if (JSON.stringify(personaToolNames) !== JSON.stringify([...qualificationToolNames].sort())) {
     fail('Preset persona must describe exactly novel_read and novel_propose_change')
   }
@@ -845,7 +846,7 @@ async function qualifyPresetTools(logRoot, profileRoot, installedRoot, env) {
     "- id: llm\n  name: '@deepseek-ai/dsh-llm'",
     "- id: session-projections\n  name: '@deepseek-ai/dsh-session-projection'",
     "- id: sessions\n  name: '@deepseek-ai/dsh-session'",
-    "- id: system-prompt\n  name: '@deepseek-ai/dsh-system-prompt'\n  config:\n    persona: ''",
+    "- id: system-prompt\n  name: '@deepseek-ai/dsh-system-prompt'\n  config:\n    personaPrefix: ''",
     "- id: tools\n  name: '@deepseek-ai/dsh-tools'",
     "- id: approval\n  name: '@deepseek-ai/dsh-user-approval'\n  config:\n    policy: ask",
     "- id: agents\n  name: '@deepseek-ai/dsh-agent'",

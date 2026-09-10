@@ -34,13 +34,13 @@ artifacts and are intentionally not release inputs.
 ## DSH distribution baseline
 
 The official npm registry was queried through the configured proxy. At this
-checkpoint `@deepseek-ai/dsh` reports `latest=0.1.2-rc.1`,
-`next=0.1.2-rc.1`, and `alpha=0.1.2-alpha.5`; the official repository is
+checkpoint `@deepseek-ai/dsh` reports `latest=0.1.5-rc.1`,
+`next=0.1.5-rc.2`, and `alpha=0.1.5-alpha.2`; the official repository is
 `deepseek-ai/deepseek-harness`. There is no stable default-channel semver
 release at this checkpoint. The plugin compatibility receipt records the exact
 related package pins and API migration evidence:
 
-[DSH 0.1.2-rc.1 compatibility receipt](../../plugins/inkweaver-dsh/docs/dsh-0.1.2-rc.1-compatibility.md)
+[DSH 0.1.5-rc.1 compatibility receipt](../../plugins/inkweaver-dsh/docs/dsh-0.1.5-rc.1-compatibility.md)
 
 ## Verification checkpoint
 
@@ -72,7 +72,7 @@ historical checkpoint above is intentionally retained.
 | desktop package version | `0.9.2` (still not frozen) |
 | DSH plugin package version | `0.1.0` (still not frozen) |
 | tracker status | 4 待验收 / 34 开发中 / 0 未开始 / 0 通过 |
-| latest full DSH qualification | `passed`, run `2026-09-10T16-21-03-366Z-25984` against source `399c682`, Harness `a66e4702`; docs-only commits `cd256bd` and `585eb2f` follow; tarball SHA-256 `c155963bad245f4f939732eee2bc57006a9046d4eb0440f29f1295cbba1d907d` |
+| latest full DSH qualification | historical `passed` run `2026-09-10T16-21-03-366Z-25984` covered DSH `0.1.2-rc.1`; it is superseded by the current `0.1.5-rc.1` migration and must not be used as the final release receipt |
 
 Since the historical checkpoint, the development line has also added the
 read-only cross-volume trend view (`681fa15`), chronological reader-knowledge

@@ -1,0 +1,17 @@
+{
+  "chapter": 1,
+  "title": "退潮来信",
+  "purpose": "让林夏收到第一封未来信件。",
+  "beats": [
+    "夜潮退去",
+    "海床显出信匣",
+    "信上写着弟弟明日的求救"
+  ],
+  "characterIds": [
+    "lin-xia"
+  ],
+  "continuityNotes": [
+    "灯塔主灯在午夜熄灭"
+  ],
+  "status": "planned"
+}

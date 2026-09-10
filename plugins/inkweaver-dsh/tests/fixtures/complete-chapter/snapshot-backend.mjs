@@ -253,7 +253,14 @@ function assertV2AuthoringChainPrompt(options, stage) {
 }
 
 function assertV2ProposalProtocol(options) {
-  const system = options.system
+  const system = typeof options.system === 'string'
+    ? options.system
+    : (options.messages ?? [])
+      .filter(message => message?.role === 'system')
+      .flatMap(message => Array.isArray(message.content) ? message.content : [])
+      .filter(block => block?.type === 'text' && typeof block.text === 'string')
+      .map(block => block.text)
+      .join('\n\n')
   const required = [
     '织墨 V2 使用宿主的原生函数调用',
     '每个工具的完整输入就是直接传给工具的 JSON 对象',

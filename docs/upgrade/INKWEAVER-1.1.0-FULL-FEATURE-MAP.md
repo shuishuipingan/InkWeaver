@@ -281,7 +281,7 @@ flowchart LR
 
 ### F01 兼容基线
 
-2026-09-06 已查询官方 npm `@deepseek-ai/dsh`：latest/next 为 0.1.2-rc.1，alpha 为 0.1.2-alpha.5；官方 GitHub 最近记录包含更高 alpha，且 /releases/latest 返回 404。这里的“最新正式发布”按官方默认分发渠道理解，文案必须写明 RC，不能宣称已有稳定版。
+2026-09-11 已查询官方 npm `@deepseek-ai/dsh`：latest 为 0.1.5-rc.1，next 为 0.1.5-rc.2，alpha 为 0.1.5-alpha.2；这里的“最新正式发布”按官方默认分发渠道理解，文案必须写明 RC，不能宣称已有稳定版。0.1.5 还要求 persona 前缀、SystemPrompt 配置和 Session 事件边界迁移。
 
 开发开始和发布前重新查询 npm dist-tags、官方 releases 与版本源码。冻结具体包版本、tag、commit 和核对日期，禁止直接以 main 或第三方介绍作为兼容依据。
 

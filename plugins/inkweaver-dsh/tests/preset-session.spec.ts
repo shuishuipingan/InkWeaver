@@ -30,7 +30,7 @@ describe('installed 织墨 preset session', () => {
     ctx.loader.builtins.include = Include
     await ctx.plugin(LlmRuntime)
     await ctx.plugin(SessionStore)
-    await ctx.plugin(SystemPrompt, { persona: '' })
+    await ctx.plugin(SystemPrompt, { personaPrefix: '' })
     await ctx.plugin(ToolRuntime)
     for (const toolName of ['describe_image', 'ssh_exec']) {
       ctx.tools.register(defineTool({
@@ -101,7 +101,7 @@ describe('installed 织墨 preset session', () => {
     ctx.loader.builtins.include = Include
     await ctx.plugin(LlmRuntime)
     await ctx.plugin(SessionStore)
-    await ctx.plugin(SystemPrompt, { persona: '' })
+    await ctx.plugin(SystemPrompt, { personaPrefix: '' })
     await ctx.plugin(ToolRuntime)
     ctx.tools.register(defineTool({
       name: 'ssh_exec',
@@ -153,7 +153,7 @@ describe('installed 织墨 preset session', () => {
     ctx.loader.builtins.include = Include
     await ctx.plugin(LlmRuntime)
     await ctx.plugin(SessionStore)
-    await ctx.plugin(SystemPrompt, { persona: '' })
+    await ctx.plugin(SystemPrompt, { personaPrefix: '' })
     await ctx.plugin(ToolRuntime)
     ctx.provide('workspaceRegistry' as never, {
       resolveByPath: async () => undefined,

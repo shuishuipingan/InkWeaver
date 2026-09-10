@@ -10,7 +10,7 @@
 - id: system-prompt
   name: '@deepseek-ai/dsh-system-prompt'
   config:
-    personaPrefix: ''
+    persona: ''
 
 - id: tools
   name: '@deepseek-ai/dsh-tools'
@@ -18,7 +18,7 @@
 - id: approval
   name: '@deepseek-ai/dsh-user-approval'
   config:
-    policy: !!js "process.env.DSH_NOVEL_APPROVAL_POLICY || 'ask'"
+    policy: ask
 
 - id: agents
   name: '@deepseek-ai/dsh-agent'
@@ -33,10 +33,8 @@
   config:
     default: inkweaver
     roots:
-      - path: !!js process.env.DSH_NOVEL_PRESET_ROOT
+      - path: "D:\\Game APP\\AI-Novel-Writer\\plugins\\inkweaver-dsh\\presets"
         trust: user
     includeShippedRoot: false
     includeUserRoot: false
 
-- id: snapshot-backend
-  name: './snapshot-backend.mjs'

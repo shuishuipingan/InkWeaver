@@ -66,9 +66,10 @@ function requestBoundaryIndex(events: readonly SessionEvent[], startIndex: numbe
   const start = events[startIndex]
   if (start?.type !== 'step/start') throw new Error('request reconstruction requires step/start')
   const chunkOffset = events.slice(startIndex + 1).findIndex(event =>
-    event.type === 'assistant/chunk'
+    event.type === 'assistant/message'
     && event.data.turn === start.data.turn
-    && event.data.step === start.data.step)
+    && event.data.step === start.data.step
+    && event.data.message.source.kind === 'model')
   if (chunkOffset === -1) throw new Error('request reconstruction found no model stream boundary')
   return startIndex + chunkOffset
 }
@@ -105,7 +106,7 @@ function assertRequestsReconstruct(events: readonly SessionEvent[], requests: re
     expect(request.model).toBe(header.config.model)
     expect(request.reasoningEffort).toBe(header.config.reasoningEffort ?? null)
     expect(request.maxTokens).toBe(header.config.maxTokens ?? null)
-    expect(request.system).toBe(header.system ?? null)
+    expect(request.system).toBeNull()
     expect(request.tools).toEqual(header.tools ?? [])
   }
 }
@@ -199,14 +200,10 @@ function semanticLog(events: readonly SessionEvent[]): object[] {
 
 function normalizeHeader(
   header: Extract<SessionEvent, { type: 'request/header' }>['data']['header'],
-  workspace: string,
 ): object {
   return {
     ...header,
     tools: [...(header.tools ?? [])].sort((left, right) => left.name.localeCompare(right.name)),
-    ...header.system === undefined
-      ? {}
-      : { system: header.system.replaceAll(workspace, '<workspace>').replaceAll(workspace.replaceAll('\\', '/'), '<workspace>') },
   }
 }
 
@@ -303,8 +300,8 @@ describe('complete chapter keyless snapshot', () => {
     if (firstHeaderEvent === undefined || restartHeaderEvent === undefined) {
       throw new Error('real composition did not log both request headers')
     }
-    const firstHeader = normalizeHeader(firstHeaderEvent.data.header, workspace)
-    expect(normalizeHeader(restartHeaderEvent.data.header, workspace)).toEqual(firstHeader)
+    const firstHeader = normalizeHeader(firstHeaderEvent.data.header)
+    expect(normalizeHeader(restartHeaderEvent.data.header)).toEqual(firstHeader)
     const snapshot = `${JSON.stringify({
       loaderProcess: {
         preapproval: 'manifest absent',

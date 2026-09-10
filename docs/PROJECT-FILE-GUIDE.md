@@ -127,7 +127,7 @@
 | `presets/` | V1/V2 的 persona 与工具挂载配置；不能用系统 preset 覆盖用户 preset。 |
 | `scripts/` | 构建产物校验、tarball/profile qualification 和无密钥浏览器后端。 |
 | `tests/` | store/repository 迁移、typed RPC、Proposal、浏览器、snapshot、tarball qualification。 |
-| `docs/dsh-0.1.2-rc.1-compatibility.md` | 官方 DSH 版本、精确依赖 pin、API 迁移、schema 5 和当前资格证据。 |
+| `docs/dsh-0.1.5-rc.1-compatibility.md` | 官方 DSH 版本、精确依赖 pin、0.1.5 API 迁移、schema 5 和当前资格证据。 |
 | `docs/v2-development-gates.md` | 实际 roster/mount/Proposal 同页应用/重启读回的门禁。 |
 
 ## 测试、脚本和生成物

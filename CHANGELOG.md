@@ -57,7 +57,7 @@
 
 ### DSH 插件
 
-- 插件依赖固定到官方 npm 默认渠道的 `@deepseek-ai/dsh@0.1.2-rc.1` 兼容矩阵；不使用浮动 `next` 或未经核验的 GitHub `main`。
+- 插件依赖已更新并固定到官方 npm 默认渠道的 `@deepseek-ai/dsh@0.1.5-rc.1` 兼容矩阵；同步迁移 persona 前缀、SystemPrompt 配置和 Session 事件边界，不使用浮动 `next` 或未经核验的 GitHub `main`。
 - DSH V2 NovelStore 从 schema 4 迁移到 schema 5，章节 Proposal 可携带来源绑定交接与稳定 ID 知情事件。
 - `chapter/context` 只返回当前章节有效且 `confirmed` 的知识；candidate 事件保留在 Proposal 收件箱，不会泄漏给模型。
 - DSH Client 工作台显示章节交接、上一章定稿和已确认知情范围；客户端在 loopback 边界校验无路径的严格 DTO。

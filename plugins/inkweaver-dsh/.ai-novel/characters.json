@@ -1,0 +1,13 @@
+{
+  "characters": [
+    {
+      "id": "lin-xia",
+      "name": "林夏",
+      "role": "灯塔守望人",
+      "summary": "能听见潮汐中的旧日回声。",
+      "goal": "找回失踪的弟弟。",
+      "relationships": [],
+      "notes": "害怕深水，却从不离开灯塔。"
+    }
+  ]
+}
