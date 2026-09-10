@@ -26,7 +26,7 @@ describe('preset setup Host RPC', () => {
 
     apply(ctx, { presetRoot: 'C:\\InkWeaver\\presets' })
 
-    expect(ctx.inject).toHaveBeenCalledWith(['connection', 'webServer'], expect.any(Function))
+    expect(ctx.inject).toHaveBeenCalledWith(['connection'], expect.any(Function))
   })
 
   it('rejects new commands during HMR disposal and waits for an in-flight command to settle', async () => {

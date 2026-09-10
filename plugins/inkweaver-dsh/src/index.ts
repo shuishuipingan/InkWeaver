@@ -109,7 +109,7 @@ export type {
 export const name = 'inkweaver'
 
 /** Required Host services. */
-export const inject = ['connection', 'workspaceRegistry', 'settings', 'webServer']
+export const inject = ['connection', 'workspaceRegistry', 'settings']
 
 /** Settings namespace owned by the browser status card. */
 const INKWEAVER_SETTINGS_NAMESPACE = 'inkweaver'
@@ -319,21 +319,20 @@ export function apply(ctx: Context, config: Config): void {
   ctx.inject(['settings'], settingsCtx => {
     settingsCtx.settings.register(INKWEAVER_SETTINGS_NAMESPACE, z.object({}))
   })
-  // DSH 0.1.5 resolves the Web transport through the owning Fiber's
-  // `webServer` injection. Registering the channel from the root Fiber makes
-  // HostConnectionService reach for a property that is not present and aborts
-  // the whole Web profile before readiness. Keep the host plugin loadable in
-  // non-Web profiles, but defer the route registration until Web is available.
-  ctx.inject(['connection', 'webServer'], webCtx => {
-    webCtx.effect(
+  // DSH 0.1.5 carries logical plugin channels through the shared `/api`
+  // gateway. Follow the official Gateway pattern and register the interceptor
+  // from the connection-injected Fiber; direct `/inkweaver` registration is
+  // retained only for older hosts that do not expose `rpc.intercept`.
+  ctx.inject(['connection'], connectionCtx => {
+    connectionCtx.effect(
       () => {
-        const workspaces = webCtx.get('workspaceRegistry') as NovelWorkspaceRegistry
+        const workspaces = ctx.get('workspaceRegistry') as NovelWorkspaceRegistry
         const lifecycle = createAiNovelHostRpcLifecycle(createAiNovelRpcHandler(
           installer,
           workspaces,
           error => { ctx.logger.error('inkweaver: request failed: %o', error) },
         ))
-        const rpc = webCtx.connection.rpc
+        const rpc = connectionCtx.connection.rpc
         const unregister = typeof rpc.intercept === 'function'
           ? rpc.intercept(
               '/api',
