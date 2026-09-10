@@ -24,6 +24,7 @@ import { resumeImportWorkflowFromCheckpoint } from '../../services/workflows/imp
 import { resumeBatchChapterWorkflowFromCheckpoint } from '../../services/workflows/batch-chapter-workflow'
 import { resumeChapterDraftWorkflowFromCheckpoint } from '../../services/workflows/chapter-workflow'
 import { resumeCharacterExtractionWorkflowFromCheckpoint } from '../../services/workflows/character-extraction-workflow'
+import { resumeChapterReviewWorkflowFromCheckpoint } from '../../services/workflows/chapter-workflow'
 import {
   coarseRuntimePlatform,
   formatSafeCallDiagnostic,
@@ -273,8 +274,9 @@ function WorkflowRecoveryReceipts() {
 
   const resumeRecoverableWorkflow = async (checkpoint: WorkflowRecoveryCheckpoint) => {
     const isChapterDraft = checkpoint.type === 'chapter_creation' && checkpoint.resumeMetadata?.kind === 'chapter-draft'
+    const isChapterReview = checkpoint.type === 'chapter_creation' && checkpoint.resumeMetadata?.kind === 'chapter-review'
     const isCharacterExtraction = checkpoint.type === 'character_extraction' && checkpoint.resumeMetadata?.kind === 'character-extraction'
-    if (!session || (!['novel_import', 'batch_generate'].includes(checkpoint.type) && !isChapterDraft && !isCharacterExtraction)) return
+    if (!session || (!['novel_import', 'batch_generate'].includes(checkpoint.type) && !isChapterDraft && !isChapterReview && !isCharacterExtraction)) return
     setResumingRunId(checkpoint.runId)
     try {
       const workflow = checkpoint.type === 'novel_import'
@@ -282,7 +284,9 @@ function WorkflowRecoveryReceipts() {
         : checkpoint.type === 'batch_generate'
             ? resumeBatchChapterWorkflowFromCheckpoint(checkpoint, session)
             : checkpoint.type === 'chapter_creation'
-              ? resumeChapterDraftWorkflowFromCheckpoint(checkpoint, session)
+              ? checkpoint.resumeMetadata?.kind === 'chapter-review'
+                ? await resumeChapterReviewWorkflowFromCheckpoint(checkpoint, session)
+                : resumeChapterDraftWorkflowFromCheckpoint(checkpoint, session)
               : await resumeCharacterExtractionWorkflowFromCheckpoint(checkpoint, session)
       void useWorkflowStore.getState().startWorkflow(workflow, false).catch(error => {
         toast.error(text(`恢复任务失败：${String(error)}`, `Could not resume the workflow: ${String(error)}`))
@@ -318,6 +322,7 @@ function WorkflowRecoveryReceipts() {
             checkpoint.type === 'novel_import'
             || checkpoint.type === 'batch_generate'
             || (checkpoint.type === 'chapter_creation' && checkpoint.resumeMetadata?.kind === 'chapter-draft')
+            || (checkpoint.type === 'chapter_creation' && checkpoint.resumeMetadata?.kind === 'chapter-review')
             || (checkpoint.type === 'character_extraction' && checkpoint.resumeMetadata?.kind === 'character-extraction')
           )
           const completed = checkpoint.steps.filter(step => step.status === 'completed').length
@@ -353,7 +358,9 @@ function WorkflowRecoveryReceipts() {
                   : checkpoint.type === 'batch_generate'
                     ? text('继续批量创作', 'Resume batch writing')
                     : checkpoint.type === 'chapter_creation'
-                      ? text('继续写稿', 'Resume draft writing')
+                      ? checkpoint.resumeMetadata?.kind === 'chapter-review'
+                        ? text('继续审稿', 'Resume review')
+                        : text('继续写稿', 'Resume draft writing')
                       : checkpoint.type === 'character_extraction'
                         ? text('继续提取人物', 'Resume character extraction')
                       : text('继续导入', 'Resume import')}
