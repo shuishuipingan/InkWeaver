@@ -67,8 +67,8 @@ historical checkpoint above is intentionally retained.
 
 | Item | Current value |
 | --- | --- |
-| local source HEAD | `80b6295` |
-| GitHub development ref | `origin/1.1.0-development` = `80b6295` (synchronized after the workflow-recovery update) |
+| local source HEAD | `905ce52` |
+| GitHub development ref | `origin/1.1.0-development` = `905ce52` (synchronized after the workflow-recovery update) |
 | desktop package version | `0.9.2` (still not frozen) |
 | DSH plugin package version | `0.1.0` (still not frozen) |
 | tracker status | 4 待验收 / 34 开发中 / 0 未开始 / 0 通过 |
