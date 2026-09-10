@@ -22,6 +22,7 @@ import StatsView from './StatsView'
 import { diagnosticWorkflowForCall, type LLMCallRecord } from '../../services/stats-service'
 import { resumeImportWorkflowFromCheckpoint } from '../../services/workflows/import-workflow'
 import { resumeBatchChapterWorkflowFromCheckpoint } from '../../services/workflows/batch-chapter-workflow'
+import { resumeChapterDraftWorkflowFromCheckpoint } from '../../services/workflows/chapter-workflow'
 import {
   coarseRuntimePlatform,
   formatSafeCallDiagnostic,
@@ -270,12 +271,15 @@ function WorkflowRecoveryReceipts() {
   }
 
   const resumeRecoverableWorkflow = async (checkpoint: WorkflowRecoveryCheckpoint) => {
-    if (!session || !['novel_import', 'batch_generate'].includes(checkpoint.type)) return
+    const isChapterDraft = checkpoint.type === 'chapter_creation' && checkpoint.resumeMetadata?.kind === 'chapter-draft'
+    if (!session || (!['novel_import', 'batch_generate'].includes(checkpoint.type) && !isChapterDraft)) return
     setResumingRunId(checkpoint.runId)
     try {
       const workflow = checkpoint.type === 'novel_import'
         ? await resumeImportWorkflowFromCheckpoint(checkpoint, session)
-        : resumeBatchChapterWorkflowFromCheckpoint(checkpoint, session)
+        : checkpoint.type === 'batch_generate'
+          ? resumeBatchChapterWorkflowFromCheckpoint(checkpoint, session)
+          : resumeChapterDraftWorkflowFromCheckpoint(checkpoint, session)
       void useWorkflowStore.getState().startWorkflow(workflow, false).catch(error => {
         toast.error(text(`恢复任务失败：${String(error)}`, `Could not resume the workflow: ${String(error)}`))
       })
@@ -306,6 +310,11 @@ function WorkflowRecoveryReceipts() {
       <div className="space-y-1.5">
         {checkpoints.map(checkpoint => {
           const resumable = session !== null && canResumeWorkflowCheckpoint(checkpoint, session)
+          const recoverable = resumable && (
+            checkpoint.type === 'novel_import'
+            || checkpoint.type === 'batch_generate'
+            || (checkpoint.type === 'chapter_creation' && checkpoint.resumeMetadata?.kind === 'chapter-draft')
+          )
           const completed = checkpoint.steps.filter(step => step.status === 'completed').length
           return (
             <div key={checkpoint.runId} className="flex items-start gap-2 rounded border px-2 py-1.5 text-xs" style={{ borderColor: 'var(--color-border)' }}>
@@ -320,14 +329,14 @@ function WorkflowRecoveryReceipts() {
                   {text(`边界：${checkpoint.boundary} · 步骤 ${completed}/${checkpoint.steps.length} · ${new Date(checkpoint.updatedAt).toLocaleString('zh-CN')}`, `Boundary: ${checkpoint.boundary} · ${completed}/${checkpoint.steps.length} steps · ${new Date(checkpoint.updatedAt).toLocaleString()}`)}
                 </div>
                 <div className="mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
-                  {resumable && ['novel_import', 'batch_generate'].includes(checkpoint.type)
+                  {recoverable
                     ? text('可从 SQLite 持久化导入运行和当前租约重建完整输入后继续。', 'The import can rebuild its complete inputs from the durable SQLite run and current lease.')
                     : resumable
                       ? text('只有原工作流重新提供完整输入后才能继续；此收据本身不会重放任务。', 'Continuation requires the owning workflow to provide its complete inputs; this receipt never replays a task by itself.')
                     : text('为避免旧租约写入当前项目，请重新启动同类任务；清理该收据不会影响正文。', 'Restart the task type to avoid writing through an old lease; clearing this receipt does not affect prose.')}
                 </div>
               </div>
-              {resumable && ['novel_import', 'batch_generate'].includes(checkpoint.type) && <Button
+              {recoverable && <Button
                 type="button"
                 size="sm"
                 variant="outline"
@@ -338,7 +347,9 @@ function WorkflowRecoveryReceipts() {
                   ? text('恢复中…', 'Resuming…')
                   : checkpoint.type === 'batch_generate'
                     ? text('继续批量创作', 'Resume batch writing')
-                    : text('继续导入', 'Resume import')}
+                    : checkpoint.type === 'chapter_creation'
+                      ? text('继续写稿', 'Resume draft writing')
+                      : text('继续导入', 'Resume import')}
               </Button>}
               <button type="button" className="flex-shrink-0 rounded border px-2 py-1 text-[0.68rem]" onClick={() => remove(checkpoint.runId)}>
                 {text('清除收据', 'Clear receipt')}

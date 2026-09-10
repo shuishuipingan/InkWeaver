@@ -8,6 +8,7 @@ import type { ProjectSessionContext } from '../../shared/ipc-channels'
 import { sameProjectPathKey } from '../../shared/project-session-context'
 import { FINALIZATION_SHARED_WRITE_RESOURCE_KINDS } from '../../shared/workflow-resource-claims'
 import { normalizeChapterWordsTarget } from './chapter-creation-parameters'
+import { canResumeWorkflowCheckpoint, type WorkflowRecoveryCheckpoint } from '../../shared/workflow-recovery'
 
 // ==========================================
 // 1. 结构与类型导出 (保留对外的向后兼容)
@@ -199,6 +200,58 @@ export async function updateDraftStatus(
 // 将原有的 1500 多行核心面条代码剥离为微内核执行器。
 // ==========================================
 
+/** Rebuild a single draft workflow from frozen blueprint-level inputs only. */
+export function resumeChapterDraftWorkflowFromCheckpoint(
+  checkpoint: WorkflowRecoveryCheckpoint,
+  currentSession: ProjectSessionContext,
+): WorkflowDefinition {
+  if (checkpoint.type !== 'chapter_creation' || checkpoint.resumeMetadata?.kind !== 'chapter-draft') {
+    throw new Error('该恢复收据不是单章草稿工作流，不能由写稿恢复入口处理')
+  }
+  if (!canResumeWorkflowCheckpoint(checkpoint, currentSession)) {
+    throw new Error('恢复收据所属项目会话已变化，已拒绝继续写稿')
+  }
+  const metadata = checkpoint.resumeMetadata
+  const chapterNumber = Number(metadata.chapterNumber)
+  const title = typeof metadata.title === 'string' ? metadata.title : ''
+  const role = typeof metadata.role === 'string' ? metadata.role : ''
+  const purpose = typeof metadata.purpose === 'string' ? metadata.purpose : ''
+  const keyEvents = typeof metadata.keyEvents === 'string' ? metadata.keyEvents : ''
+  const charactersJson = typeof metadata.charactersJson === 'string' ? metadata.charactersJson : ''
+  let characters: string[]
+  try {
+    const parsed = JSON.parse(charactersJson) as unknown
+    if (!Array.isArray(parsed) || !parsed.every(value => typeof value === 'string')) throw new Error('invalid characters')
+    characters = parsed
+  } catch {
+    throw new Error('写稿恢复收据的人物参数无效')
+  }
+  const wordsTarget = Number(metadata.wordsTarget)
+  const generationModelId = typeof metadata.generationModelId === 'string'
+    ? metadata.generationModelId
+    : undefined
+  if (
+    !Number.isSafeInteger(chapterNumber)
+    || chapterNumber < 1
+    || !title.trim()
+    || !Number.isSafeInteger(wordsTarget)
+    || wordsTarget < 1
+  ) throw new Error('写稿恢复收据缺少完整的冻结参数')
+
+  return createChapterWorkflow({
+    projectPath: currentSession.projectPath,
+    chapterNumber,
+    title,
+    role,
+    purpose,
+    characters,
+    keyEvents,
+    suspenseHook: typeof metadata.suspenseHook === 'string' ? metadata.suspenseHook : undefined,
+    userGuidance: typeof metadata.userGuidance === 'string' ? metadata.userGuidance : undefined,
+    wordsTarget,
+  }, currentSession, { generationModelId })
+}
+
 export function createChapterWorkflow(
   chapterInfo: ChapterInfo,
   sourceProjectSession: ProjectSessionContext,
@@ -213,6 +266,19 @@ export function createChapterWorkflow(
     projectSession: workflowProjectSession(chapterInfo.projectPath, sourceProjectSession),
     ...(generationModelId ? { generationModelId } : {}),
     chapterWordsTarget,
+    resumeMetadata: {
+      kind: 'chapter-draft',
+      chapterNumber: chapterInfo.chapterNumber,
+      title: chapterInfo.title,
+      role: chapterInfo.role,
+      purpose: chapterInfo.purpose,
+      charactersJson: JSON.stringify(chapterInfo.characters),
+      keyEvents: chapterInfo.keyEvents,
+      ...(chapterInfo.suspenseHook === undefined ? {} : { suspenseHook: chapterInfo.suspenseHook }),
+      ...(chapterInfo.userGuidance === undefined ? {} : { userGuidance: chapterInfo.userGuidance }),
+      wordsTarget: chapterWordsTarget,
+      ...(generationModelId ? { generationModelId } : {}),
+    },
     resourceKeys: [workflowResourceKey('chapter', chapterInfo.chapterNumber)],
     readResourceKeys: CHAPTER_CONTEXT_READ_RESOURCE_KEYS,
     title: `写稿 — 第 ${chapterInfo.chapterNumber} 章 · ${chapterInfo.title}`,
