@@ -192,6 +192,28 @@ function canonicalQualificationToolSchemas(value, subject) {
   return schemas
 }
 
+/** Normalize the complete prompt across DSH 0.1.2's `request.system` and
+ * DSH 0.1.5's message-array transport, where the system text is carried by
+ * one or more `{ role: 'system', content: [{ type: 'text', text }] }` blocks. */
+function completeSystemPromptOf(request) {
+  if (typeof request.system === 'string' && request.system.trim() !== '') return request.system
+  if (!Array.isArray(request.messages)) return undefined
+  const blocks = []
+  for (const message of request.messages) {
+    if (typeof message !== 'object' || message === null || message.role !== 'system') continue
+    if (typeof message.content === 'string') blocks.push(message.content)
+    else if (Array.isArray(message.content)) {
+      for (const block of message.content) {
+        if (typeof block === 'object' && block !== null && block.type === 'text' && typeof block.text === 'string') {
+          blocks.push(block.text)
+        }
+      }
+    }
+  }
+  const prompt = blocks.join('\n')
+  return prompt.trim() === '' ? undefined : prompt
+}
+
 async function validateModelRequestLog(path, installedToolSchemas) {
   const expectedTools = canonicalQualificationToolSchemas(installedToolSchemas, 'Installed Preset')
   const rows = (await readFile(path, 'utf8')).trimEnd().split(/\r?\n/)
@@ -201,13 +223,15 @@ async function validateModelRequestLog(path, installedToolSchemas) {
     .filter(row => row.type === 'model-request')
     .map(row => objectOf(row.request, 'Model request'))
   if (requests.length === 0) fail('Model request log did not contain a request')
-  for (const request of requests) {
-    if (typeof request.system !== 'string' || request.system === '') fail('Model request must include the complete system prompt')
+  const normalizedRequests = requests.map(request => {
+    const system = completeSystemPromptOf(request)
+    if (system === undefined) fail('Model request must include the complete system prompt')
     const actualTools = canonicalQualificationToolSchemas(request.tools, 'Model request')
     if (JSON.stringify(actualTools) !== JSON.stringify(expectedTools)) {
       fail('Every model request must match the complete installed Preset schemas')
     }
-  }
+    return { request, system }
+  })
   const toolCalls = rows.filter(row => row.type === 'model-tool-call')
   if (toolCalls.length !== 2
     || toolCalls[0].name !== 'novel_read'
@@ -216,7 +240,7 @@ async function validateModelRequestLog(path, installedToolSchemas) {
     || JSON.stringify(canonicalJson(toolCalls[1].arguments)) !== JSON.stringify(canonicalJson(qualificationProposal))) {
     fail('Model tool calls must be exactly one novel_read followed by one novel_propose_change with the fixed V2 proposal')
   }
-  return { requests: requests.length, toolCalls: toolCalls.length, first: requests[0] }
+  return { requests: requests.length, toolCalls: toolCalls.length, first: { ...normalizedRequests[0].request, system: normalizedRequests[0].system } }
 }
 
 function assertBundlePatch(text) {
