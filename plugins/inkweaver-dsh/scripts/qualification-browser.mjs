@@ -188,7 +188,7 @@ async function registerQualificationWorkspace(page) {
         type: 'client-request',
         rpcId: crypto.randomUUID(),
         method: 'workspace/create',
-        payload: { path },
+        payload: { args: { path } },
       }),
     })
     if (!result.ok) throw new Error(`workspace/create transport failed: HTTP ${result.status}`)

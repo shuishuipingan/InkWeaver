@@ -3,7 +3,7 @@
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
-import type { ConnectionRpcHandler, HostConnectionHandle } from '@deepseek-ai/dsh-client-connection'
+import type { ConnectionFetchRoute, ConnectionRpcHandler } from '@deepseek-ai/dsh-client-connection'
 import { dshHomePath } from '@deepseek-ai/dsh-home-paths'
 import type {} from '@deepseek-ai/dsh-settings'
 import { WorkspaceId } from '@deepseek-ai/dsh-workspace'
@@ -109,7 +109,7 @@ export type {
 export const name = 'inkweaver'
 
 /** Required Host services. */
-export const inject = ['connection', 'workspaceRegistry', 'settings', 'webServer']
+export const inject = ['connection', 'workspaceRegistry', 'settings']
 
 /** Settings namespace owned by the browser status card. */
 const INKWEAVER_SETTINGS_NAMESPACE = 'inkweaver'
@@ -137,6 +137,75 @@ function internalFailure(message: string): Awaited<ReturnType<ConnectionRpcHandl
   return {
     ok: false,
     error: { code: 'internal', message, details: {} },
+  }
+}
+
+/** Every closed InkWeaver endpoint exposed through DSH 0.1.5's shared API. */
+const INKWEAVER_RPC_ENDPOINTS = [
+  'preset/status',
+  'preset/install',
+  'context/read',
+  'asset/read',
+  'workspace/initialize',
+  'workspace/state/read',
+  'state/read',
+  'chapter/context',
+  'proposal/list',
+  'command/preview',
+  'command/commit',
+  'task/read',
+  'proposal/apply',
+  'proposal/retry',
+  'proposal/discard',
+  'proposal/regenerate',
+  'workspace/reattach',
+  'workspace/clone',
+] as const
+
+type InkWeaverRpcEnvelope = {
+  readonly type?: unknown
+  readonly rpcId?: unknown
+  readonly method?: unknown
+  readonly payload?: unknown
+}
+
+function rpcErrorResult(message: string): Awaited<ReturnType<ConnectionRpcHandler>> {
+  return {
+    ok: false,
+    error: { code: 'bad-request', message, details: { issues: [] } },
+  }
+}
+
+function rpcResponse(rpcId: string, result: Awaited<ReturnType<ConnectionRpcHandler>>): Response {
+  return Response.json({ type: 'server-response', rpcId, result })
+}
+
+/** Build one exact shared-API Fetch route without claiming the gateway interceptor. */
+function createInkWeaverFetchRoute(
+  endpoint: string,
+  lifecycle: NovelHostRpcLifecycle,
+): ConnectionFetchRoute {
+  return {
+    path: `/api/inkweaver/${endpoint}`,
+    methods: ['POST'],
+    requestBody: 'buffered',
+    fetch: async request => {
+      let body: InkWeaverRpcEnvelope
+      try {
+        const parsed = await request.json() as unknown
+        if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+          return rpcResponse('invalid-request', rpcErrorResult('request envelope must be an object'))
+        }
+        body = parsed as InkWeaverRpcEnvelope
+      } catch {
+        return rpcResponse('invalid-request', rpcErrorResult('request envelope must be valid JSON'))
+      }
+      const rpcId = typeof body.rpcId === 'string' ? body.rpcId : 'invalid-request'
+      if (body.type !== 'client-request' || body.method !== endpoint) {
+        return rpcResponse(rpcId, rpcErrorResult(`method ${JSON.stringify(body.method)} does not match endpoint ${JSON.stringify(endpoint)}`))
+      }
+      return rpcResponse(rpcId, await lifecycle.handler(endpoint, body.payload, request.signal))
+    },
   }
 }
 
@@ -319,34 +388,25 @@ export function apply(ctx: Context, config: Config): void {
   ctx.inject(['settings'], settingsCtx => {
     settingsCtx.settings.register(INKWEAVER_SETTINGS_NAMESPACE, z.object({}))
   })
-  // DSH 0.1.5 carries logical plugin channels through the shared `/api`
-  // gateway. The Host plugin itself injects `webServer`, matching the
-  // official Gateway pattern so the Connection service owns a Web-capable
-  // Fiber. Direct `/inkweaver` registration remains a fallback for older
-  // hosts that do not expose `rpc.intercept`.
-  const workspaces = ctx.get('workspaceRegistry') as NovelWorkspaceRegistry
-  const lifecycle = createAiNovelHostRpcLifecycle(createAiNovelRpcHandler(
-    installer,
-    workspaces,
-    error => { ctx.logger.error('inkweaver: request failed: %o', error) },
-  ))
-  const rpc = (ctx.get('connection') as HostConnectionHandle).rpc
-  const unregister = typeof rpc.intercept === 'function'
-    ? rpc.intercept(
-        '/api',
-        endpoint => endpoint === 'inkweaver' || endpoint.startsWith('inkweaver/'),
-        (endpoint, payload, signal) => lifecycle.handler(
-          endpoint.slice('inkweaver/'.length),
-          payload,
-          signal,
-        ),
-      )
-    : rpc.handle('/inkweaver', lifecycle.handler)
-  ctx.effect(
-    () => async () => {
-      await lifecycle.dispose()
-      await unregister()
-    },
-    'inkweaver: setup and read-only context RPC',
-  )
+  // DSH 0.1.5 reserves the shared `/api` interceptor for its official
+  // `api-gateway`. Register exact Fetch routes instead: they are dispatched by
+  // Connection before that gateway fallback and keep InkWeaver isolated from
+  // the host's singleton interceptor.
+  ctx.inject(['connection'], connectionCtx => {
+    const workspaces = ctx.get('workspaceRegistry') as NovelWorkspaceRegistry
+    const lifecycle = createAiNovelHostRpcLifecycle(createAiNovelRpcHandler(
+      installer,
+      workspaces,
+      error => { ctx.logger.error('inkweaver: request failed: %o', error) },
+    ))
+    const unregister = INKWEAVER_RPC_ENDPOINTS.map(endpoint =>
+      connectionCtx.connection.fetch.register(createInkWeaverFetchRoute(endpoint, lifecycle)))
+    connectionCtx.effect(
+      () => async () => {
+        await lifecycle.dispose()
+        await Promise.all(unregister.map(dispose => dispose()))
+      },
+      'inkweaver: setup and read-only context RPC',
+    )
+  })
 }

@@ -52,12 +52,14 @@ if (!Array.isArray(patches)) throw new TypeError(`${patchPath} must contain a YA
 const host = new Context()
 host.baseUrl = pathToFileURL(root).href + '/'
 let setupRegistered = false
+const setupRoutes = []
 host.provide('connection', {
-  rpc: {
-    handle(channel, _handler) {
-      if (channel !== '/inkweaver') {
-        throw new Error('The emitted Host entry registered an unexpected setup channel')
+  fetch: {
+    register(route) {
+      if (!route.path.startsWith('/api/inkweaver/')) {
+        throw new Error(`The emitted Host entry registered an unexpected setup route: ${route.path}`)
       }
+      setupRoutes.push(route)
       setupRegistered = true
       return async () => {}
     },
@@ -94,7 +96,7 @@ try {
   await host.loader.await()
   const entry = [...host.loader.entries()].find(candidate => candidate.options.id === 'inkweaver')
   if (entry?.fiber === undefined) throw new Error('Cordis Loader did not mount the emitted Host entry')
-  if (!setupRegistered) throw new Error('The emitted Host entry did not register its loopback setup channel')
+  if (!setupRegistered || setupRoutes.length < 1) throw new Error('The emitted Host entry did not register its shared-API setup routes')
 } finally {
   await host.fiber.dispose()
 }
