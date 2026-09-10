@@ -67,8 +67,8 @@ historical checkpoint above is intentionally retained.
 
 | Item | Current value |
 | --- | --- |
-| local source HEAD | `acc82f4` |
-| GitHub development ref | pending push of `acc82f4` and the DSH qualification fixes |
+| local source HEAD | `710f336` |
+| GitHub development ref | `origin/1.1.0-development` = `710f336` (qualification and receipt documentation synchronized) |
 | desktop package version | `0.9.2` (still not frozen) |
 | DSH plugin package version | `0.1.0` (still not frozen) |
 | tracker status | 1 待验收 / 34 开发中 / 3 通过 / 0 未开始 |
