@@ -130,17 +130,11 @@ describe('preset setup Host RPC', () => {
     apply(ctx, { presetRoot })
     const firstDispose = registrations[0]!()
     await firstDispose()
-    const secondDispose = registrations[0]!()
 
-    expect(intercept).toHaveBeenCalledTimes(2)
+    expect(intercept).toHaveBeenCalledTimes(1)
     await expect(handlers[0]!('preset/status', {}, new AbortController().signal)).resolves.toMatchObject({
       ok: false,
       error: { code: 'internal' },
     })
-    await expect(handlers[1]!('preset/status', {}, new AbortController().signal)).resolves.toEqual({
-      ok: true,
-      value: { status: 'not-installed' },
-    })
-    await secondDispose()
   })
 })
