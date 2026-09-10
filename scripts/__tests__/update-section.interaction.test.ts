@@ -10,7 +10,7 @@ import react from '@vitejs/plugin-react'
 const repositoryRoot = path.resolve('.')
 const chromeExecutable = process.env.CHROME_PATH ?? 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'
 const describeWithChrome = existsSync(chromeExecutable) ? describe : describe.skip
-const VITE_SERVER_HOOK_TIMEOUT_MS = 120_000
+const VITE_SERVER_HOOK_TIMEOUT_MS = 30_000
 const UPDATE_SECTION_VITE_CACHE_DIR = path.join(repositoryRoot, '.runtime', '.cache', 'update-section-vite-v2')
 // The full desktop suite exercises native workers and PowerShell processes at
 // the same time. On a clean Windows checkout Vite may also rebuild its React
@@ -54,6 +54,7 @@ describeWithChrome('UpdateSection browser interactions', () => {
       cacheDir: UPDATE_SECTION_VITE_CACHE_DIR,
       optimizeDeps: {
         noDiscovery: true,
+        holdUntilCrawlEnd: false,
         include: [
           'react',
           'react-dom/client',
