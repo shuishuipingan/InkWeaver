@@ -45,9 +45,9 @@
 | E07 | 项目快照恢复 | 01、08 | 数据库和附件一致吗？恢复后原稿和引用完整吗？ | 开发中 | 主进程新增 SQLite backup API 快照服务、manifest/hash、提示词与 manuscript 文件复制、快照列表/逐文件核验 IPC；`3546327` 新增隔离恢复预览与恢复 IPC/标题栏入口，标题栏恢复前会先核验最新快照的逐文件哈希，恢复只写入源项目外的空目录并回读 SQLite/附件；后续仍待真实跨平台隔离验证 |
 | E08 | 导出完整性 | 08 | 无蓝图原稿也能导出全部定稿且顺序正确吗？ | 开发中 | `169ff10`：导出始终以 finalized authority 和定稿事实枚举章节，不再让蓝图改变顺序；拒绝缺章/重复/越界、空正文、标题漂移和字数不一致，并保留无蓝图原稿路径；当前新增不含正文的 `.manifest.json`，记录 authority 指纹、章节标题/字数、输出路径和内容 SHA-256；导出目录授权新增受限 read，并在写入主文件、分章文件和清单后逐字节回读校验，内容不一致即失败 |
 | E09 | 双语与可访问性 | 10 | 新入口、错误、审核和恢复流程都有双语与键盘支持吗？ | 开发中 | 新增连续阅读、连续性工作单、关系图列表、知情边界和快照入口均使用中英文文案、可聚焦按钮/表单标签/键盘列表替代；全量 a11y 审计和恢复流程的键盘回归仍待完成 |
-| F01 | DSH 兼容版本 | 11 | 核对的是官方默认分发渠道且固定准确版本吗？ | 待验收 | 2026-09-11 npm 查询确认 `@deepseek-ai/dsh` latest=`0.1.5-rc.1`、next=`0.1.5-rc.2`、alpha=`0.1.5-alpha.2`；插件已将 DSH 家族锁定到 `0.1.5-rc.1`，并保留官方仍未发布 0.1.5 版本的两个 client pin；persona/SystemPrompt/Session 事件迁移证据见 `plugins/inkweaver-dsh/docs/dsh-0.1.5-rc.1-compatibility.md`；本机 40 文件/431 passed/6 skipped，完整隔离 profile qualification 需在冻结 SHA 上重跑，待评阅人确认 RC 兼容目标 |
-| F02 | 插件接口与安装 | 11 | InkWeaver tarball 在隔离 profile 的 roster、mount 和浏览器链通过吗？ | 待验收 | 插件身份已统一迁移到 `@shuishuipingan/inkweaver-dsh`、目录 `plugins/inkweaver-dsh`、Host/preset `inkweaver`；0.1.5 persona `prefix`、SystemPrompt `personaPrefix`、Session `assistant/message` 边界、API `/api` interceptor 和 peer graph 已落地；完整隔离 profile 与真实 Chrome qualification 将在冻结 SHA 重新执行；外部 prerequisite `@linxin666/dsh-web-all@0.3.20` 仅作为宿主依赖，不属于 InkWeaver 包；待评阅人验收并将本项移入“通过” |
-| F03 | 插件对应创作功能 | 12 | 交接/人物候选/事实上下文和 Proposal 审核形成闭环吗？ | 待验收 | DSH V2 已扩展 schema 5：`NovelChapterHandoff` 与 `NovelKnowledgeEvent` 进入章节 Proposal/SQLite，`chapter/context` 只返回当前章节有效且 confirmed 的知识；`f03` 回归覆盖候选隔离、稳定角色 ID、迁移和客户端 DTO 校验；最新 tarball Session/Chrome Proposal 应用、重启读回和重装读回见 qualification receipt（源码 `399c682`、tarball SHA-256 `c155963bad245f4f939732eee2bc57006a9046d4eb0440f29f1295cbba1d907d`），待跨模块评阅 |
+| F01 | DSH 兼容版本 | 11 | 核对的是官方默认分发渠道且固定准确版本吗？ | 通过 | 2026-09-11 npm 查询确认 `@deepseek-ai/dsh` latest=`0.1.5-rc.1`、next=`0.1.5-rc.2`、alpha=`0.1.5-alpha.2`；插件已将 DSH 家族锁定到 `0.1.5-rc.1`，并保留官方仍未发布 0.1.5 版本的两个 client pin；persona/SystemPrompt/Session 事件迁移与消息数组 system-prompt 兼容证据见 `plugins/inkweaver-dsh/docs/dsh-0.1.5-rc.1-compatibility.md`；40 文件/432 passed/6 skipped，完整 receipt 为 `.runtime/.cache/dsh-ai-novel-qualification-128/runs/2026-09-10T23-02-50-025Z-4888/qualification-receipt.json` |
+| F02 | 插件接口与安装 | 11 | InkWeaver tarball 在隔离 profile 的 roster、mount 和浏览器链通过吗？ | 通过 | 插件身份已统一迁移到 `@shuishuipingan/inkweaver-dsh`、目录 `plugins/inkweaver-dsh`、Host/preset `inkweaver`；DSH 0.1.5 exact shared `/api` Fetch routes、persona `prefix`、SystemPrompt `personaPrefix`、Session `assistant/message` 边界和 peer graph 均已通过；源码 `acc82f4`，Harness `183f08e`，tarball SHA-256 `dd3ae2467422613e249e7be6b94fb46d8002d5aab4222a3d7f6394f8f250725e`；receipt 覆盖隔离 profile add/remove/reinstall、真实 Chrome 三次 journey 和 layout QA；外部 prerequisite `@linxin666/dsh-web-all@0.3.20` 仅作为宿主依赖，不属于 InkWeaver 包 |
+| F03 | 插件对应创作功能 | 12 | 交接/人物候选/事实上下文和 Proposal 审核形成闭环吗？ | 通过 | DSH V2 schema 5 的 `NovelChapterHandoff`、`NovelKnowledgeEvent`、`chapter/context` 有效/confirmed 过滤和 Proposal 审核闭环均在真实 Chrome 中通过；receipt 验证固定五项 Proposal 生命周期、schema-5 persistence、重启读回和重装读回；剩余长篇质量评阅仍属于 A–E 创作体验工单，不阻塞本 DSH 闭环门禁 |
 | F04 | 插件版本与分发 | 13 | 1.1.0 可实际安装且公开兼容与升级说明吗？ | 开发中 | 新增 `plugins/inkweaver-dsh/docs/1.1.0-release-checklist.md`，固定插件身份、冻结前提、tarball/qualification/npm 发布顺序、外部 `@linxin666/dsh-web-all` 边界、topic 回读和回滚规则；当前插件仍为 `0.1.0`，尚未发布 npm 1.1.0 或正式 Release |
 | F05 | 主题发现 | 13 | dsh-plugin 元数据和实际索引结果分别有证据吗？ | 开发中 | GitHub API 已回读仓库 topic 含 `dsh-plugin`；2026-09-10 公开主题页显示 14,327 个匹配仓库，当前抓取内容未出现 `InkWeaver` 或 `shuishuipingan`，因此不能宣称已完成实际索引可见性；发布 1.1.0 后需按同一链接复核并留档 |
 | G01 | 详细文档 | 13 | 主页、指南、截图和更新日志是否真实对应实现？ | 开发中 | 中英文主页已明确 1.1.0 未发布开发线、连续叙事/人物/关系/快照能力和限制；新增 `docs/PROJECT-FILE-GUIDE.md`、`CHANGELOG.md`、DSH 兼容收据、GitHub 分发收据、固定质量样本集、插件 1.1.0 分发清单和 tracker；中英文主页新增 5 分钟快速上手和迁移 FAQ（旧项目、签名、历史修改影响、AI 写入边界、插件关系）；真实新版本截图仍待补齐 |
@@ -144,7 +144,7 @@
 
 | 字段 | 当前记录 |
 | --- | --- |
-| 功能需求通过数 | 0 / 38（尚未进行本轮实现验收） |
+| 功能需求通过数 | 3 / 38（F01–F03 已由 DSH 0.1.5-rc.1 完整资格通过；其余需求仍需各自验收） |
 | 端到端旅程通过数 | 0 / 12（尚未执行） |
 | 阅读质量评测 | 未执行 |
 | 开发基线对齐 | 待比较本地、origin/main、v1.0.0 |

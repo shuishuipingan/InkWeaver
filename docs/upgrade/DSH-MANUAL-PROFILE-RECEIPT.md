@@ -1,6 +1,6 @@
 # DSH 隔离 profile 子门禁收据
 
-日期：2026-09-09（Asia/Hong_Kong）
+日期：2026-09-11（Asia/Hong_Kong）
 
 这是一份开发线子门禁收据，不是正式插件 1.1.0 发布收据。
 `@linxin666/dsh-web-all` 是 DSH 宿主侧的外部 UI companion，不属于 InkWeaver
@@ -11,13 +11,13 @@
 | 项目 | 值 |
 | --- | --- |
 | DSH CLI | 官方 Harness commit `183f08e9c6dde7e36cd2318eaee70b0da08fb35e` (`dsh-v0.1.5-rc.1`) |
-| 隔离 DSH_HOME | `.runtime/.cache/dsh-ai-novel-qualification-128/runs/2026-09-09T11-44-24-930Z-24004/dsh-home` |
+| 隔离 DSH_HOME | `.runtime/.cache/dsh-ai-novel-qualification-128/runs/2026-09-10T23-02-50-025Z-4888/dsh-home` |
 | profile | `web` |
 | tarball | `shuishuipingan-inkweaver-dsh-0.1.0.tgz` |
-| tarball SHA-256 | `11859a1d8cebf6e2c3f250cbec5a36e6b190607b2d92dadd865be1f1773ec92a` |
-| tarball bytes | `236661` |
+| tarball SHA-256 | `dd3ae2467422613e249e7be6b94fb46d8002d5aab4222a3d7f6394f8f250725e` |
+| tarball bytes | `240605` |
 | web UI companion | `@linxin666/dsh-web-all@0.3.20` |
-| machine-readable receipt | `.runtime/.cache/dsh-ai-novel-qualification-128/runs/2026-09-09T11-44-24-930Z-24004/qualification-receipt.json` |
+| machine-readable receipt | `.runtime/.cache/dsh-ai-novel-qualification-128/runs/2026-09-10T23-02-50-025Z-4888/qualification-receipt.json` |
 
 ## 已完成操作
 
@@ -56,6 +56,6 @@
 
 ## 当前结论与剩余发布门禁
 
-最新完整 qualification 已通过：插件 40 个测试文件、431 tests passed、6 个 Windows symlink privilege tests skipped；Electron typecheck、renderer/main/release suites、Harness build、tarball content、profile add/remove/reinstall、V2 roster/mount、三次 Chrome Web journey、model-tool isolation 和 schema-5 persistence readback 均有 receipt 记录。
+最新完整 qualification 已通过：插件 40 个测试文件、432 tests passed、6 个 Windows symlink privilege tests skipped；Electron typecheck、renderer/main/release suites、Harness build、tarball content、profile add/remove/reinstall、V2 roster/mount、三次 Chrome Web journey、model-tool isolation 和 schema-5 persistence readback 均有 receipt 记录。DSH 0.1.5 的官方 `/api` interceptor 是 singleton，InkWeaver 通过 shared `/api` 下的 exact Fetch routes 注册自身 endpoint。
 
 这份收据仍然不是桌面 1.1.0 发布收据。版本冻结、Windows/macOS 安装包、npm 发布、GitHub Release 资产和 `dsh-plugin` 主题索引回读仍属于后续发布门禁。

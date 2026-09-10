@@ -67,13 +67,25 @@ The local 0.1.5 migration currently passes:
 
 - `pnpm run typecheck`
 - `pnpm run build` and emitted package verification
-- `pnpm test`: 40 test files, 431 passed, 6 skipped
+- `pnpm test`: 40 test files, 432 passed, 6 skipped
 - source/preset checks in `scripts/qualify-release.mjs`
 
-The full isolated Harness qualification must be rerun against the frozen
-0.1.5 source and tarball before F01/F02/F03 can be marked accepted. Desktop
-1.1.0 version freeze, Windows/macOS installers, npm publication, GitHub
-Release assets, and topic-index readback remain separate gates.
+The full isolated Harness qualification now passes against the frozen source
+and official Harness checkout:
+
+| Field | Passed evidence |
+| --- | --- |
+| source commit | `acc82f431802448a3d5e893c817423abd8d3a89f` |
+| Harness commit | `183f08e9c6dde7e36cd2318eaee70b0da08fb35e` (`dsh-v0.1.5-rc.1`) |
+| tarball SHA-256 | `dd3ae2467422613e249e7be6b94fb46d8002d5aab4222a3d7f6394f8f250725e` |
+| receipt | `.runtime/.cache/dsh-ai-novel-qualification-128/runs/2026-09-10T23-02-50-025Z-4888/qualification-receipt.json` |
+| browser | Google Chrome, first/restart/reinstall journeys passed |
+| persistence | schema 5 proposal lifecycle and chapter-context readback passed |
+
+The qualification uses DSH 0.1.5's exact shared `/api` Fetch routes for
+InkWeaver endpoints; it does not claim the singleton official API interceptor.
+Desktop 1.1.0 version freeze, Windows/macOS installers, npm publication,
+GitHub Release assets, and topic-index readback remain separate gates.
 
 Official sources:
 

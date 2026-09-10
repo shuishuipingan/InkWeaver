@@ -67,12 +67,12 @@ historical checkpoint above is intentionally retained.
 
 | Item | Current value |
 | --- | --- |
-| local source HEAD | `905ce52` |
-| GitHub development ref | `origin/1.1.0-development` = `905ce52` (synchronized after the workflow-recovery update) |
+| local source HEAD | `acc82f4` |
+| GitHub development ref | pending push of `acc82f4` and the DSH qualification fixes |
 | desktop package version | `0.9.2` (still not frozen) |
 | DSH plugin package version | `0.1.0` (still not frozen) |
-| tracker status | 4 待验收 / 34 开发中 / 0 未开始 / 0 通过 |
-| latest full DSH qualification | historical `passed` run `2026-09-10T16-21-03-366Z-25984` covered DSH `0.1.2-rc.1`; it is superseded by the current `0.1.5-rc.1` migration and must not be used as the final release receipt |
+| tracker status | 1 待验收 / 34 开发中 / 3 通过 / 0 未开始 |
+| latest full DSH qualification | `passed`: `.runtime/.cache/dsh-ai-novel-qualification-128/runs/2026-09-10T23-02-50-025Z-4888/qualification-receipt.json`; source `acc82f431802448a3d5e893c817423abd8d3a89f`, Harness `183f08e9c6dde7e36cd2318eaee70b0da08fb35e`, tarball SHA-256 `dd3ae2467422613e249e7be6b94fb46d8002d5aab4222a3d7f6394f8f250725e` |
 
 Since the historical checkpoint, the development line has also added the
 read-only cross-volume trend view (`681fa15`), chronological reader-knowledge
