@@ -67,12 +67,12 @@ historical checkpoint above is intentionally retained.
 
 | Item | Current value |
 | --- | --- |
-| local source HEAD | `2741b01` |
+| local source HEAD | `ca11e8e` |
 | GitHub development ref | `origin/1.1.0-development` = `fa5d19a` (local development commit is not pushed yet) |
 | desktop package version | `0.9.2` (still not frozen) |
 | DSH plugin package version | `0.1.0` (still not frozen) |
 | tracker status | 4 待验收 / 34 开发中 / 0 未开始 / 0 通过 |
-| latest full DSH qualification | `passed`, run `2026-09-10T06-00-42-631Z-32164` against source `c3a9ebe` (documentation/test-only commits `5800764`, `98c976b`, `439c6e9`, `3642af6`, `5cdb51e`, `bf41357`, `bb4037d`, `4ac6ae8`, `f1ff8f7`, `d15a44c`, `3bb19c3`, `2741b01` follow), tarball SHA-256 `c155963bad245f4f939732eee2bc57006a9046d4eb0440f29f1295cbba1d907d` |
+| latest full DSH qualification | `passed`, run `2026-09-10T06-00-42-631Z-32164` against source `c3a9ebe` (documentation/test-only commits `5800764`, `98c976b`, `439c6e9`, `3642af6`, `5cdb51e`, `bf41357`, `bb4037d`, `4ac6ae8`, `f1ff8f7`, `d15a44c`, `3bb19c3`, `2741b01`, `3e1a4b6`, `ca11e8e` follow), tarball SHA-256 `c155963bad245f4f939732eee2bc57006a9046d4eb0440f29f1295cbba1d907d` |
 
 Since the historical checkpoint, the development line has also added the
 read-only cross-volume trend view (`681fa15`), chronological reader-knowledge
