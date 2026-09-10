@@ -29,9 +29,23 @@ describe('workflow recovery checkpoints', () => {
       writingLanguage: 'zh-CN', uiLocale: 'zh-CN', status: 'cancelling', currentStepIndex: 1,
       steps: [{ id: 'step-1', name: '写稿', status: 'running', progress: 48, result: 'private prose' } as never],
       createdAt: '2026-09-07T00:00:00.000Z',
+      resumeMetadata: {
+        startChapterNumber: 3,
+        chapterCount: 2,
+        completionMode: 'auto_finalize',
+        generationModelId: 'frozen-model',
+        chapterWordsTarget: 4200,
+      },
     }, 'cancelled', '2026-09-07T00:01:00.000Z')!
     saveWorkflowRecoveryCheckpoint(checkpoint)
     expect(JSON.stringify(listWorkflowRecoveryCheckpoints())).not.toContain('private prose')
+    expect(listWorkflowRecoveryCheckpoints()[0]?.resumeMetadata).toEqual({
+      startChapterNumber: 3,
+      chapterCount: 2,
+      completionMode: 'auto_finalize',
+      generationModelId: 'frozen-model',
+      chapterWordsTarget: 4200,
+    })
     expect(canResumeWorkflowCheckpoint(checkpoint, session)).toBe(true)
     expect(canResumeWorkflowCheckpoint(checkpoint, { ...session, leaseId: 'lease-b' })).toBe(false)
     clearWorkflowRecoveryCheckpoint('run-1')
