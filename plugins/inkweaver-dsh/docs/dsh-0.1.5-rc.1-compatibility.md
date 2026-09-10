@@ -56,7 +56,7 @@ GitHub `main`, or an unconstrained range is not an accepted release input.
 
 ## Web companion boundary
 
-The qualification host uses `@linxin666/dsh-web-all@0.3.17` as an external
+The qualification host uses `@linxin666/dsh-web-all@0.3.20` as an external
 DSH Web companion. It is not an InkWeaver dependency, source directory,
 package, or publication target. The historical
 `@ethanyoq/dsh-ai-novel-writer` name is not an installation target either.

@@ -62,7 +62,7 @@
 - `chapter/context` 只返回当前章节有效且 `confirmed` 的知识；candidate 事件保留在 Proposal 收件箱，不会泄漏给模型。
 - DSH Client 工作台显示章节交接、上一章定稿和已确认知情范围；客户端在 loopback 边界校验无路径的严格 DTO。
 - 插件已通过 typecheck、build、emitted package verification、定向 V2 回归和 qualification readback；完整 tarball 隔离 profile、真实 roster/mount、浏览器同页应用和重启读回仍是正式发布门禁。
-- DSH Web qualification 已固定使用兼容的 `@linxin666/dsh-web-all@0.3.17`；旧 `dsh-web-ui-all@0.1.16` 会因 `dsh-settings` API 不匹配阻止 Web 启动，不再作为发布依赖。
+- DSH Web qualification 已更新为兼容 DSH 0.1.5 的外部 `@linxin666/dsh-web-all@0.3.20`；旧 `dsh-web-ui-all@0.1.16` 会因 `dsh-settings` API 不匹配阻止 Web 启动，不再作为发布依赖。
 - 插件已从旧目录/包名迁移到 `plugins/inkweaver-dsh` 与 `@shuishuipingan/inkweaver-dsh`，Host/preset 统一使用 `inkweaver`；旧 `@ethanyoq/dsh-ai-novel-writer` 仅保留在迁移说明中，不是新安装目标。`@linxin666/dsh-web-all` 仍是外部宿主 companion，不属于本仓库交付物。
 
 ### 文档与开发交接

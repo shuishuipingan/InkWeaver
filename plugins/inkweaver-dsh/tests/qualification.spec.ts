@@ -407,7 +407,7 @@ describe('release qualification runner', () => {
     await writeFile(manifest, `${JSON.stringify({
       dependencies: {
         '@shuishuipingan/inkweaver-dsh': 'file:C:/owned/plugin.tgz',
-        '@linxin666/dsh-web-all': '0.3.17',
+        '@linxin666/dsh-web-all': '0.3.20',
       },
       dsh: {
         profile: {

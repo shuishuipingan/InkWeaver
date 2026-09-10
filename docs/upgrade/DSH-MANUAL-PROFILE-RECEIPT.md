@@ -16,7 +16,7 @@
 | tarball | `shuishuipingan-inkweaver-dsh-0.1.0.tgz` |
 | tarball SHA-256 | `11859a1d8cebf6e2c3f250cbec5a36e6b190607b2d92dadd865be1f1773ec92a` |
 | tarball bytes | `236661` |
-| web UI companion | `@linxin666/dsh-web-all@0.3.17` |
+| web UI companion | `@linxin666/dsh-web-all@0.3.20` |
 | machine-readable receipt | `.runtime/.cache/dsh-ai-novel-qualification-128/runs/2026-09-09T11-44-24-930Z-24004/qualification-receipt.json` |
 
 ## 已完成操作
@@ -27,7 +27,7 @@
 
    ```powershell
    dsh plugin --profile web add <tarball> --ignore-scripts
-   dsh plugin --profile web add @linxin666/dsh-web-all@0.3.17 --save-exact --ignore-scripts
+   dsh plugin --profile web add @linxin666/dsh-web-all@0.3.20 --save-exact --ignore-scripts
    dsh --profile web --dump-config
    ```
 
@@ -43,7 +43,7 @@
 
 5. 再次从同一 tarball 安装并回读 `package.json` 与 dump-config；插件依赖、bundle 和 Host 条目恢复。
 
-6. 使用兼容的 `@linxin666/dsh-web-all@0.3.17` 启动真实 Web：
+6. 使用兼容的 `@linxin666/dsh-web-all@0.3.20` 启动真实 Web：
 
    ```powershell
    dsh web --no-open --host 127.0.0.1 --port 0
