@@ -49,6 +49,60 @@ afterEach(() => {
 })
 
 describe('ProjectService REFRESH_RESOURCE project identity', () => {
+  it('J09 drops a late project-A extraction refresh after switching to project B', async () => {
+    const sessionA = { projectId: 'A', leaseId: 'lease-A', projectPath: projectAPath }
+    const sessionB = { projectId: 'B', leaseId: 'lease-B', projectPath: projectBPath }
+    useProjectStore.setState({
+      currentProject: {
+        id: 'A',
+        name: 'A',
+        path: projectAPath,
+        sessionLease: sessionA.leaseId,
+        novelConfig: {},
+      } as never,
+    })
+    let resolveACharacters: (() => void) | undefined
+    let resolveADrafts: (() => void) | undefined
+    const characterLoad = vi.spyOn(useCharacterStore.getState(), 'load').mockImplementation((path, session) => (
+      session?.projectId === 'A'
+        ? new Promise<void>(resolve => { resolveACharacters = resolve })
+        : Promise.resolve()
+    ))
+    const draftLoad = vi.spyOn(useDraftStore.getState(), 'loadAllDrafts').mockImplementation((path, session) => (
+      session?.projectId === 'A'
+        ? new Promise<void>(resolve => { resolveADrafts = resolve })
+        : Promise.resolve()
+    ))
+    const changed = vi.fn()
+    const unsubscribe = globalEventBus.on('PROJECT_CHANGED', changed)
+
+    const projectAOpening = onProjectOpened(sessionA)
+    await vi.waitFor(() => {
+      expect(characterLoad).toHaveBeenCalledWith(projectAPath, sessionA)
+      expect(draftLoad).toHaveBeenCalledWith(projectAPath, sessionA)
+    })
+
+    useProjectStore.setState({
+      currentProject: {
+        id: 'B',
+        name: 'B',
+        path: projectBPath,
+        sessionLease: sessionB.leaseId,
+        novelConfig: {},
+      } as never,
+    })
+    resolveACharacters?.()
+    resolveADrafts?.()
+    await expect(projectAOpening).resolves.toEqual({ warnings: [] })
+    expect(changed).not.toHaveBeenCalled()
+
+    await expect(onProjectOpened(sessionB)).resolves.toEqual({ warnings: [] })
+    expect(characterLoad).toHaveBeenLastCalledWith(projectBPath, sessionB)
+    expect(draftLoad).toHaveBeenLastCalledWith(projectBPath, sessionB)
+    expect(changed).toHaveBeenCalledWith({ projectPath: projectBPath, projectSession: sessionB })
+    unsubscribe()
+  })
+
   it('ignores a delayed same-path refresh after the project lease was replaced', async () => {
     const characterLoad = vi.spyOn(useCharacterStore.getState(), 'load')
       .mockResolvedValue()
