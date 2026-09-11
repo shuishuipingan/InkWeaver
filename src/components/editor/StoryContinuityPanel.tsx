@@ -69,6 +69,14 @@ function newViewpoint(): ViewpointThread {
   return { viewpoint: '', lastChapter: 1, unresolvedHooks: [], readerKnowledge: '', nextLanding: '' }
 }
 
+function normalizedCharacterNames(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return [...new Set(value
+    .filter((item): item is string => typeof item === 'string')
+    .map(item => item.trim())
+    .filter(Boolean))]
+}
+
 export default function StoryContinuityPanel({ projectKey, chapterNumber }: StoryContinuityPanelProps) {
   const text = useLocaleStore(state => state.text)
   const currentProject = useProjectStore(state => state.currentProject)
@@ -91,6 +99,15 @@ export default function StoryContinuityPanel({ projectKey, chapterNumber }: Stor
   const [knowledgeUpdatingId, setKnowledgeUpdatingId] = useState<string | null>(null)
   const [extractingScenes, setExtractingScenes] = useState(false)
   const [preparation, setPreparation] = useState<WritingPreparationSummary>({ blueprint: null, handoff: null, narrativeThreads: [] })
+  const chapterCharacterNames = useMemo(() => {
+    const blueprintCharacters = normalizedCharacterNames(preparation.blueprint?.characters)
+    if (blueprintCharacters.length > 0) return blueprintCharacters
+    // A single-roster-character chapter is unambiguous even for legacy projects
+    // without a persisted blueprint. Never fall back to the full roster when more
+    // than one character exists, or a switched viewpoint could see another line's
+    // confirmed secret.
+    return characterNames.length === 1 ? characterNames : []
+  }, [characterNames, preparation.blueprint])
 
   useEffect(() => {
     setTimelineQueryChapter(chapterNumber)
@@ -150,15 +167,15 @@ export default function StoryContinuityPanel({ projectKey, chapterNumber }: Stor
 
   useEffect(() => {
     const session = captureProjectSession(currentProject)
-    if (!session || !isProjectSessionPath(session, projectKey) || characterNames.length === 0) {
+    if (!session || !isProjectSessionPath(session, projectKey) || chapterCharacterNames.length === 0) {
       setKnowledgeEvents([])
       setKnowledgeReviewEvents([])
       return
     }
     let cancelled = false
     void Promise.all([
-      ipc.invokeWithProjectSession(session, 'db:knowledge-event-list-for-chapter', characterNames, chapterNumber, projectKey),
-      ipc.invokeWithProjectSession(session, 'db:knowledge-event-list-review', characterNames, chapterNumber, projectKey),
+      ipc.invokeWithProjectSession(session, 'db:knowledge-event-list-for-chapter', chapterCharacterNames, chapterNumber, projectKey),
+      ipc.invokeWithProjectSession(session, 'db:knowledge-event-list-review', chapterCharacterNames, chapterNumber, projectKey),
     ])
       .then(([events, reviewEvents]) => {
         if (!cancelled && isProjectSessionCurrent(session)) {
@@ -168,7 +185,7 @@ export default function StoryContinuityPanel({ projectKey, chapterNumber }: Stor
       })
       .catch(() => { if (!cancelled) setKnowledgeEvents([]) })
     return () => { cancelled = true }
-  }, [chapterNumber, characterNames.join('\u0000'), currentProject?.sessionLease, projectKey])
+  }, [chapterCharacterNames.join('\u0000'), chapterNumber, currentProject?.sessionLease, projectKey])
 
   const updateKnowledgeStatus = async (eventId: string, status: 'confirmed' | 'rejected') => {
     const session = captureProjectSession(currentProject)
