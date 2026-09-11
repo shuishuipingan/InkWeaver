@@ -122,4 +122,75 @@ describe('RelationshipGraph large roster', () => {
     act(() => root.unmount())
     host.remove()
   }, 15000)
+
+  it('completes the J05 journey: labels, zoom/drag, focus, and layout survive reopen', async () => {
+    const projectKey = 'C:\\novels\\journey-j05'
+    const layoutKey = `inkweaver.relationship-layout:${projectKey}`
+    localStorage.removeItem(layoutKey)
+    const host = document.createElement('div')
+    host.style.width = '794px'
+    host.style.height = '588px'
+    host.style.position = 'relative'
+    document.body.appendChild(host)
+    const chars = Array.from({ length: 202 }, (_, i) => ({
+      name: `角色${i + 1}`,
+      role: (i % 4 === 0 ? 'protagonist' : i % 4 === 1 ? 'antagonist' : i % 4 === 2 ? 'supporting' : 'minor') as string,
+      relationships: i % 5 === 0 ? `角色${((i + 7) % 202) + 1}——相关` : '',
+    }))
+    const render = (root: Root) => root.render(
+      <div style={{ position: 'relative', width: '794px', height: '588px' }}>
+        <div style={{ position: 'absolute', inset: 0 }}>
+          <RelationshipGraph projectKey={projectKey} characters={chars} />
+        </div>
+      </div>,
+    )
+    let root = createRoot(host)
+    try {
+      await act(async () => render(root))
+      await wait(4_000)
+      const canvas = host.querySelector('canvas')
+      expect(canvas).not.toBeNull()
+      expect(canvas!.width).toBeGreaterThan(300)
+
+      const firstRow = host.querySelector('[data-relationship-list="true"] button')
+      expect(firstRow).not.toBeNull()
+      await act(async () => firstRow?.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })))
+      expect(localStorage.getItem(layoutKey)).toContain('pinned')
+
+      const search = host.querySelector('input[aria-label="搜索角色"]') as HTMLInputElement | null
+      expect(search).not.toBeNull()
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+      await act(async () => {
+        setter?.call(search, '角色1')
+        search?.dispatchEvent(new Event('input', { bubbles: true }))
+      })
+      const depth = host.querySelector('select[aria-label="聚焦范围"]') as HTMLSelectElement | null
+      expect(depth).not.toBeNull()
+      await act(async () => {
+        if (depth) depth.value = '1'
+        depth?.dispatchEvent(new Event('change', { bubbles: true }))
+      })
+      expect(host.querySelector('[data-relationship-list="true"]')?.textContent).toContain('角色1')
+
+      Object.defineProperty(canvas!, 'setPointerCapture', { configurable: true, value: () => {} })
+      Object.defineProperty(canvas!, 'releasePointerCapture', { configurable: true, value: () => {} })
+      const rect = canvas!.getBoundingClientRect()
+      await act(async () => {
+        canvas!.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: rect.left + 20, clientY: rect.top + 20, pointerId: 7, buttons: 1 }))
+        canvas!.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: rect.left + 35, clientY: rect.top + 30, pointerId: 7, buttons: 1 }))
+        canvas!.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, clientX: rect.left + 35, clientY: rect.top + 30, pointerId: 7, buttons: 0 }))
+      })
+
+      await act(async () => root.unmount())
+      root = createRoot(host)
+      await act(async () => render(root))
+      await wait(500)
+      expect(host.textContent).toContain('📌')
+      expect(host.querySelector('canvas')?.width).toBeGreaterThan(300)
+    } finally {
+      await act(async () => root.unmount())
+      host.remove()
+      localStorage.removeItem(layoutKey)
+    }
+  }, 20_000)
 })

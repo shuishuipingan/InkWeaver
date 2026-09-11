@@ -343,6 +343,11 @@ export default function RelationshipGraph({ characters, projectKey, onOpenEviden
       const nodeNames = new Map<string, CharacterNode>()
       const storedLayout = readStoredLayout()
       pinnedNamesRef.current = new Set(storedLayout.pinned)
+      // The accessible list derives its pin marker from the ref, so refresh
+      // that projection after a remount restores persisted pins. Without this
+      // render tick the canvas nodes are pinned correctly but the keyboard/list
+      // surface looks unpinned until the user toggles another node.
+      setPinVersion(value => value + 1)
 
       // 初始布局：黄金角螺旋/圆环铺满整个画布（内容空间 = 2 × CSS，半轴 w/h 即铺满 CSS 全宽高）
       nodesRef.current = visibleGraph.characters.map((c, i) => {
