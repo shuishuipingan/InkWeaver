@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import { closeProjectDatabase, getProjectDb, initProjectDatabase } from '../../database'
 import { countDraftUnits } from '../../../src/shared/draft-units'
+import { factAppliesAtChapter } from '../../../src/shared/finalized-continuity'
 import { FinalizedDraftImportRepository } from '../finalized-draft-import-repository'
 import { SummaryRepository } from '../summary-repository'
 
@@ -21,6 +22,59 @@ afterEach(() => {
 })
 
 describe('finalized continuity projection', () => {
+  it('J03 keeps chapter-12 ownership visible before transfer and chapter-18 ownership after transfer', () => {
+    const chapters = Array.from({ length: 18 }, (_, index) => {
+      const chapterNumber = index + 1
+      const content = `第${chapterNumber}章定稿正文。`
+      return { chapterNumber, title: `第${chapterNumber}章`, content, wordCount: countDraftUnits(content) }
+    })
+    const receipt = FinalizedDraftImportRepository.commit(projectRoot, {
+      operationId: 'journey-j03-key-transfer',
+      chapters,
+    })
+    const chapter12 = receipt.drafts.find(item => item.chapterNumber === 12)!
+    const chapter18 = receipt.drafts.find(item => item.chapterNumber === 18)!
+
+    SummaryRepository.saveFinalizedContinuity({
+      draftId: chapter12.draftId,
+      chapterNumber: 12,
+      chapterNotes: '林夏取得旧钥匙，暂时由林夏保管。',
+      facts: [{
+        category: 'character-state',
+        entities: ['旧钥匙', '林夏'],
+        statement: '旧钥匙所有者是林夏。',
+        sourceChapter: 12,
+        validFromChapter: 12,
+        validUntilChapter: 17,
+        evidence: '林夏把旧钥匙收进袖口。',
+      }],
+    })
+    SummaryRepository.saveFinalizedContinuity({
+      draftId: chapter18.draftId,
+      chapterNumber: 18,
+      chapterNotes: '顾舟接过旧钥匙，所有权完成转交。',
+      facts: [{
+        category: 'character-state',
+        entities: ['旧钥匙', '顾舟'],
+        statement: '旧钥匙所有者是顾舟。',
+        sourceChapter: 18,
+        validFromChapter: 18,
+        evidence: '林夏在渡船上把旧钥匙交给顾舟。',
+      }],
+    })
+
+    const beforeTransfer = SummaryRepository.listFinalizedContinuityBefore(13)
+    const throughTransfer = SummaryRepository.listFinalizedContinuityBefore(19)
+    const factsAt = (projections: typeof throughTransfer, chapter: number) => projections
+      .flatMap(projection => projection.facts)
+      .filter(fact => factAppliesAtChapter(fact, chapter))
+
+    expect(factsAt(beforeTransfer, 12)).toEqual([expect.objectContaining({ statement: '旧钥匙所有者是林夏。' })])
+    expect(factsAt(throughTransfer, 17)).toEqual([expect.objectContaining({ statement: '旧钥匙所有者是林夏。' })])
+    expect(factsAt(throughTransfer, 18)).toEqual([expect.objectContaining({ statement: '旧钥匙所有者是顾舟。' })])
+    expect(factsAt(throughTransfer, 19)).toEqual([expect.objectContaining({ statement: '旧钥匙所有者是顾舟。' })])
+  })
+
   it('persists chapter facts against a finalized draft even when no blueprint exists', () => {
     const content = '第一章正文尾声：银色怀表在午夜停摆。'
     const receipt = FinalizedDraftImportRepository.commit(projectRoot, {
