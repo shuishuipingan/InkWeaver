@@ -156,3 +156,7 @@ until a separately authorized real-provider run.
 The formal-release backread gate was added in `9464c35`; it checks the seven
 Windows/macOS asset names, final tag state, GitHub SHA-256 digests, and the
 `dsh-plugin` topic. It is not a claim that a public Release exists yet.
+
+## Current development ref (2026-09-12)
+
+The authoritative GitHub `1.1.0-development` ref is `e7e9094b0b592abae1042c9a6c89b8b8f67abcb2`; the local `HEAD` has the same tree. The line now records J01–J11 development-baseline journey receipts (11/12); J12 remains intentionally gated on final version freeze. The deterministic quality-fixture smoke receipt is [QUALITY-FIXTURE-SMOKE-RECEIPT.md](QUALITY-FIXTURE-SMOKE-RECEIPT.md), with long-form fixture SHA-256 `17195a8d07f4e1a40123ee2279a5593519cf501b3c4e04d3707cfef9fdfbd71f`. This note does not change the package versions or make a release claim.
