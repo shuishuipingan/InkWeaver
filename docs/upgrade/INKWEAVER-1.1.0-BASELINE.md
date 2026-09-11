@@ -67,7 +67,7 @@ historical checkpoint above is intentionally retained.
 
 | Item | Current value |
 | --- | --- |
-| functional source baseline | `710f336` |
+| functional source baseline | `b14186f` |
 | GitHub development ref | `origin/1.1.0-development` contains the same functional baseline plus documentation-only receipt commits; re-read with `git ls-remote` before any version freeze |
 | desktop package version | `0.9.2` (still not frozen) |
 | DSH plugin package version | `0.1.0` (still not frozen) |
