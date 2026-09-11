@@ -553,7 +553,19 @@ async function runPreMonitorSteps() {
     // the rest of the renderer graph. A single worker here avoids a release
     // machine starving the Vite transform and tripping the cold-start budget.
     if (step === 'test') {
-      await runNodeProcess([pnpmCli, 'exec', 'vitest', 'run', '--maxWorkers=1'])
+      const vitest = [pnpmCli, 'exec', 'vitest', 'run', '--maxWorkers=1']
+      // Keep the Vite-backed UpdateSection browser fixture in its own Vitest
+      // process. In a full Windows run it can contend with unrelated renderer
+      // transforms and exhaust even the generous cold-start budget; isolating
+      // it preserves coverage while making the release preflight deterministic.
+      await runNodeProcess([
+        ...vitest,
+        '--exclude', 'scripts/__tests__/update-section.interaction.test.ts',
+      ])
+      await runNodeProcess([
+        ...vitest,
+        'scripts/__tests__/update-section.interaction.test.ts',
+      ])
     } else {
       await runNodeProcess([pnpmCli, 'run', step])
     }
