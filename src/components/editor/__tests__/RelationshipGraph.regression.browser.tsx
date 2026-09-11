@@ -157,6 +157,14 @@ describe('RelationshipGraph large roster', () => {
       await act(async () => firstRow?.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })))
       expect(localStorage.getItem(layoutKey)).toContain('pinned')
 
+      const zoomIn = host.querySelector('button[aria-label="放大关系图谱"]')
+      const fitView = host.querySelector('button[aria-label="适合视图"]')
+      expect(zoomIn).not.toBeNull()
+      expect(fitView).not.toBeNull()
+      await act(async () => zoomIn?.dispatchEvent(new MouseEvent('click', { bubbles: true })))
+      await act(async () => canvas?.dispatchEvent(new WheelEvent('wheel', { deltaY: -100, bubbles: true })))
+      await act(async () => fitView?.dispatchEvent(new MouseEvent('click', { bubbles: true })))
+
       const search = host.querySelector('input[aria-label="搜索角色"]') as HTMLInputElement | null
       expect(search).not.toBeNull()
       const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
