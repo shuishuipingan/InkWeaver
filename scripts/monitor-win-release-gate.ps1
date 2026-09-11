@@ -1311,17 +1311,15 @@ function Test-AiNovelGateNsisUninstallerHelperImage {
     return $false
   }
   try {
-    $helperFullPath = Resolve-AiNovelGateCanonicalExistingPath -Path $ImagePath
-    if ([string]::IsNullOrWhiteSpace($helperFullPath)) {
-      return $false
-    }
+    # The NSIS helper may be deleted before its child probe exits. Validate the
+    # captured absolute path lexically instead of requiring the file to remain
+    # on disk at the moment the completion-port event is drained.
+    $helperFullPath = [System.IO.Path]::GetFullPath($ImagePath)
     $helperDirectory = [System.IO.Path]::GetDirectoryName($helperFullPath)
     $helperFileName = [System.IO.Path]::GetFileName($helperFullPath)
     $helperDirectoryName = [System.IO.Path]::GetFileName($helperDirectory)
     return (
-      (Test-AiNovelGateDirectChildDirectory `
-        -DirectoryPath $helperDirectory `
-        -RootPath ([System.IO.Path]::GetTempPath())) -and
+      $helperDirectory -match '(?i)^[A-Za-z]:\\.*\\Temp\\~nsu[A-Za-z0-9]+\.tmp$' -and
       $helperDirectoryName -match '^(?i:~nsu[A-Za-z0-9]+\.tmp)$' -and
       $helperFileName -match '^(?i:Un_[A-Za-z0-9]+\.exe)$'
     )
