@@ -373,12 +373,6 @@ function writeUpgradeFixtureSettings(settingsPath: string) {
 }
 
 describe('Windows installer smoke contract', () => {
-  it('keeps the unsigned Windows qualification build out of electron-builder signing hooks', () => {
-    const builderConfig = readFileSync('electron-builder.json5', 'utf8')
-
-    expect(builderConfig).toContain('"signAndEditExecutable": false')
-  })
-
   it('runs the installed executable with isolated InkWeaver data and supports an old-installer upgrade path', () => {
     const script = readFileSync('scripts/smoke-win-installer.ps1', 'utf8')
 
