@@ -52,6 +52,41 @@ beforeEach(() => {
 afterEach(() => db.close())
 
 describe('RevisionRepository.replacePending', () => {
+  it('J07 rejects an old refinement after the author edits the draft, then merges a fresh replacement', () => {
+    const originalHash = textFingerprint('原稿')
+    const oldRevision = RevisionRepository.create({
+      baseDraftId: 1,
+      revisionType: 'refine',
+      content: '模型生成的旧修稿',
+      wordCount: 8,
+      baseContentHash: originalHash,
+    })
+
+    // The author continues editing the same draft while the refinement is in
+    // flight. The pending proposal remains inspectable, but it is no longer
+    // safe to merge against the changed base body.
+    db.prepare('UPDATE contents SET body = ? WHERE id = 1').run('作者继续编辑后的正文')
+    expect(() => RevisionRepository.markMerged(oldRevision.id, 2)).toThrow(/基准正文已变化/)
+    expect(RevisionRepository.listByDraft(1).find(item => item.id === oldRevision.id)?.status).toBe('pending')
+
+    const replacement = RevisionRepository.replacePending({
+      baseDraftId: 1,
+      revisionType: 'refine',
+      content: '基于最新正文重新生成的修稿',
+      wordCount: 13,
+      baseContentHash: textFingerprint('作者继续编辑后的正文'),
+    })
+    const replacementContentId = ContentRepository.create('已合并的修订正文')
+    db.prepare('INSERT INTO drafts (content_id) VALUES (?)').run(replacementContentId)
+
+    expect(RevisionRepository.listByDraft(1).find(item => item.id === oldRevision.id)?.status).toBe('discarded')
+    expect(() => RevisionRepository.markMerged(replacement.id, 2)).not.toThrow()
+    expect(RevisionRepository.listByDraft(1).find(item => item.id === replacement.id))
+      .toMatchObject({ status: 'merged', mergedToDraftId: 2 })
+    expect((db.prepare('SELECT body FROM contents WHERE id = 1').get() as { body: string }).body)
+      .toBe('作者继续编辑后的正文')
+  })
+
   it('binds a revision to its base content and rejects merging after the source changes', () => {
     const revision = RevisionRepository.create({
       baseDraftId: 1,
