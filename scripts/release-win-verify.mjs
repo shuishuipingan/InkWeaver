@@ -552,7 +552,11 @@ async function runPreMonitorSteps() {
     // feedback, but the Windows gate starts the cold browser fixture beside
     // the rest of the renderer graph. A single worker here avoids a release
     // machine starving the Vite transform and tripping the cold-start budget.
-    if (step === 'test') {
+    // Contract tests replace npm_execpath with a tiny failing/succeeding fake
+    // and mark the step through AI_NOVEL_RELEASE_STEP_MARKER. Preserve that
+    // single-command seam so those failure-path tests never enter a real
+    // Vitest process.
+    if (step === 'test' && process.env.AI_NOVEL_RELEASE_STEP_MARKER === undefined) {
       const vitest = [pnpmCli, 'exec', 'vitest', 'run', '--maxWorkers=1']
       // Keep the Vite-backed UpdateSection browser fixture in its own Vitest
       // process. In a full Windows run it can contend with unrelated renderer
