@@ -10,6 +10,7 @@ const macSmokeScriptPath = path.join(repositoryRoot, 'scripts', 'smoke-macos-dmg
 const manifestScriptPath = path.join(repositoryRoot, 'scripts', 'generate-macos-cloud-build-manifest.mjs')
 const vectorRunnerBuildScriptPath = path.join(repositoryRoot, 'scripts', 'build-release-vector-smoke-runner.mjs')
 const vectorRunnerSourcePath = path.join(repositoryRoot, 'electron', 'release-vector-smoke-runner.ts')
+const vectorRunnerElectronStubPath = path.join(repositoryRoot, 'scripts', 'release-vector-smoke-electron-stub.mjs')
 
 function readRequired(file: string) {
   expect(existsSync(file), `Missing macOS cloud qualification contract file: ${file}`).toBe(true)
@@ -60,6 +61,7 @@ describe('macOS ARM64 cloud build workflow contract', () => {
     const manifestScript = readRequired(manifestScriptPath)
     const vectorRunnerBuildScript = readRequired(vectorRunnerBuildScriptPath)
     const vectorRunnerSource = readRequired(vectorRunnerSourcePath)
+    const vectorRunnerElectronStub = readRequired(vectorRunnerElectronStubPath)
 
     const triggerBlock = workflow.match(/^on:\r?\n(?<triggers>(?: {2}.*(?:\r?\n|$))*)/m)?.groups?.triggers
     expect(triggerBlock?.trim()).toMatch(/^workflow_dispatch:\r?\n\s+inputs:/)
@@ -172,6 +174,8 @@ describe('macOS ARM64 cloud build workflow contract', () => {
     expect(vectorRunnerBuildScript).toContain("define: { 'import.meta.url': '__aiNovelImportMetaUrl' }")
     expect(vectorRunnerSource).toContain('runReleaseVectorSmoke')
     expect(vectorRunnerSource).toContain('Packaged vector smoke timed out after 90 seconds')
+    expect(vectorRunnerElectronStub).toContain('export const ipcMain')
+    expect(vectorRunnerElectronStub).toContain('handle() {}')
     expect(manifestScript).toContain('finalizeReleaseEvidence')
     expect(manifestScript).toContain('AI_NOVEL_RELEASE_EVIDENCE_ROOT')
   })

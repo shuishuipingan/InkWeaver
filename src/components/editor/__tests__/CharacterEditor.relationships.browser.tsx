@@ -167,12 +167,25 @@ describe('CharacterEditor relationship field', () => {
       root?.render(<CharacterEditor projectKey={PROJECT_PATH} />)
     })
 
+    await expect.element(page.getByRole('button', { name: '关系图谱' })).toBeVisible({ timeout: 10_000 })
     await act(async () => page.getByRole('button', { name: '关系图谱' }).click())
-    // 力导向收敛后自动适配视图；等它结束再取基准缩放值
-    await new Promise((resolve) => setTimeout(resolve, 2600))
-    const readZoom = () =>
-      parseInt(container?.querySelector('span.tabular-nums')?.textContent ?? '100', 10)
-    const basePct = readZoom()
+    // 不用固定等待时间：macOS Intel 的冷启动和力导向布局可能明显慢于
+    // Windows，等待实际的图谱控件就绪才能避免把“编辑器仍在加载”误报成
+    // 缩放回归。
+    await expect.element(page.getByRole('button', { name: '放大关系图谱' })).toBeVisible({ timeout: 10_000 })
+    await expect.element(page.getByRole('button', { name: '适合视图' })).toBeVisible({ timeout: 10_000 })
+    const readZoom = () => {
+      const zoomElement = Array.from(container?.querySelectorAll('span') ?? [])
+        .find(element => /^\d+%$/.test(element.textContent?.trim() ?? ''))
+      expect(zoomElement).toBeTruthy()
+      return parseInt(zoomElement?.textContent ?? '100', 10)
+    }
+    const fitDeadline = Date.now() + 10_000
+    let basePct = readZoom()
+    while (basePct === 100 && Date.now() < fitDeadline) {
+      await new Promise(resolve => setTimeout(resolve, 100))
+      basePct = readZoom()
+    }
 
     await act(async () => page.getByRole('button', { name: '放大关系图谱' }).click())
     await expect.element(page.getByText(`${basePct + 10}%`)).toBeVisible()
