@@ -1798,6 +1798,74 @@ function Test-AiNovelGateCapturedInstallerOldUninstallerProbeParent {
   )
 }
 
+function Test-AiNovelGateExpectedInstallerOldUninstallerProbeExit {
+  param(
+    [Parameter(Mandatory = $true)][AllowEmptyString()][string]$Step,
+    [Parameter(Mandatory = $true)]$Event,
+    [AllowNull()]$ProcessIdentity,
+    [AllowNull()]$ParentIdentity,
+    [AllowNull()]$GrandParentIdentity,
+    [AllowNull()]$GreatGrandParentIdentity,
+    [AllowNull()]$ArmedRootIdentity,
+    [AllowNull()]$TrackedProcessIdentities
+  )
+
+  if (
+    $Step -notin @('smoke:win-installer', 'smoke:win-v025-upgrade') -or
+    $null -eq $Event -or
+    [int]$Event.ExitCode -ne 1 -or
+    $null -eq $ProcessIdentity -or
+    $null -eq $ParentIdentity -or
+    $null -eq $GrandParentIdentity -or
+    $null -eq $ArmedRootIdentity -or
+    $null -eq $TrackedProcessIdentities
+  ) {
+    return $false
+  }
+
+  $processName = [string]$ProcessIdentity.processName
+  $validProbeImage = (
+    ($processName -match '^(?i:powershell)$' -and
+      (Test-AiNovelGateSystemPowerShellImage -ImagePath ([string]$ProcessIdentity.executablePath))) -or
+    ($processName -match '^(?i:cmd)$' -and
+      (Test-AiNovelGateSystemUtilityImage -ImagePath ([string]$ProcessIdentity.executablePath) -FileName 'cmd.exe')) -or
+    ($processName -match '^(?i:find)$' -and
+      (Test-AiNovelGateSystemUtilityImage -ImagePath ([string]$ProcessIdentity.executablePath) -FileName 'find.exe'))
+  )
+  if (-not $validProbeImage) {
+    return $false
+  }
+
+  $directChain = Test-AiNovelGateCapturedInstallerOldUninstallerProbeParent `
+    -Step $Step `
+    -ChildIdentity $ProcessIdentity `
+    -ParentIdentity $ParentIdentity `
+    -GrandParentIdentity $GrandParentIdentity `
+    -ArmedRootIdentity $ArmedRootIdentity `
+    -TrackedProcessIdentities $TrackedProcessIdentities
+  if ($directChain) {
+    return $true
+  }
+
+  # find.exe is one level below cmd.exe: child=find, parent=cmd, grandparent=
+  # Un_A.exe, great-grandparent=Uninstall InkWeaver.exe.
+  if ($processName -notmatch '^(?i:find)$' -or $null -eq $GreatGrandParentIdentity) {
+    return $false
+  }
+  return (
+    (Test-AiNovelGateCapturedInstallerOldUninstallerProbeParent `
+      -Step $Step `
+      -ChildIdentity $ParentIdentity `
+      -ParentIdentity $GrandParentIdentity `
+      -GrandParentIdentity $GreatGrandParentIdentity `
+      -ArmedRootIdentity $ArmedRootIdentity `
+      -TrackedProcessIdentities $TrackedProcessIdentities) -and
+    (Test-AiNovelGateCapturedParentIdentity `
+      -ChildIdentity $ProcessIdentity `
+      -ParentIdentity $ParentIdentity)
+  )
+}
+
 function Test-AiNovelGateCapturedNsisProbeParent {
   param(
     [Parameter(Mandatory = $true)][AllowEmptyString()][string]$Step,
@@ -3555,6 +3623,17 @@ try {
           -ParentIdentity $parentIdentity) {
           $exitClassification = 'expected-package-manager-probe'
         }
+        elseif (Test-AiNovelGateExpectedInstallerOldUninstallerProbeExit `
+          -Step $activeStep `
+          -Event $processEvent `
+          -ProcessIdentity $processIdentity `
+          -ParentIdentity $parentIdentity `
+          -GrandParentIdentity $grandParentIdentity `
+          -GreatGrandParentIdentity $greatGrandParentIdentity `
+          -ArmedRootIdentity $armedRootIdentity `
+          -TrackedProcessIdentities $trackedProcessIdentities) {
+          $exitClassification = 'expected-installer-old-uninstaller-probe'
+        }
         elseif (Test-AiNovelGateExpectedElectronChildTerminationExit `
           -Step $activeStep `
           -Event $processEvent `
@@ -3694,6 +3773,7 @@ try {
           'expected-nsis-cmd-process-check',
           'expected-nsis-find-no-match',
           'expected-package-manager-probe',
+          'expected-installer-old-uninstaller-probe',
           'expected-electron-child-termination',
           'pending-nsis-cmd-process-check',
           'legacy-bridge-terminated',

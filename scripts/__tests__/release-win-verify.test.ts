@@ -398,6 +398,7 @@ describe('Windows release verification orchestration', () => {
     expect(monitorSource).toContain('Test-AiNovelGateExpectedElectronChildTerminationExit')
     expect(monitorSource).toContain('expected-electron-child-termination')
     expect(monitorSource).toContain('Test-AiNovelGateCapturedInstallerOldUninstallerProbeParent')
+    expect(monitorSource).toContain('Test-AiNovelGateExpectedInstallerOldUninstallerProbeExit')
   })
 
   it('keeps monitoring through native restoration, validation, and the final quiet period', () => {
