@@ -3,6 +3,7 @@ import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import ContinuityImpactPanel from '../ContinuityImpactPanel'
 import { useProjectStore } from '../../../stores/project-store'
+import { useWorkflowStore } from '../../../stores/workflow-store'
 import { setActiveProjectSessionContext } from '../../../shared/project-session-context'
 
 const PROJECT_PATH = 'C:\\novels\\impact-panel'
@@ -15,6 +16,8 @@ const SESSION = {
 let root: Root
 let container: HTMLDivElement
 let invoke: ReturnType<typeof vi.fn>
+let startWorkflow: ReturnType<typeof vi.fn>
+const originalStartWorkflow = useWorkflowStore.getState().startWorkflow
 
 beforeEach(() => {
   ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -27,6 +30,8 @@ beforeEach(() => {
     } as never,
   })
   setActiveProjectSessionContext(SESSION)
+  startWorkflow = vi.fn(async () => 'continuity-rebuild-run')
+  useWorkflowStore.setState({ startWorkflow: startWorkflow as never })
   invoke = vi.fn(async (channel: string) => {
     if (channel === 'db:continuity-list-all') {
       return [{ draftId: 12, chapterNumber: 4, chapterTitle: '雨夜', chapterNotes: '桥上冲突', facts: [] }]
@@ -72,6 +77,7 @@ afterEach(async () => {
   Reflect.deleteProperty(window, 'velaAPI')
   setActiveProjectSessionContext(null)
   useProjectStore.setState({ currentProject: null })
+  useWorkflowStore.setState({ startWorkflow: originalStartWorkflow })
 })
 
 describe('ContinuityImpactPanel', () => {
@@ -88,5 +94,21 @@ describe('ContinuityImpactPanel', () => {
       checkboxes[0]?.click()
     })
     expect(container.textContent).toContain('已选择 2/3 项待重建')
+  })
+
+  it('starts a resumable rebuild with only the selected source-bound impacts', async () => {
+    await act(async () => root.render(<ContinuityImpactPanel projectKey={PROJECT_PATH} changedChapter={3} />))
+    await vi.waitFor(() => expect(container.querySelector('[data-continuity-impact="true"]')).not.toBeNull())
+    const checkboxes = [...container.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')]
+    await act(async () => checkboxes[0]?.click())
+    const start = [...container.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.includes('开始重建'))
+    expect(start).not.toBeUndefined()
+    await act(async () => start?.click())
+    await vi.waitFor(() => expect(startWorkflow).toHaveBeenCalledOnce())
+    const [definition, stepByStep] = startWorkflow.mock.calls[0] as [{ type: string; resumeMetadata?: Record<string, unknown>; steps: unknown[] }, boolean]
+    expect(stepByStep).toBe(false)
+    expect(definition.type).toBe('post_process')
+    expect(definition.steps).toHaveLength(4)
+    expect(definition.resumeMetadata).toMatchObject({ kind: 'continuity-rebuild', changedChapter: 3 })
   })
 })
