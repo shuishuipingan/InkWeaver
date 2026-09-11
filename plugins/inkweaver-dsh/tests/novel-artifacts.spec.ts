@@ -296,4 +296,68 @@ describe('NovelStore artifact version chain', () => {
     ]))
     expect(snapshot.chapterFinals).toEqual([])
   })
+
+  it('J11 upgrades a legacy workspace, keeps extracted knowledge candidates, and rejects a proposal after the source chapter changes', async () => {
+    const { root, store } = await initializedStore()
+    const before = await store.read(signal)
+    const sourceChapter = before.chapters.find(chapter => chapter.chapter === 1)!
+    const { revision: sourceRevision, ...sourceValue } = sourceChapter
+    const pending = await store.submitProposal(proposal({
+      changes: [{
+        changeSetId: 'j11-extracted-knowledge',
+        aggregate: { kind: 'chapter', chapter: 1 },
+        baseAggregateRevision: sourceRevision,
+        baseGlobalRevision: before.globalRevision,
+        nextValue: {
+          ...sourceValue,
+          knowledgeEvents: [{
+            eventId: 'j11-secret-candidate', characterId: 'hero', statement: '信件来自未来', kind: 'fact',
+            acquisition: '提取自第一章正文', sourceChapter: 1, validFromChapter: 1,
+            evidence: '第一章末尾的信件原文', status: 'candidate',
+          }],
+        },
+      }],
+    }), signal)
+
+    await store.dispose()
+    opened.length = 0
+    const database = new DatabaseSync(join(root, '.ai-novel', 'novel.db'))
+    try {
+      database.exec('DROP TABLE chapter_finals')
+      database.exec('ALTER TABLE artifacts DROP COLUMN summary')
+      database.prepare("UPDATE meta SET value = '3' WHERE key = 'schema_version'").run()
+      database.exec('PRAGMA user_version = 3')
+    } finally {
+      database.close()
+    }
+
+    const upgraded = await openNovelStore(root, workspaceId)
+    opened.push(upgraded)
+    expect((await upgraded.read(signal)).storage.userVersion).toBe(5)
+    await expect(upgraded.listProposals(signal)).resolves.toEqual(expect.arrayContaining([
+      expect.objectContaining({ proposalId: pending.proposal.proposalId, status: 'pending' }),
+    ]))
+
+    const beforeAuthorEdit = await upgraded.read(signal)
+    const currentChapter = beforeAuthorEdit.chapters.find(chapter => chapter.chapter === 1)!
+    const { revision: currentRevision, ...currentValue } = currentChapter
+    await upgraded.applyChange({
+      changeSetId: 'j11-author-source-edit',
+      operation: 'replace',
+      aggregate: { kind: 'chapter', chapter: 1 },
+      baseAggregateRevision: currentRevision,
+      baseGlobalRevision: beforeAuthorEdit.globalRevision,
+      nextValue: { ...currentValue, keyEvents: [...currentValue.keyEvents, '作者先修改了正文来源'] },
+      provenance: { origin: 'manual' },
+    }, signal)
+
+    const stale = await upgraded.applyProposal(pending.proposal.proposalId, signal)
+    expect(stale).toMatchObject({
+      appliedItemIds: [],
+      proposal: { status: 'stale', items: [{ status: 'stale', failure: 'STALE_REVISION' }] },
+    })
+    const after = await upgraded.read(signal)
+    expect(after.chapters.find(chapter => chapter.chapter === 1)?.keyEvents).toContain('作者先修改了正文来源')
+    expect(after.chapters.find(chapter => chapter.chapter === 1)?.knowledgeEvents).toBeUndefined()
+  })
 })
