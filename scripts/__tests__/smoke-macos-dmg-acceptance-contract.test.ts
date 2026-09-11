@@ -127,6 +127,8 @@ describe('macOS DMG acceptance receipt contract', () => {
     expect(script).toContain('gatekeeper')
     expect(script).toContain('classifyMacosCodeSigning')
     expect(script).toContain('MACOS_FORMAL_DISTRIBUTION_POLICY')
+    expect(script).toContain('find "$app/Contents/MacOS"')
+    expect(script).not.toContain('Contents/MacOS/织墨')
     expect(script).toContain('fs.statSync(root, { bigint: true })')
     expect(script).toContain('JSON.stringify({ ...request, rootIdentity })')
     expect(script).toContain("relativePath: 'chapters/one.txt', maxBytes: 1024")

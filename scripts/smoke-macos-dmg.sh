@@ -130,9 +130,9 @@ if [[ -z "$app" ]]; then
   echo 'Mounted DMG does not contain an application bundle.' >&2
   exit 1
 fi
-executable="$app/Contents/MacOS/织墨"
+executable="$(find "$app/Contents/MacOS" -maxdepth 1 -type f -perm -111 -print -quit)"
 if [[ ! -x "$executable" ]]; then
-  echo "Missing executable in mounted application: $executable" >&2
+  echo "Missing executable in mounted application: $app/Contents/MacOS" >&2
   exit 1
 fi
 secure_helper="$app/Contents/Resources/security/darwin-safe-file-system"
