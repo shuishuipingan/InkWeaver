@@ -167,13 +167,13 @@ describe('CharacterEditor relationship field', () => {
       root?.render(<CharacterEditor projectKey={PROJECT_PATH} />)
     })
 
-    await expect.element(page.getByRole('button', { name: '关系图谱' })).toBeVisible({ timeout: 10_000 })
+    await expect.element(page.getByRole('button', { name: '关系图谱' }), { timeout: 10_000 }).toBeVisible()
     await act(async () => page.getByRole('button', { name: '关系图谱' }).click())
     // 不用固定等待时间：macOS Intel 的冷启动和力导向布局可能明显慢于
     // Windows，等待实际的图谱控件就绪才能避免把“编辑器仍在加载”误报成
     // 缩放回归。
-    await expect.element(page.getByRole('button', { name: '放大关系图谱' })).toBeVisible({ timeout: 10_000 })
-    await expect.element(page.getByRole('button', { name: '适合视图' })).toBeVisible({ timeout: 10_000 })
+    await expect.element(page.getByRole('button', { name: '放大关系图谱' }), { timeout: 10_000 }).toBeVisible()
+    await expect.element(page.getByRole('button', { name: '适合视图' }), { timeout: 10_000 }).toBeVisible()
     const readZoom = () => {
       const zoomElement = Array.from(container?.querySelectorAll('span') ?? [])
         .find(element => /^\d+%$/.test(element.textContent?.trim() ?? ''))
