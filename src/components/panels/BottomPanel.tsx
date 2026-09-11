@@ -26,6 +26,7 @@ import { resumeChapterDraftWorkflowFromCheckpoint } from '../../services/workflo
 import { resumeCharacterExtractionWorkflowFromCheckpoint } from '../../services/workflows/character-extraction-workflow'
 import { resumeArchitectureWorkflowFromCheckpoint, resumeConfigGenerationWorkflowFromCheckpoint } from '../../services/workflows/architecture-workflow'
 import { resumeDirectoryWorkflowFromCheckpoint } from '../../services/workflows/directory-workflow'
+import { resumeContinuityRebuildWorkflowFromCheckpoint } from '../../services/workflows/continuity-rebuild-workflow'
 import { resumeChapterFinalizeWorkflowFromCheckpoint, resumeChapterRefineWorkflowFromCheckpoint, resumeChapterRepairWorkflowFromCheckpoint, resumeChapterReviewFixWorkflowFromCheckpoint, resumeChapterReviewWorkflowFromCheckpoint } from '../../services/workflows/chapter-workflow'
 import {
   coarseRuntimePlatform,
@@ -285,11 +286,14 @@ function WorkflowRecoveryReceipts() {
     const isArchitecture = checkpoint.type === 'architecture_generation' && checkpoint.resumeMetadata?.kind === 'architecture'
     const isConfigGeneration = checkpoint.type === 'config_generation' && checkpoint.resumeMetadata?.kind === 'config-generation'
     const isDirectoryGeneration = checkpoint.type === 'directory' && checkpoint.resumeMetadata?.kind === 'directory-generation'
-    if (!session || (!['novel_import', 'batch_generate'].includes(checkpoint.type) && !isChapterDraft && !isChapterReview && !isChapterRefine && !isChapterFinalize && !isChapterReviewFix && !isChapterRepair && !isCharacterExtraction && !isArchitecture && !isConfigGeneration && !isDirectoryGeneration)) return
+    const isContinuityRebuild = checkpoint.type === 'post_process' && checkpoint.resumeMetadata?.kind === 'continuity-rebuild'
+    if (!session || (!['novel_import', 'batch_generate'].includes(checkpoint.type) && !isChapterDraft && !isChapterReview && !isChapterRefine && !isChapterFinalize && !isChapterReviewFix && !isChapterRepair && !isCharacterExtraction && !isArchitecture && !isConfigGeneration && !isDirectoryGeneration && !isContinuityRebuild)) return
     setResumingRunId(checkpoint.runId)
     try {
-      const workflow = checkpoint.type === 'novel_import'
-        ? await resumeImportWorkflowFromCheckpoint(checkpoint, session)
+      const workflow = isContinuityRebuild
+        ? resumeContinuityRebuildWorkflowFromCheckpoint(checkpoint, session)
+        : checkpoint.type === 'novel_import'
+          ? await resumeImportWorkflowFromCheckpoint(checkpoint, session)
         : checkpoint.type === 'batch_generate'
             ? resumeBatchChapterWorkflowFromCheckpoint(checkpoint, session)
             : checkpoint.type === 'chapter_creation'
@@ -354,6 +358,7 @@ function WorkflowRecoveryReceipts() {
             || (checkpoint.type === 'architecture_generation' && checkpoint.resumeMetadata?.kind === 'architecture')
             || (checkpoint.type === 'config_generation' && checkpoint.resumeMetadata?.kind === 'config-generation')
             || (checkpoint.type === 'directory' && checkpoint.resumeMetadata?.kind === 'directory-generation')
+            || (checkpoint.type === 'post_process' && checkpoint.resumeMetadata?.kind === 'continuity-rebuild')
           )
           const completed = checkpoint.steps.filter(step => step.status === 'completed').length
           return (
@@ -403,7 +408,9 @@ function WorkflowRecoveryReceipts() {
                         ? text('继续提取人物', 'Resume character extraction')
                         : checkpoint.type === 'architecture_generation'
                           ? text('继续生成架构', 'Resume architecture generation')
-                          : checkpoint.type === 'config_generation'
+                         : checkpoint.type === 'post_process'
+                           ? text('继续历史重建', 'Resume historical rebuild')
+                           : checkpoint.type === 'config_generation'
                             ? text('继续生成配置', 'Resume configuration generation')
                             : checkpoint.type === 'directory'
                               ? text('继续生成蓝图', 'Resume blueprint generation')

@@ -1,10 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, RefreshCw } from 'lucide-react'
+import { AlertTriangle, Play, RefreshCw } from 'lucide-react'
 import { useLocaleStore } from '../../stores/locale-store'
 import { useProjectStore } from '../../stores/project-store'
+import { useWorkflowStore } from '../../stores/workflow-store'
 import { ipc } from '../../services/ipc-client'
 import { collectContinuityImpact, type ContinuityImpactItem } from '../../services/continuity-impact'
+import { createContinuityRebuildWorkflow } from '../../services/workflows/continuity-rebuild-workflow'
 import { captureProjectSession, isProjectSessionPath } from '../project-session-gate'
+import { Button } from '../ui/Button'
+import { toast } from '../ui/Toast'
 
 interface ContinuityImpactPanelProps {
   projectKey: string
@@ -22,6 +26,7 @@ export default function ContinuityImpactPanel({ projectKey, changedChapter }: Co
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [starting, setStarting] = useState(false)
 
   useEffect(() => {
     const session = captureProjectSession(currentProject)
@@ -57,6 +62,26 @@ export default function ContinuityImpactPanel({ projectKey, changedChapter }: Co
   }, [changedChapter, currentProject, projectKey])
 
   const selectedCount = useMemo(() => [...selected].filter(id => items.some(item => item.id === id)).length, [items, selected])
+  const startRebuild = () => {
+    const session = captureProjectSession(currentProject)
+    if (!session || !isProjectSessionPath(session, projectKey) || selectedCount === 0 || starting) return
+    const selectedItems = items.filter(item => selected.has(item.id))
+    setStarting(true)
+    try {
+      const workflow = createContinuityRebuildWorkflow({
+        projectPath: projectKey,
+        changedChapter,
+        impacts: selectedItems,
+      }, session)
+      void useWorkflowStore.getState().startWorkflow(workflow, false)
+        .then(() => toast.success(text('已启动历史改稿重建，可在任务面板暂停或恢复', 'Historical edit rebuild started; pause or resume it from the task panel')))
+        .catch(cause => toast.error(text(`启动重建失败：${String(cause)}`, `Could not start rebuild: ${String(cause)}`)))
+        .finally(() => setStarting(false))
+    } catch (cause) {
+      setStarting(false)
+      toast.error(text(`启动重建失败：${String(cause)}`, `Could not start rebuild: ${String(cause)}`))
+    }
+  }
   if (changedChapter < 1 || (!loading && items.length === 0 && !error)) return null
 
   return (
@@ -82,7 +107,19 @@ export default function ContinuityImpactPanel({ projectKey, changedChapter }: Co
         <>
           <div className="mt-2 flex items-center justify-between text-[0.68rem] text-[var(--color-text-muted)]">
             <span>{text(`已选择 ${selectedCount}/${items.length} 项待重建`, `${selectedCount}/${items.length} selected for rebuild`)}</span>
-            <span>{text('重建将在后续恢复任务中执行', 'Rebuild runs through the resumable task flow')}</span>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={selectedCount === 0 || starting}
+              onClick={startRebuild}
+              data-start-continuity-rebuild="true"
+            >
+              <Play size={12} aria-hidden="true" />
+              {starting
+                ? text('启动中…', 'Starting…')
+                : text('开始重建', 'Start rebuild')}
+            </Button>
           </div>
           <div className="mt-1 space-y-1">
             {items.map(item => (
