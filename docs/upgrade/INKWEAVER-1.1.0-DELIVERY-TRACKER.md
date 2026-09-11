@@ -50,7 +50,7 @@
 | F03 | 插件对应创作功能 | 12 | 交接/人物候选/事实上下文和 Proposal 审核形成闭环吗？ | 通过 | DSH V2 schema 5 的 `NovelChapterHandoff`、`NovelKnowledgeEvent`、`chapter/context` 有效/confirmed 过滤和 Proposal 审核闭环均在真实 Chrome 中通过；receipt 验证固定五项 Proposal 生命周期、schema-5 persistence、重启读回和重装读回；剩余长篇质量评阅仍属于 A–E 创作体验工单，不阻塞本 DSH 闭环门禁 |
 | F04 | 插件版本与分发 | 13 | 1.1.0 可实际安装且公开兼容与升级说明吗？ | 开发中 | 新增 `plugins/inkweaver-dsh/docs/1.1.0-release-checklist.md`，固定插件身份、冻结前提、tarball/qualification/npm 发布顺序、外部 `@linxin666/dsh-web-all` 边界、topic 回读和回滚规则；当前插件仍为 `0.1.0`，尚未发布 npm 1.1.0 或正式 Release |
 | F05 | 主题发现 | 13 | dsh-plugin 元数据和实际索引结果分别有证据吗？ | 开发中 | GitHub API 已回读仓库 topic 含 `dsh-plugin`；2026-09-12 API 搜索 `topic:dsh-plugin user:shuishuipingan` 返回 `shuishuipingan/InkWeaver`（total_count=1），实际 topic 索引已可见；正式 1.1.0 Release 后仍需复核公开主题页首屏并留档，不能把 topic 索引当作 npm/Release 已发布证据 |
-| G01 | 详细文档 | 13 | 主页、指南、截图和更新日志是否真实对应实现？ | 开发中 | 中英文主页已明确 1.1.0 未发布开发线、连续叙事/人物/关系/快照能力和限制；新增 `docs/PROJECT-FILE-GUIDE.md`、`CHANGELOG.md`、DSH 兼容收据、GitHub 分发收据、固定质量样本集、插件 1.1.0 分发清单和 tracker；中英文主页新增 5 分钟快速上手和迁移 FAQ（旧项目、签名、历史修改影响、AI 写入边界、插件关系）；真实新版本截图仍待补齐 |
+| G01 | 详细文档 | 13 | 主页、指南、截图和更新日志是否真实对应实现？ | 待验收 | 中英文主页已明确 1.1.0 未发布开发线、连续叙事/人物/关系/快照能力和限制；新增 `docs/PROJECT-FILE-GUIDE.md`、`CHANGELOG.md`、DSH 兼容收据、GitHub 分发收据、固定质量样本集、插件 1.1.0 分发清单和 tracker；`DOCUMENTATION-CONSISTENCY-RECEIPT.md` 记录 README/版本守卫/GitHub contract 15 tests passed，以及旧 Harness/测试数/npm/topic 文案修正；真实新版本截图和最终冻结 SHA 对照仍待人工评阅 |
 | G02 | 版本冻结 | 13 | 桌面、插件、tag、锁文件和构建源码是否一致？ | 开发中 | 新增 `scripts/release-version-sync.mjs` 与 3 项测试，冻结前会校验 desktop/plugin 同一 final semver、正式插件包名 `@shuishuipingan/inkweaver-dsh`，并拒绝 prerelease；当前仍保持桌面 `0.9.2`、插件 `0.1.0`，尚未冻结、打 tag 或构建发布资产 |
 | G03 | 安装包与分发 | 13 | Windows 和两种 macOS 架构同 SHA 资格通过吗？ | 开发中 | Windows 完整资格门禁已实际跑通：`test → prepare:native-node → clean:build → build:win:artifacts → verify update/package → smoke app/installer/upgrade → restore-native-node → final`；Windows release-contract 测试现为 25 passed，冷启动与 monitor 确认窗口已加固；开发版 `0.9.2` 安装器 SHA-256 为 `8acb574112ffe205439d5063767ccfa9cf90f3615b0c188d96b6918c1dc92022`，验收收据位于 `release/0.9.2/qualification/acceptance/`，其中升级收据确认官方 v0.2.5 输入、15 项资产、LanceDB 向量检索、数据库/设置/最近项目均保留；macOS 开发基线也已在远端提交 `b9f713b5` 通过 ARM64 workflow `34647639036`（artifact `10283130774`，DMG SHA-256 `aa736ab89e2fa33a2c4bb520aeb007320f3e92d5d20a0b8bc8693a6793ef2343`）和 Intel x64 workflow `34647642420`（artifact `10282422689`，DMG SHA-256 `89b0ff684ba8f2f32084e270b9f4f49752b5f9f861b280ba1d48cd39fa4993c0`），两者均包含 runtime-verified manifest、DMG mount、packaged smoke 和 signing 收据；这些仍是 `0.9.2` 开发基线，不是 1.1.0 冻结产物，后续版本冻结后必须用同一 SHA 资格链重跑 |
 | G04 | 发布回读 | 13 | 远端源码、资产、哈希、更新元数据和安装链接核验了吗？ | 开发中 | 新增 `scripts/verify-github-release-assets.mjs` 与 3 项测试，冻结后可回读七项 Windows/macOS Release 资产、final tag、非 draft/prerelease 状态、GitHub SHA-256 digest 和 `dsh-plugin` topic；当前没有正式 Release，实际远端回读仍待发布后执行 |
@@ -155,7 +155,7 @@
 | macOS x64 资格 run / attempt / artifact / hash | run `34647642420` / artifact `10282422689` / DMG SHA-256 `89b0ff684ba8f2f32084e270b9f4f49752b5f9f861b280ba1d48cd39fa4993c0`，runtime-verified 通过 |
 | 插件 tarball / hash / 安装资格记录 | 当前开发插件已有 DSH 0.1.5-rc.1 隔离 qualification receipt；1.1.0 冻结 tarball 尚未构建 |
 | npm 分发版本 / 发布结果 | 未发布 |
-| 文档实现一致性评阅 | 未执行 |
+| 文档实现一致性评阅 | 待验收；自动化 15 tests passed，手工修正收据见 `DOCUMENTATION-CONSISTENCY-RECEIPT.md` |
 | 正式 tag / Release / 发布 SHA | 未发布 |
 | topic 元数据 / 实际搜索结果 | 元数据此前已有 topic；实际可见性待发布验收 |
 | 回滚或恢复说明 | 待实现验证 |
