@@ -548,7 +548,15 @@ async function waitForFinalQuietPeriod() {
 
 async function runPreMonitorSteps() {
   for (const step of releasePreMonitorSteps) {
-    await runNodeProcess([pnpmCli, 'run', step])
+    // The package's default test script keeps two workers for ordinary local
+    // feedback, but the Windows gate starts the cold browser fixture beside
+    // the rest of the renderer graph. A single worker here avoids a release
+    // machine starving the Vite transform and tripping the cold-start budget.
+    if (step === 'test') {
+      await runNodeProcess([pnpmCli, 'exec', 'vitest', 'run', '--maxWorkers=1'])
+    } else {
+      await runNodeProcess([pnpmCli, 'run', step])
+    }
   }
 }
 
