@@ -1511,6 +1511,50 @@ function Test-AiNovelGateKnownNsisFindNoMatchCommand {
   return $false
 }
 
+function Test-AiNovelGateExpectedPackageManagerProbeExit {
+  param(
+    [Parameter(Mandatory = $true)][string]$Step,
+    [Parameter(Mandatory = $true)]$Event,
+    [AllowNull()]$ProcessIdentity,
+    [AllowNull()]$ParentIdentity
+  )
+
+  # electron-builder 26 discovers a pnpm workspace and production graph by
+  # launching short-lived cmd.exe wrappers for `pnpm --workspace-root exec pwd`
+  # and `pnpm list --prod --json`. Corepack/optional-platform resolution can
+  # make one of those wrappers return 1 even though electron-builder consumes
+  # the JSON and completes the package successfully. Keep this exception
+  # limited to the exact packaging step and command shape; all other descendant
+  # failures remain fail-closed.
+  if (
+    $Step -ne 'build:win:artifacts' -or
+    $null -eq $Event -or
+    [int]$Event.ExitCode -ne 1 -or
+    $null -eq $ProcessIdentity -or
+    [string]$ProcessIdentity.processName -notmatch '^(?i:cmd)$' -or
+    -not [bool]$ProcessIdentity.commandLineCaptured -or
+    [string]::IsNullOrWhiteSpace([string]$ProcessIdentity.commandLine) -or
+    -not (Test-AiNovelGateSystemUtilityImage -ImagePath ([string]$ProcessIdentity.executablePath) -FileName 'cmd.exe')
+  ) {
+    return $false
+  }
+
+  $commandLine = ([string]$ProcessIdentity.commandLine).ToLowerInvariant()
+  $isPnpmListProbe = (
+    $commandLine -match 'pnpm(?:\.cmd|[-_]\d+\.bat)?' -and
+    $commandLine -match '\blist\b' -and
+    $commandLine -match '--prod' -and
+    $commandLine -match '--json'
+  )
+  $isPnpmWorkspaceProbe = (
+    $commandLine -match 'pnpm(?:\.cmd|[-_]\d+\.bat)?' -and
+    $commandLine -match '--workspace-root' -and
+    $commandLine -match '\bexec\b' -and
+    $commandLine -match '\bpwd\b'
+  )
+  return $isPnpmListProbe -or $isPnpmWorkspaceProbe
+}
+
 function Test-AiNovelGateExpectedExitOne {
   param(
     [Parameter(Mandatory = $true)][AllowEmptyString()][string]$Step,
@@ -3398,6 +3442,13 @@ try {
           -ProcessIdentity $processIdentity) {
           $exitClassification = 'legacy-bridge-old-application-breakpoint'
         }
+        elseif (Test-AiNovelGateExpectedPackageManagerProbeExit `
+          -Step $activeStep `
+          -Event $processEvent `
+          -ProcessIdentity $processIdentity `
+          -ParentIdentity $parentIdentity) {
+          $exitClassification = 'expected-package-manager-probe'
+        }
         elseif (Test-AiNovelGateNativeUpdaterOldApplicationExit `
           -Step $activeStep `
           -LegacyBridge $legacyBridge `
@@ -3529,6 +3580,7 @@ try {
           'expected-nsis-powershell-probe',
           'expected-nsis-cmd-process-check',
           'expected-nsis-find-no-match',
+          'expected-package-manager-probe',
           'pending-nsis-cmd-process-check',
           'legacy-bridge-terminated',
           'legacy-bridge-old-application-breakpoint',

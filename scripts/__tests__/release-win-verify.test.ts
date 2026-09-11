@@ -389,6 +389,14 @@ describe('Windows release verification orchestration', () => {
     expect(source).toContain('pnpmCli')
   })
 
+  it('keeps the build monitor fail-closed except for the exact electron-builder pnpm dependency probes', () => {
+    const monitorSource = readFileSync(releaseMonitorScript, 'utf8')
+
+    expect(monitorSource).toContain('Test-AiNovelGateExpectedPackageManagerProbeExit')
+    expect(monitorSource).toContain('expected-package-manager-probe')
+    expect(monitorSource).toContain("$Step -ne 'build:win:artifacts'")
+  })
+
   it('keeps monitoring through native restoration, validation, and the final quiet period', () => {
     const plan = JSON.parse(
       execFileSync(process.execPath, [releaseScript, '--print-plan'], {
