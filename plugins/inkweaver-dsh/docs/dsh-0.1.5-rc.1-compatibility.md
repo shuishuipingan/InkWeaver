@@ -67,7 +67,7 @@ The local 0.1.5 migration currently passes:
 
 - `pnpm run typecheck`
 - `pnpm run build` and emitted package verification
-- `pnpm test`: 40 test files, 432 passed, 6 skipped
+- `pnpm test`: 40 test files, 433 passed, 6 skipped
 - source/preset checks in `scripts/qualify-release.mjs`
 
 The full isolated Harness qualification now passes against the frozen source

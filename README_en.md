@@ -14,7 +14,7 @@ The current source branch, GitHub topic, and remaining release gates are recorde
 
 User-visible changes are listed in the [changelog](CHANGELOG.md); every `1.1.0 development` entry is explicitly not a formal Release claim.
 
-[Download for Windows or macOS](https://github.com/shuishuipingan/InkWeaver/releases/latest) · [View source](https://github.com/shuishuipingan/InkWeaver) · [Install the DeepSeek Harness plugin](https://www.npmjs.com/package/@shuishuipingan/inkweaver-dsh)
+[Download for Windows or macOS](https://github.com/shuishuipingan/InkWeaver/releases/latest) · [View source](https://github.com/shuishuipingan/InkWeaver) · [DSH plugin guide](plugins/inkweaver-dsh/README.md)
 
 ## What InkWeaver is for
 
@@ -135,7 +135,7 @@ fs.writeFileSync(p, s, 'utf8')
 console.log('en quickstart added')
 ## DeepSeek Harness plugin
 
-The bundled `@shuishuipingan/inkweaver-dsh` package is an independent early-stage plugin, not a replacement for the desktop application. It provides a narrow reviewed chain for project settings, story architecture, characters, the whole-book outline, chapter blueprints, and chapter prose. Model changes enter a Proposal inbox and become authoritative only after the user applies them.
+The bundled `@shuishuipingan/inkweaver-dsh` package is an independent plugin under development, not a replacement for the desktop application. It provides a narrow reviewed chain for project settings, story architecture, characters, the whole-book outline, chapter blueprints, and chapter prose. Model changes enter a Proposal inbox and become authoritative only after the user applies them. The plugin's npm 1.1.0 release is not published yet; use the plugin guide and development qualification tarball for now.
 
 Migration note: `@ethanyoq/dsh-ai-novel-writer` was the historical package name before the repository move; it is not the 1.1.0 development-line delivery package. New installations should use only `@shuishuipingan/inkweaver-dsh`. The DSH host and its Web UI companion are maintained by the DeepSeek Harness ecosystem and are not packages from this repository.
 

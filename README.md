@@ -14,7 +14,7 @@
 
 逐项用户可见更新见[更新日志](CHANGELOG.md)；其中所有 `1.1.0 development` 条目都不代表正式 Release 已完成。
 
-[下载 Windows / macOS 桌面版](https://github.com/shuishuipingan/InkWeaver/releases/latest) · [查看源代码](https://github.com/shuishuipingan/InkWeaver) · [安装 DeepSeek Harness 插件](https://www.npmjs.com/package/@shuishuipingan/inkweaver-dsh)
+[下载 Windows / macOS 桌面版](https://github.com/shuishuipingan/InkWeaver/releases/latest) · [查看源代码](https://github.com/shuishuipingan/InkWeaver) · [DSH 插件说明](plugins/inkweaver-dsh/README.md)
 
 ## 织墨解决什么问题
 
@@ -130,7 +130,7 @@ fs.writeFileSync(p, s, 'utf8')
 console.log('zh quickstart added')
 ## DeepSeek Harness 插件
 
-仓库中的 `@shuishuipingan/inkweaver-dsh` 是独立的早期插件，不是桌面版的替代品。它提供精简的项目设置、故事架构、人物、全书纲要、章节蓝图和章节正文流程；模型修改先进入 Proposal，由用户审核应用后才改变权威项目状态。
+仓库中的 `@shuishuipingan/inkweaver-dsh` 是独立的开发中插件，不是桌面版的替代品。它提供精简的项目设置、故事架构、人物、全书纲要、章节蓝图和章节正文流程；模型修改先进入 Proposal，由用户审核应用后才改变权威项目状态。插件 npm 1.1.0 尚未发布，当前请阅读插件说明并使用开发线资格 tarball。
 
 迁移提示：`@ethanyoq/dsh-ai-novel-writer` 是仓库迁移前的历史包名，不是 1.1.0 开发线的交付包；新安装请只使用 `@shuishuipingan/inkweaver-dsh`。DSH 宿主本身与 Web UI companion 由 DeepSeek Harness 生态维护，不属于本仓库的 npm 包。
 
