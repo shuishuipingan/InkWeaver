@@ -184,7 +184,9 @@ describe('Windows heavy integration timeout contract', () => {
       updateE2eTests.match(/runWindowsE2ePowerShellFunction\(/g)?.length,
     ]).toEqual([6, 2])
 
-    expect(updateInteractionTests).toContain('VITE_SERVER_HOOK_TIMEOUT_MS = 30_000')
+    expect(updateInteractionTests).toContain('VITE_SERVER_HOOK_TIMEOUT_MS = 600_000')
+    expect(updateInteractionTests).toContain('UPDATE_SECTION_VITE_PORT = 41_730')
+    expect(updateInteractionTests).toContain('server: { host: \'127.0.0.1\', port: UPDATE_SECTION_VITE_PORT, strictPort: false }')
     expect(updateInteractionTests.match(/\bbeforeAll\(/g)).toHaveLength(1)
     expect(updateInteractionTests).toContain('}, VITE_SERVER_HOOK_TIMEOUT_MS)')
   })

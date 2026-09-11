@@ -1,5 +1,4 @@
 import { existsSync } from 'node:fs'
-import { createServer as createNetServer } from 'node:net'
 import path from 'node:path'
 
 import { chromium, type Browser, type Page } from 'playwright'
@@ -10,7 +9,10 @@ import react from '@vitejs/plugin-react'
 const repositoryRoot = path.resolve('.')
 const chromeExecutable = process.env.CHROME_PATH ?? 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'
 const describeWithChrome = existsSync(chromeExecutable) ? describe : describe.skip
-const VITE_SERVER_HOOK_TIMEOUT_MS = 30_000
+// Keep the Vite config hash stable so the isolated optimizer cache can be
+// reused across release-gate runs. Vite will select the next free port when
+// this preferred port is occupied by another local process.
+const UPDATE_SECTION_VITE_PORT = 41_730
 const UPDATE_SECTION_VITE_CACHE_DIR = path.join(repositoryRoot, '.runtime', '.cache', 'update-section-vite-v2')
 // The full desktop suite exercises native workers and PowerShell processes at
 // the same time. On a clean Windows checkout Vite may also rebuild its React
@@ -20,25 +22,8 @@ const UPDATE_SECTION_VITE_CACHE_DIR = path.join(repositoryRoot, '.runtime', '.ca
 // on a clean Windows release checkout. This is a cold-start budget, not an
 // assertion retry: once the page is ready every interaction remains bounded by
 // Playwright's normal locator/function timeouts.
-const COLD_BROWSER_INTERACTION_TIMEOUT_MS = 300_000
-
-async function findFreePort(): Promise<number> {
-  const probe = createNetServer()
-  await new Promise<void>((resolvePromise, rejectPromise) => {
-    probe.once('error', rejectPromise)
-    probe.listen(0, '127.0.0.1', () => resolvePromise())
-  })
-  const address = probe.address()
-  if (!address || typeof address === 'string') {
-    probe.close()
-    throw new Error('Unable to reserve a browser harness port')
-  }
-  const port = address.port
-  await new Promise<void>((resolvePromise, rejectPromise) => {
-    probe.close(error => error ? rejectPromise(error) : resolvePromise())
-  })
-  return port
-}
+const COLD_BROWSER_INTERACTION_TIMEOUT_MS = 600_000
+const VITE_SERVER_HOOK_TIMEOUT_MS = 600_000
 
 describeWithChrome('UpdateSection browser interactions', () => {
   let server: ViteDevServer
@@ -46,7 +31,6 @@ describeWithChrome('UpdateSection browser interactions', () => {
   let pageUrl: string
 
   beforeAll(async () => {
-    const port = await findFreePort()
     server = await createServer({
       root: repositoryRoot,
       configFile: false,
@@ -72,7 +56,7 @@ describeWithChrome('UpdateSection browser interactions', () => {
           'zustand',
         ],
       },
-      server: { host: '127.0.0.1', port, strictPort: true },
+      server: { host: '127.0.0.1', port: UPDATE_SECTION_VITE_PORT, strictPort: false },
       appType: 'spa',
     })
     await server.listen()
