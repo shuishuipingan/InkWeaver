@@ -136,7 +136,7 @@ For the distinction between process-local Cordis Packages and persistently insta
 
 ## Release qualification
 
-The repository-level qualification command requires the clean DeepSeek Harness source checkout at commit `a66e4702047846cdaa10c66c9d3df3951f5ea70d`, `pnpm`, `tar`, and the locally installed Google Chrome browser. Pass the absolute Harness checkout path:
+The repository-level qualification command requires the clean DeepSeek Harness source checkout at commit `183f08e9c6dde7e36cd2318eaee70b0da08fb35e` (`dsh@0.1.5-rc.1`), `pnpm`, `tar`, and the locally installed Google Chrome browser. Pass the absolute Harness checkout path:
 
 ```powershell
 pnpm run qualify -- --harness-root '<path-to-deepseek-harness>'
@@ -146,10 +146,10 @@ This maintainer-only command packs the plugin, installs those bytes into an isol
 
 The precise runtime gates, evidence order, and failure triage live in [V2 development gates](docs/v2-development-gates.md). Logs, screenshots, and the machine-readable receipt live under `.runtime/.cache/dsh-ai-novel-qualification-128` with `.vibe-owner.json` ownership and expiry. This keyless snapshot does not replace native gpt-5.6-terra manual qualification.
 
-The latest complete local receipt was produced on 2026-09-09 from source commit
-`3be4604c4d58cbb6ac3f7fbd3bb2fbbc20ec820d` against Harness commit
-`a66e4702047846cdaa10c66c9d3df3951f5ea70d`. It verified the packed tarball
-(`11859a1d8cebf6e2c3f250cbec5a36e6b190607b2d92dadd865be1f1773ec92a`), the
+The latest complete local receipt was produced on 2026-09-12 from source commit
+`50a7bb2d6aa48c9a6d66e32194e22459675ca6f4` against Harness commit
+`183f08e9c6dde7e36cd2318eaee70b0da08fb35e`. It verified the packed tarball
+(`7bc070c2788a525aa5d1e877435a461d861fc019941379abd12188ba2caaaac0`), the
 isolated profile add/remove/reinstall cycle, the `inkweaver-v2` roster and
 Host/Client mount, three Chrome journeys, model-tool isolation, and schema-5
 persistence readback. This is development-line evidence for the DSH gate; it

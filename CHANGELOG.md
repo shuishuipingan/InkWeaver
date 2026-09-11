@@ -61,7 +61,7 @@
 - DSH V2 NovelStore 从 schema 4 迁移到 schema 5，章节 Proposal 可携带来源绑定交接与稳定 ID 知情事件。
 - `chapter/context` 只返回当前章节有效且 `confirmed` 的知识；candidate 事件保留在 Proposal 收件箱，不会泄漏给模型。
 - DSH Client 工作台显示章节交接、上一章定稿和已确认知情范围；客户端在 loopback 边界校验无路径的严格 DTO。
-- 插件已通过 typecheck、build、emitted package verification、40 文件/432 passed/6 skipped 回归，以及官方 DSH 0.1.5-rc.1 的完整隔离 tarball/profile/Chrome qualification；receipt 同时记录真实 roster/mount、提案同页应用、重启读回、重装读回和布局 QA。
+- 插件已通过 typecheck、build、emitted package verification、40 文件/433 passed/6 skipped 回归，以及官方 DSH 0.1.5-rc.1 的完整隔离 tarball/profile/Chrome qualification；receipt 同时记录真实 roster/mount、提案同页应用、重启读回、重装读回和布局 QA。
 - DSH 0.1.5 的官方 `/api` interceptor 是宿主 singleton；InkWeaver 使用 shared `/api` 下的 exact Fetch routes（`/api/inkweaver/...`），不抢占宿主 gateway，也保留客户端现有 namespaced method envelope。
 - DSH Web qualification 已更新为兼容 DSH 0.1.5 的外部 `@linxin666/dsh-web-all@0.3.20`；旧 `dsh-web-ui-all@0.1.16` 会因 `dsh-settings` API 不匹配阻止 Web 启动，不再作为发布依赖。
 - 插件已从旧目录/包名迁移到 `plugins/inkweaver-dsh` 与 `@shuishuipingan/inkweaver-dsh`，Host/preset 统一使用 `inkweaver`；旧 `@ethanyoq/dsh-ai-novel-writer` 仅保留在迁移说明中，不是新安装目标。`@linxin666/dsh-web-all` 仍是外部宿主 companion，不属于本仓库交付物。
@@ -76,7 +76,7 @@
 - 38 项需求和 12 条端到端旅程尚未全部通过正式验收。
 - Windows、macOS ARM64、macOS x64 的 1.1.0 安装包尚未从冻结 SHA 生成并回读哈希。
 - 插件自身版本仍未冻结到 1.1.0，也未发布 npm/tarball 1.1.0。
-- GitHub `dsh-plugin` topic 元数据已设置，但当前公开主题页尚未在抓取首屏显示 InkWeaver；正式发布后需要重新核验索引。
+- GitHub `dsh-plugin` topic 元数据已设置，API 搜索已返回 `shuishuipingan/InkWeaver`；正式发布后仍需重新核验公开主题页首屏展示状态。
 
 ## 0.9.2
 

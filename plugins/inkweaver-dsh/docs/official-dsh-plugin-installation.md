@@ -17,10 +17,10 @@ DeepSeek Harness 提供的是两条用途不同的插件路径：
 
 官方源码中的完整入门教程不是 `cordis-plugin-development` Skill。两者服务于不同的开发方式：
 
-- [Your first plugin](https://github.com/deepseek-ai/deepseek-harness/blob/a66e4702047846cdaa10c66c9d3df3951f5ea70d/docs/user/develop/basic/index.md) 从 TypeScript `apply(ctx)` 模块开始，用 `--patch` overlay 把本地源码加载进 Web UI，并说明 effect 清理、依赖注入与三种插件形式。
-- [Build a tool](https://github.com/deepseek-ai/deepseek-harness/blob/a66e4702047846cdaa10c66c9d3df3951f5ea70d/docs/user/develop/basic/tool.md) 说明 `defineTool` 的参数 schema、规范返回值与模型渲染。
-- [Plugin configuration](https://github.com/deepseek-ai/deepseek-harness/blob/a66e4702047846cdaa10c66c9d3df3951f5ea70d/docs/user/develop/basic/config.md) 要求以同名 Schemastery `Config` 导出验证部署配置，禁止把可调参数写死在实现中。
-- [Package and install a plugin](https://github.com/deepseek-ai/deepseek-harness/blob/a66e4702047846cdaa10c66c9d3df3951f5ea70d/docs/user/develop/basic/publish.md) 把前面的本地模块封装为声明 `dsh.bundle.patch` 的 npm 组合包，并用 `dsh plugin add` 安装进 profile。
+- [Your first plugin](https://github.com/deepseek-ai/deepseek-harness/blob/183f08e9c6dde7e36cd2318eaee70b0da08fb35e/docs/user/develop/basic/index.md) 从 TypeScript `apply(ctx)` 模块开始，用 `--patch` overlay 把本地源码加载进 Web UI，并说明 effect 清理、依赖注入与三种插件形式。
+- [Build a tool](https://github.com/deepseek-ai/deepseek-harness/blob/183f08e9c6dde7e36cd2318eaee70b0da08fb35e/docs/user/develop/basic/tool.md) 说明 `defineTool` 的参数 schema、规范返回值与模型渲染。
+- [Plugin configuration](https://github.com/deepseek-ai/deepseek-harness/blob/183f08e9c6dde7e36cd2318eaee70b0da08fb35e/docs/user/develop/basic/config.md) 要求以同名 Schemastery `Config` 导出验证部署配置，禁止把可调参数写死在实现中。
+- [Package and install a plugin](https://github.com/deepseek-ai/deepseek-harness/blob/183f08e9c6dde7e36cd2318eaee70b0da08fb35e/docs/user/develop/basic/publish.md) 把前面的本地模块封装为声明 `dsh.bundle.patch` 的 npm 组合包，并用 `dsh plugin add` 安装进 profile。
 
 因此，未来维护本项目时应按“源码模块与 `--patch` 快速验证 → 工具、Host、Client 和配置测试 → npm 组合包 → profile 安装验证”的顺序理解官方教程。`cordis-plugin-development` 则用于 DSH 正在运行时的 plain JavaScript 动态 Package 探索，不取代 TypeScript 源码、构建、测试、打包和持久安装流程。
 
@@ -33,12 +33,12 @@ DeepSeek Harness 提供的是两条用途不同的插件路径：
 | `cordis-plugin-development` | 通过 Inspect、`cordis_define` 和 `cordis_run` 开发进程内动态 Host/Client Package | 探索或验证实时 Slot、Service、Event、Tool 与主题接口；不能作为持久插件交付方式 |
 | `editing-cordis-compositions` | 创建、修改和验证 Cordis composition 或 agent preset | 决定 Host 与 agent plane、校验 preset 挂载及避免服务 realm 冲突 |
 
-DSH 对项目级 Skill 有明确的一手约定。[`dsh-skill-filesystem`](https://github.com/deepseek-ai/deepseek-harness/blob/a66e4702047846cdaa10c66c9d3df3951f5ea70d/packages/skill/skill-filesystem/README.md#discovery) 以最近的 `.git` 祖先作为项目根，并依次扫描：
+DSH 对项目级 Skill 有明确的一手约定。[`dsh-skill-filesystem`](https://github.com/deepseek-ai/deepseek-harness/blob/183f08e9c6dde7e36cd2318eaee70b0da08fb35e/packages/skill/skill-filesystem/README.md#discovery) 以最近的 `.git` 祖先作为项目根，并依次扫描：
 
 1. `<projectRoot>/.dsh/skills`，来源 `project-dsh`，rank 100；
 2. `<projectRoot>/.agents/skills`，来源 `project-agents`，rank 200。
 
-本项目不随插件或桌面应用分发这两份官方 Skill 副本。开发时应在固定版本的 DeepSeek Harness checkout 中读取原文，或按上游说明安装到用户级 `~/.dsh/skills`；发布包只包含插件实现、preset、许可证与说明文件。固定基线为 DSH commit `a66e4702047846cdaa10c66c9d3df3951f5ea70d`：
+本项目不随插件或桌面应用分发这两份官方 Skill 副本。开发时应在固定版本的 DeepSeek Harness checkout 中读取原文，或按上游说明安装到用户级 `~/.dsh/skills`；发布包只包含插件实现、preset、许可证与说明文件。固定基线为 DSH commit `183f08e9c6dde7e36cd2318eaee70b0da08fb35e`：
 
 | Skill | 源文件与项目副本 SHA-256 |
 | --- | --- |
@@ -57,7 +57,7 @@ DSH 对项目级 Skill 有明确的一手约定。[`dsh-skill-filesystem`](https
 4. 若状态是 `awaiting-approval` 或 `starting`，当前工具流程应结束并等待状态更新；这两个状态都不能当作成功。
 5. 动态插件只用于临时、进程内能力。`cordis_mount` 同样在重启后消失，只适合探测；需要持久化的能力应进入 composition 文件、preset 或可安装 bundle。
 
-这里的 Plugin 是稳定身份，Package 是不可变代码版本，Run 是一次激活尝试；三者不能混用。详见官方 [Cordis Plugin Development Skill](https://github.com/deepseek-ai/deepseek-harness/blob/a66e4702047846cdaa10c66c9d3df3951f5ea70d/apps/cli/config/agent-presets/cordis/skills/cordis-plugin-development/SKILL.md#L10-L33) 与 [Editing Cordis Compositions Skill](https://github.com/deepseek-ai/deepseek-harness/blob/a66e4702047846cdaa10c66c9d3df3951f5ea70d/apps/cli/config/agent-presets/cordis/skills/editing-cordis-compositions/SKILL.md#L13-L35)。
+这里的 Plugin 是稳定身份，Package 是不可变代码版本，Run 是一次激活尝试；三者不能混用。详见官方 [Cordis Plugin Development Skill](https://github.com/deepseek-ai/deepseek-harness/blob/183f08e9c6dde7e36cd2318eaee70b0da08fb35e/apps/cli/config/agent-presets/cordis/skills/cordis-plugin-development/SKILL.md#L10-L33) 与 [Editing Cordis Compositions Skill](https://github.com/deepseek-ai/deepseek-harness/blob/183f08e9c6dde7e36cd2318eaee70b0da08fb35e/apps/cli/config/agent-presets/cordis/skills/editing-cordis-compositions/SKILL.md#L13-L35)。
 
 ## 可安装 npm composition bundle
 
@@ -68,7 +68,7 @@ dsh plugin --profile web add <package-or-git-spec>
 dsh --profile web --dump-config
 ```
 
-`dsh plugin` 是以目标 profile 目录为工作目录的 pnpm 转发器。成功安装后，它检查已安装依赖：声明 `dsh.bundle.patch` 的包会进入该 profile 的 `dsh.profile.bundles` 有序层；没有 bundle 声明的包仍是普通依赖并产生提示；删除依赖时对应 bundle 层也会退出。profile 目录中的 `package.json`、bundle 列表和自身 patch 共同决定最终 composition。参见官方 [CLI reference](https://github.com/deepseek-ai/deepseek-harness/blob/a66e4702047846cdaa10c66c9d3df3951f5ea70d/apps/cli/reference/README.md#plugin-management)、[中文 CLI reference](https://github.com/deepseek-ai/deepseek-harness/blob/a66e4702047846cdaa10c66c9d3df3951f5ea70d/apps/cli/reference/README.zh.md#插件管理) 与 [plugin.ts](https://github.com/deepseek-ai/deepseek-harness/blob/a66e4702047846cdaa10c66c9d3df3951f5ea70d/apps/cli/src/plugin.ts#L59-L157)。
+`dsh plugin` 是以目标 profile 目录为工作目录的 pnpm 转发器。成功安装后，它检查已安装依赖：声明 `dsh.bundle.patch` 的包会进入该 profile 的 `dsh.profile.bundles` 有序层；没有 bundle 声明的包仍是普通依赖并产生提示；删除依赖时对应 bundle 层也会退出。profile 目录中的 `package.json`、bundle 列表和自身 patch 共同决定最终 composition。参见官方 [CLI reference](https://github.com/deepseek-ai/deepseek-harness/blob/183f08e9c6dde7e36cd2318eaee70b0da08fb35e/apps/cli/reference/README.md#plugin-management)、[中文 CLI reference](https://github.com/deepseek-ai/deepseek-harness/blob/183f08e9c6dde7e36cd2318eaee70b0da08fb35e/apps/cli/reference/README.zh.md#插件管理) 与 [plugin.ts](https://github.com/deepseek-ai/deepseek-harness/blob/183f08e9c6dde7e36cd2318eaee70b0da08fb35e/apps/cli/src/plugin.ts#L59-L157)。
 
 对稳定安装，优先使用 registry、Git spec 或已经构建的 tarball。开发期可以使用本地 checkout，但 profile 中形成的是指向该 checkout 的依赖链接；移动、删除或未构建该目录会破坏 profile 加载。
 
@@ -85,7 +85,7 @@ dsh --profile web --dump-config
 
 ## Windows 含空格 checkout：文档与当前实现不一致
 
-官方 reference 明确称相对 path spec 会相对于调用目录锚定，仓库测试也断言从 checkout 执行 `dsh plugin --profile <name> add .` 能安装并激活 bundle。[实现](https://github.com/deepseek-ai/deepseek-harness/blob/a66e4702047846cdaa10c66c9d3df3951f5ea70d/apps/cli/src/plugin.ts#L93-L157) 确实先把 `.` 解析为绝对路径，但 Windows 分支随后以 `shell: true` 把参数交给 pnpm；当前测试使用的临时 checkout 路径不含空格，未覆盖重新分词风险。[对应 built-bin 测试](https://github.com/deepseek-ai/deepseek-harness/blob/a66e4702047846cdaa10c66c9d3df3951f5ea70d/apps/cli/tests/built-bin.e2e.ts#L625-L657)。
+官方 reference 明确称相对 path spec 会相对于调用目录锚定，仓库测试也断言从 checkout 执行 `dsh plugin --profile <name> add .` 能安装并激活 bundle。[实现](https://github.com/deepseek-ai/deepseek-harness/blob/183f08e9c6dde7e36cd2318eaee70b0da08fb35e/apps/cli/src/plugin.ts#L93-L157) 确实先把 `.` 解析为绝对路径，但 Windows 分支随后以 `shell: true` 把参数交给 pnpm；当前测试使用的临时 checkout 路径不含空格，未覆盖重新分词风险。[对应 built-bin 测试](https://github.com/deepseek-ai/deepseek-harness/blob/183f08e9c6dde7e36cd2318eaee70b0da08fb35e/apps/cli/tests/built-bin.e2e.ts#L625-L657)。
 
 在固定版本上，从 `C:\Vibe Coding Project\...\inkweaver-dsh` 运行以下命令进行了隔离复现：
 
@@ -103,15 +103,15 @@ dsh plugin --profile web add . --ignore-scripts
 ## 一手来源
 
 - [DeepSeek Harness 官方仓库](https://github.com/deepseek-ai/deepseek-harness)
-- [官方插件入门教程（固定版本）](https://github.com/deepseek-ai/deepseek-harness/blob/a66e4702047846cdaa10c66c9d3df3951f5ea70d/docs/user/develop/basic/index.md)
-- [官方工具构建教程（固定版本）](https://github.com/deepseek-ai/deepseek-harness/blob/a66e4702047846cdaa10c66c9d3df3951f5ea70d/docs/user/develop/basic/tool.md)
-- [官方插件配置教程（固定版本）](https://github.com/deepseek-ai/deepseek-harness/blob/a66e4702047846cdaa10c66c9d3df3951f5ea70d/docs/user/develop/basic/config.md)
-- [官方打包与安装教程（固定版本）](https://github.com/deepseek-ai/deepseek-harness/blob/a66e4702047846cdaa10c66c9d3df3951f5ea70d/docs/user/develop/basic/publish.md)
-- [Cordis Plugin Development Skill（固定版本）](https://github.com/deepseek-ai/deepseek-harness/blob/a66e4702047846cdaa10c66c9d3df3951f5ea70d/apps/cli/config/agent-presets/cordis/skills/cordis-plugin-development/SKILL.md)
-- [Editing Cordis Compositions Skill（固定版本）](https://github.com/deepseek-ai/deepseek-harness/blob/a66e4702047846cdaa10c66c9d3df3951f5ea70d/apps/cli/config/agent-presets/cordis/skills/editing-cordis-compositions/SKILL.md)
-- [本地 Skill provider 说明（固定版本）](https://github.com/deepseek-ai/deepseek-harness/blob/a66e4702047846cdaa10c66c9d3df3951f5ea70d/packages/skill/skill-filesystem/README.md)
-- [Skills subsystem 说明（固定版本）](https://github.com/deepseek-ai/deepseek-harness/blob/a66e4702047846cdaa10c66c9d3df3951f5ea70d/docs/subsystems/skills.md)
-- [CLI reference（固定版本）](https://github.com/deepseek-ai/deepseek-harness/blob/a66e4702047846cdaa10c66c9d3df3951f5ea70d/apps/cli/reference/README.md)
-- [CLI 中文 reference（固定版本）](https://github.com/deepseek-ai/deepseek-harness/blob/a66e4702047846cdaa10c66c9d3df3951f5ea70d/apps/cli/reference/README.zh.md)
-- [CLI plugin 实现（固定版本）](https://github.com/deepseek-ai/deepseek-harness/blob/a66e4702047846cdaa10c66c9d3df3951f5ea70d/apps/cli/src/plugin.ts)
-- [CLI built-bin 测试（固定版本）](https://github.com/deepseek-ai/deepseek-harness/blob/a66e4702047846cdaa10c66c9d3df3951f5ea70d/apps/cli/tests/built-bin.e2e.ts)
+- [官方插件入门教程（固定版本）](https://github.com/deepseek-ai/deepseek-harness/blob/183f08e9c6dde7e36cd2318eaee70b0da08fb35e/docs/user/develop/basic/index.md)
+- [官方工具构建教程（固定版本）](https://github.com/deepseek-ai/deepseek-harness/blob/183f08e9c6dde7e36cd2318eaee70b0da08fb35e/docs/user/develop/basic/tool.md)
+- [官方插件配置教程（固定版本）](https://github.com/deepseek-ai/deepseek-harness/blob/183f08e9c6dde7e36cd2318eaee70b0da08fb35e/docs/user/develop/basic/config.md)
+- [官方打包与安装教程（固定版本）](https://github.com/deepseek-ai/deepseek-harness/blob/183f08e9c6dde7e36cd2318eaee70b0da08fb35e/docs/user/develop/basic/publish.md)
+- [Cordis Plugin Development Skill（固定版本）](https://github.com/deepseek-ai/deepseek-harness/blob/183f08e9c6dde7e36cd2318eaee70b0da08fb35e/apps/cli/config/agent-presets/cordis/skills/cordis-plugin-development/SKILL.md)
+- [Editing Cordis Compositions Skill（固定版本）](https://github.com/deepseek-ai/deepseek-harness/blob/183f08e9c6dde7e36cd2318eaee70b0da08fb35e/apps/cli/config/agent-presets/cordis/skills/editing-cordis-compositions/SKILL.md)
+- [本地 Skill provider 说明（固定版本）](https://github.com/deepseek-ai/deepseek-harness/blob/183f08e9c6dde7e36cd2318eaee70b0da08fb35e/packages/skill/skill-filesystem/README.md)
+- [Skills subsystem 说明（固定版本）](https://github.com/deepseek-ai/deepseek-harness/blob/183f08e9c6dde7e36cd2318eaee70b0da08fb35e/docs/subsystems/skills.md)
+- [CLI reference（固定版本）](https://github.com/deepseek-ai/deepseek-harness/blob/183f08e9c6dde7e36cd2318eaee70b0da08fb35e/apps/cli/reference/README.md)
+- [CLI 中文 reference（固定版本）](https://github.com/deepseek-ai/deepseek-harness/blob/183f08e9c6dde7e36cd2318eaee70b0da08fb35e/apps/cli/reference/README.zh.md)
+- [CLI plugin 实现（固定版本）](https://github.com/deepseek-ai/deepseek-harness/blob/183f08e9c6dde7e36cd2318eaee70b0da08fb35e/apps/cli/src/plugin.ts)
+- [CLI built-bin 测试（固定版本）](https://github.com/deepseek-ai/deepseek-harness/blob/183f08e9c6dde7e36cd2318eaee70b0da08fb35e/apps/cli/tests/built-bin.e2e.ts)
