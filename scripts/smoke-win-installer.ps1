@@ -775,13 +775,19 @@ try {
     if (-not [string]::IsNullOrWhiteSpace($PreviousPortableZipPath)) {
       $portableExtractRoot = Join-Path $smokeRoot 'previous-portable'
       Expand-Archive -LiteralPath (Resolve-Path -LiteralPath $PreviousPortableZipPath).Path -DestinationPath $portableExtractRoot -Force
-      $portableExecutable = Get-ChildItem -LiteralPath $portableExtractRoot -Recurse -File -Filter 'InkWeaver.exe' |
-        Select-Object -First 1
+      # The verified v0.2.5 portable asset predates the InkWeaver rename and
+      # carries a localized executable name. Select the single application
+      # executable from the trusted, hash-verified archive and preserve that
+      # historical filename while launching the old application.
+      $portableExecutables = @(Get-ChildItem -LiteralPath $portableExtractRoot -Recurse -File -Filter '*.exe' |
+        Where-Object { $_.Name -notmatch '^Uninstall\b' })
+      $portableExecutable = $portableExecutables | Select-Object -First 1
       if ($null -eq $portableExecutable) {
-        throw 'Official previous-version portable package does not contain InkWeaver.exe.'
+        throw 'Official previous-version portable package does not contain an application executable.'
       }
       New-Item -ItemType Directory -Path $installRoot -Force | Out-Null
       Copy-Item -Path (Join-Path $portableExecutable.Directory.FullName '*') -Destination $installRoot -Recurse -Force
+      $legacyExePath = Join-Path $installRoot $portableExecutable.Name
     }
     else {
       Install-Silently (Resolve-Path -LiteralPath $PreviousInstallerPath).Path
@@ -792,15 +798,24 @@ try {
     Invoke-AiNovelUpgradeDataFixture -Mode seed -ProjectRoot $upgradeFixtureRoot -SettingsPath $globalConfig | Out-Null
     Invoke-AiNovelUpgradeDataFixture -Mode validate-legacy -ProjectRoot $upgradeFixtureRoot -SettingsPath $globalConfig | Out-Null
     $upgradeFixtureSeeded = $true
-    @(
+    ConvertTo-Json -InputObject @(
       @{
         name = '升级保留验证小说'
         path = $upgradeFixtureRoot
         updatedAt = '2026-01-02T03:04:05.000Z'
       }
-    ) | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $recentProjects -Encoding utf8
+    ) -Depth 4 | Set-Content -LiteralPath $recentProjects -Encoding utf8
 
-    $legacyExePath = Join-Path $installRoot 'InkWeaver.exe'
+    if ([string]::IsNullOrWhiteSpace($legacyExePath)) {
+      $legacyExePath = Join-Path $installRoot 'InkWeaver.exe'
+      # The verified v0.2.5 installer predates the InkWeaver product rename;
+      # normalize its one application executable after silent installation.
+      $legacyCandidates = @(Get-ChildItem -LiteralPath $installRoot -Recurse -File -Filter '*.exe' |
+        Where-Object { $_.Name -notmatch '^Uninstall\b' })
+      if ($legacyCandidates.Count -eq 1) {
+        Move-Item -LiteralPath $legacyCandidates[0].FullName -Destination $legacyExePath -Force
+      }
+    }
     if (-not (Test-Path -LiteralPath $legacyExePath -PathType Leaf)) {
       throw "Previous-version application is missing after installation: $legacyExePath"
     }
@@ -816,7 +831,7 @@ try {
       -LegacyProjectPathToOpen $upgradeFixtureRoot
   }
   Install-Silently $resolvedInstaller
-$currentInstallCompleted = $true
+  $currentInstallCompleted = $true
 
   $exePath = Join-Path $installRoot 'InkWeaver.exe'
   if (-not (Test-Path -LiteralPath $exePath)) {

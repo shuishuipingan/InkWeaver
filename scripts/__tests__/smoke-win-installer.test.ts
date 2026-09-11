@@ -419,6 +419,7 @@ describe('Windows installer smoke contract', () => {
     expect(script).toContain('RelatedProcessStartTimeTicks')
     expect(script).toContain('$fixtureRecentEntry')
     expect(script).toContain('did not retain the opened fixture in recent projects')
+    expect(script).toContain('ConvertTo-Json -InputObject @(')
     expect(script).not.toContain('Start-Process -FilePath $Path -ArgumentList $Arguments -Wait')
     expect(script).toContain('smoke-win-app.ps1')
     expect(script).toContain('VelaHome = $velaHome')
@@ -947,6 +948,27 @@ $results = @($windows | ForEach-Object {
     const result = parseLastJsonLine(output)
 
     expect(result.Results).toEqual([false, false, false, false, false, false, false, true])
+  })
+
+  windowsPowerShellIt('accepts the historical v0.2.5 product title only when explicitly enabled', () => {
+    const output = runProbeLibrary(String.raw`
+$appProcessIds = [System.Collections.Generic.HashSet[int]]::new()
+[void]$appProcessIds.Add(505)
+$legacyWindow = [pscustomobject]@{
+  ProcessId = 505
+  Visible = $true
+  ClassName = 'Chrome_WidgetWin_1'
+  Title = 'AI小说作家 — AI Novel Writer'
+}
+$results = @(
+  (Test-AiNovelVisibleMainWindow -Window $legacyWindow -TargetProcessIds $appProcessIds),
+  (Test-AiNovelVisibleMainWindow -Window $legacyWindow -TargetProcessIds $appProcessIds -AllowLegacyMainWindowTitle)
+)
+[pscustomobject]@{ Results = $results } | ConvertTo-Json -Compress
+`)
+    const result = parseLastJsonLine(output)
+
+    expect(result.Results).toEqual([false, true])
   })
 
   windowsPowerShellIt('detects new global error windows when both target collections are empty', () => {
