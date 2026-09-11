@@ -19,4 +19,4 @@ node --experimental-strip-types scripts/build-quality-review-packet.mjs \
 
 ## 仍需人工完成
 
-盲评包只是工程准备，不是质量结果。发布前仍需为开发前/开发后两组输出分别保存模型、参数、提示词版本、token 用量和样本 SHA；两名评阅者独立评分现场承接、时间地点视角、情绪延续、知情边界、必要复沓和延后兑现，并由负责人用私有 key 汇总偏好率、平均分变化、事实正确性和误报率。
+盲评包只是工程准备，不是质量结果。发布前仍需为开发前/开发后两组输出分别保存模型、参数、提示词版本、token 用量和样本 SHA；两名评阅者独立评分现场承接、时间地点视角、情绪延续、知情边界、必要复沓和延后兑现，并由负责人用私有 key 汇总偏好率、平均分变化、事实正确性和误报率。结果记录格式见 [QUALITY-REVIEW-RESULTS-TEMPLATE.md](QUALITY-REVIEW-RESULTS-TEMPLATE.md)。
