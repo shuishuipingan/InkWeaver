@@ -11,7 +11,7 @@
 | 仓库 | `shuishuipingan/InkWeaver` |
 | GitHub About Homepage | `https://github.com/shuishuipingan/InkWeaver#readme`（已回读；不指向未发布 Release） |
 | 开发分支 | `1.1.0-development` |
-| 功能源码 SHA | 当前开发分支远端回读为 `eab212d`（完整 SHA 需以 `git ls-remote --heads origin 1.1.0-development` 为准）；macOS 双架构 runtime qualification 使用同一冻结候选树 `b9f713b5`。每次后续推送仍需重新回读本地/远端 SHA，本收据不把旧父提交冒充为永久当前 SHA。 |
+| 功能源码 SHA | 当前开发分支远端回读为 `60607ee9658eeec5d9af6e553415f20004da63b9`；macOS 双架构 runtime qualification 使用同一冻结候选树 `b9f713b5`。每次后续推送仍需重新回读本地/远端 SHA，本收据不把旧父提交冒充为永久当前 SHA。 |
 | 远端主线 | `main` 保持既有 v1.0.0 线，未被开发分支推送覆盖 |
 | 开发 PR | GitHub 为该分支提供 `https://github.com/shuishuipingan/InkWeaver/pull/new/1.1.0-development` |
 
