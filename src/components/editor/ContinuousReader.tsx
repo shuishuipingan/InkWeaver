@@ -6,6 +6,8 @@ import { useProjectStore } from '../../stores/project-store'
 import { useEditorStore } from '../../stores/editor-store'
 import { captureProjectSession, isProjectSessionCurrent, isProjectSessionPath } from '../project-session-gate'
 import { detectNarrativeQualityFindings } from '../../shared/narrative-quality'
+import type { ChapterHandoffRecord } from '../../shared/chapter-handoff'
+import type { FinalizedContinuityProjection } from '../../shared/finalized-continuity'
 
 interface ReaderChapter {
   id: number
@@ -13,6 +15,8 @@ interface ReaderChapter {
   title: string
   version: number
   content: string
+  handoff?: ChapterHandoffRecord
+  continuity?: FinalizedContinuityProjection
 }
 
 interface ContinuousReaderProps {
@@ -38,7 +42,18 @@ export default function ContinuousReader({ projectKey }: ContinuousReaderProps) 
     setLoading(true)
     setError(null)
     try {
-      const metadata = await ipc.invokeWithProjectSession(session, 'db:draft-list-all', projectKey)
+      const [metadata, handoffs, continuity] = await Promise.all([
+        ipc.invokeWithProjectSession(session, 'db:draft-list-all', projectKey),
+        ipc.invokeWithProjectSession(session, 'db:chapter-handoff-list-all', projectKey),
+        ipc.invokeWithProjectSession(session, 'db:continuity-list-all', projectKey),
+      ])
+      const handoffByChapter = new Map(
+        handoffs
+          .filter(item => item.status === 'confirmed')
+          .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+          .map(item => [item.chapterNumber, item] as const),
+      )
+      const continuityByChapter = new Map(continuity.map(item => [item.chapterNumber, item] as const))
       const latest = new Map<number, (typeof metadata)[number]>()
       for (const item of metadata) {
         if (item.status !== 'finalized') continue
@@ -48,7 +63,15 @@ export default function ContinuousReader({ projectKey }: ContinuousReaderProps) 
       const result: ReaderChapter[] = []
       for (const item of [...latest.values()].sort((left, right) => left.chapterNumber - right.chapterNumber)) {
         const full = await ipc.invokeWithProjectSession(session, 'db:draft-get-full', item.id, projectKey)
-        if (full?.content) result.push({ id: item.id, chapterNumber: item.chapterNumber, title: item.chapterTitle || `第${item.chapterNumber}章`, version: item.version, content: full.content })
+        if (full?.content) result.push({
+          id: item.id,
+          chapterNumber: item.chapterNumber,
+          title: item.chapterTitle || `第${item.chapterNumber}章`,
+          version: item.version,
+          content: full.content,
+          handoff: handoffByChapter.get(item.chapterNumber),
+          continuity: continuityByChapter.get(item.chapterNumber),
+        })
       }
       if (!isProjectSessionCurrent(session)) return
       setChapters(result)
@@ -141,6 +164,18 @@ export default function ContinuousReader({ projectKey }: ContinuousReaderProps) 
           <div className="mx-auto max-w-3xl">
             {filtered.map((chapter, index) => <article key={chapter.chapterNumber} ref={element => { if (element) chapterRefs.current.set(chapter.chapterNumber, element) }} className="mb-12 scroll-mt-4" data-reader-chapter={chapter.chapterNumber}>
               <header className="mb-5 flex items-start justify-between gap-3 border-b pb-3" style={{ borderColor: 'var(--color-border)' }}><div><p className="mb-1 text-[0.68rem] uppercase tracking-[0.18em] text-[var(--color-text-muted)]">{text(`第${chapter.chapterNumber}章`, `Chapter ${chapter.chapterNumber}`)} · v{chapter.version}</p><h1 className="text-xl font-semibold text-[var(--color-text)]">{chapter.title}</h1></div><button type="button" className="flex items-center gap-1 rounded border px-2 py-1 text-xs" style={{ borderColor: 'var(--color-border)' }} onClick={() => openChapter(chapter)}>{text('回编辑器', 'Open editor')}<ExternalLink size={12} /></button></header>
+              {(chapter.handoff || (chapter.continuity?.facts?.length ?? 0) > 0) ? <div className="mb-5 space-y-2 text-xs" data-reader-continuity-evidence="true">
+                {chapter.handoff && <section className="rounded border px-3 py-2" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-raised)' }}>
+                  <div className="font-semibold text-[var(--color-text)]">{text('本章结尾承接证据', 'End-of-chapter handoff evidence')}</div>
+                  <div className="mt-1 text-[var(--color-text-secondary)]">{chapter.handoff.sceneLocation} · {chapter.handoff.viewpoint} · {chapter.handoff.emotionalState}</div>
+                  {chapter.handoff.openQuestions.length > 0 && <div className="mt-1 text-[var(--color-text-secondary)]">{text('待回应：', 'Open questions: ')}{chapter.handoff.openQuestions.join('；')}</div>}
+                  {chapter.handoff.evidence.length > 0 && <div className="mt-1 text-[var(--color-text-muted)]">{chapter.handoff.evidence[0]}</div>}
+                </section>}
+                {chapter.continuity && (chapter.continuity.facts?.length ?? 0) > 0 && <section className="rounded border px-3 py-2" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-raised)' }}>
+                  <div className="font-semibold text-[var(--color-text)]">{text('连续性事实与因果证据', 'Continuity facts and causal evidence')}</div>
+                  <div className="mt-1 space-y-1">{(chapter.continuity.facts ?? []).slice(0, 6).map((fact, factIndex) => <div key={`${fact.sourceChapter}-${factIndex}`} className="text-[var(--color-text-secondary)]">{fact.statement}<span className="ml-1 text-[var(--color-text-muted)]">{fact.evidence}</span></div>)}</div>
+                </section>}
+              </div> : undefined}
               {index > 0 && <div className="mb-5 rounded border px-3 py-2 text-center text-[0.68rem] text-[var(--color-text-muted)]" style={{ borderColor: 'var(--color-border)' }}>{text('章节边界 · 上一章结尾与本章开头在此连续阅读', 'Chapter boundary · previous ending meets this opening here')}</div>}
               <div className="whitespace-pre-wrap break-words text-[0.98rem] leading-8 text-[var(--color-text)]">{chapter.content}</div>
             </article>)}
