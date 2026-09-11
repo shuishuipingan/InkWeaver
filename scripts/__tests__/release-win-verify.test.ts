@@ -395,6 +395,8 @@ describe('Windows release verification orchestration', () => {
     expect(monitorSource).toContain('Test-AiNovelGateExpectedPackageManagerProbeExit')
     expect(monitorSource).toContain('expected-package-manager-probe')
     expect(monitorSource).toContain("$Step -ne 'build:win:artifacts'")
+    expect(monitorSource).toContain('Test-AiNovelGateExpectedElectronChildTerminationExit')
+    expect(monitorSource).toContain('expected-electron-child-termination')
   })
 
   it('keeps monitoring through native restoration, validation, and the final quiet period', () => {

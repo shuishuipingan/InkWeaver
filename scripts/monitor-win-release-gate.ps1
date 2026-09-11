@@ -1581,6 +1581,36 @@ function Test-AiNovelGateExpectedPackageManagerProbeExit {
   )
 }
 
+function Test-AiNovelGateExpectedElectronChildTerminationExit {
+  param(
+    [Parameter(Mandatory = $true)][string]$Step,
+    [Parameter(Mandatory = $true)]$Event,
+    [AllowNull()]$ProcessIdentity,
+    [AllowNull()]$ParentIdentity
+  )
+
+  # Electron can leave a same-image child in STATUS_PROCESS_IS_TERMINATING
+  # (0xC000010A / -1073741558) while the smoke harness is closing the parent
+  # window. Bind this allowance to the two installer journeys and the exact
+  # parent/child executable identity; unrelated Electron exits remain failures.
+  if (
+    $Step -notin @('smoke:win-installer', 'smoke:win-v025-upgrade') -or
+    $null -eq $Event -or
+    [int]$Event.ExitCode -ne -1073741558 -or
+    $null -eq $ProcessIdentity -or
+    [string]$ProcessIdentity.processName -notmatch '^(?i:InkWeaver)$' -or
+    [System.IO.Path]::GetFileName([string]$ProcessIdentity.executablePath) -ne 'InkWeaver.exe' -or
+    $null -eq $ParentIdentity -or
+    -not (Test-AiNovelGateSameAbsolutePath `
+      -Left ([string]$ProcessIdentity.executablePath) `
+      -Right ([string]$ParentIdentity.executablePath)) -or
+    [int]$ProcessIdentity.parentProcessId -ne [int]$ParentIdentity.processId
+  ) {
+    return $false
+  }
+  return $true
+}
+
 function Test-AiNovelGateExpectedExitOne {
   param(
     [Parameter(Mandatory = $true)][AllowEmptyString()][string]$Step,
@@ -3475,6 +3505,13 @@ try {
           -ParentIdentity $parentIdentity) {
           $exitClassification = 'expected-package-manager-probe'
         }
+        elseif (Test-AiNovelGateExpectedElectronChildTerminationExit `
+          -Step $activeStep `
+          -Event $processEvent `
+          -ProcessIdentity $processIdentity `
+          -ParentIdentity $parentIdentity) {
+          $exitClassification = 'expected-electron-child-termination'
+        }
         elseif (Test-AiNovelGateNativeUpdaterOldApplicationExit `
           -Step $activeStep `
           -LegacyBridge $legacyBridge `
@@ -3607,6 +3644,7 @@ try {
           'expected-nsis-cmd-process-check',
           'expected-nsis-find-no-match',
           'expected-package-manager-probe',
+          'expected-electron-child-termination',
           'pending-nsis-cmd-process-check',
           'legacy-bridge-terminated',
           'legacy-bridge-old-application-breakpoint',
