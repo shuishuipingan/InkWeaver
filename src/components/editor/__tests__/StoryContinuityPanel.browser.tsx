@@ -16,6 +16,8 @@ let reviewEvents: Array<Record<string, unknown>>
 let timelineFixtures: unknown[]
 let finalizedContent: string | null
 let allDocumentsFixture: unknown[]
+let blueprintsFixture: unknown[]
+let knowledgeEventsFixture: unknown[]
 let currentDocumentFixture: ReturnType<typeof emptyStoryContinuityDocument>
 
 beforeEach(() => {
@@ -29,17 +31,25 @@ beforeEach(() => {
   timelineFixtures = []
   finalizedContent = null
   allDocumentsFixture = []
+  blueprintsFixture = []
+  knowledgeEventsFixture = []
   invoke = vi.fn(async (channel: string, ...args: unknown[]) => {
     if (channel === 'db:story-continuity-read') return currentDocumentFixture
     if (channel === 'db:continuity-list-before') return timelineFixtures
     if (channel === 'db:story-continuity-list-all') return allDocumentsFixture
-    if (channel === 'db:blueprint-get-all') return []
+    if (channel === 'db:blueprint-get-all') return blueprintsFixture
     if (channel === 'db:chapter-handoff-latest-before') return null
     if (channel === 'db:narrative-thread-list-relevant') return []
     if (channel === 'db:draft-get-finalized') return finalizedContent === null ? null : { id: 7 }
     if (channel === 'db:draft-get-full') return finalizedContent === null ? null : { id: 7, content: finalizedContent }
-    if (channel === 'db:knowledge-event-list-for-chapter') return []
-    if (channel === 'db:knowledge-event-list-review') return reviewEvents
+    if (channel === 'db:knowledge-event-list-for-chapter') {
+      const characters = Array.isArray(args[0]) ? args[0] : []
+      return knowledgeEventsFixture.filter(event => characters.includes((event as { character?: unknown }).character))
+    }
+    if (channel === 'db:knowledge-event-list-review') {
+      const characters = Array.isArray(args[0]) ? args[0] : []
+      return reviewEvents.filter(event => characters.includes(event.character))
+    }
     if (channel === 'db:knowledge-event-status') {
       const event = reviewEvents.find(candidate => candidate.eventId === args[0])
       return { success: true, event: event ? Object.assign({}, event, { status: args[1] }) : undefined }
@@ -104,6 +114,48 @@ describe('StoryContinuityPanel', () => {
     await act(async () => confirm?.click())
     await vi.waitFor(() => expect(invoke.mock.calls.some(([channel, eventId, status]) => channel === 'db:knowledge-event-status' && eventId === 'knowledge:candidate' && status === 'confirmed')).toBe(true))
     expect(container.textContent).toContain('知情事件已确认并可用于本章写作')
+  })
+
+  it('does not leak a switched viewpoint secret into the returning viewpoint boundary', async () => {
+    useCharacterStore.setState({
+      characters: [{ name: '林夏' }, { name: '顾舟' }],
+      loaded: true,
+      dataProjectKey: PROJECT_PATH,
+      dataProjectSession: SESSION,
+    } as never)
+    blueprintsFixture = [{
+      chapterNumber: 3,
+      title: '回到灯塔',
+      role: '悬念回收',
+      purpose: '切回林夏并保留未解问题',
+      keyEvents: '林夏重新面对灯塔',
+      characters: ['林夏'],
+      suspenseHook: '门后仍有人呼吸',
+      userGuidance: '',
+      notes: '',
+      notesUpdatedAt: '',
+    }]
+    knowledgeEventsFixture = [
+      {
+        eventId: 'knowledge:linxia', character: '林夏', information: '信件来自未来',
+        certainty: 'fact', falseBelief: false, learnedBy: '亲眼读到', sourceChapter: 1,
+        evidence: '她读完信封内的日期。', status: 'confirmed',
+      },
+      {
+        eventId: 'knowledge:guzhou', character: '顾舟', information: '跟踪者藏在灯塔地下',
+        certainty: 'fact', falseBelief: false, learnedBy: '偷听密谈', sourceChapter: 2,
+        evidence: '顾舟听见守门人提到地下室。', status: 'confirmed',
+      },
+    ]
+
+    await act(async () => root.render(<StoryContinuityPanel projectKey={PROJECT_PATH} chapterNumber={3} />))
+
+    await vi.waitFor(() => expect(invoke.mock.calls.some(([channel, characters]) => (
+      channel === 'db:knowledge-event-list-for-chapter'
+      && JSON.stringify(characters) === JSON.stringify(['林夏'])
+    ))).toBe(true))
+    expect(container.textContent).toContain('信件来自未来')
+    expect(container.textContent).not.toContain('跟踪者藏在灯塔地下')
   })
 
   it('shows active finalized facts in the cross-chapter timeline without editing them', async () => {
