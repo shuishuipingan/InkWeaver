@@ -36,3 +36,5 @@
 - 两名评阅者分歧：逐 case 保留复核理由，不用单一总分掩盖分歧。
 
 结果文件必须同时附上失败样例、token/延迟、模型波动说明和评阅者签名/日期。没有两名独立评阅者的完整表格时，质量门保持“未完成”。
+
+工程汇总器：`scripts/quality-review-summary.ts` 的 `summarizeQualityReview(rows)` 会验证 reviewer/case 覆盖、重复行、1–5 分数和上述门槛，返回 `eligible` 与可审计的中间指标；它不会替评阅者填写分数。
