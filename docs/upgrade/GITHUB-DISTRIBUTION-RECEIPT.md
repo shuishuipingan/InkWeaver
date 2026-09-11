@@ -27,7 +27,7 @@
 `local-first`、`local-first-ai`、`long-form-fiction`、`novel-writing-windows`、
 `ollama`、`rag`、`worldbuilding`。
 
-公开主题页：[github.com/topics/dsh-plugin](https://github.com/topics/dsh-plugin)。2026-09-10 页面显示该主题约 14,327 个公开仓库；在当前抓取内容中尚未出现 `InkWeaver` 或 `shuishuipingan`。因此当前结论是“元数据已设置，实际索引可见性待发布后复核”，不是“已保证在主题页显示”。
+公开主题页：[github.com/topics/dsh-plugin](https://github.com/topics/dsh-plugin)。2026-09-11 页面显示该主题约 14,432 个公开仓库；当前抓取内容中尚未出现 `InkWeaver` 或 `shuishuipingan`。因此当前结论是“元数据已设置，实际索引可见性待正式发布后复核”，不是“已保证在主题页显示”。
 
 ## 正式发布前必须补的证据
 
