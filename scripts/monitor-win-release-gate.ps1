@@ -1653,6 +1653,52 @@ function Test-AiNovelGateCapturedParentIdentity {
   return $true
 }
 
+function Test-AiNovelGateCapturedArmedRootParentIdentity {
+  param(
+    [AllowNull()]$ChildIdentity,
+    [AllowNull()]$ArmedRootIdentity
+  )
+
+  if (
+    $null -eq $ChildIdentity -or
+    $null -eq $ArmedRootIdentity -or
+    -not [bool]$ChildIdentity.identityCaptured -or
+    -not [bool]$ArmedRootIdentity.identityCaptured -or
+    $null -eq $ChildIdentity.parentProcessId -or
+    [int]$ArmedRootIdentity.processId -ne [int]$ChildIdentity.parentProcessId -or
+    [string]::IsNullOrWhiteSpace([string]$ArmedRootIdentity.startTimeTicks) -or
+    [string]::IsNullOrWhiteSpace([string]$ChildIdentity.parentProcessStartTimeTicks) -or
+    -not [string]::Equals(
+      [string]$ArmedRootIdentity.startTimeTicks,
+      [string]$ChildIdentity.parentProcessStartTimeTicks,
+      [System.StringComparison]::Ordinal
+    )
+  ) {
+    return $false
+  }
+
+  if (Test-AiNovelGateSameAbsolutePath `
+    -Left ([string]$ArmedRootIdentity.executablePath) `
+    -Right ([string]$ChildIdentity.parentExecutablePath)) {
+    return $true
+  }
+
+  # MainModule.FileName can resolve a Node junction (for example C:\nvm4w) while
+  # QueryFullProcessImageName on the child records the target installation path
+  # (for example %LOCALAPPDATA%\nvm\v24.19.0). PID + creation time already bind
+  # this edge to the armed process; permit only this exact node.exe alias case.
+  try {
+    return (
+      [string]$ArmedRootIdentity.processName -match '^(?i:node)$' -and
+      [System.IO.Path]::GetFileName([string]$ArmedRootIdentity.executablePath) -match '^(?i:node\.exe)$' -and
+      [System.IO.Path]::GetFileName([string]$ChildIdentity.parentExecutablePath) -match '^(?i:node\.exe)$'
+    )
+  }
+  catch {
+    return $false
+  }
+}
+
 function Test-AiNovelGateCapturedInstallerParent {
   param(
     [AllowNull()]$ChildIdentity,
@@ -1695,6 +1741,12 @@ function Test-AiNovelGateIdentityAncestryToArmedRoot {
       $currentIdentityKey = Get-AiNovelGateProcessIdentityKey -ProcessIdentity $currentIdentity
       if ($null -eq $currentIdentityKey -or -not $seenIdentityKeys.Add($currentIdentityKey)) {
         return $false
+      }
+
+      if (Test-AiNovelGateCapturedArmedRootParentIdentity `
+        -ChildIdentity $currentIdentity `
+        -ArmedRootIdentity $ArmedRootIdentity) {
+        return $true
       }
 
       if (Test-AiNovelGateCapturedParentIdentity `
@@ -3385,6 +3437,13 @@ try {
         if ($null -eq $armedRootIdentity) {
           throw "Release gate could not capture the immutable PID/start/path identity for root process $($control.rootProcessId) in step '$activeStep'."
         }
+        # The root is captured before it is assigned to the Job Object, so it
+        # does not necessarily emit a process-start completion event. Seed the
+        # identity map explicitly; descendant ancestry checks (notably the
+        # NSIS uninstaller helper chain) must be able to terminate at this exact
+        # PID/start/path identity rather than treating the missing map entry as
+        # an unrelated process.
+        $trackedProcessIdentities[[int]$control.rootProcessId] = $armedRootIdentity
         try {
           # The launcher is deliberately held at its gate. Assigning it to the
           # Job Object before publishing `monitoring` makes every real command

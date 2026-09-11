@@ -399,6 +399,8 @@ describe('Windows release verification orchestration', () => {
     expect(monitorSource).toContain('expected-electron-child-termination')
     expect(monitorSource).toContain('Test-AiNovelGateCapturedInstallerOldUninstallerProbeParent')
     expect(monitorSource).toContain('Test-AiNovelGateExpectedInstallerOldUninstallerProbeExit')
+    expect(monitorSource).toContain('$trackedProcessIdentities[[int]$control.rootProcessId] = $armedRootIdentity')
+    expect(monitorSource).toContain('Test-AiNovelGateCapturedArmedRootParentIdentity')
   })
 
   it('keeps monitoring through native restoration, validation, and the final quiet period', () => {
@@ -1406,15 +1408,18 @@ internal static class ExactNsisProbeParent {
     }
   }, 60_000)
 
-  windowsIt('accepts the real 8.3-path NSIS uninstaller helper process-check chain only after its identity-bound TEMP host is observed', async (context) => {
+  windowsIt('accepts the canonical NSIS uninstaller helper process-check chain only after its identity-bound TEMP host is observed', async () => {
     const root = mkdtempSync(join(tmpdir(), 'ai-novel-release-gate-nsis-uninstaller-'))
     const controlPath = join(root, 'control.jsonl')
     const statusPath = join(root, 'status.json')
     const evidencePath = join(root, 'evidence')
     const tempRoot = tmpdir()
-    const helperDirectoryName = `~nsuA9${Date.now().toString(36)}${process.pid.toString(36)}.tmp`
+    // NSIS uses the canonical zero-suffix directory on the current installer
+    // path. Keep this fixture aligned with the real smoke trace so the monitor
+    // cannot regress to accepting only synthetic ~nsu<token>.tmp names.
+    const helperDirectoryName = '~nsu.tmp'
     const helperDirectory = join(tempRoot, helperDirectoryName)
-    const helperPath = join(helperDirectory, 'Un_A9.exe')
+    const helperPath = join(helperDirectory, 'Un_A.exe')
     const installRoot = join(root, 'installed-app')
     const uninstallerPath = join(installRoot, 'Uninstall InkWeaver.exe')
     const sourcePath = join(root, 'ExactNsisUninstallerHelper.cs')
@@ -1571,17 +1576,11 @@ internal static class ExactNsisUninstallerHelper {
     )
     copyFileSync(helperPath, uninstallerPath)
     const shortTempRoot = windowsShortPath(tempRoot)
-    if (
-      !shortTempRoot
-      || shortTempRoot.toLowerCase() === tempRoot.toLowerCase()
-      || !shortTempRoot.includes('~')
-    ) {
-      rmSync(helperDirectory, { recursive: true, force: true })
-      rmSync(root, { recursive: true, force: true })
-      context.skip('This TEMP root does not expose a distinct 8.3 ancestor path; the 8.3-specific chain test is not applicable.')
-      return
-    }
-    const helperLaunchPath = join(shortTempRoot, helperDirectoryName, 'Un_A9.exe')
+    const helperLaunchPath = shortTempRoot
+      && shortTempRoot.toLowerCase() !== tempRoot.toLowerCase()
+      && shortTempRoot.includes('~')
+      ? join(shortTempRoot, helperDirectoryName, 'Un_A.exe')
+      : helperPath
     const wrapperEncodedCommand = Buffer.from(
       [
         `& ${quotePowerShell(uninstallerPath)} '--host' ${quotePowerShell(helperLaunchPath)} ${quotePowerShell(systemPowerShell)} ${quotePowerShell(systemCmd)} ${quotePowerShell(probeResultPath)}`,
@@ -1628,7 +1627,7 @@ internal static class ExactNsisUninstallerHelper {
           step: 'smoke:win-installer',
           rootProcessId: gate.child.pid,
           rootProcessStartTimeTicks: windowsProcessStartTimeTicks(gate.child.pid),
-          relatedTargetNames: ['Uninstall 织墨', 'Un_A9', 'powershell'],
+          relatedTargetNames: ['Uninstall InkWeaver', 'Un_A', 'powershell'],
         })}\n`,
         'utf8',
       )
@@ -1653,11 +1652,11 @@ internal static class ExactNsisUninstallerHelper {
         && event.exitClassification === 'expected-nsis-find-no-match')
       const helperStart = events.find(event => {
         const identity = event.processIdentity as Record<string, unknown> | undefined
-        return event.kind === 'process-start' && identity?.processName === 'Un_A9'
+        return event.kind === 'process-start' && identity?.processName === 'Un_A'
       })
       const uninstallerStart = events.find(event => {
         const identity = event.processIdentity as Record<string, unknown> | undefined
-        return event.kind === 'process-start' && identity?.processName === 'Uninstall 织墨'
+        return event.kind === 'process-start' && identity?.processName === 'Uninstall InkWeaver'
       })
       const wrapperCmdStart = events.find(event => {
         const identity = event.processIdentity as Record<string, unknown> | undefined
