@@ -1531,9 +1531,16 @@ function Test-AiNovelGateExpectedPackageManagerProbeExit {
     $null -eq $Event -or
     [int]$Event.ExitCode -ne 1 -or
     $null -eq $ProcessIdentity -or
-    [string]$ProcessIdentity.processName -notmatch '^(?i:cmd)$' -or
+    [string]$ProcessIdentity.processName -notmatch '^(?i:cmd|node)$' -or
     -not [bool]$ProcessIdentity.commandLineCaptured -or
-    [string]::IsNullOrWhiteSpace([string]$ProcessIdentity.commandLine) -or
+    [string]::IsNullOrWhiteSpace([string]$ProcessIdentity.commandLine)
+  ) {
+    return $false
+  }
+
+  $isCmdProcess = [string]$ProcessIdentity.processName -match '^(?i:cmd)$'
+  if (
+    $isCmdProcess -and
     -not (Test-AiNovelGateSystemUtilityImage -ImagePath ([string]$ProcessIdentity.executablePath) -FileName 'cmd.exe')
   ) {
     return $false
@@ -1552,7 +1559,26 @@ function Test-AiNovelGateExpectedPackageManagerProbeExit {
     $commandLine -match '\bexec\b' -and
     $commandLine -match '\bpwd\b'
   )
-  return $isPnpmListProbe -or $isPnpmWorkspaceProbe
+  if ($isPnpmListProbe -or $isPnpmWorkspaceProbe) {
+    return $true
+  }
+
+  # pnpm may create one additional cmd.exe shell below the node process that
+  # runs the probe. It has no pnpm text in its own argv; bind it to the exact
+  # parent command line instead of allowing arbitrary child failures.
+  if (-not $isCmdProcess -or $null -eq $ParentIdentity) {
+    return $false
+  }
+  $parentCommandLine = ([string]$ParentIdentity.commandLine).ToLowerInvariant()
+  return (
+    [bool]$ParentIdentity.commandLineCaptured -and
+    [string]$ParentIdentity.processName -match '^(?i:node)$' -and
+    ($parentCommandLine -match 'pnpm(?:\.cmd|[-_]\d+\.bat)?') -and
+    (
+      ($parentCommandLine -match '\blist\b' -and $parentCommandLine -match '--prod' -and $parentCommandLine -match '--json') -or
+      ($parentCommandLine -match '--workspace-root' -and $parentCommandLine -match '\bexec\b' -and $parentCommandLine -match '\bpwd\b')
+    )
+  )
 }
 
 function Test-AiNovelGateExpectedExitOne {
