@@ -1755,6 +1755,46 @@ function Test-AiNovelGateCapturedNsisUninstallerHelperParent {
   )
 }
 
+function Test-AiNovelGateCapturedInstallerOldUninstallerProbeParent {
+  param(
+    [Parameter(Mandatory = $true)][AllowEmptyString()][string]$Step,
+    [AllowNull()]$ChildIdentity,
+    [AllowNull()]$ParentIdentity,
+    [AllowNull()]$GrandParentIdentity,
+    [AllowNull()]$ArmedRootIdentity,
+    [AllowNull()]$TrackedProcessIdentities
+  )
+
+  # The installer smoke script can exercise the NSIS TEMP copy named
+  # old-uninstaller.exe. Its PowerShell/cmd/find probes are the same bounded
+  # process-check chain as the normal Un_*.exe helper, but the historical
+  # filename is different. Keep the ancestry fully identity-bound.
+  if (
+    $Step -notin @('smoke:win-installer', 'smoke:win-v025-upgrade') -or
+    $null -eq $ChildIdentity -or
+    $null -eq $ParentIdentity -or
+    $null -eq $GrandParentIdentity -or
+    $null -eq $ArmedRootIdentity -or
+    $null -eq $TrackedProcessIdentities
+  ) {
+    return $false
+  }
+  return (
+    (Test-AiNovelGateLegacyBridgeOldUninstallerImage -ImagePath ([string]$ParentIdentity.executablePath)) -and
+    (Test-AiNovelGateCapturedParentIdentity `
+      -ChildIdentity $ChildIdentity `
+      -ParentIdentity $ParentIdentity) -and
+    (Test-AiNovelGateNsisInstallerImage -ImagePath ([string]$GrandParentIdentity.executablePath)) -and
+    (Test-AiNovelGateCapturedParentIdentity `
+      -ChildIdentity $ParentIdentity `
+      -ParentIdentity $GrandParentIdentity) -and
+    (Test-AiNovelGateIdentityAncestryToArmedRoot `
+      -StartIdentity $GrandParentIdentity `
+      -TrackedProcessIdentities $TrackedProcessIdentities `
+      -ArmedRootIdentity $ArmedRootIdentity)
+  )
+}
+
 function Test-AiNovelGateCapturedNsisProbeParent {
   param(
     [Parameter(Mandatory = $true)][AllowEmptyString()][string]$Step,
@@ -1782,6 +1822,13 @@ function Test-AiNovelGateCapturedNsisProbeParent {
       (Test-AiNovelGateCapturedParentIdentity `
         -ChildIdentity $ChildIdentity `
         -ParentIdentity $ParentIdentity)) -or
+    (Test-AiNovelGateCapturedInstallerOldUninstallerProbeParent `
+      -Step $Step `
+      -ChildIdentity $ChildIdentity `
+      -ParentIdentity $ParentIdentity `
+      -GrandParentIdentity $GrandParentIdentity `
+      -ArmedRootIdentity $ArmedRootIdentity `
+      -TrackedProcessIdentities $TrackedProcessIdentities) -or
     (Test-AiNovelGateCapturedLegacyBridgeOldUninstallerProbeParent `
       -LegacyBridge $LegacyBridge `
       -ChildIdentity $ChildIdentity `
