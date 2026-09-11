@@ -67,6 +67,7 @@ describe('finalized continuity projection', () => {
     const throughTransfer = SummaryRepository.listFinalizedContinuityBefore(19)
     const factsAt = (projections: typeof throughTransfer, chapter: number) => projections
       .flatMap(projection => projection.facts)
+      .filter((fact): fact is NonNullable<typeof fact> => fact !== undefined)
       .filter(fact => factAppliesAtChapter(fact, chapter))
 
     expect(factsAt(beforeTransfer, 12)).toEqual([expect.objectContaining({ statement: '旧钥匙所有者是林夏。' })])
