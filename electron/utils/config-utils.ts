@@ -33,7 +33,11 @@ export type JsonFileReadResult<T> =
 export function tryReadJsonFile<T>(filePath: string): JsonFileReadResult<T> {
   if (!fs.existsSync(filePath)) return { status: 'missing' }
   try {
-    return { status: 'ok', value: JSON.parse(fs.readFileSync(filePath, 'utf-8')) as T }
+    // PowerShell and a few Windows migration tools may emit UTF-8 JSON with a
+    // BOM. JSON.parse accepts the document content, but not the leading BOM;
+    // strip only that marker so malformed content still remains an error.
+    const raw = fs.readFileSync(filePath, 'utf-8').replace(/^\uFEFF/u, '')
+    return { status: 'ok', value: JSON.parse(raw) as T }
   } catch (error) {
     return { status: 'error', error }
   }
