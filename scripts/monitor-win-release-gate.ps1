@@ -1779,8 +1779,13 @@ function Test-AiNovelGateCapturedInstallerOldUninstallerProbeParent {
   ) {
     return $false
   }
+  $oldUninstallerPath = [string]$ParentIdentity.executablePath
+  $oldUninstallerImageMatches = (
+    $oldUninstallerPath -match '^[A-Za-z]:\\' -and
+    $oldUninstallerPath -match '(?i)\\Temp\\ns[A-Za-z0-9]+\.tmp\\old-uninstaller\.exe$'
+  )
   return (
-    (Test-AiNovelGateLegacyBridgeOldUninstallerImage -ImagePath ([string]$ParentIdentity.executablePath)) -and
+    $oldUninstallerImageMatches -and
     (Test-AiNovelGateCapturedParentIdentity `
       -ChildIdentity $ChildIdentity `
       -ParentIdentity $ParentIdentity) -and
