@@ -63,12 +63,12 @@ describe('ProjectService REFRESH_RESOURCE project identity', () => {
     })
     let resolveACharacters: (() => void) | undefined
     let resolveADrafts: (() => void) | undefined
-    const characterLoad = vi.spyOn(useCharacterStore.getState(), 'load').mockImplementation((path, session) => (
+    const characterLoad = vi.spyOn(useCharacterStore.getState(), 'load').mockImplementation((_path, session) => (
       session?.projectId === 'A'
         ? new Promise<void>(resolve => { resolveACharacters = resolve })
         : Promise.resolve()
     ))
-    const draftLoad = vi.spyOn(useDraftStore.getState(), 'loadAllDrafts').mockImplementation((path, session) => (
+    const draftLoad = vi.spyOn(useDraftStore.getState(), 'loadAllDrafts').mockImplementation((_path, session) => (
       session?.projectId === 'A'
         ? new Promise<void>(resolve => { resolveADrafts = resolve })
         : Promise.resolve()

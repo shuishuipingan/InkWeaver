@@ -63,11 +63,30 @@ beforeEach(async () => {
       sessionLease: session.leaseId,
       path: root,
       name: 'J08 无蓝图作品',
-      novelConfig: { genre: '推理', targetAudience: 'general' },
+      characterStates: '',
+      createdAt: '2026-09-12T00:00:00.000Z',
+      updatedAt: '2026-09-12T00:00:00.000Z',
+      novelConfig: {
+        writingLanguage: 'zh-CN',
+        creativeStrategy: 'consistency-first',
+        genre: '推理',
+        subGenre: '悬疑',
+        targetAudience: 'general',
+        totalChapters: 2,
+        wordsPerChapter: 3_000,
+        plotStructure: 'three_act',
+        narrativePOV: 'third_limited',
+        coreOutline: '无蓝图导出旅程',
+        worldSetting: '',
+        goldenFinger: '',
+        protagonistProfile: '',
+        globalGuidance: '',
+      },
     },
-  })
+  } as never)
 
-  vi.mocked(ipc.invoke).mockImplementation(async (channel: string, grantId?: string, relativePath?: string, content?: unknown) => {
+  vi.mocked(ipc.invoke).mockImplementation(async (...args: unknown[]) => {
+    const [channel, , relativePath, content] = args
     if (channel === 'fs:grant-write-file' && typeof relativePath === 'string') {
       const target = path.join(root, relativePath)
       await mkdir(path.dirname(target), { recursive: true })
