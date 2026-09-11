@@ -72,6 +72,11 @@ const packageVersion = JSON.parse(readFileSync(resolve('package.json'), 'utf8'))
 const acceptancePath = process.env.AI_NOVEL_RELEASE_EVIDENCE_ROOT
   ? resolve(process.env.AI_NOVEL_RELEASE_EVIDENCE_ROOT, 'acceptance')
   : resolve('release', packageVersion, 'qualification', 'acceptance')
+// Windows Job Object completion can arrive after the launcher has written its
+// result sidecar, especially while native ABI restoration is settling. Keep
+// the monitor acknowledgement window separate from the process timeout so a
+// delayed, otherwise healthy step is not misreported as a release failure.
+const MONITOR_STEP_COMPLETION_TIMEOUT_MS = 30_000
 let controlSequence = 0
 let launchSequence = 0
 let gateSucceeded = false
@@ -500,7 +505,7 @@ async function runMonitoredNodeProcess(step, args) {
   }
   if (result.code !== 0) {
     sendMonitorControl({ state: 'step-complete', step })
-    await waitForMonitorState(['step-completed'], 10_000, step)
+    await waitForMonitorState(['step-completed'], MONITOR_STEP_COMPLETION_TIMEOUT_MS, step)
     throw new Error(
       `Node finalization step "${step}" exited with code ${result.code ?? 'null'}${result.signal ? ` (${result.signal})` : ''}`,
     )
@@ -512,7 +517,7 @@ async function runMonitoredNodeProcess(step, args) {
   }
 
   sendMonitorControl({ state: 'step-complete', step })
-  await waitForMonitorState(['step-completed'], 10_000, step)
+  await waitForMonitorState(['step-completed'], MONITOR_STEP_COMPLETION_TIMEOUT_MS, step)
 }
 
 async function restoreAndVerifyNodeNativeAbi({ monitored }) {
@@ -653,7 +658,7 @@ async function main() {
     }
     if (result.code !== 0) {
       sendMonitorControl({ state: 'step-complete', step })
-      await waitForMonitorState(['step-completed'], 10_000, step)
+      await waitForMonitorState(['step-completed'], MONITOR_STEP_COMPLETION_TIMEOUT_MS, step)
       throw new Error(
         `Release verification step "${step}" exited with code ${result.code ?? 'null'}${result.signal ? ` (${result.signal})` : ''}`,
       )
@@ -665,7 +670,7 @@ async function main() {
     }
 
     sendMonitorControl({ state: 'step-complete', step })
-    await waitForMonitorState(['step-completed'], 10_000, step)
+    await waitForMonitorState(['step-completed'], MONITOR_STEP_COMPLETION_TIMEOUT_MS, step)
   }
 
   gateSucceeded = true
