@@ -1319,8 +1319,8 @@ function Test-AiNovelGateNsisUninstallerHelperImage {
     $helperFileName = [System.IO.Path]::GetFileName($helperFullPath)
     $helperDirectoryName = [System.IO.Path]::GetFileName($helperDirectory)
     return (
-      $helperDirectory -match '(?i)^[A-Za-z]:\\.*\\Temp\\~nsu[A-Za-z0-9]+\.tmp$' -and
-      $helperDirectoryName -match '^(?i:~nsu[A-Za-z0-9]+\.tmp)$' -and
+      $helperDirectory -match '(?i)^[A-Za-z]:\\.*\\Temp\\~nsu[A-Za-z0-9]*\.tmp$' -and
+      $helperDirectoryName -match '^(?i:~nsu[A-Za-z0-9]*\.tmp)$' -and
       $helperFileName -match '^(?i:Un_[A-Za-z0-9]+\.exe)$'
     )
   }
