@@ -380,6 +380,15 @@ Start-Sleep -Milliseconds 180`,
 }
 
 describe('Windows release verification orchestration', () => {
+  it('shims pnpm for electron-builder child processes instead of inheriting a broken Corepack command', () => {
+    const source = readFileSync(releaseScript, 'utf8')
+
+    expect(source).toContain("join(monitorRoot, 'pnpm.cmd')")
+    expect(source).toContain('process.env.PATH = `${monitorRoot}${delimiter}')
+    expect(source).toContain('process.execPath')
+    expect(source).toContain('pnpmCli')
+  })
+
   it('keeps monitoring through native restoration, validation, and the final quiet period', () => {
     const plan = JSON.parse(
       execFileSync(process.execPath, [releaseScript, '--print-plan'], {

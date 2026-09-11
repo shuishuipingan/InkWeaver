@@ -12,7 +12,7 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { delimiter, join, resolve } from 'node:path'
 import { restoreNativeWithIndependentFallback } from './release-native-restore.mjs'
 
 export const releasePreMonitorSteps = [
@@ -62,6 +62,28 @@ const monitorRoot = resolve(
   tmpdir(),
   `ai-novel-release-gate-${process.pid}-${Date.now()}`,
 )
+const pnpmShimPath = join(monitorRoot, 'pnpm.cmd')
+
+// electron-builder discovers pnpm by invoking the `pnpm` command from PATH,
+// even when this orchestrator was started with a working npm_execpath. On
+// Windows a Corepack shim can fail before pnpm starts (for example with an
+// EXDEV cache rename), which leaves a short-lived cmd.exe descendant with exit
+// code 1 while electron-builder continues. Give every gate child a deterministic
+// pnpm command that calls the already-selected JS entrypoint directly.
+mkdirSync(monitorRoot, { recursive: true })
+const batchQuote = value => `"${String(value).replaceAll('"', '""')}"`
+writeFileSync(
+  pnpmShimPath,
+  [
+    '@echo off',
+    'setlocal',
+    `${batchQuote(process.execPath)} ${batchQuote(resolve(pnpmCli))} %*`,
+    'exit /b %ERRORLEVEL%',
+    '',
+  ].join('\r\n'),
+  'utf8',
+)
+process.env.PATH = `${monitorRoot}${delimiter}${process.env.PATH ?? ''}`
 const controlPath = join(monitorRoot, 'control.jsonl')
 const statusPath = join(monitorRoot, 'status.json')
 const evidencePath = join(monitorRoot, 'evidence')
