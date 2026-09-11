@@ -147,13 +147,13 @@
 | 功能需求通过数 | 3 / 38（F01–F03 已由 DSH 0.1.5-rc.1 完整资格通过；其余需求仍需各自验收） |
 | 端到端旅程通过数 | 0 / 12（尚未执行） |
 | 阅读质量评测 | 未执行 |
-| 开发基线对齐 | 待比较本地、origin/main、v1.0.0 |
-| 桌面候选版本 / 源码 SHA | 未冻结 |
-| 插件候选版本 / 宿主基线 | 未冻结；开始和发布前重新查官方版本 |
-| Windows 资格 run / attempt / artifact / hash | 未构建 |
-| macOS ARM64 资格 run / attempt / artifact / hash | 未构建 |
-| macOS x64 资格 run / attempt / artifact / hash | 未构建 |
-| 插件 tarball / hash / 安装资格记录 | 未构建 |
+| 开发基线对齐 | 本地开发线已推到 `origin/1.1.0-development`；当前远端资格 SHA 为 `b9f713b5`，`origin/main` 仍是官方 v1.0.0 基线 |
+| 桌面候选版本 / 源码 SHA | 当前仍为开发版本 `0.9.2` / 插件 `0.1.0`，尚未冻结到 1.1.0；macOS 双架构基线资格使用 `b9f713b5` |
+| 插件候选版本 / 宿主基线 | 尚未冻结；当前包名 `@shuishuipingan/inkweaver-dsh`，宿主兼容基线 `@deepseek-ai/dsh@0.1.5-rc.1` |
+| Windows 资格 run / attempt / artifact / hash | 本地完整门禁已通过；`release/0.9.2/qualification/acceptance/` 收据，安装器 SHA-256 `8acb574112ffe205439d5063767ccfa9cf90f3615b0c188d96b6918c1dc92022` |
+| macOS ARM64 资格 run / attempt / artifact / hash | run `34647639036` / artifact `10283130774` / DMG SHA-256 `aa736ab89e2fa33a2c4bb520aeb007320f3e92d5d20a0b8bc8693a6793ef2343`，runtime-verified 通过 |
+| macOS x64 资格 run / attempt / artifact / hash | run `34647642420` / artifact `10282422689` / DMG SHA-256 `89b0ff684ba8f2f32084e270b9f4f49752b5f9f861b280ba1d48cd39fa4993c0`，runtime-verified 通过 |
+| 插件 tarball / hash / 安装资格记录 | 当前开发插件已有 DSH 0.1.5-rc.1 隔离 qualification receipt；1.1.0 冻结 tarball 尚未构建 |
 | npm 分发版本 / 发布结果 | 未发布 |
 | 文档实现一致性评阅 | 未执行 |
 | 正式 tag / Release / 发布 SHA | 未发布 |
