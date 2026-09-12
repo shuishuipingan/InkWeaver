@@ -626,7 +626,11 @@ async function terminateProcessTree(child, exit, exited, timeoutMs = 10_000) {
         encoding: 'utf8', timeout: 10_000, windowsHide: true,
       })
     } catch (error) {
-      if (exited.value === undefined) throw error
+      // Some Windows runners report "operation not supported" even after the
+      // process tree has already disappeared. Treat that as successful cleanup
+      // and preserve the qualification result; only fail when the root is
+      // demonstrably still alive.
+      if (exited.value === undefined && processIsAlive(pid)) throw error
     }
     await waitForExit(exit, timeoutMs)
     return
