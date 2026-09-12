@@ -25,10 +25,10 @@ npm view @shuishuipingan/inkweaver-dsh version dist-tags --json
 
 只读 API 回读结果：
 
-- 现有 tag：`v1.0.0`；
-- 现有正式 Release：`v1.0.0`，非 draft、非 prerelease；
-- `1.1.0-development` 仅作为开发分支，不能当作正式 Release。
+- 正式 tag：`v1.0.0` 与 `v1.1.0`；
+- 正式 Release：`v1.1.0`，非 draft、非 prerelease，并已回读七项桌面资产和插件 tarball；
+- `1.1.0-development` 保留为开发分支，正式安装入口使用 `v1.1.0` Release。
 
 ## 仍保留的事实记录
 
-即使 npm 不发布，最终 tarball 仍需在冻结 SHA 上重建并回读 SHA；GitHub Release 资产和本地 `dsh plugin add <tarball>` 安装路径必须通过验证。当前审计不保存 token，也不改变版本号。
+即使 npm 不发布，最终 tarball 仍在冻结 SHA 上重建并回读 SHA；GitHub Release 资产和本地 `dsh plugin add <tarball>` 安装路径已通过验证。当前审计不保存 token，也不改变版本号。

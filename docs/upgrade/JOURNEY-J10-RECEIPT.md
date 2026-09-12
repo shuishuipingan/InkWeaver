@@ -10,11 +10,11 @@
 | --- | --- |
 | qualification status | `passed` |
 | qualification ticket | `128` |
-| clean source commit | `0358584da5333b1c6476062a0518d765800a4b2f` |
+| clean source commit | `b40cd124525fd7805cdf1c35f07eeee187d394eb` |
 | Harness commit | `183f08e9c6dde7e36cd2318eaee70b0da08fb35e`（官方 DSH 0.1.5-rc.1） |
 | plugin package | `@shuishuipingan/inkweaver-dsh@1.1.0` |
-| tarball SHA-256 | `140565e6089800dad7c6a46ba100ecf3f591e089eb8495694e969eb4f1eb3d27` |
-| tarball bytes / entries | `241334` / `41` |
+| tarball SHA-256 | `35dd442171a426bcbea214b595f52ca7edcd20531567e3bdbc3b11e7bceb6dba` |
+| tarball bytes / entries | `241389` / `41` |
 | Web companion | `@linxin666/dsh-web-all@0.3.20`（外部宿主依赖） |
 
 ## 旅程证据
@@ -25,4 +25,4 @@
 - Proposal 应用、章节定稿选择、`novel_read` 上下文读取和 `novel_propose_change` 的 exactly-two-tool 隔离均通过。
 - profile reinstall 后 preset descriptor、agent Cordis 文件和已安装包内容 SHA 保持一致。
 
-原始机器可读 receipt 位于 qualification run 的 `qualification-receipt.json`，并包含 `artifact`、`profile`、`presetTools`、`persistence`、`web`、`designQa` 和 `checks` 字段。它绑定上述 1.1.0 源码、tarball 和 Harness SHA；不执行 npm 发布。
+原始机器可读 receipt 位于最终 qualification run 的 `qualification-receipt.json`，并包含 `artifact`、`profile`、`presetTools`、`persistence`、`web`、`designQa` 和 `checks` 字段。它绑定上述 1.1.0 源码、tarball 和 Harness SHA；不执行 npm 发布。
