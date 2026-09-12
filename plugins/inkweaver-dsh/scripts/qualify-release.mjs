@@ -1111,7 +1111,7 @@ async function qualify(options) {
     ], { cwd: canonicalRepository, timeout: 600_000 }))
     commands.push(await runPnpm(logRoot, 'harness-build', ['run', 'build'], { cwd: canonicalHarness, timeout: 300_000 }))
 
-    const tarball = join(artifactsRoot, 'shuishuipingan-inkweaver-dsh-0.1.0.tgz')
+    const tarball = join(artifactsRoot, `shuishuipingan-inkweaver-dsh-${sourceManifest.version}.tgz`)
     commands.push(await runPnpm(logRoot, 'plugin-pack', ['pack', '--out', tarball], { cwd: packageRoot, timeout: 180_000 }))
     if (!(await exists(tarball)) || (await stat(tarball)).size === 0) fail('pnpm pack did not produce the qualification tarball')
     const tarList = await recordCommand(logRoot, 'tarball-list', 'tar', ['-tf', tarball], { cwd: runRoot })
