@@ -88,18 +88,23 @@ jobs:
         shell: pwsh
         run: node scripts/release-evidence-v2.mjs record --evidence-root "$env:AI_NOVEL_RELEASE_EVIDENCE_ROOT" --step renderer-browser-tests -- "$env:ComSpec" /d /s /c "pnpm run test:browser"
 
-      - name: Download verified v0.2.5 portable migration input
+      - name: Download verified v1.0.0 installer migration input
         shell: pwsh
         run: |
-          $portableUrl = 'https://github.com/shuishuipingan/InkWeaver/releases/download/v0.2.5/AI-Novel-Writer-0.2.5-windows-x64.zip'
-          $expectedSha256 = '22b38b7337a456882bf130ccb898f17616fffb85d6c8b8b3d0ee431409f18531'
-          $portableZip = Join-Path $env:RUNNER_TEMP 'AI-Novel-Writer-0.2.5-windows-x64.zip'
-          Invoke-WebRequest -Uri $portableUrl -OutFile $portableZip
-          $actualSha256 = (Get-FileHash -LiteralPath $portableZip -Algorithm SHA256).Hash.ToLowerInvariant()
+          # The old v0.2.5 asset is retained in the script as a compatibility fallback,
+          # but the public v1.0.0 installer is the immutable previous release currently
+          # available in this repository and is used for the 1.1.0 upgrade journey.
+          $installerUrl = 'https://github.com/shuishuipingan/InkWeaver/releases/download/v1.0.0/inkweaver-setup-1.0.0.exe'
+          $expectedSha256 = '3bb76f7e448ca6d0ad880268d774f4f409516f24f4889712ad5e0ecd4721395e'
+          $installer = Join-Path $env:RUNNER_TEMP 'inkweaver-setup-1.0.0.exe'
+          Invoke-WebRequest -Uri $installerUrl -OutFile $installer
+          $actualSha256 = (Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash.ToLowerInvariant()
           if ($actualSha256 -ne $expectedSha256) {
-            throw "v0.2.5 portable ZIP SHA-256 mismatch: expected $expectedSha256, got $actualSha256"
+            throw "v1.0.0 installer SHA-256 mismatch: expected $expectedSha256, got $actualSha256"
           }
-          "AI_NOVEL_PREVIOUS_PORTABLE_ZIP=$portableZip" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "AI_NOVEL_PREVIOUS_INSTALLER=$installer" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "AI_NOVEL_PREVIOUS_INSTALLER_SHA256=$expectedSha256" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "AI_NOVEL_PREVIOUS_RELEASE_VERSION=1.0.0" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Run complete Windows release gate
         shell: pwsh
