@@ -435,6 +435,18 @@ describe('release evidence v2 CLI', () => {
     }
     writeSemanticReceipts()
 
+    const alternatePreviousVersion = validWindowsReceipt('upgrade-data', releaseRoot) as LaunchReceipt
+    alternatePreviousVersion.direct.previousVersion = '1.0.0'
+    writeJson(path.join(evidenceRoot, 'acceptance', 'upgrade-data.json'), alternatePreviousVersion)
+    const alternatePreviousVersionResult = spawnSync(process.execPath, [
+      evidenceScript,
+      'finalize',
+      '--platform', 'windows',
+      '--evidence-root', evidenceRoot,
+      '--release-root', releaseRoot,
+    ], { cwd: repositoryRoot, encoding: 'utf8' })
+    expect(alternatePreviousVersionResult.status, alternatePreviousVersionResult.stderr).toBe(0)
+
     const result = spawnSync(process.execPath, [
       evidenceScript,
       'finalize',
