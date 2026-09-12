@@ -4,9 +4,9 @@
 
 InkWeaver is a local-first desktop workspace for long-form fiction. It brings project settings, characters, worldbuilding, chapter blueprints, prose, review, revision, and finalization into a traceable writing chain while keeping the author in control of every durable change.
 
-Current version: **v0.9.2**
+Current version: **v1.1.0 (freeze candidate, not released)**
 
-> InkWeaver 1.1.0 is under active development and has not been released. The development line already contains continuous reading, chapter continuity sheets, evidence-backed character extraction, knowledge boundaries, relationship navigation, and SQLite consistency snapshots; the complete roadmap, installers, and formal Release are not frozen yet.
+> InkWeaver 1.1.0 has passed the internal engineering acceptance for its writing features and is now a freeze candidate, but no public Release has been created. GitHub tarball, Windows/macOS installers, and final Release backread are still in progress.
 
 New contributors should start with the [project file guide](docs/PROJECT-FILE-GUIDE.md), then read the [full feature map](docs/upgrade/INKWEAVER-1.1.0-FULL-FEATURE-MAP.md) and [delivery tracker](docs/upgrade/INKWEAVER-1.1.0-DELIVERY-TRACKER.md). The guide explains source-of-truth ownership, main-process side effects, renderer projections, the DSH plugin, and generated release files.
 
