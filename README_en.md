@@ -135,12 +135,12 @@ fs.writeFileSync(p, s, 'utf8')
 console.log('en quickstart added')
 ## DeepSeek Harness plugin
 
-The bundled `@shuishuipingan/inkweaver-dsh` package is an independent plugin under development, not a replacement for the desktop application. It provides a narrow reviewed chain for project settings, story architecture, characters, the whole-book outline, chapter blueprints, and chapter prose. Model changes enter a Proposal inbox and become authoritative only after the user applies them. The plugin's npm 1.1.0 release is not published yet; use the plugin guide and development qualification tarball for now.
+The bundled `@shuishuipingan/inkweaver-dsh` package is an independent plugin under development, not a replacement for the desktop application. It provides a narrow reviewed chain for project settings, story architecture, characters, the whole-book outline, chapter blueprints, and chapter prose. Model changes enter a Proposal inbox and become authoritative only after the user applies them. This 1.1.0 release scope intentionally excludes npm; the plugin will be delivered as a GitHub Release tarball with local installation instructions.
 
 Migration note: `@ethanyoq/dsh-ai-novel-writer` was the historical package name before the repository move; it is not the 1.1.0 development-line delivery package. New installations should use only `@shuishuipingan/inkweaver-dsh`. The DSH host and its Web UI companion are maintained by the DeepSeek Harness ecosystem and are not packages from this repository.
 
 ```sh
-dsh plugin --profile web add @shuishuipingan/inkweaver-dsh
+dsh plugin --profile web add '<path-to-inkweaver-dsh-tarball.tgz>'
 dsh --profile web
 ```
 

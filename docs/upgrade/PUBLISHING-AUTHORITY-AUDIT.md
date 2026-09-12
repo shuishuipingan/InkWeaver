@@ -1,7 +1,9 @@
 # 1.1.0 发布权限只读核验
 
 执行日期：2026-09-12（Asia/Hong_Kong）  
-状态：发布前审计；未执行任何外部写入。
+状态：发布范围已豁免 npm；未执行任何外部写入。
+
+发布负责人决议：本轮 1.1.0 不发布 npm，插件只作为 GitHub Release tarball 和本地安装包交付。以下 npm 401/404 结果保留作事实记录，但不再作为发布阻塞条件。
 
 ## npm
 
@@ -27,6 +29,6 @@ npm view @shuishuipingan/inkweaver-dsh version dist-tags --json
 - 现有正式 Release：`v1.0.0`，非 draft、非 prerelease；
 - `1.1.0-development` 仅作为开发分支，不能当作正式 Release。
 
-## 发布前动作
+## 仍保留的事实记录
 
-在 38 项需求、12 条旅程、长篇质量评测和冻结安装包全部通过后，发布负责人需要在受控环境完成 npm 登录/组织权限确认，再用最终 tarball 做 `npm publish --access public`；发布后必须回读版本、tarball SHA 和公开安装结果。当前审计不保存 token，也不改变版本号。
+即使 npm 不发布，最终 tarball 仍需在冻结 SHA 上重建并回读 SHA；GitHub Release 资产和本地 `dsh plugin add <tarball>` 安装路径必须通过验证。当前审计不保存 token，也不改变版本号。

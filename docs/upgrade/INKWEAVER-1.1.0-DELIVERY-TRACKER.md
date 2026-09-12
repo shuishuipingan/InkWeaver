@@ -48,7 +48,7 @@
 | F01 | DSH 兼容版本 | 11 | 核对的是官方默认分发渠道且固定准确版本吗？ | 通过 | 2026-09-11 npm 查询确认 `@deepseek-ai/dsh` latest=`0.1.5-rc.1`、next=`0.1.5-rc.2`、alpha=`0.1.5-alpha.2`；插件已将 DSH 家族锁定到 `0.1.5-rc.1`，并保留官方仍未发布 0.1.5 版本的两个 client pin；persona/SystemPrompt/Session 事件迁移与消息数组 system-prompt 兼容证据见 `plugins/inkweaver-dsh/docs/dsh-0.1.5-rc.1-compatibility.md`；当前完整回归为 40 文件/433 passed/6 skipped，历史完整 receipt 为 `.runtime/.cache/dsh-ai-novel-qualification-128/runs/2026-09-10T23-02-50-025Z-4888/qualification-receipt.json` |
 | F02 | 插件接口与安装 | 11 | InkWeaver tarball 在隔离 profile 的 roster、mount 和浏览器链通过吗？ | 通过 | 插件身份已统一迁移到 `@shuishuipingan/inkweaver-dsh`、目录 `plugins/inkweaver-dsh`、Host/preset `inkweaver`；DSH 0.1.5 exact shared `/api` Fetch routes、persona `prefix`、SystemPrompt `personaPrefix`、Session `assistant/message` 边界和 peer graph 均已通过；源码 `acc82f4`，Harness `183f08e`，tarball SHA-256 `dd3ae2467422613e249e7be6b94fb46d8002d5aab4222a3d7f6394f8f250725e`；receipt 覆盖隔离 profile add/remove/reinstall、真实 Chrome 三次 journey 和 layout QA；外部 prerequisite `@linxin666/dsh-web-all@0.3.20` 仅作为宿主依赖，不属于 InkWeaver 包 |
 | F03 | 插件对应创作功能 | 12 | 交接/人物候选/事实上下文和 Proposal 审核形成闭环吗？ | 通过 | DSH V2 schema 5 的 `NovelChapterHandoff`、`NovelKnowledgeEvent`、`chapter/context` 有效/confirmed 过滤和 Proposal 审核闭环均在真实 Chrome 中通过；receipt 验证固定五项 Proposal 生命周期、schema-5 persistence、重启读回和重装读回；剩余长篇质量评阅仍属于 A–E 创作体验工单，不阻塞本 DSH 闭环门禁 |
-| F04 | 插件版本与分发 | 13 | 1.1.0 可实际安装且公开兼容与升级说明吗？ | 开发中 | 新增 `plugins/inkweaver-dsh/docs/1.1.0-release-checklist.md`，固定插件身份、冻结前提、tarball/qualification/npm 发布顺序、外部 `@linxin666/dsh-web-all` 边界、topic 回读和回滚规则；`DSH-PACKAGE-DRY-RUN-RECEIPT.md` 验证当前开发 tarball 包名/41 entries/无旧包名/无外部宿主；`PUBLISHING-AUTHORITY-AUDIT.md` 记录 npm whoami=401、目标包 registry=404 及当前 GitHub 仅 v1.0.0 Release；当前插件仍为 `0.1.0`，尚未发布 npm 1.1.0 或正式 Release |
+| F04 | 插件版本与分发 | 13 | 1.1.0 可实际安装且公开兼容与升级说明吗？ | 开发中 | 发布范围已明确不发布 npm，改交付 GitHub Release tarball 与本地安装说明；`DSH-PACKAGE-DRY-RUN-RECEIPT.md` 验证当前开发 tarball 包名/41 entries/无旧包名/无外部宿主；`PUBLISHING-AUTHORITY-AUDIT.md` 保留 npm 401/404 事实但不再作为阻塞；最终仍需冻结 1.1.0 tarball、隔离 qualification 和 GitHub Release 回读 |
 | F05 | 主题发现 | 13 | dsh-plugin 元数据和实际索引结果分别有证据吗？ | 开发中 | GitHub API 已回读仓库 topic 含 `dsh-plugin`；2026-09-12 API 搜索 `topic:dsh-plugin user:shuishuipingan` 返回 `shuishuipingan/InkWeaver`（total_count=1），实际 topic 索引已可见；正式 1.1.0 Release 后仍需复核公开主题页首屏并留档，不能把 topic 索引当作 npm/Release 已发布证据 |
 | G01 | 详细文档 | 13 | 主页、指南、截图和更新日志是否真实对应实现？ | 待验收 | 中英文主页已明确 1.1.0 未发布开发线、连续叙事/人物/关系/快照能力和限制；新增 `docs/PROJECT-FILE-GUIDE.md`、`CHANGELOG.md`、DSH 兼容收据、GitHub 分发收据、固定质量样本集、插件 1.1.0 分发清单和 tracker；`DOCUMENTATION-CONSISTENCY-RECEIPT.md` 记录 README/版本守卫/GitHub contract 15 tests passed，以及旧 Harness/测试数/npm/topic 文案修正；真实新版本截图和最终冻结 SHA 对照仍待人工评阅 |
 | G02 | 版本冻结 | 13 | 桌面、插件、tag、锁文件和构建源码是否一致？ | 开发中 | 新增 `scripts/release-version-sync.mjs` 与 3 项测试，冻结前会校验 desktop/plugin 同一 final semver、正式插件包名 `@shuishuipingan/inkweaver-dsh`，并拒绝 prerelease；`VERSION-FREEZE-REHEARSAL-RECEIPT.md` 记录当前 `0.9.2/0.1.0` 被安全拒绝；尚未冻结、打 tag 或构建 1.1.0 发布资产 |
@@ -146,7 +146,7 @@
 | --- | --- |
 | 功能需求通过数 | 3 / 38（F01–F03 已由 DSH 0.1.5-rc.1 完整资格通过；其余需求仍需各自验收） |
 | 端到端旅程通过数 | 11 / 12（J01 新建/蓝图/连读、J02 悬念/视角边界、J03 所有权历史、J04 人物提取、J05 关系图、J06 影响重建、J07 过期修稿、J08 导出/快照恢复、J09 项目隔离、J10 DSH、J11 DSH 旧作品升级已在开发基线通过；J12 依赖最终版本冻结，冻结后需用同一 SHA 重跑全部旅程） |
-| 阅读质量评测 | 未执行 |
+| 阅读质量评测 | 外部评阅已按发布负责人决议豁免；保留 fixture、自动化回归、browser、provider dry-run、匿名 packet 和 strict 汇总器证据，不宣称真实模型质量通过 |
 | 开发基线对齐 | 本地开发线已推到 `origin/1.1.0-development`，并在每次同步后核对远端树与本地树一致；历史 macOS 资格 SHA `b9f713b5` 仍只代表 0.9.2 开发基线；`origin/main` 仍是官方 v1.0.0 基线 |
 | 桌面候选版本 / 源码 SHA | 当前仍为开发版本 `0.9.2` / 插件 `0.1.0`，尚未冻结到 1.1.0；macOS 双架构基线资格使用 `b9f713b5` |
 | 插件候选版本 / 宿主基线 | 尚未冻结；当前包名 `@shuishuipingan/inkweaver-dsh`，宿主兼容基线 `@deepseek-ai/dsh@0.1.5-rc.1` |
@@ -154,7 +154,7 @@
 | macOS ARM64 资格 run / attempt / artifact / hash | run `34647639036` / artifact `10283130774` / DMG SHA-256 `aa736ab89e2fa33a2c4bb520aeb007320f3e92d5d20a0b8bc8693a6793ef2343`，runtime-verified 通过 |
 | macOS x64 资格 run / attempt / artifact / hash | run `34647642420` / artifact `10282422689` / DMG SHA-256 `89b0ff684ba8f2f32084e270b9f4f49752b5f9f861b280ba1d48cd39fa4993c0`，runtime-verified 通过 |
 | 插件 tarball / hash / 安装资格记录 | 当前开发插件已有 DSH 0.1.5-rc.1 隔离 qualification receipt；1.1.0 冻结 tarball 尚未构建 |
-| npm 分发版本 / 发布结果 | 未发布 |
+| npm 分发版本 / 发布结果 | 本轮明确不发布 npm；目标包保持未发布 |
 | 文档实现一致性评阅 | 待验收；自动化 15 tests passed，手工修正收据见 `DOCUMENTATION-CONSISTENCY-RECEIPT.md` |
 | 正式 tag / Release / 发布 SHA | 未发布 |
 | topic 元数据 / 实际搜索结果 | 元数据此前已有 topic；实际可见性待发布验收 |

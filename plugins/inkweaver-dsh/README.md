@@ -13,14 +13,17 @@ The package ships four plugin entries:
 - `./agent-v2`, mounted only by the bundled V2 `inkweaver-v2` preset;
 - `./client`, which registers an “织墨” evidence card in Plugin Configuration and adds the compact “小说工作台” side drawer through the shell overlay.
 
-## Install from npm
+## Install from GitHub Release tarball
 
-Install the published bundle into a DeepSeek Harness profile:
+Install the frozen GitHub Release tarball into a DeepSeek Harness profile (npm is intentionally out of scope for this release):
 
 ```sh
-dsh plugin --profile web add @shuishuipingan/inkweaver-dsh
+dsh plugin --profile web add '<path-to-inkweaver-dsh-tarball.tgz>'
 dsh --profile web
 ```
+
+The development tree is not an npm installation target. The final tarball name,
+SHA-256 and profile qualification receipt are published with the GitHub Release.
 
 `@ethanyoq/dsh-ai-novel-writer` is the pre-migration package name. It is kept only as a historical identifier in migration documentation; do not install it for the InkWeaver line.
 
