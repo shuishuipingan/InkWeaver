@@ -27,6 +27,14 @@ import {
   workflowResourceClaimsConflict,
   type WorkflowResourceKind,
 } from '../shared/workflow-resource-claims'
+import type { ContextReceipt } from '../shared/context-receipt'
+import type { GenerationReceiptSummary } from '../shared/generation-receipt'
+import {
+  checkpointFromRun,
+  saveWorkflowRecoveryCheckpoint,
+  type WorkflowRecoveryBoundary,
+  type WorkflowRecoveryMetadata,
+} from '../shared/workflow-recovery'
 
 // ===== 工作流数据模型 =====
 
@@ -95,6 +103,14 @@ export interface WorkflowRun {
   failureCode?: WorkflowFailureCode
   /** Safe structured byte attribution mirrored from the failed current step. */
   promptBudgetReport?: PromptBudgetReport
+  /** Privacy-safe explanation of which complete context entries were selected. */
+  contextReceipt?: ContextReceipt
+  /** Safe model/budget attribution; null usage means provider usage was unavailable. */
+  generationReceipt?: GenerationReceiptSummary
+  /** Safe restart metadata; never contains step result/prose. */
+  recoveryCheckpoint?: import('../shared/workflow-recovery').WorkflowRecoveryCheckpoint
+  /** JSON-safe frozen inputs for a workflow-specific recovery factory. */
+  resumeMetadata?: WorkflowRecoveryMetadata
   /** 已请求在当前步骤完成后的安全边界暂停 */
   pauseRequested?: boolean
 }
@@ -108,6 +124,7 @@ export type WorkflowType =
   | 'batch_generate'          // 批量生成
   | 'config_generation'       // 智能配置生成
   | 'post_process'            // 后处理任务（角色卡提取等）
+  | 'character_extraction'    // 从正文提取带证据的人物候选
   | 'novel_import'            // 导入已有小说（逆向推演全流程）
 
 /** 工作流步骤执行器 */
@@ -149,6 +166,7 @@ export interface StepCallbacks {
   setProgress: (progress: number) => void
   /** 保存本步骤最近一次模型调用的安全提示词预算摘要。 */
   setPromptBudgetReport?: (report: PromptBudgetReport) => void
+  setGenerationReceipt?: (receipt: GenerationReceiptSummary) => void
   /** 流式文本追加 */
   appendText: (text: string) => void
   /** 用一份安全的临时或终态文本替换当前步骤输出。 */
@@ -192,6 +210,8 @@ export interface WorkflowDefinition {
   readResourceKeys?: readonly string[]
   /** Persisted workflows may freeze the UI locale independently of the current app setting. */
   uiLocale?: Locale
+  /** JSON-safe frozen inputs that the owning workflow can use after restart. */
+  resumeMetadata?: WorkflowRecoveryMetadata
   steps: Array<{
     name: string
     description: string
@@ -509,6 +529,7 @@ export const useWorkflowStore = create<WorkflowState>()((set, get) => ({
       ...(chapterWordsTarget ? { chapterWordsTarget } : {}),
       ...(resourceKeys ? { resourceKeys } : {}),
       ...(readResourceKeys ? { readResourceKeys } : {}),
+      ...(definition.resumeMetadata ? { resumeMetadata: { ...definition.resumeMetadata } } : {}),
       type: definition.type,
       title: definition.title,
       status: 'running',
@@ -533,6 +554,7 @@ export const useWorkflowStore = create<WorkflowState>()((set, get) => ({
         ...computeCompat(newRuns, s.waitingRuns),
       }
     })
+    persistRecoveryCheckpoint(run, 'started')
     get().addLog('info', uiText(
       uiLocale,
       `[开始] 工作流「${definition.title}」已启动`,
@@ -638,6 +660,9 @@ export const useWorkflowStore = create<WorkflowState>()((set, get) => ({
           updateStepById(set, run.id, i, { promptBudgetReport: attributableReport })
           updateRunById(set, run.id, { promptBudgetReport: attributableReport })
         },
+        setGenerationReceipt: (receipt) => {
+          updateRunById(set, run.id, { generationReceipt: receipt })
+        },
         appendText: (text) => {
           const activeRun = get().activeRuns.find(r => r.id === run.id)
           const step = activeRun?.steps[i]
@@ -682,6 +707,10 @@ export const useWorkflowStore = create<WorkflowState>()((set, get) => ({
           progress: 100,
           result: result || get().activeRuns.find(r => r.id === run.id)?.steps[i].result,
         })
+        const completedRun = get().activeRuns.find(candidate => candidate.id === run.id)
+        if (completedRun) persistRecoveryCheckpoint(completedRun, 'step-completed')
+        const contextReceipt = context.data.contextReceipt as ContextReceipt | undefined
+        if (contextReceipt) updateRunById(set, run.id, { contextReceipt })
         get().addLog('info', uiText(
           context.uiLocale,
           `[完成] [${definition.title}] 步骤: ${stepDef.name}`,
@@ -723,6 +752,8 @@ export const useWorkflowStore = create<WorkflowState>()((set, get) => ({
           ...(failureCode ? { failureCode } : {}),
           ...(promptBudgetFailure ? { promptBudgetReport: promptBudgetFailure.report } : {}),
         })
+        const failedRun = get().activeRuns.find(candidate => candidate.id === run.id)
+        if (failedRun) persistRecoveryCheckpoint(failedRun, 'failed')
         get().addLog('error', uiText(
           context.uiLocale,
           `[失败] [${definition.title}] 步骤: ${stepDef.name} — ${errorMsg}`,
@@ -753,6 +784,7 @@ export const useWorkflowStore = create<WorkflowState>()((set, get) => ({
         completedAt: new Date().toISOString(),
       })
       finalRun = get().activeRuns.find(r => r.id === run.id)
+      if (finalRun) persistRecoveryCheckpoint(finalRun, 'cancelled')
     }
     if (finalRun && finalRun.status === 'running' && !isCurrentWorkflowSession(
       definition.projectPath,
@@ -772,6 +804,8 @@ export const useWorkflowStore = create<WorkflowState>()((set, get) => ({
     if (finalRun && finalRun.status === 'running') {
       const projectSession = context.projectSession
       updateRunById(set, run.id, { status: 'completed', completedAt: new Date().toISOString() })
+      const completedRun = get().activeRuns.find(candidate => candidate.id === run.id)
+      if (completedRun) persistRecoveryCheckpoint(completedRun, 'completed')
       get().addLog('info', uiText(
         context.uiLocale,
         `[完成] 工作流「${definition.title}」已完成`,
@@ -999,6 +1033,11 @@ export const useWorkflowStore = create<WorkflowState>()((set, get) => ({
 }))
 
 // ===== 工具函数（按 runId 操作） =====
+
+function persistRecoveryCheckpoint(run: WorkflowRun, boundary: WorkflowRecoveryBoundary): void {
+  const checkpoint = checkpointFromRun(run, boundary)
+  if (checkpoint) saveWorkflowRecoveryCheckpoint(checkpoint)
+}
 
 /** 更新指定工作流的运行状态 */
 function updateRunById(

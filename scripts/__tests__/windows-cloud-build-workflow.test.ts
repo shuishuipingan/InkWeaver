@@ -141,10 +141,14 @@ describe('Windows cloud build workflow contract', () => {
     expect(workflow).toContain('pnpm run build:win')
     expect(workflow).not.toContain('build:win-dir')
 
-    expect(workflow).not.toContain('v0.2.5')
-    expect(workflow).not.toContain('AI_NOVEL_PREVIOUS_PORTABLE_ZIP')
+    expect(workflow).toContain('AI-Novel-Writer-0.2.5-windows-x64.zip')
+    expect(workflow).toContain('22b38b7337a456882bf130ccb898f17616fffb85d6c8b8b3d0ee431409f18531')
+    expect(workflow).toContain('AI_NOVEL_PREVIOUS_PORTABLE_ZIP')
     expect(workflow).toContain('release-evidence-v2.mjs finalize --platform windows')
-    expect(workflow).not.toContain('- name: Download verified')
+
+    const portableDownload = namedStep(workflow, 'Download verified v0.2.5 portable migration input')
+    expect(portableDownload).toContain("$portableZip = Join-Path $env:RUNNER_TEMP 'AI-Novel-Writer-0.2.5-windows-x64.zip'")
+    expect(portableDownload).toContain('"AI_NOVEL_PREVIOUS_PORTABLE_ZIP=$portableZip" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8')
 
     expect(evidenceScript).toContain("gateLevel: 'RUNTIME_VERIFIED'")
     expect(evidenceScript).toContain('releaseCreated: false')
@@ -161,7 +165,7 @@ describe('Windows cloud build workflow contract', () => {
     expect(successfulArtifact).not.toContain('win-unpacked')
     expect(successfulArtifact).not.toMatch(/failure\(\)/)
     expect(failedArtifact).toMatch(/if:\s*\$\{\{\s*failure\(\)\s*\}\}/)
-    expect(failedArtifact).toContain('inkweaver-cloud-build-diagnostics')
+    expect(failedArtifact).toContain('ai-novel-cloud-build-diagnostics')
     expect(failedArtifact).not.toMatch(/release\/|\.exe|win-unpacked/i)
     expect(failedArtifact).not.toMatch(/success\(\)/)
     expect(diagnostics).toMatch(/if:\s*\$\{\{\s*failure\(\)\s*\}\}/)
@@ -187,7 +191,6 @@ describe('Windows cloud build workflow contract', () => {
     const install = namedStep(workflow, 'Install locked dependencies')
     const browserInstall = namedStep(workflow, 'Install Playwright Chromium')
     const browserTest = namedStep(workflow, 'Run renderer browser tests')
-    const dshQualification = namedStep(workflow, 'Build and qualify the DSH release tarball')
     const build = namedStep(workflow, 'Run complete Windows release gate')
     const finalize = namedStep(workflow, 'Finalize Windows release evidence')
     const diagnostics = namedStep(workflow, 'Collect Windows build diagnostics')
@@ -219,7 +222,6 @@ describe('Windows cloud build workflow contract', () => {
       [install, 'install-locked-dependencies', 'pnpm install --frozen-lockfile'],
       [browserInstall, 'install-playwright-chromium', 'pnpm exec playwright install chromium'],
       [browserTest, 'renderer-browser-tests', 'pnpm run test:browser'],
-      [dshQualification, 'build-and-qualify-dsh-release-tarball', 'pnpm -C plugins/inkweaver-dsh install --frozen-lockfile && pnpm -C plugins/inkweaver-dsh test && pnpm -C plugins/inkweaver-dsh run pack:release'],
       [build, 'complete-windows-release-gate', 'pnpm run build:win'],
     ] as const) {
       expect(step).toContain('release-evidence-v2.mjs record')
@@ -227,8 +229,6 @@ describe('Windows cloud build workflow contract', () => {
       expect(step).toContain('-- "$env:ComSpec" /d /s /c')
       expect(step).toContain(`"${fixedCommand}"`)
     }
-    expect(dshQualification).not.toContain('pnpm -C plugins/inkweaver-dsh pack --pack-destination')
-    expect(dshQualification).toContain('pnpm -C plugins/inkweaver-dsh run pack:release')
     expect(finalize).toContain('release-evidence-v2.mjs finalize --platform windows')
     expect(finalize).toContain('--release-root "release/$version"')
     expect(finalize).toContain('verify-bundle --platform windows')
@@ -242,7 +242,7 @@ describe('Windows cloud build workflow contract', () => {
   })
 
   windowsIt('executes pnpm through the explicit trusted command processor and records the sanitized result', () => {
-    const evidenceRoot = mkdtempSync(path.join(tmpdir(), 'inkweaver-windows-comspec-record-'))
+    const evidenceRoot = mkdtempSync(path.join(tmpdir(), 'ai-novel-windows-comspec-record-'))
     try {
       const initialize = spawnSync(process.execPath, [
         evidenceScriptPath,

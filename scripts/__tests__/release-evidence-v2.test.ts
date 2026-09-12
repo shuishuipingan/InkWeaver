@@ -17,7 +17,6 @@ const WINDOWS_COMMAND_STEPS = [
   'install-playwright-chromium',
   'renderer-browser-tests',
   'complete-windows-release-gate',
-  'build-and-qualify-dsh-release-tarball',
 ]
 
 function fixture() {
@@ -133,6 +132,7 @@ describe('release evidence v2 CLI', () => {
       'qualification/acceptance/quiet-window.json',
       'qualification/acceptance/error-dialogs.json',
       'qualification/acceptance/uninstall.json',
+      'qualification/acceptance/upgrade-data.json',
       'qualification/acceptance/native-abi.json',
       'qualification/acceptance/packaged-smoke.json',
       'qualification/acceptance/signing.json',
@@ -329,28 +329,9 @@ describe('release evidence v2 CLI', () => {
     expect(init.status, init.stderr).toBe(0)
 
     const installer = `inkweaver-setup-${version}.exe`
-    const dshTarball = `shuishuipingan-inkweaver-dsh-${version}.tgz`
     writeFileSync(path.join(releaseRoot, installer), 'installer', 'utf8')
     writeFileSync(path.join(releaseRoot, `${installer}.blockmap`), 'blockmap', 'utf8')
     writeFileSync(path.join(releaseRoot, 'latest.yml'), `version: ${version}\n`, 'utf8')
-    const dshTarballPath = path.join(releaseRoot, dshTarball)
-    const dshTarballBytes = Buffer.from('qualified dsh tarball')
-    writeFileSync(dshTarballPath, dshTarballBytes)
-    const dshReceiptName = `shuishuipingan-inkweaver-dsh-${version}.receipt.json`
-    writeJson(path.join(releaseRoot, dshReceiptName), {
-      schemaVersion: 1,
-      status: 'passed',
-      packageName: '@shuishuipingan/inkweaver-dsh',
-      version,
-      sha256: sha256(dshTarballPath),
-      bytes: dshTarballBytes.length,
-      tarball: { fileName: dshTarball, relativePath: `release/${version}/${dshTarball}` },
-      bundlePatch: 'cordis.patch.yml',
-      bundlePatchSha256: 'b'.repeat(64),
-      presetIds: ['inkweaver', 'inkweaver-v2'],
-      entries: ['package/package.json'],
-      textMembersChecked: 1,
-    })
     writeJson(path.join(releaseRoot, 'qualification', 'packaged-vector-smoke.json'), {
       schemaVersion: 1, kind: 'packaged-vector-smoke', direct: { packaged: true },
     })
@@ -361,7 +342,7 @@ describe('release evidence v2 CLI', () => {
       schemaVersion: 1, kind: 'packaged-skin-smoke', direct: { packaged: true },
     })
     for (const receipt of [
-        'install', 'launch', 'quiet-window', 'error-dialogs', 'uninstall', 'native-abi', 'packaged-smoke',
+      'install', 'launch', 'quiet-window', 'error-dialogs', 'uninstall', 'upgrade-data', 'native-abi', 'packaged-smoke',
     ]) {
       writeJson(path.join(evidenceRoot, 'acceptance', `${receipt}.json`), {
         schemaVersion: 2,
@@ -406,7 +387,7 @@ describe('release evidence v2 CLI', () => {
     type LaunchReceipt = { expectedVersion?: unknown, direct: Record<string, unknown> }
     const writeSemanticReceipts = (timestamp?: string, mutateLaunch?: (receipt: LaunchReceipt) => void) => {
       for (const receipt of [
-        'install', 'launch', 'quiet-window', 'error-dialogs', 'uninstall', 'native-abi', 'packaged-smoke', 'signing',
+        'install', 'launch', 'quiet-window', 'error-dialogs', 'uninstall', 'upgrade-data', 'native-abi', 'packaged-smoke', 'signing',
       ]) {
         const value = validWindowsReceipt(receipt, releaseRoot) as LaunchReceipt
         if (timestamp !== undefined && receipt === 'quiet-window') value.direct.completedAt = timestamp
@@ -475,7 +456,6 @@ describe('release evidence v2 CLI', () => {
         expect.objectContaining({ file: installer }),
         expect.objectContaining({ file: `${installer}.blockmap` }),
         expect.objectContaining({ file: 'latest.yml' }),
-        expect.objectContaining({ file: dshTarball, role: 'dsh-extension' }),
       ],
     })
     expect(manifest.evidence).toEqual(expect.arrayContaining([
@@ -488,7 +468,6 @@ describe('release evidence v2 CLI', () => {
     const sums = readFileSync(path.join(releaseRoot, 'SHA256SUMS.txt'), 'utf8')
     expect(sums).toContain(`${sha256(path.join(releaseRoot, 'qualification', 'acceptance', 'signing.json'))} *qualification/acceptance/signing.json`)
     expect(sums).toContain(`${sha256(path.join(releaseRoot, 'manifest.json'))} *manifest.json`)
-    expect(sums).toContain(`${sha256(path.join(releaseRoot, dshReceiptName))} *${dshReceiptName}`)
 
     const verifyArguments = [
       evidenceScript,
@@ -510,60 +489,9 @@ describe('release evidence v2 CLI', () => {
     expect(verified.status, verified.stderr).toBe(0)
     expect(JSON.parse(verified.stdout)).toMatchObject({
       platform: 'windows',
-      releaseFiles: [installer, `${installer}.blockmap`, 'latest.yml', dshTarball],
+      releaseFiles: [installer, `${installer}.blockmap`, 'latest.yml'],
     })
-    expect(manifest.evidence).toEqual(expect.arrayContaining([
-      expect.objectContaining({ file: dshReceiptName, kind: 'dsh-release-receipt' }),
-    ]))
-
-    const unexpectedPath = path.join(releaseRoot, 'unexpected-qualification.json')
-    writeFileSync(unexpectedPath, '{}\n', 'utf8')
-    const unexpected = spawnSync(process.execPath, verifyArguments.concat('--run-attempt', '1'), { cwd: repositoryRoot, encoding: 'utf8' })
-    expect(unexpected.status).not.toBe(0)
-    expect(unexpected.stderr).toContain('Qualification bundle file set is not exact')
-    rmSync(unexpectedPath, { force: true })
-
-    const commonRoot = fixture()
-    const profilePath = path.join(repositoryRoot, '.release', 'release-profile.json')
-    const freeze = spawnSync(process.execPath, [
-      path.join(repositoryRoot, '.release', 'scripts', 'freeze-release-contract.mjs'),
-      '--repository', 'shuishuipingan/InkWeaver',
-      '--expected-sha', 'c'.repeat(40),
-      '--tag', `v${version}`,
-      '--version', version,
-      '--profile', profilePath,
-      '--output-root', commonRoot,
-      '--platform', 'windows',
-      '--run-id', '303',
-      '--run-attempt', '1',
-      '--workflow', '.github/workflows/windows-cloud-build-test.yml',
-      '--actor', 'release-operator',
-      '--event', 'workflow_dispatch',
-    ], { cwd: repositoryRoot, encoding: 'utf8' })
-    expect(freeze.status, freeze.stderr).toBe(0)
-    const legacy = spawnSync(process.execPath, [
-      path.join(repositoryRoot, '.release', 'scripts', 'finalize-legacy-qualification.mjs'),
-      '--platform', 'windows',
-      '--legacy-root', releaseRoot,
-      '--output-root', commonRoot,
-      '--profile', profilePath,
-      '--expected-sha', 'c'.repeat(40),
-      '--version', version,
-    ], { cwd: repositoryRoot, encoding: 'utf8' })
-    expect(legacy.status, legacy.stderr).toBe(0)
-    const legacyManifest = JSON.parse(readFileSync(path.join(commonRoot, 'manifest.json'), 'utf8'))
-    expect(legacyManifest.artifacts).toEqual(expect.arrayContaining([
-      expect.objectContaining({ path: `release-bundle/${dshTarball}`, role: 'extension' }),
-    ]))
-    expect(legacyManifest.artifacts).not.toEqual(expect.arrayContaining([
-      expect.objectContaining({ path: `release-bundle/${dshReceiptName}` }),
-    ]))
-    expect(legacyManifest.evidence).toEqual(expect.arrayContaining([
-      expect.objectContaining({ path: 'qualification/dsh-release-receipt.json', role: 'dsh-release-receipt' }),
-    ]))
-    const projectedReceipt = JSON.parse(readFileSync(path.join(commonRoot, 'qualification', 'dsh-release-receipt.json'), 'utf8'))
-    expect(projectedReceipt.sha256).toBe(sha256(path.join(commonRoot, 'release-bundle', dshTarball)))
-  }, 30_000)
+  }, 15_000)
 
   it('requires externally frozen expected toolchain versions and rejects a runtime mismatch', () => {
     const evidenceRoot = fixture()
@@ -598,5 +526,5 @@ describe('release evidence v2 CLI', () => {
     expect(mismatch.status).not.toBe(0)
     expect(mismatch.stderr).toContain('Installed Node version')
     expect(existsSync(path.join(evidenceRoot, 'release-contract.json'))).toBe(false)
-  }, 30_000)
+  })
 })

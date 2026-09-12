@@ -264,6 +264,76 @@ describe('RelationshipGraph readable theme text', () => {
 })
 
 describe('RelationshipGraph relation kinds', () => {
+  it('provides character search and relationship-kind filtering controls', async () => {
+    await act(async () => root.render(
+      <RelationshipGraph characters={[
+        { name: '林墨', role: 'protagonist', relationships: '周砧——杀父之仇' },
+        { name: '周砧', role: 'supporting', relationships: '' },
+        { name: '苏晚', role: 'supporting', relationships: '林墨——挚友' },
+      ]} />,
+    ))
+
+    const search = container.querySelector('input[aria-label="搜索角色"]')
+    const filter = container.querySelector('select[aria-label="按关系类型筛选"]')
+    expect(search).not.toBeNull()
+    expect(filter).not.toBeNull()
+    if (!search || !filter) throw new Error('graph filter controls not found')
+    expect((filter as HTMLSelectElement).value).toBe('all')
+
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+      setter?.call(search, '林墨')
+      search.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    expect(container.textContent).toContain('3')
+  })
+
+  it('supports alias search, optional two-hop focus, and a keyboard-accessible character list', async () => {
+    await act(async () => root.render(
+      <RelationshipGraph characters={[
+        { name: '林墨', aliases: ['夜行者'], role: 'protagonist', relationships: '周砧——挚友' },
+        { name: '周砧', role: 'supporting', relationships: '苏晚——共同追查' },
+        { name: '苏晚', role: 'supporting', relationships: '陈锋——旧识' },
+        { name: '陈锋', role: 'supporting', relationships: '' },
+      ]} />,
+    ))
+
+    const search = container.querySelector('input[aria-label="搜索角色"]')
+    if (!search) throw new Error('graph search control not found')
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+      setter?.call(search, '夜行者')
+      search.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    const depth = container.querySelector('select[aria-label="聚焦范围"]') as HTMLSelectElement | null
+    expect(depth).not.toBeNull()
+    if (!depth) throw new Error('focus depth control not found')
+    await act(async () => {
+      depth.value = '2'
+      depth.dispatchEvent(new Event('change', { bubbles: true }))
+    })
+    const list = container.querySelector('[data-relationship-list="true"]')
+    expect(list?.textContent).toContain('林墨')
+    expect(list?.textContent).toContain('苏晚')
+    expect(container.querySelector('[data-relationship-list="true"] button')).not.toBeNull()
+  })
+
+  it('exposes reset layout and lets the accessible list pin a node without changing graph facts', async () => {
+    await act(async () => root.render(
+      <RelationshipGraph projectKey="C:\\novels\\graph-layout" characters={[
+        { name: '林墨', role: 'protagonist', relationships: '周砧——挚友' },
+        { name: '周砧', role: 'supporting', relationships: '' },
+      ]} />,
+    ))
+    expect(container.querySelector('button[aria-label="重置关系图布局"]')).not.toBeNull()
+    const row = container.querySelector('[data-relationship-list="true"] button')
+    expect(row).not.toBeNull()
+    await act(async () => row?.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })))
+    expect(container.textContent).toContain('📌')
+    await act(async () => container.querySelector('button[aria-label="重置关系图布局"]')?.dispatchEvent(new MouseEvent('click', { bubbles: true })))
+    expect(container.textContent).not.toContain('📌')
+  })
+
   it('classifies free-text relations into graph kinds by keywords', () => {
     expect(classifyRelation('杀父之仇')).toBe('hostile')
     expect(classifyRelation('竞争对手')).toBe('hostile')
@@ -320,9 +390,10 @@ describe('RelationshipGraph relation kinds', () => {
         { name: '陈锋', role: 'supporting', relationships: '' },
       ]} />,
     ))
-    expect(container.textContent).toContain('敌对')
-    expect(container.textContent).toContain('友好')
-    expect(container.textContent).not.toContain('恋情')
+    const legend = container.querySelector('[data-relationship-legend="true"]')
+    expect(legend?.textContent).toContain('敌对')
+    expect(legend?.textContent).toContain('友好')
+    expect(legend?.textContent).not.toContain('恋情')
 
     await act(async () => root.unmount())
     container = document.createElement('div')
@@ -335,7 +406,7 @@ describe('RelationshipGraph relation kinds', () => {
         { name: '周砧', role: 'supporting', relationships: '' },
       ]} />,
     ))
-    expect(container.textContent).not.toContain('敌对')
+    expect(container.querySelector('[data-relationship-legend="true"]')).toBeNull()
   })
 
   it('merges duplicate pair edges into one line and keeps labels short', async () => {
@@ -352,6 +423,95 @@ describe('RelationshipGraph relation kinds', () => {
 
     // 同一对角色的重复描述合并为一条连线，标签只显示一次
     const labelCalls = fillTextCalls.filter((call) => call.text.includes('搭档'))
-    expect(new Set(labelCalls.map((call) => call.text))).toHaveLength(1)
+    expect(new Set(labelCalls.map(call => call.text))).toEqual(new Set(['关系：搭档 / 搭档']))
+  })
+
+  it('exposes directed relationship history with source chapters and evidence in an accessible panel', async () => {
+    await act(async () => root.render(
+      <RelationshipGraph characters={[
+        {
+          name: '林墨',
+          role: 'protagonist',
+          relationships: JSON.stringify([
+            { target: '周砧', relation: '信任', direction: 'outgoing', sourceChapter: 3, evidence: '林墨把钥匙交给周砧。' },
+            { target: '周砧', relation: '信任', direction: 'incoming', sourceChapter: 9, evidence: '周砧在危急时刻替林墨挡刀。' },
+          ]),
+        },
+        { name: '周砧', role: 'supporting', relationships: '' },
+      ]} />,
+    ))
+
+    const history = container.querySelector('[data-relationship-history="true"]')
+    expect(history).not.toBeNull()
+    expect(history?.textContent).toContain('关系历史与证据')
+    expect(history?.textContent).toContain('第3章')
+    expect(history?.textContent).toContain('第9章')
+    expect(history?.textContent).toContain('林墨把钥匙交给周砧')
+    expect(history?.textContent).toContain('周砧在危急时刻替林墨挡刀')
+  })
+
+  it('offers a keyboard-accessible evidence action for the source chapter', async () => {
+    const onOpenEvidence = vi.fn()
+    await act(async () => root.render(
+      <RelationshipGraph
+        onOpenEvidence={onOpenEvidence}
+        characters={[{
+          name: '林墨', role: 'protagonist',
+          relationships: JSON.stringify([{ target: '周砧', relation: '信任', direction: 'outgoing', sourceChapter: 3, evidence: '林墨把钥匙交给周砧。' }]),
+        }, { name: '周砧', role: 'supporting', relationships: '' }]}
+      />,
+    ))
+    const evidence = container.querySelector<HTMLButtonElement>('[data-relationship-evidence="true"]')
+    expect(evidence).not.toBeNull()
+    await act(async () => evidence?.click())
+    expect(onOpenEvidence).toHaveBeenCalledWith(3)
+  })
+
+  it('filters relationship history to the state known by a selected chapter', async () => {
+    await act(async () => root.render(
+      <RelationshipGraph characters={[{
+        name: '林墨', role: 'protagonist',
+        relationships: JSON.stringify([
+          { target: '周砧', relation: '信任', direction: 'outgoing', sourceChapter: 3, evidence: '第三章交付钥匙。' },
+          { target: '周砧', relation: '敌对', direction: 'incoming', sourceChapter: 9, evidence: '第九章关系反转。' },
+        ]),
+      }, { name: '周砧', role: 'supporting', relationships: '' }]} />,
+    ))
+    const history = container.querySelector('[data-relationship-history="true"]')
+    const chapter = history?.querySelector<HTMLSelectElement>('select[aria-label="关系历史截至章节"]')
+    expect(chapter).not.toBeNull()
+    expect([...chapter!.options].map(option => option.value)).toEqual(['all', '3', '9'])
+    await act(async () => {
+      chapter!.value = '3'
+      chapter!.dispatchEvent(new Event('change', { bubbles: true }))
+    })
+    expect(history?.textContent).toContain('第三章交付钥匙')
+    expect(history?.textContent).not.toContain('第九章关系反转')
+  })
+
+  it('compares relationship history between two chapters and lists newly introduced evidence', async () => {
+    await act(async () => root.render(
+      <RelationshipGraph characters={[{
+        name: '林墨', role: 'protagonist',
+        relationships: JSON.stringify([
+          { target: '周砧', relation: '信任', direction: 'outgoing', sourceChapter: 3, evidence: '第三章交付钥匙。' },
+          { target: '周砧', relation: '敌对', direction: 'incoming', sourceChapter: 9, evidence: '第九章关系反转。' },
+        ]),
+      }, { name: '周砧', role: 'supporting', relationships: '' }]} />,
+    ))
+    const compare = container.querySelector('[data-relationship-history-compare="true"]')
+    expect(compare).not.toBeNull()
+    const left = compare?.querySelector<HTMLSelectElement>('select[aria-label="关系历史比较起始章节"]')
+    const right = compare?.querySelector<HTMLSelectElement>('select[aria-label="关系历史比较结束章节"]')
+    expect(left).not.toBeNull()
+    expect(right).not.toBeNull()
+    await act(async () => {
+      left!.value = '3'
+      left!.dispatchEvent(new Event('change', { bubbles: true }))
+      right!.value = '9'
+      right!.dispatchEvent(new Event('change', { bubbles: true }))
+    })
+    expect(compare?.textContent).toContain('新增关系')
+    expect(compare?.textContent).toContain('第九章关系反转')
   })
 })

@@ -55,7 +55,7 @@ async function initializedV2Workspace(prefix: string): Promise<string> {
 }
 
 function downgradeDatabaseToV2(root: string): void {
-  const database = new DatabaseSync(join(root, '.inkweaver', 'novel.db'))
+  const database = new DatabaseSync(join(root, '.ai-novel', 'novel.db'))
   try {
     database.exec('DROP TABLE chapter_finals')
     database.exec('ALTER TABLE artifacts DROP COLUMN summary')
@@ -125,7 +125,7 @@ describe('novel context Host RPC', () => {
 
     expect(result).toMatchObject({ ok: false, error: { code: 'bad-request' } })
     expect(JSON.stringify(result)).not.toContain(root)
-    expect(existsSync(join(root, '.inkweaver'))).toBe(false)
+    expect(existsSync(join(root, '.ai-novel'))).toBe(false)
   })
 
   it('rejects an exact workspace/initialize request for an unregistered Workspace', async () => {
@@ -219,7 +219,7 @@ describe('novel context Host RPC', () => {
       if (!result.ok) expect(result.error.message).toContain('NOT_INITIALIZED')
       expect(JSON.stringify(result)).not.toContain(root)
       expect(report).toHaveBeenCalled()
-      expect(existsSync(join(root, '.inkweaver'))).toBe(false)
+      expect(existsSync(join(root, '.ai-novel'))).toBe(false)
     })
 
   it('fails proposal/list when the workspace has no V2 project instead of returning an empty inbox', async () => {
@@ -247,7 +247,7 @@ describe('novel context Host RPC', () => {
       value: { status: 'not-initialized', workspaceId: V2_WORKSPACE_ID },
     })
     expect(JSON.stringify(result)).not.toContain(root)
-    expect(existsSync(join(root, '.inkweaver'))).toBe(false)
+    expect(existsSync(join(root, '.ai-novel'))).toBe(false)
     await expect(handler('state/read', { workspaceId: V2_WORKSPACE_ID }, signal)).resolves.toEqual({
       ok: false,
       error: {
@@ -290,8 +290,8 @@ describe('novel context Host RPC', () => {
     const installer = createPresetInstaller(join(import.meta.dirname, '..', 'presets', 'inkweaver'), presetRoot)
     const invalidHandler = createAiNovelRpcHandler(installer, { get: () => ({ path: root }) })
     const unknownHandler = createAiNovelRpcHandler(installer, { get: () => undefined })
-    await mkdir(join(corruptRoot, '.inkweaver'), { recursive: true })
-    await writeFile(join(corruptRoot, '.inkweaver', 'novel.db'), 'not a sqlite database', 'utf8')
+    await mkdir(join(corruptRoot, '.ai-novel'), { recursive: true })
+    await writeFile(join(corruptRoot, '.ai-novel', 'novel.db'), 'not a sqlite database', 'utf8')
     const corruptHandler = createAiNovelRpcHandler(installer, { get: () => ({ path: corruptRoot }) })
     const lockedStore = await openNovelStore(lockedRoot, WorkspaceId(V2_WORKSPACE_ID), { create: true })
     const lockedHandler = createAiNovelRpcHandler(installer, { get: () => ({ path: lockedRoot }) })
@@ -913,7 +913,7 @@ describe('novel context Host RPC', () => {
       },
     })
     expect(JSON.stringify({ state, proposals })).not.toContain(root)
-    const database = new DatabaseSync(join(root, '.inkweaver', 'novel.db'), { readOnly: true })
+    const database = new DatabaseSync(join(root, '.ai-novel', 'novel.db'), { readOnly: true })
     try {
       expect((database.prepare('PRAGMA user_version').get() as { user_version: number }).user_version).toBe(2)
     } finally {
@@ -1041,7 +1041,7 @@ describe('novel context Host RPC', () => {
       },
     })
     expect(JSON.stringify(result)).not.toContain(root)
-    expect(JSON.stringify(result)).not.toContain('.inkweaver')
+    expect(JSON.stringify(result)).not.toContain('.ai-novel')
   })
 
   it.each([
@@ -1090,7 +1090,7 @@ describe('novel context Host RPC', () => {
       kind: 'initialize', title: '潮汐来信', language: 'zh-CN', genre: '悬疑',
       plannedChapters: 2, targetWordsPerChapter: 2_000, creativeStrategy: 'auto',
     }, signal)
-    await symlink(join(target, '.inkweaver'), join(root, '.inkweaver'), 'junction')
+    await symlink(join(target, '.ai-novel'), join(root, '.ai-novel'), 'junction')
     const installer = createPresetInstaller(join(import.meta.dirname, '..', 'presets', 'inkweaver'), presetRoot)
     const report = vi.fn()
     const handler = createAiNovelRpcHandler(installer, { get: () => ({ path: root }) }, report)

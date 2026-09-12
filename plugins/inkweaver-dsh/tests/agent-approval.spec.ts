@@ -2,7 +2,7 @@ import { access, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import { CallId } from '@deepseek-ai/dsh-llm'
+import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import ApprovalService from '@deepseek-ai/dsh-user-approval'
@@ -27,7 +27,9 @@ function fakeAgent(root: string): Agent {
   return {
     session: {
       header: { cwd: root },
-      events: [{ type: 'turn/start' }],
+      events: [{ type: 'turn/start', data: { turn: 1 } }],
+      seq: 1,
+      eventAt: () => ({ type: 'turn/start', data: { turn: 1 } }),
       append: () => ({}),
     },
   } as unknown as Agent
@@ -44,7 +46,7 @@ async function setup(policy: 'ask' | 'never' = 'ask'): Promise<Context> {
 
 async function executeInitialize(ctx: Context, root: string) {
   return ctx.tools.execute({
-    callId: CallId('novel-init'),
+    callId: ToolCallId('novel-init'),
     name: 'novel_apply_change',
     arguments: initialize,
     agent: fakeAgent(root),
@@ -52,7 +54,7 @@ async function executeInitialize(ctx: Context, root: string) {
   })
 }
 
-describe('InkWeaver native approval integration', () => {
+describe('AI novel native approval integration', () => {
   it('executes exactly once after an allowed-once answer', async () => {
     const root = await makeTestWorkspace('approved-')
     const ctx = await setup()
@@ -70,7 +72,7 @@ describe('InkWeaver native approval integration', () => {
       meta: { newRevision: expect.stringMatching(/^[0-9a-f]{64}$/) },
     })
     expect(answers).toBe(1)
-    await expect(access(join(root, '.inkweaver', 'project.json'))).resolves.toBeUndefined()
+    await expect(access(join(root, '.ai-novel', 'project.json'))).resolves.toBeUndefined()
   })
 
   it.each([
@@ -84,7 +86,7 @@ describe('InkWeaver native approval integration', () => {
     const result = await executeInitialize(ctx, root)
 
     expect(result.isError).toBe(true)
-    await expect(access(join(root, '.inkweaver', 'project.json'))).rejects.toThrow()
+    await expect(access(join(root, '.ai-novel', 'project.json'))).rejects.toThrow()
   })
 
   it('leaves disk unchanged when no approval answerer is available', async () => {
@@ -92,7 +94,7 @@ describe('InkWeaver native approval integration', () => {
     const result = await executeInitialize(await setup(), root)
 
     expect(result.isError).toBe(true)
-    await expect(access(join(root, '.inkweaver', 'project.json'))).rejects.toThrow()
+    await expect(access(join(root, '.ai-novel', 'project.json'))).rejects.toThrow()
   })
 
   it('leaves disk unchanged and never consults an answerer under the never policy', async () => {
@@ -108,7 +110,7 @@ describe('InkWeaver native approval integration', () => {
 
     expect(result.isError).toBe(true)
     expect(consulted).toBe(false)
-    await expect(access(join(root, '.inkweaver', 'project.json'))).rejects.toThrow()
+    await expect(access(join(root, '.ai-novel', 'project.json'))).rejects.toThrow()
   })
 
   it('rechecks the asset revision after approval before writing', async () => {
@@ -123,7 +125,7 @@ describe('InkWeaver native approval integration', () => {
     })
     const filename = join(root, 'chapters', '0001.md')
     const pending = ctx.tools.execute({
-      callId: CallId('novel-race'),
+      callId: ToolCallId('novel-race'),
       name: 'novel_apply_change',
       arguments: {
         kind: 'replace', targetKind: 'chapter-draft', chapter: 1,

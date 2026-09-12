@@ -2,7 +2,9 @@
 
 import { appendFile } from 'node:fs/promises'
 import process from 'node:process'
-import { CallId, LlmAdapter } from '@deepseek-ai/dsh-llm'
+import * as llm from '@deepseek-ai/dsh-llm'
+const { LlmAdapter } = llm
+const CallId = llm.CallId ?? llm.ToolCallId
 
 function fail(message) {
   throw new Error(message)

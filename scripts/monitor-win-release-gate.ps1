@@ -2,30 +2,10 @@
   [string]$ControlPath,
   [string]$StatusPath,
   [string]$EvidencePath,
-  [string]$StartupPath,
   [switch]$LoadMonitorLibrary
 )
 
 $ErrorActionPreference = 'Stop'
-
-if (-not $LoadMonitorLibrary -and -not [string]::IsNullOrWhiteSpace($StartupPath)) {
-  $startupRecord = [ordered]@{
-    state = 'starting'
-    processId = $PID
-    startedAt = [DateTime]::UtcNow.ToString('o')
-  }
-  $startupPayload = [pscustomobject]$startupRecord | ConvertTo-Json -Compress
-  $startupEncoding = [System.Text.UTF8Encoding]::new($false)
-  $startupTemporaryPath = "$StartupPath.$PID.tmp"
-  try {
-    [System.IO.File]::WriteAllText($startupTemporaryPath, $startupPayload, $startupEncoding)
-    [System.IO.File]::Move($startupTemporaryPath, $StartupPath)
-  }
-  catch {
-    Remove-Item -LiteralPath $startupTemporaryPath -Force -ErrorAction SilentlyContinue
-    throw
-  }
-}
 
 . (Join-Path $PSScriptRoot 'smoke-win-app.ps1') -LoadProbeLibrary
 
@@ -104,13 +84,6 @@ namespace AiNovelReleaseGate {
   // profile name. Keep that translation narrowly available to the PowerShell
   // classifier; a failed lookup deliberately leaves the classifier fail-closed.
   public static class WindowsPath {
-    private const uint FileReadAttributes = 0x00000080;
-    private const uint FileShareRead = 0x00000001;
-    private const uint FileShareWrite = 0x00000002;
-    private const uint FileShareDelete = 0x00000004;
-    private const uint OpenExisting = 3;
-    private const uint FileFlagBackupSemantics = 0x02000000;
-
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern uint GetLongPathName(
       string shortPath,
@@ -126,57 +99,6 @@ namespace AiNovelReleaseGate {
       uint written = GetLongPathName(path, buffer, unchecked((uint)buffer.Capacity));
       if (written == 0 || written >= buffer.Capacity) return null;
       return buffer.ToString();
-    }
-
-    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-    private static extern IntPtr CreateFile(
-      string fileName,
-      uint desiredAccess,
-      uint shareMode,
-      IntPtr securityAttributes,
-      uint creationDisposition,
-      uint flagsAndAttributes,
-      IntPtr templateFile
-    );
-
-    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-    private static extern uint GetFinalPathNameByHandle(
-      IntPtr file,
-      StringBuilder filePath,
-      uint filePathLength,
-      uint flags
-    );
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern bool CloseHandle(IntPtr handle);
-
-    public static string TryGetFinalPathName(string path) {
-      if (String.IsNullOrWhiteSpace(path)) return null;
-      IntPtr handle = CreateFile(
-        path,
-        FileReadAttributes,
-        FileShareRead | FileShareWrite | FileShareDelete,
-        IntPtr.Zero,
-        OpenExisting,
-        FileFlagBackupSemantics,
-        IntPtr.Zero
-      );
-      if (handle == IntPtr.Zero || handle == new IntPtr(-1)) return null;
-      try {
-        uint required = GetFinalPathNameByHandle(handle, null, 0, 0);
-        if (required == 0) return null;
-        StringBuilder buffer = new StringBuilder(unchecked((int)required + 1));
-        uint written = GetFinalPathNameByHandle(handle, buffer, unchecked((uint)buffer.Capacity), 0);
-        if (written == 0 || written >= buffer.Capacity) return null;
-        string finalPath = buffer.ToString();
-        if (finalPath.StartsWith("\\\\?\\", StringComparison.OrdinalIgnoreCase)) {
-          return finalPath.Substring(4);
-        }
-        return finalPath;
-      }
-      finally {
-        CloseHandle(handle);
-      }
     }
 
   }
@@ -814,7 +736,8 @@ function Write-AiNovelGateStatus {
   param(
     [Parameter(Mandatory = $true)][string]$State,
     [string]$Step = '',
-    [string]$Failure = ''
+    [string]$Failure = '',
+    [AllowNull()]$LegacyBridge = $null
   )
 
   $statusRecord = [ordered]@{
@@ -824,6 +747,9 @@ function Write-AiNovelGateStatus {
     updatedAt = [DateTime]::UtcNow.ToString('o')
     monitorStartedAt = $script:AiNovelGateMonitorStartedAt
     monitorStoppedAt = $script:AiNovelGateMonitorStoppedAt
+  }
+  if ($null -ne $LegacyBridge) {
+    $statusRecord.legacyBridge = $LegacyBridge
   }
   $payload = [pscustomobject]$statusRecord | ConvertTo-Json -Depth 8 -Compress
   $encoding = [System.Text.UTF8Encoding]::new($false)
@@ -1385,17 +1311,15 @@ function Test-AiNovelGateNsisUninstallerHelperImage {
     return $false
   }
   try {
-    $helperFullPath = Resolve-AiNovelGateCanonicalExistingPath -Path $ImagePath
-    if ([string]::IsNullOrWhiteSpace($helperFullPath)) {
-      return $false
-    }
+    # The NSIS helper may be deleted before its child probe exits. Validate the
+    # captured absolute path lexically instead of requiring the file to remain
+    # on disk at the moment the completion-port event is drained.
+    $helperFullPath = [System.IO.Path]::GetFullPath($ImagePath)
     $helperDirectory = [System.IO.Path]::GetDirectoryName($helperFullPath)
     $helperFileName = [System.IO.Path]::GetFileName($helperFullPath)
     $helperDirectoryName = [System.IO.Path]::GetFileName($helperDirectory)
     return (
-      (Test-AiNovelGateDirectChildDirectory `
-        -DirectoryPath $helperDirectory `
-        -RootPath ([System.IO.Path]::GetTempPath())) -and
+      $helperDirectory -match '(?i)^[A-Za-z]:\\.*\\Temp\\~nsu[A-Za-z0-9]*\.tmp$' -and
       $helperDirectoryName -match '^(?i:~nsu[A-Za-z0-9]*\.tmp)$' -and
       $helperFileName -match '^(?i:Un_[A-Za-z0-9]+\.exe)$'
     )
@@ -1524,692 +1448,6 @@ function Test-AiNovelGateSystemUtilityImage {
   }
 }
 
-function Test-AiNovelGateNodeImage {
-  param([AllowEmptyString()][string]$ImagePath)
-
-  if ([string]::IsNullOrWhiteSpace($ImagePath) -or $ImagePath -notmatch '^[A-Za-z]:\\') {
-    return $false
-  }
-  try {
-    return [string]::Equals(
-      [System.IO.Path]::GetFileName([System.IO.Path]::GetFullPath($ImagePath)),
-      'node.exe',
-      [System.StringComparison]::OrdinalIgnoreCase
-    )
-  }
-  catch {
-    return $false
-  }
-}
-
-function Test-AiNovelGateSameNodeExecutablePath {
-  param(
-    [AllowEmptyString()][string]$Left,
-    [AllowEmptyString()][string]$Right
-  )
-
-  if (Test-AiNovelGateSameAbsolutePath -Left $Left -Right $Right) {
-    return $true
-  }
-  if (
-    [string]::IsNullOrWhiteSpace($Left) -or
-    [string]::IsNullOrWhiteSpace($Right) -or
-    $Left -notmatch '^[A-Za-z]:\\' -or
-    $Right -notmatch '^[A-Za-z]:\\'
-  ) {
-    return $false
-  }
-  try {
-    $leftFinalPath = [AiNovelReleaseGate.WindowsPath]::TryGetFinalPathName($Left)
-    $rightFinalPath = [AiNovelReleaseGate.WindowsPath]::TryGetFinalPathName($Right)
-    return Test-AiNovelGateSameAbsolutePath -Left $leftFinalPath -Right $rightFinalPath
-  }
-  catch {
-    return $false
-  }
-}
-
-function Get-AiNovelGateBoundNodeCommandArguments {
-  param(
-    [AllowEmptyString()][string]$CommandLine,
-    [AllowEmptyString()][string]$ImagePath
-  )
-
-  if (
-    [string]::IsNullOrWhiteSpace($CommandLine) -or
-    -not (Test-AiNovelGateNodeImage -ImagePath $ImagePath)
-  ) {
-    return $null
-  }
-  $firstToken = [regex]::Match($CommandLine, '^(?<argv0>"[^"]+"|[^\s]+)(?<arguments>.*)$')
-  if (-not $firstToken.Success) {
-    return $null
-  }
-  $argvZero = [string]$firstToken.Groups['argv0'].Value
-  if ($argvZero.StartsWith('"', [System.StringComparison]::Ordinal)) {
-    if (-not $argvZero.EndsWith('"', [System.StringComparison]::Ordinal) -or $argvZero.Length -le 2) {
-      return $null
-    }
-    $argvZero = $argvZero.Substring(1, $argvZero.Length - 2)
-  }
-  if (
-    ($argvZero -match '^[A-Za-z]:\\' -and
-      -not (Test-AiNovelGateSameNodeExecutablePath -Left $argvZero -Right $ImagePath)) -or
-    ($argvZero -notmatch '^[A-Za-z]:\\' -and
-      -not [string]::Equals($argvZero, 'node', [System.StringComparison]::OrdinalIgnoreCase) -and
-      -not [string]::Equals($argvZero, 'node.exe', [System.StringComparison]::OrdinalIgnoreCase))
-  ) {
-    return $null
-  }
-  return [string]$firstToken.Groups['arguments'].Value
-}
-
-function Get-AiNovelGatePnpmWorkspaceProbeCommandParts {
-  param([AllowEmptyString()][string]$Arguments)
-
-  if ([string]::IsNullOrWhiteSpace($Arguments)) {
-    return $null
-  }
-  # The Node command's first script argument is quoted because the pnpm store
-  # path may contain spaces. Keep the path and the remaining argv vector
-  # separate so path normalization cannot loosen the command contract.
-  $scriptToken = [regex]::Match(
-    $Arguments,
-    '^\s+"(?<script>[A-Za-z]:\\[^\"]+)"(?<arguments>.*)$'
-  )
-  if (-not $scriptToken.Success) {
-    return $null
-  }
-  return [pscustomobject][ordered]@{
-    ScriptPath = [string]$scriptToken.Groups['script'].Value
-    Arguments = [string]$scriptToken.Groups['arguments'].Value
-  }
-}
-
-function Test-AiNovelGatePnpmWorkspaceProbeScriptPath {
-  param([AllowEmptyString()][string]$ScriptPath)
-
-  if (
-    [string]::IsNullOrWhiteSpace($ScriptPath) -or
-    $ScriptPath -notmatch '^[A-Za-z]:\\'
-  ) {
-    return $false
-  }
-  try {
-    $normalizedPath = [System.IO.Path]::GetFullPath($ScriptPath)
-    $candidatePath = $normalizedPath
-    try {
-      # Resolve junctions/symlinks when the entrypoint exists. Synthetic
-      # contract fixtures may not have a file, so retain the normalized
-      # spelling only when the kernel cannot resolve a final path.
-      $finalPath = [AiNovelReleaseGate.WindowsPath]::TryGetFinalPathName($normalizedPath)
-      if (-not [string]::IsNullOrWhiteSpace($finalPath)) {
-        $candidatePath = [System.IO.Path]::GetFullPath($finalPath)
-      }
-    }
-    catch {
-      # A failed final-path lookup is handled by the normalized candidate.
-    }
-    $collapsedPath = [regex]::Replace([string]$candidatePath, '\\+', '\')
-    if ($collapsedPath -match '(?i)\\node_modules\\pnpm\\bin\\pnpm\.mjs$') {
-      return $true
-    }
-  }
-  catch {
-    return $false
-  }
-  return $false
-}
-
-function Test-AiNovelGateKnownElectronBuilderCliCommand {
-  param(
-    [AllowEmptyString()][string]$CommandLine,
-    [AllowEmptyString()][string]$NodeImagePath
-  )
-
-  $arguments = Get-AiNovelGateBoundNodeCommandArguments `
-    -CommandLine $CommandLine `
-    -ImagePath $NodeImagePath
-  if ($null -eq $arguments) {
-    return $false
-  }
-  # The real builder process uses the electron-builder CLI entrypoint and the
-  # exact release target flags. Keep the script path and the complete argument
-  # vector bound; a generic Node/pnpm process must never qualify this branch.
-  return $arguments -match '^(?i:\s+"[^"]+\\electron-builder\\cli\.js"\s+--win\s+--x64\s+--publish\s+never)$'
-}
-
-function Test-AiNovelGateElectronBuilderWorkspaceProbeResult {
-  param(
-    [AllowEmptyString()][string]$ResultPath,
-    [AllowNull()]$ArmedRootIdentity
-  )
-
-  if (
-    [string]::IsNullOrWhiteSpace($ResultPath) -or
-    $ResultPath -notmatch '^[A-Za-z]:\\' -or
-    $null -eq $ArmedRootIdentity -or
-    [int]$ArmedRootIdentity.processId -le 0
-  ) {
-    return $false
-  }
-  try {
-    if (-not (Test-Path -LiteralPath $ResultPath -PathType Leaf)) {
-      return $false
-    }
-    $result = Get-Content -LiteralPath $ResultPath -Raw -Encoding UTF8 -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
-    return (
-      [string]::Equals([string]$result.state, 'completed', [System.StringComparison]::Ordinal) -and
-      [int]$result.processId -eq [int]$ArmedRootIdentity.processId -and
-      [int]$result.targetExitCode -eq 0 -and
-      $null -eq $result.targetSignal -and
-      [int]$result.targetProcessId -gt 0
-    )
-  }
-  catch {
-    return $false
-  }
-}
-
-function Test-AiNovelGateKnownElectronBuilderPnpmWorkspaceProbeCommand {
-  param(
-    [AllowEmptyString()][string]$CommandLine,
-    [AllowEmptyString()][string]$NodeImagePath
-  )
-
-  $arguments = Get-AiNovelGateBoundNodeCommandArguments `
-    -CommandLine $CommandLine `
-    -ImagePath $NodeImagePath
-  if ($null -eq $arguments) {
-    return $false
-  }
-  $parts = Get-AiNovelGatePnpmWorkspaceProbeCommandParts -Arguments $arguments
-  if (
-    $null -eq $parts -or
-    -not (Test-AiNovelGatePnpmWorkspaceProbeScriptPath -ScriptPath ([string]$parts.ScriptPath))
-  ) {
-    return $false
-  }
-  # app-builder-lib asks pnpm for the workspace root with this exact command.
-  # Bind the complete argv vector and the installed pnpm entrypoint; a generic
-  # Node process or a different package-manager command is not a benign probe.
-  return [string]$parts.Arguments -match '^(?i:\s+(?:--workspace-root\s+exec\s+pwd|"--workspace-root"\s+"exec"\s+"pwd"))$'
-}
-
-function Test-AiNovelGateKnownElectronBuilderPnpmWorkspaceProbeWrapper {
-  param(
-    [AllowEmptyString()][string]$CommandLine,
-    [AllowEmptyString()][string]$CmdImagePath
-  )
-
-  $arguments = Get-AiNovelGateBoundCommandArguments `
-    -CommandLine $CommandLine `
-    -ImagePath $CmdImagePath
-  if ($null -eq $arguments) {
-    return $false
-  }
-  # cross-spawn/pnpm adds cmd.exe wrappers around the same workspace probe.
-  # Keep the wrapper's executable, switches, quoting, and command token exact;
-  # do not exempt arbitrary cmd.exe children by process name.
-  return $arguments -match '^(?i:\s+/d\s+/s\s+/c\s+"(?:pnpm|[A-Za-z]:(?:\\+[^\"]+)+\\+pnpm(?:\.cmd)?)\s+\^"--workspace-root\^"\s+\^"exec\^"\s+\^"pwd\^"\")$'
-}
-
-function Test-AiNovelGateKnownElectronBuilderPnpmWorkspaceProbeDirectCommand {
-  param([AllowEmptyString()][string]$Arguments)
-
-  # cross-spawn emits /d /s /c for the real electron-builder probe. Keep the
-  # /q form only for the explicit synthetic smoke fixture; both forms remain
-  # byte-exact and carry the same identity-bound ancestry checks below.
-  return (
-    [string]::Equals($Arguments, ' /d /s /c "pwd"', [System.StringComparison]::Ordinal) -or
-    [string]::Equals($Arguments, ' /q /d /s /c "pwd"', [System.StringComparison]::Ordinal)
-  )
-}
-
-function Test-AiNovelGateKnownElectronBuilderPnpmWorkspaceProbeProcess {
-  param([AllowNull()]$ProcessIdentity)
-
-  if (
-    $null -eq $ProcessIdentity -or
-    -not [bool]$ProcessIdentity.identityCaptured -or
-    -not [bool]$ProcessIdentity.commandLineCaptured
-  ) {
-    return $false
-  }
-  if (Test-AiNovelGateSystemUtilityImage `
-    -ImagePath ([string]$ProcessIdentity.executablePath) `
-    -FileName 'cmd.exe') {
-    $arguments = Get-AiNovelGateBoundCommandArguments `
-      -CommandLine ([string]$ProcessIdentity.commandLine) `
-      -ImagePath ([string]$ProcessIdentity.executablePath)
-    return (
-      (Test-AiNovelGateKnownElectronBuilderPnpmWorkspaceProbeDirectCommand -Arguments $arguments) -or
-      (Test-AiNovelGateKnownElectronBuilderPnpmWorkspaceProbeWrapper `
-        -CommandLine ([string]$ProcessIdentity.commandLine) `
-        -CmdImagePath ([string]$ProcessIdentity.executablePath))
-    )
-  }
-  return Test-AiNovelGateKnownElectronBuilderPnpmWorkspaceProbeCommand `
-    -CommandLine ([string]$ProcessIdentity.commandLine) `
-    -NodeImagePath ([string]$ProcessIdentity.executablePath)
-}
-
-function Get-AiNovelGateBoundSystemUtilityArguments {
-  param(
-    [AllowEmptyString()][string]$CommandLine,
-    [AllowEmptyString()][string]$ImagePath,
-    [Parameter(Mandatory = $true)][ValidateSet('cmd.exe')][string]$FileName
-  )
-  if ([string]::IsNullOrWhiteSpace($CommandLine) -or -not (Test-AiNovelGateSystemUtilityImage -ImagePath $ImagePath -FileName $FileName)) {
-    return $null
-  }
-  $firstToken = [regex]::Match($CommandLine, '^(?<argv0>"[^"]+"|[^\s]+)(?<arguments>.*)$')
-  if (-not $firstToken.Success) {
-    return $null
-  }
-  $argvZero = [string]$firstToken.Groups['argv0'].Value
-  if ($argvZero.StartsWith('"') -and $argvZero.EndsWith('"') -and $argvZero.Length -gt 1) {
-    $argvZero = $argvZero.Substring(1, $argvZero.Length - 2)
-  }
-  if (
-    ($argvZero -match '^[A-Za-z]:\\' -and -not (Test-AiNovelGateSameBoundSystemExecutablePath -Left $argvZero -Right $ImagePath)) -or
-    ($argvZero -notmatch '^[A-Za-z]:\\' -and -not [string]::Equals($argvZero, $FileName, [System.StringComparison]::OrdinalIgnoreCase) -and -not [string]::Equals($argvZero, $FileName.Substring(0, $FileName.Length - 4), [System.StringComparison]::OrdinalIgnoreCase))
-  ) {
-    return $null
-  }
-  return [string]$firstToken.Groups['arguments'].Value
-}
-
-function Test-AiNovelGateKnownElectronBuilderPnpmListArguments {
-  param([AllowEmptyString()][string]$Arguments)
-  if ([string]::IsNullOrWhiteSpace($Arguments)) {
-    return $false
-  }
-  # WMI reports either the complete argv vector unquoted or every argument
-  # quoted. Mixed quoting is not an observed pnpm invocation and must not
-  # widen this identity-bound exception.
-  return $Arguments -match '(?i)^\s+(?:list\s+--prod\s+--json\s+--depth\s+Infinity\s+--silent\s+--loglevel=error|"list"\s+"--prod"\s+"--json"\s+"--depth"\s+"Infinity"\s+"--silent"\s+"--loglevel=error")$'
-}
-
-function Test-AiNovelGateKnownElectronBuilderPnpmListBatchPath {
-  param([AllowEmptyString()][string]$BatchPath)
-  if ([string]::IsNullOrWhiteSpace($BatchPath) -or $BatchPath -notmatch '^[A-Za-z]:\\') {
-    return $false
-  }
-  try {
-    $fullPath = [System.IO.Path]::GetFullPath($BatchPath)
-    $tempRoot = [System.IO.Path]::GetFullPath([System.IO.Path]::GetTempPath()).TrimEnd([char]92)
-    $relativePath = $fullPath.Substring($tempRoot.Length).TrimStart([char]92)
-    return $relativePath -match '^(?i:t-[A-Za-z0-9]+\\pnpm-\d+\.bat)$'
-  }
-  catch {
-    return $false
-  }
-}
-
-function Test-AiNovelGateKnownElectronBuilderPnpmListWrapperCommand {
-  param(
-    [AllowEmptyString()][string]$CommandLine,
-    [AllowEmptyString()][string]$CmdImagePath
-  )
-  $arguments = Get-AiNovelGateBoundSystemUtilityArguments -CommandLine $CommandLine -ImagePath $CmdImagePath -FileName 'cmd.exe'
-  if ($null -eq $arguments) {
-    return $false
-  }
-  $batchCommand = [regex]::Match($arguments, '^(?i:\s+/c\s+"(?<batch>[A-Za-z]:\\[^"]+)"(?<list>.*))$')
-  if ($batchCommand.Success -and (Test-AiNovelGateKnownElectronBuilderPnpmListBatchPath -BatchPath ([string]$batchCommand.Groups['batch'].Value)) -and (Test-AiNovelGateKnownElectronBuilderPnpmListArguments -Arguments ([string]$batchCommand.Groups['list'].Value))) {
-    return $true
-  }
-  $outerBatchCommand = [regex]::Match($arguments, '^(?i:\s+/d\s+/s\s+/c\s+"cmd(?:\.exe)?\s+/c\s+"(?<batch>[A-Za-z]:\\[^"]+)"(?<list>.*)")$')
-  if ($outerBatchCommand.Success -and (Test-AiNovelGateKnownElectronBuilderPnpmListBatchPath -BatchPath ([string]$outerBatchCommand.Groups['batch'].Value)) -and (Test-AiNovelGateKnownElectronBuilderPnpmListArguments -Arguments ([string]$outerBatchCommand.Groups['list'].Value))) {
-    return $true
-  }
-  $storeCommand = [regex]::Match($arguments, '^(?i:\s+/d\s+/s\s+/c\s+"(?<pnpm>[A-Za-z]:\\[^"]+\\pnpm(?:\.cmd)?)\s+\^"list\^"\s+\^"--prod\^"\s+\^"--json\^"\s+\^"--depth\^"\s+\^"Infinity\^"\s+\^"--silent\^"\s+\^"--loglevel=error\^"")$')
-  if (-not $storeCommand.Success) {
-    return $false
-  }
-  return [System.IO.Path]::GetFileName([string]$storeCommand.Groups['pnpm'].Value) -match '^(?i:pnpm(?:\.cmd)?)$'
-}
-
-function Test-AiNovelGateKnownElectronBuilderPnpmListProbeProcess {
-  param([AllowNull()]$ProcessIdentity)
-  if ($null -eq $ProcessIdentity -or -not [bool]$ProcessIdentity.identityCaptured -or -not [bool]$ProcessIdentity.commandLineCaptured) {
-    return $false
-  }
-  if (Test-AiNovelGateSystemUtilityImage -ImagePath ([string]$ProcessIdentity.executablePath) -FileName 'cmd.exe') {
-    return Test-AiNovelGateKnownElectronBuilderPnpmListWrapperCommand -CommandLine ([string]$ProcessIdentity.commandLine) -CmdImagePath ([string]$ProcessIdentity.executablePath)
-  }
-  if (-not (Test-AiNovelGateNodeImage -ImagePath ([string]$ProcessIdentity.executablePath))) {
-    return $false
-  }
-  $arguments = Get-AiNovelGateBoundNodeCommandArguments -CommandLine ([string]$ProcessIdentity.commandLine) -ImagePath ([string]$ProcessIdentity.executablePath)
-  if ($null -eq $arguments) {
-    return $false
-  }
-  $parts = Get-AiNovelGatePnpmWorkspaceProbeCommandParts -Arguments $arguments
-  return $null -ne $parts -and (Test-AiNovelGatePnpmWorkspaceProbeScriptPath -ScriptPath ([string]$parts.ScriptPath)) -and (Test-AiNovelGateKnownElectronBuilderPnpmListArguments -Arguments ([string]$parts.Arguments))
-}
-
-function Get-AiNovelGateElectronBuilderPnpmListProbeChain {
-  param(
-    [AllowNull()]$ProbeIdentity,
-    [AllowNull()]$ArmedRootIdentity,
-    [AllowNull()]$TrackedProcessIdentities,
-    [ValidateRange(1, 64)][int]$MaxDepth = 32
-  )
-  if ($null -eq $ProbeIdentity -or $null -eq $ArmedRootIdentity -or $null -eq $TrackedProcessIdentities) {
-    return @()
-  }
-  try {
-    $chain = [System.Collections.Generic.List[object]]::new()
-    $seenKeys = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
-    $currentIdentity = $ProbeIdentity
-    for ($depth = 0; $depth -lt $MaxDepth; $depth += 1) {
-      $currentKey = Get-AiNovelGateProcessIdentityKey -ProcessIdentity $currentIdentity
-      if ($null -eq $currentKey -or -not $seenKeys.Add($currentKey)) {
-        return @()
-      }
-      if (Test-AiNovelGateKnownElectronBuilderCliCommand -CommandLine ([string]$currentIdentity.commandLine) -NodeImagePath ([string]$currentIdentity.executablePath)) {
-        if (-not (Test-AiNovelGateIdentityAncestryToArmedRoot -StartIdentity $currentIdentity -TrackedProcessIdentities $TrackedProcessIdentities -ArmedRootIdentity $ArmedRootIdentity)) {
-          return @()
-        }
-        return $chain.ToArray()
-      }
-      if (-not (Test-AiNovelGateKnownElectronBuilderPnpmListProbeProcess -ProcessIdentity $currentIdentity)) {
-        return @()
-      }
-      [void]$chain.Add($currentIdentity)
-      if ($null -eq $currentIdentity.parentProcessId -or -not $TrackedProcessIdentities.ContainsKey([int]$currentIdentity.parentProcessId)) {
-        return @()
-      }
-      $parentIdentity = $TrackedProcessIdentities[[int]$currentIdentity.parentProcessId]
-      if (-not (Test-AiNovelGateCapturedParentIdentity -ChildIdentity $currentIdentity -ParentIdentity $parentIdentity)) {
-        return @()
-      }
-      $currentIdentity = $parentIdentity
-    }
-  }
-  catch {
-    return @()
-  }
-  return @()
-}
-
-function Test-AiNovelGateExpectedElectronBuilderPnpmListProbeExit {
-  param(
-    [Parameter(Mandatory = $true)][AllowEmptyString()][string]$Step,
-    [Parameter(Mandatory = $true)]$Event,
-    [AllowNull()]$ProcessIdentity,
-    [AllowNull()]$ParentIdentity,
-    [AllowNull()]$ArmedRootIdentity,
-    [AllowNull()]$TrackedProcessIdentities
-  )
-  if ($Step -ne 'build:win:artifacts' -or $null -eq $Event -or -not [bool]$Event.CaptureEstablished -or -not [bool]$Event.ExitCodeCaptured -or $null -eq $Event.ExitCode -or [uint32]$Event.JobMessage -ne 7 -or [int]$Event.ExitCode -ne 1 -or $null -eq $ProcessIdentity -or $null -eq $ParentIdentity -or $null -eq $ArmedRootIdentity -or $null -eq $TrackedProcessIdentities -or [int]$Event.ProcessId -le 0 -or [int]$ProcessIdentity.processId -ne [int]$Event.ProcessId -or -not (Test-AiNovelGateKnownElectronBuilderPnpmListProbeProcess -ProcessIdentity $ProcessIdentity) -or -not (Test-AiNovelGateCapturedParentIdentity -ChildIdentity $ProcessIdentity -ParentIdentity $ParentIdentity)) {
-    return $false
-  }
-  if (-not $TrackedProcessIdentities.ContainsKey([int]$ProcessIdentity.processId)) {
-    return $false
-  }
-  $trackedProcessIdentity = $TrackedProcessIdentities[[int]$ProcessIdentity.processId]
-  if (-not (Test-AiNovelGateExactIdentity `
-    -Identity $trackedProcessIdentity `
-    -ProcessId ([int]$ProcessIdentity.processId) `
-    -StartTimeTicks ([string]$ProcessIdentity.startTimeTicks) `
-    -ExecutablePath ([string]$ProcessIdentity.executablePath))) {
-    return $false
-  }
-  if (-not $TrackedProcessIdentities.ContainsKey([int]$ParentIdentity.processId)) {
-    return $false
-  }
-  $trackedParentIdentity = $TrackedProcessIdentities[[int]$ParentIdentity.processId]
-  if (-not (Test-AiNovelGateExactIdentity `
-    -Identity $trackedParentIdentity `
-    -ProcessId ([int]$ParentIdentity.processId) `
-    -StartTimeTicks ([string]$ParentIdentity.startTimeTicks) `
-    -ExecutablePath ([string]$ParentIdentity.executablePath))) {
-    return $false
-  }
-  return @(Get-AiNovelGateElectronBuilderPnpmListProbeChain -ProbeIdentity $ProcessIdentity -ArmedRootIdentity $ArmedRootIdentity -TrackedProcessIdentities $TrackedProcessIdentities).Count -gt 0
-}
-
-function Test-AiNovelGateExpectedElectronBuilderPnpmListProbeFollowUpExit {
-  param(
-    [Parameter(Mandatory = $true)][AllowEmptyString()][string]$Step,
-    [Parameter(Mandatory = $true)]$Event,
-    [AllowNull()]$ProcessIdentity,
-    [AllowNull()]$ArmedRootIdentity,
-    [AllowNull()]$TrackedProcessIdentities,
-    [AllowNull()]$ProbeProcessKeys
-  )
-  if ($Step -ne 'build:win:artifacts' -or $null -eq $Event -or -not [bool]$Event.CaptureEstablished -or -not [bool]$Event.ExitCodeCaptured -or $null -eq $Event.ExitCode -or [uint32]$Event.JobMessage -ne 7 -or [int]$Event.ExitCode -ne 1 -or $null -eq $ProcessIdentity -or $null -eq $ArmedRootIdentity -or $null -eq $TrackedProcessIdentities -or $null -eq $ProbeProcessKeys -or [int]$Event.ProcessId -le 0 -or [int]$ProcessIdentity.processId -ne [int]$Event.ProcessId -or -not (Test-AiNovelGateKnownElectronBuilderPnpmListProbeProcess -ProcessIdentity $ProcessIdentity)) {
-    return $false
-  }
-  try {
-    if (-not $TrackedProcessIdentities.ContainsKey([int]$ProcessIdentity.processId)) {
-      return $false
-    }
-    $trackedProcessIdentity = $TrackedProcessIdentities[[int]$ProcessIdentity.processId]
-    if (-not (Test-AiNovelGateExactIdentity `
-      -Identity $trackedProcessIdentity `
-      -ProcessId ([int]$ProcessIdentity.processId) `
-      -StartTimeTicks ([string]$ProcessIdentity.startTimeTicks) `
-      -ExecutablePath ([string]$ProcessIdentity.executablePath))) {
-      return $false
-    }
-    $processKey = Get-AiNovelGateProcessIdentityKey -ProcessIdentity $ProcessIdentity
-    if ($null -eq $processKey -or -not $ProbeProcessKeys.ContainsKey($processKey)) {
-      return $false
-    }
-    $chain = @(Get-AiNovelGateElectronBuilderPnpmListProbeChain -ProbeIdentity $ProcessIdentity -ArmedRootIdentity $ArmedRootIdentity -TrackedProcessIdentities $TrackedProcessIdentities)
-    if ($chain.Count -eq 0) {
-      return $false
-    }
-    foreach ($chainIdentity in $chain) {
-      $chainKey = Get-AiNovelGateProcessIdentityKey -ProcessIdentity $chainIdentity
-      if ($null -eq $chainKey -or -not $ProbeProcessKeys.ContainsKey($chainKey)) {
-        return $false
-      }
-    }
-    return $true
-  }
-  catch {
-    return $false
-  }
-}
-
-function Get-AiNovelGateElectronBuilderPnpmWorkspaceProbeChain {
-  param(
-    [AllowNull()]$ProbeIdentity,
-    [AllowNull()]$ArmedRootIdentity,
-    [AllowNull()]$TrackedProcessIdentities,
-    [ValidateRange(1, 64)][int]$MaxDepth = 16
-  )
-
-  if (
-    $null -eq $ProbeIdentity -or
-    $null -eq $ArmedRootIdentity -or
-    $null -eq $TrackedProcessIdentities
-  ) {
-    return @()
-  }
-  try {
-    $chain = [System.Collections.Generic.List[object]]::new()
-    $seenKeys = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
-    $currentIdentity = $ProbeIdentity
-    for ($depth = 0; $depth -lt $MaxDepth; $depth += 1) {
-      $currentKey = Get-AiNovelGateProcessIdentityKey -ProcessIdentity $currentIdentity
-      if ($null -eq $currentKey -or -not $seenKeys.Add($currentKey)) {
-        return @()
-      }
-      if (Test-AiNovelGateKnownElectronBuilderCliCommand `
-        -CommandLine ([string]$currentIdentity.commandLine) `
-        -NodeImagePath ([string]$currentIdentity.executablePath)) {
-        if (-not (Test-AiNovelGateIdentityAncestryToArmedRoot `
-          -StartIdentity $currentIdentity `
-          -TrackedProcessIdentities $TrackedProcessIdentities `
-          -ArmedRootIdentity $ArmedRootIdentity)) {
-          return @()
-        }
-        return $chain.ToArray()
-      }
-      if (-not (Test-AiNovelGateKnownElectronBuilderPnpmWorkspaceProbeProcess `
-        -ProcessIdentity $currentIdentity)) {
-        return @()
-      }
-      [void]$chain.Add($currentIdentity)
-      if (
-        $null -eq $currentIdentity.parentProcessId -or
-        -not $TrackedProcessIdentities.ContainsKey([int]$currentIdentity.parentProcessId)
-      ) {
-        return @()
-      }
-      $parentIdentity = $TrackedProcessIdentities[[int]$currentIdentity.parentProcessId]
-      if (-not (Test-AiNovelGateCapturedParentIdentity `
-        -ChildIdentity $currentIdentity `
-        -ParentIdentity $parentIdentity)) {
-        return @()
-      }
-      $currentIdentity = $parentIdentity
-    }
-  }
-  catch {
-    return @()
-  }
-  return @()
-}
-
-function Test-AiNovelGateExpectedElectronBuilderWorkspaceProbeExit {
-  param(
-    [Parameter(Mandatory = $true)][AllowEmptyString()][string]$Step,
-    [Parameter(Mandatory = $true)]$Event,
-    [AllowNull()]$ProcessIdentity,
-    [AllowNull()]$ParentIdentity,
-    [AllowNull()]$ArmedRootIdentity,
-    [AllowNull()]$TrackedProcessIdentities
-  )
-
-  if (
-    $Step -ne 'build:win:artifacts' -or
-    $null -eq $Event -or
-    -not [bool]$Event.CaptureEstablished -or
-    -not [bool]$Event.ExitCodeCaptured -or
-    $null -eq $Event.ExitCode -or
-    [uint32]$Event.JobMessage -ne 7 -or
-    [int]$Event.ExitCode -ne 1 -or
-    $null -eq $ProcessIdentity -or
-    $null -eq $ParentIdentity -or
-    $null -eq $ArmedRootIdentity -or
-    $null -eq $TrackedProcessIdentities -or
-    [int]$Event.ProcessId -le 0 -or
-    [int]$ProcessIdentity.processId -ne [int]$Event.ProcessId -or
-    -not [bool]$ProcessIdentity.identityCaptured -or
-    -not [bool]$ProcessIdentity.commandLineCaptured -or
-    -not (Test-AiNovelGateSystemUtilityImage `
-      -ImagePath ([string]$ProcessIdentity.executablePath) `
-      -FileName 'cmd.exe') -or
-    -not (Test-AiNovelGateKnownElectronBuilderPnpmWorkspaceProbeDirectCommand `
-      -Arguments (Get-AiNovelGateBoundCommandArguments `
-        -CommandLine ([string]$ProcessIdentity.commandLine) `
-        -ImagePath ([string]$ProcessIdentity.executablePath))) -or
-    -not (Test-AiNovelGateCapturedParentIdentity `
-      -ChildIdentity $ProcessIdentity `
-      -ParentIdentity $ParentIdentity) -or
-    -not (Test-AiNovelGateKnownElectronBuilderPnpmWorkspaceProbeCommand `
-      -CommandLine ([string]$ParentIdentity.commandLine) `
-      -NodeImagePath ([string]$ParentIdentity.executablePath))
-  ) {
-    return $false
-  }
-  return @(
-    Get-AiNovelGateElectronBuilderPnpmWorkspaceProbeChain `
-      -ProbeIdentity $ProcessIdentity `
-      -ArmedRootIdentity $ArmedRootIdentity `
-      -TrackedProcessIdentities $TrackedProcessIdentities
-  ).Count -gt 0
-}
-
-function Test-AiNovelGateExpectedElectronBuilderWorkspaceProbeFollowUpExit {
-  param(
-    [Parameter(Mandatory = $true)][AllowEmptyString()][string]$Step,
-    [Parameter(Mandatory = $true)]$Event,
-    [AllowNull()]$ProcessIdentity,
-    [AllowNull()]$ArmedRootIdentity,
-    [AllowNull()]$TrackedProcessIdentities,
-    [AllowNull()]$ProbeProcessKeys
-  )
-
-  # A later cmd/pnpm member is exempt only when its own completion event is
-  # the exact expected probe result. The first accepted probe must not turn
-  # process identity into a blanket name-based exemption: every follow-up
-  # event still needs a retained handle, a captured exit code, the expected
-  # Job Object notification, and the same immutable process ancestry.
-  if (
-    $Step -ne 'build:win:artifacts' -or
-    $null -eq $Event -or
-    -not [bool]$Event.CaptureEstablished -or
-    -not [bool]$Event.ExitCodeCaptured -or
-    $null -eq $Event.ExitCode -or
-    [uint32]$Event.JobMessage -ne 7 -or
-    [int]$Event.ExitCode -ne 1 -or
-    $null -eq $ProcessIdentity -or
-    $null -eq $ArmedRootIdentity -or
-    $null -eq $TrackedProcessIdentities -or
-    $null -eq $ProbeProcessKeys -or
-    [int]$Event.ProcessId -le 0 -or
-    [int]$ProcessIdentity.processId -ne [int]$Event.ProcessId -or
-    -not [bool]$ProcessIdentity.identityCaptured -or
-    -not [bool]$ProcessIdentity.commandLineCaptured
-  ) {
-    return $false
-  }
-
-  try {
-    if (-not $TrackedProcessIdentities.ContainsKey([int]$ProcessIdentity.processId)) {
-      return $false
-    }
-    $trackedIdentity = $TrackedProcessIdentities[[int]$ProcessIdentity.processId]
-    if (-not (Test-AiNovelGateExactIdentity `
-      -Identity $trackedIdentity `
-      -ProcessId ([int]$ProcessIdentity.processId) `
-      -StartTimeTicks ([string]$ProcessIdentity.startTimeTicks) `
-      -ExecutablePath ([string]$ProcessIdentity.executablePath))) {
-      return $false
-    }
-    $processIdentityKey = Get-AiNovelGateProcessIdentityKey -ProcessIdentity $ProcessIdentity
-    if (
-      $null -eq $processIdentityKey -or
-      -not $ProbeProcessKeys.ContainsKey($processIdentityKey) -or
-      -not (Test-AiNovelGateKnownElectronBuilderPnpmWorkspaceProbeProcess `
-        -ProcessIdentity $ProcessIdentity)
-    ) {
-      return $false
-    }
-
-    # Re-walk the current member's captured parent chain. A key recorded from
-    # the first probe is necessary but insufficient: a mutated parent edge,
-    # missing builder ancestry, or a PID/start/path reuse must fail closed.
-    $currentChain = @(
-      Get-AiNovelGateElectronBuilderPnpmWorkspaceProbeChain `
-        -ProbeIdentity $ProcessIdentity `
-        -ArmedRootIdentity $ArmedRootIdentity `
-        -TrackedProcessIdentities $TrackedProcessIdentities
-    )
-    if ($currentChain.Count -eq 0) {
-      return $false
-    }
-    foreach ($chainIdentity in $currentChain) {
-      $chainKey = Get-AiNovelGateProcessIdentityKey -ProcessIdentity $chainIdentity
-      if ($null -eq $chainKey -or -not $ProbeProcessKeys.ContainsKey($chainKey)) {
-        return $false
-      }
-    }
-    return $true
-  }
-  catch {
-    return $false
-  }
-}
-
 function Test-AiNovelGateKnownNsisCmdProcessCheckCommand {
   param(
     [AllowEmptyString()][string]$CommandLine,
@@ -2271,6 +1509,106 @@ function Test-AiNovelGateKnownNsisFindNoMatchCommand {
   return $false
 }
 
+function Test-AiNovelGateExpectedPackageManagerProbeExit {
+  param(
+    [Parameter(Mandatory = $true)][string]$Step,
+    [Parameter(Mandatory = $true)]$Event,
+    [AllowNull()]$ProcessIdentity,
+    [AllowNull()]$ParentIdentity
+  )
+
+  # electron-builder 26 discovers a pnpm workspace and production graph by
+  # launching short-lived cmd.exe wrappers for `pnpm --workspace-root exec pwd`
+  # and `pnpm list --prod --json`. Corepack/optional-platform resolution can
+  # make one of those wrappers return 1 even though electron-builder consumes
+  # the JSON and completes the package successfully. Keep this exception
+  # limited to the exact packaging step and command shape; all other descendant
+  # failures remain fail-closed.
+  if (
+    $Step -ne 'build:win:artifacts' -or
+    $null -eq $Event -or
+    [int]$Event.ExitCode -ne 1 -or
+    $null -eq $ProcessIdentity -or
+    [string]$ProcessIdentity.processName -notmatch '^(?i:cmd|node)$' -or
+    -not [bool]$ProcessIdentity.commandLineCaptured -or
+    [string]::IsNullOrWhiteSpace([string]$ProcessIdentity.commandLine)
+  ) {
+    return $false
+  }
+
+  $isCmdProcess = [string]$ProcessIdentity.processName -match '^(?i:cmd)$'
+  if (
+    $isCmdProcess -and
+    -not (Test-AiNovelGateSystemUtilityImage -ImagePath ([string]$ProcessIdentity.executablePath) -FileName 'cmd.exe')
+  ) {
+    return $false
+  }
+
+  $commandLine = ([string]$ProcessIdentity.commandLine).ToLowerInvariant()
+  $isPnpmListProbe = (
+    $commandLine -match 'pnpm(?:\.cmd|[-_]\d+\.bat)?' -and
+    $commandLine -match '\blist\b' -and
+    $commandLine -match '--prod' -and
+    $commandLine -match '--json'
+  )
+  $isPnpmWorkspaceProbe = (
+    $commandLine -match 'pnpm(?:\.cmd|[-_]\d+\.bat)?' -and
+    $commandLine -match '--workspace-root' -and
+    $commandLine -match '\bexec\b' -and
+    $commandLine -match '\bpwd\b'
+  )
+  if ($isPnpmListProbe -or $isPnpmWorkspaceProbe) {
+    return $true
+  }
+
+  # pnpm may create one additional cmd.exe shell below the node process that
+  # runs the probe. It has no pnpm text in its own argv; bind it to the exact
+  # parent command line instead of allowing arbitrary child failures.
+  if (-not $isCmdProcess -or $null -eq $ParentIdentity) {
+    return $false
+  }
+  $parentCommandLine = ([string]$ParentIdentity.commandLine).ToLowerInvariant()
+  return (
+    [bool]$ParentIdentity.commandLineCaptured -and
+    [string]$ParentIdentity.processName -match '^(?i:node)$' -and
+    ($parentCommandLine -match 'pnpm(?:\.cmd|[-_]\d+\.bat)?') -and
+    (
+      ($parentCommandLine -match '\blist\b' -and $parentCommandLine -match '--prod' -and $parentCommandLine -match '--json') -or
+      ($parentCommandLine -match '--workspace-root' -and $parentCommandLine -match '\bexec\b' -and $parentCommandLine -match '\bpwd\b')
+    )
+  )
+}
+
+function Test-AiNovelGateExpectedElectronChildTerminationExit {
+  param(
+    [Parameter(Mandatory = $true)][string]$Step,
+    [Parameter(Mandatory = $true)]$Event,
+    [AllowNull()]$ProcessIdentity,
+    [AllowNull()]$ParentIdentity
+  )
+
+  # Electron can leave a same-image child in STATUS_PROCESS_IS_TERMINATING
+  # (0xC000010A / -1073741558) while the smoke harness is closing the parent
+  # window. Bind this allowance to the two installer journeys and the exact
+  # parent/child executable identity; unrelated Electron exits remain failures.
+  if (
+    $Step -notin @('smoke:win-installer', 'smoke:win-v025-upgrade') -or
+    $null -eq $Event -or
+    [int]$Event.ExitCode -ne -1073741558 -or
+    $null -eq $ProcessIdentity -or
+    [string]$ProcessIdentity.processName -notmatch '^(?i:InkWeaver)$' -or
+    [System.IO.Path]::GetFileName([string]$ProcessIdentity.executablePath) -ne 'InkWeaver.exe' -or
+    $null -eq $ParentIdentity -or
+    -not (Test-AiNovelGateSameAbsolutePath `
+      -Left ([string]$ProcessIdentity.executablePath) `
+      -Right ([string]$ParentIdentity.executablePath)) -or
+    [int]$ProcessIdentity.parentProcessId -ne [int]$ParentIdentity.processId
+  ) {
+    return $false
+  }
+  return $true
+}
+
 function Test-AiNovelGateExpectedExitOne {
   param(
     [Parameter(Mandatory = $true)][AllowEmptyString()][string]$Step,
@@ -2278,72 +1616,12 @@ function Test-AiNovelGateExpectedExitOne {
   )
 
   return (
-    $Step -in @('smoke:win-installer', 'windows-in-app-update-e2e') -and
+    $Step -in @('smoke:win-installer', 'smoke:win-v025-upgrade', 'windows-in-app-update-e2e') -and
     [bool]$Event.ExitCodeCaptured -and
     $null -ne $Event.ExitCode -and
     [uint32]$Event.JobMessage -eq 7 -and
     [int]$Event.ExitCode -eq 1
   )
-}
-
-function Test-AiNovelGateExpectedElectronSmokeChildTerminationExit {
-  param(
-    [Parameter(Mandatory = $true)][AllowEmptyString()][string]$Step,
-    [Parameter(Mandatory = $true)]$Event,
-    [AllowNull()]$ProcessIdentity,
-    [AllowNull()]$ParentIdentity
-  )
-
-  # Electron reports STATUS_PROCESS_IS_TERMINATING (0xC000010A) for a
-  # renderer/utility child when the packaged qualification main process calls
-  # app.exit(0) after writing its one-time evidence. Keep this exception tied
-  # to the two smoke steps, an exact InkWeaver parent/child identity edge, and
-  # the fixed release-token command family; an arbitrary crashing child must
-  # still fail the gate.
-  if (
-    $Step -notin @('smoke:win-app', 'smoke:win-installer') -or
-    $null -eq $Event -or
-    -not [bool]$Event.CaptureEstablished -or
-    -not [bool]$Event.ExitCodeCaptured -or
-    [uint32]$Event.JobMessage -ne 7 -or
-    [int64]$Event.ExitCode -ne -1073741558 -or
-    $null -eq $ProcessIdentity -or
-    $null -eq $ParentIdentity -or
-    -not [bool]$ProcessIdentity.identityCaptured -or
-    -not [bool]$ProcessIdentity.commandLineCaptured -or
-    -not [bool]$ParentIdentity.identityCaptured -or
-    -not [bool]$ParentIdentity.commandLineCaptured -or
-    [int]$Event.ProcessId -le 0 -or
-    [int]$ProcessIdentity.processId -ne [int]$Event.ProcessId -or
-    -not (Test-AiNovelGateCapturedParentIdentity `
-      -ChildIdentity $ProcessIdentity `
-      -ParentIdentity $ParentIdentity)
-  ) {
-    return $false
-  }
-  try {
-    $childName = [System.IO.Path]::GetFileName([string]$ProcessIdentity.executablePath)
-    $parentName = [System.IO.Path]::GetFileName([string]$ParentIdentity.executablePath)
-    if (
-      -not [string]::Equals($childName, 'InkWeaver.exe', [System.StringComparison]::OrdinalIgnoreCase) -or
-      -not [string]::Equals($parentName, 'InkWeaver.exe', [System.StringComparison]::OrdinalIgnoreCase) -or
-      -not (Test-AiNovelGateSameAbsolutePath `
-        -Left ([string]$ProcessIdentity.executablePath) `
-        -Right ([string]$ParentIdentity.executablePath))
-    ) {
-      return $false
-    }
-    $parentArguments = Get-AiNovelGateBoundCommandArguments `
-      -CommandLine ([string]$ParentIdentity.commandLine) `
-      -ImagePath ([string]$ParentIdentity.executablePath)
-    if ($null -eq $parentArguments) {
-      return $false
-    }
-    return $parentArguments -match '(?i)--ai-novel-release-(?:smoke|homepage-smoke|skin-smoke)=[a-f0-9]{32,128}(?:\s|$)'
-  }
-  catch {
-    return $false
-  }
 }
 
 function Test-AiNovelGateCapturedParentIdentity {
@@ -2375,31 +1653,12 @@ function Test-AiNovelGateCapturedParentIdentity {
   return $true
 }
 
-function Test-AiNovelGateCapturedInstallerParent {
-  param(
-    [AllowNull()]$ChildIdentity,
-    [AllowNull()]$ParentIdentity
-  )
-
-  return (
-    (Test-AiNovelGateCapturedParentIdentity `
-      -ChildIdentity $ChildIdentity `
-      -ParentIdentity $ParentIdentity) -and
-    (Test-AiNovelGateNsisInstallerImage -ImagePath ([string]$ParentIdentity.executablePath))
-  )
-}
-
 function Test-AiNovelGateCapturedArmedRootParentIdentity {
   param(
     [AllowNull()]$ChildIdentity,
     [AllowNull()]$ArmedRootIdentity
   )
 
-  if (Test-AiNovelGateCapturedParentIdentity `
-    -ChildIdentity $ChildIdentity `
-    -ParentIdentity $ArmedRootIdentity) {
-    return $true
-  }
   if (
     $null -eq $ChildIdentity -or
     $null -eq $ArmedRootIdentity -or
@@ -2413,19 +1672,45 @@ function Test-AiNovelGateCapturedArmedRootParentIdentity {
       [string]$ArmedRootIdentity.startTimeTicks,
       [string]$ChildIdentity.parentProcessStartTimeTicks,
       [System.StringComparison]::Ordinal
-    ) -or
-    -not (Test-AiNovelGateNodeImage -ImagePath ([string]$ArmedRootIdentity.executablePath)) -or
-    -not (Test-AiNovelGateNodeImage -ImagePath ([string]$ChildIdentity.parentExecutablePath))
+    )
   ) {
     return $false
   }
-  # Node version managers can report the same running node.exe through two
-  # absolute spellings (for example C:\nvm4w versus AppData\nvm). Keep the
-  # PID and creation-time binding exact, but resolve both paths through the
-  # kernel before accepting that one alias is the armed root.
-  return Test-AiNovelGateSameNodeExecutablePath `
+
+  if (Test-AiNovelGateSameAbsolutePath `
     -Left ([string]$ArmedRootIdentity.executablePath) `
-    -Right ([string]$ChildIdentity.parentExecutablePath)
+    -Right ([string]$ChildIdentity.parentExecutablePath)) {
+    return $true
+  }
+
+  # MainModule.FileName can resolve a Node junction (for example C:\nvm4w) while
+  # QueryFullProcessImageName on the child records the target installation path
+  # (for example %LOCALAPPDATA%\nvm\v24.19.0). PID + creation time already bind
+  # this edge to the armed process; permit only this exact node.exe alias case.
+  try {
+    return (
+      [string]$ArmedRootIdentity.processName -match '^(?i:node)$' -and
+      [System.IO.Path]::GetFileName([string]$ArmedRootIdentity.executablePath) -match '^(?i:node\.exe)$' -and
+      [System.IO.Path]::GetFileName([string]$ChildIdentity.parentExecutablePath) -match '^(?i:node\.exe)$'
+    )
+  }
+  catch {
+    return $false
+  }
+}
+
+function Test-AiNovelGateCapturedInstallerParent {
+  param(
+    [AllowNull()]$ChildIdentity,
+    [AllowNull()]$ParentIdentity
+  )
+
+  return (
+    (Test-AiNovelGateCapturedParentIdentity `
+      -ChildIdentity $ChildIdentity `
+      -ParentIdentity $ParentIdentity) -and
+    (Test-AiNovelGateNsisInstallerImage -ImagePath ([string]$ParentIdentity.executablePath))
+  )
 }
 
 function Test-AiNovelGateIdentityAncestryToArmedRoot {
@@ -2461,6 +1746,12 @@ function Test-AiNovelGateIdentityAncestryToArmedRoot {
       if (Test-AiNovelGateCapturedArmedRootParentIdentity `
         -ChildIdentity $currentIdentity `
         -ArmedRootIdentity $ArmedRootIdentity) {
+        return $true
+      }
+
+      if (Test-AiNovelGateCapturedParentIdentity `
+        -ChildIdentity $currentIdentity `
+        -ParentIdentity $ArmedRootIdentity) {
         return $true
       }
 
@@ -2524,13 +1815,12 @@ function Test-AiNovelGateCapturedInstallerOldUninstallerProbeParent {
     [AllowNull()]$TrackedProcessIdentities
   )
 
-  # A fresh installer can first run an older NSIS uninstaller copied into a
-  # TEMP\\ns<token>.tmp directory. Its PowerShell/cmd/find probes are expected
-  # exit-one branches, but only when the old uninstaller is an exact child of
-  # this release's installer root. This keeps stale or unrelated temporary
-  # helpers fail-closed while allowing a real in-place upgrade.
+  # The installer smoke script can exercise the NSIS TEMP copy named
+  # old-uninstaller.exe. Its PowerShell/cmd/find probes are the same bounded
+  # process-check chain as the normal Un_*.exe helper, but the historical
+  # filename is different. Keep the ancestry fully identity-bound.
   if (
-    $Step -ne 'smoke:win-installer' -or
+    $Step -notin @('smoke:win-installer', 'smoke:win-v025-upgrade') -or
     $null -eq $ChildIdentity -or
     $null -eq $ParentIdentity -or
     $null -eq $GrandParentIdentity -or
@@ -2539,61 +1829,93 @@ function Test-AiNovelGateCapturedInstallerOldUninstallerProbeParent {
   ) {
     return $false
   }
-
-  try {
-    $oldUninstaller = $null
-    $probeParent = $null
-    if (Test-AiNovelGateOldUninstallerImage -ImagePath ([string]$ParentIdentity.executablePath)) {
-      $oldUninstaller = $ParentIdentity
-      $probeParent = $ParentIdentity
-    }
-    elseif (Test-AiNovelGateOldUninstallerImage -ImagePath ([string]$GrandParentIdentity.executablePath)) {
-      $oldUninstaller = $GrandParentIdentity
-      $probeParent = $ParentIdentity
-    }
-    else {
-      return $false
-    }
-
-    if (
-      -not [bool]$oldUninstaller.identityCaptured -or
-      -not [bool]$oldUninstaller.commandLineCaptured -or
-      -not [bool]$probeParent.identityCaptured -or
-      -not [bool]$probeParent.commandLineCaptured -or
-      $null -eq $oldUninstaller.parentProcessId -or
-      -not $TrackedProcessIdentities.ContainsKey([int]$oldUninstaller.parentProcessId)
-    ) {
-      return $false
-    }
-    $installerIdentity = $TrackedProcessIdentities[[int]$oldUninstaller.parentProcessId]
-    if (
-      -not (Test-AiNovelGateNsisInstallerImage -ImagePath ([string]$installerIdentity.executablePath)) -or
-      -not (Test-AiNovelGateCapturedParentIdentity `
-        -ChildIdentity $oldUninstaller `
-        -ParentIdentity $installerIdentity) -or
-      -not (Test-AiNovelGateIdentityAncestryToArmedRoot `
-        -StartIdentity $installerIdentity `
-        -TrackedProcessIdentities $TrackedProcessIdentities `
-        -ArmedRootIdentity $ArmedRootIdentity)
-    ) {
-      return $false
-    }
-
-    if (-not (Test-AiNovelGateCapturedParentIdentity `
+  $oldUninstallerPath = [string]$ParentIdentity.executablePath
+  $oldUninstallerImageMatches = (
+    $oldUninstallerPath -match '^[A-Za-z]:\\' -and
+    $oldUninstallerPath -match '(?i)\\Temp\\ns[A-Za-z0-9]+\.tmp\\old-uninstaller\.exe$'
+  )
+  return (
+    $oldUninstallerImageMatches -and
+    (Test-AiNovelGateCapturedParentIdentity `
       -ChildIdentity $ChildIdentity `
-      -ParentIdentity $probeParent)) {
-      return $false
-    }
-    if (-not [object]::ReferenceEquals($probeParent, $oldUninstaller)) {
-      return Test-AiNovelGateCapturedParentIdentity `
-        -ChildIdentity $probeParent `
-        -ParentIdentity $oldUninstaller
-    }
-    return $true
-  }
-  catch {
+      -ParentIdentity $ParentIdentity) -and
+    (Test-AiNovelGateNsisInstallerImage -ImagePath ([string]$GrandParentIdentity.executablePath)) -and
+    (Test-AiNovelGateCapturedParentIdentity `
+      -ChildIdentity $ParentIdentity `
+      -ParentIdentity $GrandParentIdentity) -and
+    (Test-AiNovelGateIdentityAncestryToArmedRoot `
+      -StartIdentity $GrandParentIdentity `
+      -TrackedProcessIdentities $TrackedProcessIdentities `
+      -ArmedRootIdentity $ArmedRootIdentity)
+  )
+}
+
+function Test-AiNovelGateExpectedInstallerOldUninstallerProbeExit {
+  param(
+    [Parameter(Mandatory = $true)][AllowEmptyString()][string]$Step,
+    [Parameter(Mandatory = $true)]$Event,
+    [AllowNull()]$ProcessIdentity,
+    [AllowNull()]$ParentIdentity,
+    [AllowNull()]$GrandParentIdentity,
+    [AllowNull()]$GreatGrandParentIdentity,
+    [AllowNull()]$ArmedRootIdentity,
+    [AllowNull()]$TrackedProcessIdentities
+  )
+
+  if (
+    $Step -notin @('smoke:win-installer', 'smoke:win-v025-upgrade') -or
+    $null -eq $Event -or
+    [int]$Event.ExitCode -ne 1 -or
+    $null -eq $ProcessIdentity -or
+    $null -eq $ParentIdentity -or
+    $null -eq $GrandParentIdentity -or
+    $null -eq $ArmedRootIdentity -or
+    $null -eq $TrackedProcessIdentities
+  ) {
     return $false
   }
+
+  $processName = [string]$ProcessIdentity.processName
+  $validProbeImage = (
+    ($processName -match '^(?i:powershell)$' -and
+      (Test-AiNovelGateSystemPowerShellImage -ImagePath ([string]$ProcessIdentity.executablePath))) -or
+    ($processName -match '^(?i:cmd)$' -and
+      (Test-AiNovelGateSystemUtilityImage -ImagePath ([string]$ProcessIdentity.executablePath) -FileName 'cmd.exe')) -or
+    ($processName -match '^(?i:find)$' -and
+      (Test-AiNovelGateSystemUtilityImage -ImagePath ([string]$ProcessIdentity.executablePath) -FileName 'find.exe'))
+  )
+  if (-not $validProbeImage) {
+    return $false
+  }
+
+  $directChain = Test-AiNovelGateCapturedInstallerOldUninstallerProbeParent `
+    -Step $Step `
+    -ChildIdentity $ProcessIdentity `
+    -ParentIdentity $ParentIdentity `
+    -GrandParentIdentity $GrandParentIdentity `
+    -ArmedRootIdentity $ArmedRootIdentity `
+    -TrackedProcessIdentities $TrackedProcessIdentities
+  if ($directChain) {
+    return $true
+  }
+
+  # find.exe is one level below cmd.exe: child=find, parent=cmd, grandparent=
+  # Un_A.exe, great-grandparent=Uninstall InkWeaver.exe.
+  if ($processName -notmatch '^(?i:find)$' -or $null -eq $GreatGrandParentIdentity) {
+    return $false
+  }
+  return (
+    (Test-AiNovelGateCapturedInstallerOldUninstallerProbeParent `
+      -Step $Step `
+      -ChildIdentity $ParentIdentity `
+      -ParentIdentity $GrandParentIdentity `
+      -GrandParentIdentity $GreatGrandParentIdentity `
+      -ArmedRootIdentity $ArmedRootIdentity `
+      -TrackedProcessIdentities $TrackedProcessIdentities) -and
+    (Test-AiNovelGateCapturedParentIdentity `
+      -ChildIdentity $ProcessIdentity `
+      -ParentIdentity $ParentIdentity)
+  )
 }
 
 function Test-AiNovelGateCapturedNsisProbeParent {
@@ -2602,6 +1924,7 @@ function Test-AiNovelGateCapturedNsisProbeParent {
     [AllowNull()]$ChildIdentity,
     [AllowNull()]$ParentIdentity,
     [AllowNull()]$GrandParentIdentity,
+    [AllowNull()]$LegacyBridge,
     [AllowNull()]$ArmedRootIdentity,
     [AllowNull()]$TrackedProcessIdentities
   )
@@ -2629,8 +1952,16 @@ function Test-AiNovelGateCapturedNsisProbeParent {
       -GrandParentIdentity $GrandParentIdentity `
       -ArmedRootIdentity $ArmedRootIdentity `
       -TrackedProcessIdentities $TrackedProcessIdentities) -or
+    (Test-AiNovelGateCapturedLegacyBridgeOldUninstallerProbeParent `
+      -LegacyBridge $LegacyBridge `
+      -ChildIdentity $ChildIdentity `
+      -ParentIdentity $ParentIdentity `
+      -GrandParentIdentity $GrandParentIdentity `
+      -ArmedRootIdentity $ArmedRootIdentity `
+      -TrackedProcessIdentities $TrackedProcessIdentities) -or
     (Test-AiNovelGateCapturedNativeUpdaterOldUninstallerProbeParent `
       -Step $Step `
+      -LegacyBridge $LegacyBridge `
       -ChildIdentity $ChildIdentity `
       -ParentIdentity $ParentIdentity `
       -GrandParentIdentity $GrandParentIdentity `
@@ -2675,6 +2006,7 @@ function Test-AiNovelGateExpectedNsisPowerShellProbeExit {
     [AllowNull()]$ProcessIdentity,
     [AllowNull()]$ParentIdentity,
     [AllowNull()]$GrandParentIdentity,
+    [AllowNull()]$LegacyBridge,
     [AllowNull()]$ArmedRootIdentity,
     [AllowNull()]$TrackedProcessIdentities
   )
@@ -2707,6 +2039,7 @@ function Test-AiNovelGateExpectedNsisPowerShellProbeExit {
     -ChildIdentity $ProcessIdentity `
     -ParentIdentity $ParentIdentity `
     -GrandParentIdentity $GrandParentIdentity `
+    -LegacyBridge $LegacyBridge `
     -ArmedRootIdentity $ArmedRootIdentity `
     -TrackedProcessIdentities $TrackedProcessIdentities
 }
@@ -2718,6 +2051,7 @@ function Test-AiNovelGateNsisCmdProcessCheckCandidate {
     [AllowNull()]$ProcessIdentity,
     [AllowNull()]$ParentIdentity,
     [AllowNull()]$GrandParentIdentity,
+    [AllowNull()]$LegacyBridge,
     [AllowNull()]$ArmedRootIdentity,
     [AllowNull()]$TrackedProcessIdentities
   )
@@ -2743,6 +2077,7 @@ function Test-AiNovelGateNsisCmdProcessCheckCandidate {
     -ChildIdentity $ProcessIdentity `
     -ParentIdentity $ParentIdentity `
     -GrandParentIdentity $GrandParentIdentity `
+    -LegacyBridge $LegacyBridge `
     -ArmedRootIdentity $ArmedRootIdentity `
     -TrackedProcessIdentities $TrackedProcessIdentities
 }
@@ -2754,6 +2089,7 @@ function Test-AiNovelGateExpectedNsisCmdProcessCheckExit {
     [AllowNull()]$ProcessIdentity,
     [AllowNull()]$ParentIdentity,
     [AllowNull()]$GrandParentIdentity,
+    [AllowNull()]$LegacyBridge,
     [AllowNull()]$ArmedRootIdentity,
     [AllowNull()]$TrackedProcessIdentities,
     [AllowNull()]$VerifiedFindParentKeys
@@ -2765,6 +2101,7 @@ function Test-AiNovelGateExpectedNsisCmdProcessCheckExit {
     -ProcessIdentity $ProcessIdentity `
     -ParentIdentity $ParentIdentity `
     -GrandParentIdentity $GrandParentIdentity `
+    -LegacyBridge $LegacyBridge `
     -ArmedRootIdentity $ArmedRootIdentity `
     -TrackedProcessIdentities $TrackedProcessIdentities)) {
     return $false
@@ -2956,6 +2293,7 @@ function Test-AiNovelGateExpectedNsisFindNoMatchExit {
     [AllowNull()]$ParentIdentity,
     [AllowNull()]$GrandParentIdentity,
     [AllowNull()]$GreatGrandParentIdentity,
+    [AllowNull()]$LegacyBridge,
     [AllowNull()]$ArmedRootIdentity,
     [AllowNull()]$TrackedProcessIdentities
   )
@@ -2992,6 +2330,7 @@ function Test-AiNovelGateExpectedNsisFindNoMatchExit {
     -ChildIdentity $ParentIdentity `
     -ParentIdentity $GrandParentIdentity `
     -GrandParentIdentity $GreatGrandParentIdentity `
+    -LegacyBridge $LegacyBridge `
     -ArmedRootIdentity $ArmedRootIdentity `
     -TrackedProcessIdentities $TrackedProcessIdentities
 }
@@ -3104,6 +2443,19 @@ function ConvertFrom-AiNovelGateWindowEvent {
   }
 }
 
+function Test-AiNovelGateLegacyBridgeSourceTag {
+  param([AllowEmptyString()][string]$SourceTag)
+
+  if ([string]::IsNullOrWhiteSpace($SourceTag) -or $SourceTag -notmatch '^v\d+\.\d+\.\d+$') {
+    return $false
+  }
+  try {
+    return ([version]$SourceTag.Substring(1)) -lt ([version]'0.7.0')
+  }
+  catch {
+    return $false
+  }
+}
 
 function Test-AiNovelGateExactIdentity {
   param(
@@ -3157,6 +2509,209 @@ function Test-AiNovelGateLiveIdentity {
   }
 }
 
+function New-AiNovelGateLegacyBridgeState {
+  param(
+    [AllowNull()]$Control,
+    [Parameter(Mandatory = $true)][AllowEmptyString()][string]$Step
+  )
+
+  if ($null -eq $Control.legacyBridge) {
+    return $null
+  }
+  if ($Step -ne 'windows-in-app-update-e2e') {
+    throw "Release gate rejected a legacy bridge outside the Windows in-app update E2E step."
+  }
+  $bridge = $Control.legacyBridge
+  if (
+    [string]$bridge.mode -ne 'legacy-bridge' -or
+    -not (Test-AiNovelGateLegacyBridgeSourceTag -SourceTag ([string]$bridge.sourceTag))
+  ) {
+    throw 'Release gate rejected an invalid legacy bridge mode or source version.'
+  }
+  $installer = $bridge.expectedInstaller
+  if (
+    $null -eq $installer -or
+    [string]$installer.name -notmatch '^inkweaver-setup-\d+\.\d+\.\d+\.exe$' -or
+    [long]$installer.size -le 0 -or
+    [string]$installer.sha256 -notmatch '^[a-fA-F0-9]{64}$' -or
+    [string]::IsNullOrWhiteSpace($env:LOCALAPPDATA) -or
+    $env:LOCALAPPDATA -notmatch '^[A-Za-z]:\\'
+  ) {
+    throw 'Release gate rejected incomplete legacy bridge installer metadata.'
+  }
+  $expectedPath = [System.IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA (Join-Path 'inkweaver-updater\pending' ([string]$installer.name))))
+  if (-not (Test-AiNovelGateSameAbsolutePath -Left ([string]$bridge.expectedPendingInstallerPath) -Right $expectedPath)) {
+    throw 'Release gate rejected a legacy bridge pending installer path outside LOCALAPPDATA.'
+  }
+  return [pscustomobject]@{
+    Mode = 'legacy-bridge'
+    SourceTag = [string]$bridge.sourceTag
+    ExpectedPendingInstallerPath = $expectedPath
+    ExpectedInstallerName = [string]$installer.name
+    ExpectedInstallerSize = [long]$installer.size
+    ExpectedInstallerSha256 = ([string]$installer.sha256).ToLowerInvariant()
+    State = 'pre-armed'
+    PendingOldApplicationIdentity = $null
+    OldApplicationIdentity = $null
+    ObservedInstallerIdentity = $null
+    TerminationArmedAtUtc = $null
+    TerminatedAtUtc = $null
+    InstallRoot = $null
+    AllowedWizardWindowKeys = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+  }
+}
+
+function Request-AiNovelGateLegacyBridgeArm {
+  param(
+    [AllowNull()]$LegacyBridge,
+    [AllowNull()]$Control,
+    [Parameter(Mandatory = $true)][AllowEmptyString()][string]$ActiveStep
+  )
+
+  if ($null -eq $LegacyBridge -or $ActiveStep -ne 'windows-in-app-update-e2e' -or $LegacyBridge.State -ne 'pre-armed') {
+    throw 'Release gate rejected an unexpected legacy bridge arm request.'
+  }
+  if ([string]$Control.step -ne $ActiveStep -or [string]$Control.sourceTag -ne $LegacyBridge.SourceTag) {
+    throw 'Release gate rejected a legacy bridge arm request with a mismatched step or source tag.'
+  }
+  $installRoot = [string]$Control.installRoot
+  if ([string]::IsNullOrWhiteSpace($installRoot) -or $installRoot -notmatch '^[A-Za-z]:\\') {
+    throw 'Release gate rejected a legacy bridge arm request without an absolute install root.'
+  }
+  $resolvedInstallRoot = [System.IO.Path]::GetFullPath($installRoot)
+  # 品牌更名后旧安装为 AI小说作家.exe（字符码构造），新安装为 InkWeaver.exe，两者都是合法旧应用身份。
+  $expectedOldApplicationCandidates = @(
+    (Join-Path $resolvedInstallRoot 'InkWeaver.exe'),
+    (Join-Path $resolvedInstallRoot ('AI' + [char]0x5C0F + [char]0x8BF4 + [char]0x4F5C + [char]0x5BB6 + '.exe'))
+  )
+  if (
+    [int]$Control.processId -le 0 -or
+    [string]::IsNullOrWhiteSpace([string]$Control.processStartTimeTicks) -or
+    -not ($expectedOldApplicationCandidates | Where-Object { Test-AiNovelGateSameAbsolutePath -Left ([string]$Control.executablePath) -Right $_ })
+  ) {
+    throw 'Release gate rejected a legacy bridge arm request with an invalid old application identity.'
+  }
+
+  $LegacyBridge.PendingOldApplicationIdentity = [pscustomobject]@{
+    processId = [int]$Control.processId
+    startTimeTicks = [string]$Control.processStartTimeTicks
+    executablePath = [System.IO.Path]::GetFullPath([string]$Control.executablePath)
+  }
+  $LegacyBridge.InstallRoot = $resolvedInstallRoot
+  $LegacyBridge.State = 'arm-requested'
+}
+
+function Complete-AiNovelGateLegacyBridgeArm {
+  param(
+    [AllowNull()]$LegacyBridge,
+    [Parameter(Mandatory = $true)]$TrackedProcessIdentities
+  )
+
+  if ($null -eq $LegacyBridge -or $LegacyBridge.State -ne 'arm-requested') {
+    return $false
+  }
+  $pendingIdentity = $LegacyBridge.PendingOldApplicationIdentity
+  if ($null -eq $pendingIdentity -or -not $TrackedProcessIdentities.ContainsKey([int]$pendingIdentity.processId)) {
+    return $false
+  }
+  $oldApplicationIdentity = $TrackedProcessIdentities[[int]$pendingIdentity.processId]
+  if (-not (Test-AiNovelGateExactIdentity `
+    -Identity $oldApplicationIdentity `
+    -ProcessId ([int]$pendingIdentity.processId) `
+    -StartTimeTicks ([string]$pendingIdentity.startTimeTicks) `
+    -ExecutablePath ([string]$pendingIdentity.executablePath))) {
+    throw 'Release gate rejected a legacy bridge arm request without the captured old application identity.'
+  }
+
+  $LegacyBridge.OldApplicationIdentity = $oldApplicationIdentity
+  $LegacyBridge.PendingOldApplicationIdentity = $null
+  $LegacyBridge.State = 'armed'
+  return $true
+}
+
+function Get-AiNovelGateLegacyBridgeStatus {
+  param([AllowNull()]$LegacyBridge)
+
+  if ($null -eq $LegacyBridge) {
+    return $null
+  }
+  $installer = $LegacyBridge.ObservedInstallerIdentity
+  return [pscustomobject][ordered]@{
+    mode = $LegacyBridge.Mode
+    sourceTag = $LegacyBridge.SourceTag
+    state = $LegacyBridge.State
+    expectedPendingInstallerPath = $LegacyBridge.ExpectedPendingInstallerPath
+    expectedInstaller = [ordered]@{
+      name = $LegacyBridge.ExpectedInstallerName
+      size = $LegacyBridge.ExpectedInstallerSize
+      sha256 = $LegacyBridge.ExpectedInstallerSha256
+    }
+    processId = if ($null -ne $installer) { [int]$installer.processId } else { $null }
+    startTimeTicks = if ($null -ne $installer) { [string]$installer.startTimeTicks } else { $null }
+    executablePath = if ($null -ne $installer) { [string]$installer.executablePath } else { $null }
+    legacyInstallerHandoffObserved = ($null -ne $installer)
+    legacyInteractiveWizardObserved = ($LegacyBridge.AllowedWizardWindowKeys.Count -gt 0)
+    commandLineCaptured = ($null -ne $installer -and [bool]$installer.commandLineCaptured)
+    commandLineAuthorizationMode = 'record-only'
+    bridgeApplied = ($LegacyBridge.State -eq 'terminated')
+    allowedWizardWindowCount = $LegacyBridge.AllowedWizardWindowKeys.Count
+  }
+}
+
+function Test-AiNovelGateLegacyBridgeInstaller {
+  param(
+    [Parameter(Mandatory = $true)][AllowEmptyString()][string]$Step,
+    [AllowNull()]$LegacyBridge,
+    [AllowNull()]$InstallerIdentity,
+    [AllowNull()]$ParentIdentity
+  )
+
+  if (
+    $Step -ne 'windows-in-app-update-e2e' -or
+    $null -eq $LegacyBridge -or
+    $LegacyBridge.State -ne 'armed' -or
+    $null -eq $LegacyBridge.OldApplicationIdentity -or
+    $null -eq $InstallerIdentity
+  ) {
+    return $false
+  }
+  return (
+    [bool]$InstallerIdentity.identityCaptured -and
+    [bool]$InstallerIdentity.commandLineCaptured -and
+    (Test-AiNovelGateSameAbsolutePath `
+      -Left ([string]$InstallerIdentity.executablePath) `
+      -Right $LegacyBridge.ExpectedPendingInstallerPath) -and
+    ([System.IO.Path]::GetFileName([string]$InstallerIdentity.executablePath) -eq $LegacyBridge.ExpectedInstallerName) -and
+    (Test-AiNovelGateExactIdentity `
+      -Identity $ParentIdentity `
+      -ProcessId ([int]$LegacyBridge.OldApplicationIdentity.processId) `
+      -StartTimeTicks ([string]$LegacyBridge.OldApplicationIdentity.startTimeTicks) `
+      -ExecutablePath ([string]$LegacyBridge.OldApplicationIdentity.executablePath)) -and
+    (Test-AiNovelGateCapturedParentIdentity `
+      -ChildIdentity $InstallerIdentity `
+      -ParentIdentity $ParentIdentity)
+  )
+}
+
+function Test-AiNovelGateLegacyBridgeTermination {
+  param(
+    [Parameter(Mandatory = $true)][AllowEmptyString()][string]$Step,
+    [AllowNull()]$LegacyBridge,
+    [AllowNull()]$InstallerIdentity
+  )
+
+  return (
+    $Step -eq 'windows-in-app-update-e2e' -and
+    $null -ne $LegacyBridge -and
+    $LegacyBridge.State -eq 'termination-armed' -and
+    $null -ne $LegacyBridge.ObservedInstallerIdentity -and
+    (Test-AiNovelGateExactIdentity `
+      -Identity $InstallerIdentity `
+      -ProcessId ([int]$LegacyBridge.ObservedInstallerIdentity.processId) `
+      -StartTimeTicks ([string]$LegacyBridge.ObservedInstallerIdentity.startTimeTicks) `
+      -ExecutablePath ([string]$LegacyBridge.ObservedInstallerIdentity.executablePath))
+  )
+}
 
 function Test-AiNovelGateNativeUpdaterOldApplicationIdentity {
   param(
@@ -3261,6 +2816,7 @@ function Test-AiNovelGateNativeUpdaterPendingInstallerIdentity {
 function Test-AiNovelGateNativeUpdaterOldApplicationExit {
   param(
     [Parameter(Mandatory = $true)][AllowEmptyString()][string]$Step,
+    [AllowNull()]$LegacyBridge,
     [AllowNull()]$Event,
     [AllowNull()]$ProcessIdentity,
     [AllowNull()]$TrackedProcessIdentities
@@ -3268,10 +2824,11 @@ function Test-AiNovelGateNativeUpdaterOldApplicationExit {
 
   # Electron can surface STATUS_BREAKPOINT after native autoUpdater has handed
   # its exact updater-owned pending installer to the old application. This is
-  # deliberately independent of updater orchestration and rejects every partial,
+  # deliberately independent of the legacy bridge and rejects every partial,
   # reused, drifted, or ambiguous process chain.
   if (
     $Step -ne 'windows-in-app-update-e2e' -or
+    $null -ne $LegacyBridge -or
     $null -eq $Event -or
     $null -eq $ProcessIdentity -or
     $null -eq $TrackedProcessIdentities -or
@@ -3310,7 +2867,49 @@ function Test-AiNovelGateNativeUpdaterOldApplicationExit {
   }
 }
 
-function Test-AiNovelGateOldUninstallerImage {
+function Test-AiNovelGateLegacyBridgeOldApplicationExit {
+  param(
+    [Parameter(Mandatory = $true)][AllowEmptyString()][string]$Step,
+    [AllowNull()]$LegacyBridge,
+    [AllowNull()]$Event,
+    [AllowNull()]$ProcessIdentity
+  )
+
+  # Historical Electron can report STATUS_BREAKPOINT while quitting after its
+  # already-bound updater handoff. Keep this exception tied to the exact old
+  # app and exact direct-child official installer identity; no other process,
+  # exit code, or pre-authorization state is accepted.
+  if (
+    $Step -ne 'windows-in-app-update-e2e' -or
+    $null -eq $LegacyBridge -or
+    -not (Test-AiNovelGateLegacyBridgeSourceTag -SourceTag ([string]$LegacyBridge.SourceTag)) -or
+    $LegacyBridge.State -notin @('authorized', 'termination-armed', 'terminated') -or
+    $null -eq $LegacyBridge.OldApplicationIdentity -or
+    $null -eq $LegacyBridge.ObservedInstallerIdentity -or
+    $null -eq $Event -or
+    -not [bool]$Event.ExitCodeCaptured -or
+    [uint32]$Event.JobMessage -ne 8 -or
+    [int]$Event.ExitCode -ne -2147483645 -or
+    -not [bool]$LegacyBridge.ObservedInstallerIdentity.identityCaptured -or
+    -not [bool]$LegacyBridge.ObservedInstallerIdentity.commandLineCaptured -or
+    -not (Test-AiNovelGateSameAbsolutePath `
+      -Left ([string]$LegacyBridge.ObservedInstallerIdentity.executablePath) `
+      -Right ([string]$LegacyBridge.ExpectedPendingInstallerPath)) -or
+    -not (Test-AiNovelGateExactIdentity `
+      -Identity $ProcessIdentity `
+      -ProcessId ([int]$LegacyBridge.OldApplicationIdentity.processId) `
+      -StartTimeTicks ([string]$LegacyBridge.OldApplicationIdentity.startTimeTicks) `
+      -ExecutablePath ([string]$LegacyBridge.OldApplicationIdentity.executablePath)) -or
+    -not (Test-AiNovelGateCapturedParentIdentity `
+      -ChildIdentity $LegacyBridge.ObservedInstallerIdentity `
+      -ParentIdentity $LegacyBridge.OldApplicationIdentity)
+  ) {
+    return $false
+  }
+  return $true
+}
+
+function Test-AiNovelGateLegacyBridgeOldUninstallerImage {
   param([AllowEmptyString()][string]$ImagePath)
 
   if ([string]::IsNullOrWhiteSpace($ImagePath) -or $ImagePath -notmatch '^[A-Za-z]:\\') {
@@ -3318,22 +2917,114 @@ function Test-AiNovelGateOldUninstallerImage {
   }
   try {
     $fullPath = Resolve-AiNovelGateCanonicalExistingPath -Path $ImagePath
-    if ([string]::IsNullOrWhiteSpace($fullPath)) { return $false }
+    if ([string]::IsNullOrWhiteSpace($fullPath)) {
+      return $false
+    }
     $directory = [System.IO.Path]::GetDirectoryName($fullPath)
     $directoryName = [System.IO.Path]::GetFileName($directory)
     return (
-      (Test-AiNovelGateDirectChildDirectory -DirectoryPath $directory -RootPath ([System.IO.Path]::GetTempPath())) -and
+      (Test-AiNovelGateDirectChildDirectory `
+        -DirectoryPath $directory `
+        -RootPath ([System.IO.Path]::GetTempPath())) -and
       $directoryName -match '^(?i:ns[A-Za-z0-9]+\.tmp)$' -and
-      [string]::Equals([System.IO.Path]::GetFileName($fullPath), 'old-uninstaller.exe', [System.StringComparison]::OrdinalIgnoreCase)
+      [string]::Equals(
+        [System.IO.Path]::GetFileName($fullPath),
+        'old-uninstaller.exe',
+        [System.StringComparison]::OrdinalIgnoreCase
+      )
     )
   }
-  catch { return $false }
+  catch {
+    return $false
+  }
 }
 
+function Get-AiNovelGateLegacyBridgeStagingInstallerPath {
+  param([AllowNull()]$LegacyBridge)
+
+  if (
+    $null -eq $LegacyBridge -or
+    [string]$LegacyBridge.Mode -ne 'legacy-bridge' -or
+    -not (Test-AiNovelGateLegacyBridgeSourceTag -SourceTag ([string]$LegacyBridge.SourceTag)) -or
+    [string]::IsNullOrWhiteSpace([string]$LegacyBridge.InstallRoot) -or
+    [string]::IsNullOrWhiteSpace([string]$LegacyBridge.ExpectedInstallerName) -or
+    [string]$LegacyBridge.InstallRoot -notmatch '^[A-Za-z]:\\'
+  ) {
+    return $null
+  }
+  try {
+    $installRoot = [System.IO.Path]::GetFullPath([string]$LegacyBridge.InstallRoot)
+    if (-not [string]::Equals(
+      [System.IO.Path]::GetFileName($installRoot.TrimEnd([char]92)),
+      'installed-app',
+      [System.StringComparison]::OrdinalIgnoreCase
+    )) {
+      return $null
+    }
+    $runtimeRoot = [System.IO.Path]::GetDirectoryName($installRoot.TrimEnd([char]92))
+    return [System.IO.Path]::GetFullPath([System.IO.Path]::Combine(
+      $runtimeRoot,
+      'legacy-bridge-staging',
+      [string]$LegacyBridge.ExpectedInstallerName
+    ))
+  }
+  catch {
+    return $null
+  }
+}
+
+function Test-AiNovelGateCapturedLegacyBridgeOldUninstallerProbeParent {
+  param(
+    [AllowNull()]$LegacyBridge,
+    [AllowNull()]$ChildIdentity,
+    [AllowNull()]$ParentIdentity,
+    [AllowNull()]$GrandParentIdentity,
+    [AllowNull()]$ArmedRootIdentity,
+    [AllowNull()]$TrackedProcessIdentities
+  )
+
+  $expectedStagingInstallerPath = Get-AiNovelGateLegacyBridgeStagingInstallerPath -LegacyBridge $LegacyBridge
+  if (
+    $null -eq $LegacyBridge -or
+    $null -eq $ChildIdentity -or
+    $null -eq $ParentIdentity -or
+    $null -eq $GrandParentIdentity -or
+    $null -eq $ArmedRootIdentity -or
+    $null -eq $TrackedProcessIdentities
+  ) {
+    return $false
+  }
+  return (
+    [string]$LegacyBridge.State -eq 'terminated' -and
+    -not [string]::IsNullOrWhiteSpace($expectedStagingInstallerPath) -and
+    (Test-AiNovelGateLegacyBridgeOldUninstallerImage -ImagePath ([string]$ParentIdentity.executablePath)) -and
+    (Test-AiNovelGateCapturedParentIdentity `
+      -ChildIdentity $ChildIdentity `
+      -ParentIdentity $ParentIdentity) -and
+    [bool]$GrandParentIdentity.identityCaptured -and
+    [bool]$GrandParentIdentity.commandLineCaptured -and
+    (Test-AiNovelGateSameAbsolutePath `
+      -Left ([string]$GrandParentIdentity.executablePath) `
+      -Right $expectedStagingInstallerPath) -and
+    [string]::Equals(
+      [System.IO.Path]::GetFileName([string]$GrandParentIdentity.executablePath),
+      [string]$LegacyBridge.ExpectedInstallerName,
+      [System.StringComparison]::OrdinalIgnoreCase
+    ) -and
+    (Test-AiNovelGateCapturedParentIdentity `
+      -ChildIdentity $ParentIdentity `
+      -ParentIdentity $GrandParentIdentity) -and
+    (Test-AiNovelGateIdentityAncestryToArmedRoot `
+      -StartIdentity $GrandParentIdentity `
+      -TrackedProcessIdentities $TrackedProcessIdentities `
+      -ArmedRootIdentity $ArmedRootIdentity)
+  )
+}
 
 function Test-AiNovelGateCapturedNativeUpdaterOldUninstallerProbeParent {
   param(
     [Parameter(Mandatory = $true)][AllowEmptyString()][string]$Step,
+    [AllowNull()]$LegacyBridge,
     [AllowNull()]$ChildIdentity,
     [AllowNull()]$ParentIdentity,
     [AllowNull()]$GrandParentIdentity,
@@ -3347,6 +3038,7 @@ function Test-AiNovelGateCapturedNativeUpdaterOldUninstallerProbeParent {
   # cannot inherit this exception.
   if (
     $Step -ne 'windows-in-app-update-e2e' -or
+    $null -ne $LegacyBridge -or
     $null -eq $ChildIdentity -or
     $null -eq $ParentIdentity -or
     $null -eq $GrandParentIdentity -or
@@ -3384,7 +3076,7 @@ function Test-AiNovelGateCapturedNativeUpdaterOldUninstallerProbeParent {
         -ProcessId ([int]$GrandParentIdentity.processId) `
         -StartTimeTicks ([string]$GrandParentIdentity.startTimeTicks) `
         -ExecutablePath ([string]$GrandParentIdentity.executablePath)) -or
-      -not (Test-AiNovelGateOldUninstallerImage `
+      -not (Test-AiNovelGateLegacyBridgeOldUninstallerImage `
         -ImagePath ([string]$ParentIdentity.executablePath)) -or
       -not (Test-AiNovelGateCapturedParentIdentity `
         -ChildIdentity $ChildIdentity `
@@ -3417,6 +3109,200 @@ function Test-AiNovelGateCapturedNativeUpdaterOldUninstallerProbeParent {
   }
 }
 
+function Test-AiNovelGateExpectedLegacyBridgeOldUninstallerPowerShellProbeExit {
+  param(
+    [Parameter(Mandatory = $true)][AllowEmptyString()][string]$Step,
+    [AllowNull()]$LegacyBridge,
+    [Parameter(Mandatory = $true)]$Event,
+    [AllowNull()]$ProcessIdentity,
+    [AllowNull()]$ParentIdentity,
+    [AllowNull()]$GrandParentIdentity,
+    [AllowNull()]$ArmedRootIdentity,
+    [AllowNull()]$TrackedProcessIdentities
+  )
+
+  # The historical NSIS upgrade copies the installed uninstaller to
+  # TEMP\ns<ASCII-alnum>.tmp\old-uninstaller.exe. Its fixed PowerShell probes use exit 1
+  # as a normal negative result. This branch is intentionally limited to the
+  # same-byte legacy bridge's private staging installer after the official
+  # handoff has been terminated, with every ancestry edge identity-bound.
+  if (
+    $Step -ne 'windows-in-app-update-e2e' -or
+    -not (Test-AiNovelGateExpectedExitOne -Step $Step -Event $Event) -or
+    $null -eq $ProcessIdentity -or
+    -not [bool]$ProcessIdentity.identityCaptured -or
+    -not [bool]$ProcessIdentity.commandLineCaptured -or
+    -not (Test-AiNovelGateSystemPowerShellImage -ImagePath ([string]$ProcessIdentity.executablePath)) -or
+    -not (Test-AiNovelGateKnownNsisPowerShellProbeCommand `
+      -CommandLine ([string]$ProcessIdentity.commandLine) `
+      -PowerShellImagePath ([string]$ProcessIdentity.executablePath)) -or
+    -not (Test-AiNovelGateCapturedLegacyBridgeOldUninstallerProbeParent `
+      -LegacyBridge $LegacyBridge `
+      -ChildIdentity $ProcessIdentity `
+      -ParentIdentity $ParentIdentity `
+      -GrandParentIdentity $GrandParentIdentity `
+      -ArmedRootIdentity $ArmedRootIdentity `
+      -TrackedProcessIdentities $TrackedProcessIdentities)
+  ) {
+    return $false
+  }
+  return $true
+}
+
+function Get-AiNovelGateLegacyBridgeWindowKey {
+  param([AllowNull()]$Window)
+
+  if ($null -eq $Window) {
+    return $null
+  }
+  return "$([string]$Window.WindowHandle)|$([int]$Window.ProcessId)"
+}
+
+function Test-AiNovelGateLegacyBridgeWizardWindow {
+  param(
+    [AllowNull()]$LegacyBridge,
+    [AllowNull()]$Window
+  )
+
+  if (
+    $null -eq $LegacyBridge -or
+    $null -eq $LegacyBridge.ObservedInstallerIdentity -or
+    $null -eq $Window -or
+    -not [bool]$Window.Visible -or
+    [string]$Window.ClassName -ne '#32770' -or
+    [int]$Window.ProcessId -ne [int]$LegacyBridge.ObservedInstallerIdentity.processId
+  ) {
+    return $false
+  }
+  $expectedTitle = 'InkWeaver Setup'
+  $normalizedTitle = ([string]$Window.Title).TrimEnd()
+  if (-not [string]::Equals($normalizedTitle, $expectedTitle, [System.StringComparison]::Ordinal)) {
+    return $false
+  }
+  $key = Get-AiNovelGateLegacyBridgeWindowKey -Window $Window
+  if ($LegacyBridge.State -eq 'terminated') {
+    return $LegacyBridge.AllowedWizardWindowKeys.Contains($key)
+  }
+  if ($LegacyBridge.State -notin @('observed', 'authorized', 'termination-armed')) {
+    return $false
+  }
+  return (Test-AiNovelGateLiveIdentity -Identity $LegacyBridge.ObservedInstallerIdentity)
+}
+
+function Test-AiNovelGateLegacyBridgeTransientWindow {
+  param(
+    [AllowNull()]$LegacyBridge,
+    [AllowNull()]$Window
+  )
+
+  # A bound historical NSIS process can briefly publish an untitled dialog
+  # while the runner completes its exact-identity termination handshake. This
+  # is not evidence that the interactive Setup wizard was observed.
+  if (
+    $null -eq $LegacyBridge -or
+    $LegacyBridge.State -notin @('observed', 'authorized', 'termination-armed') -or
+    $null -eq $LegacyBridge.ObservedInstallerIdentity -or
+    $null -eq $Window -or
+    -not [bool]$Window.Visible -or
+    [string]$Window.ClassName -ne '#32770' -or
+    -not [string]::IsNullOrWhiteSpace([string]$Window.Title) -or
+    [int]$Window.ProcessId -ne [int]$LegacyBridge.ObservedInstallerIdentity.processId
+  ) {
+    return $false
+  }
+  return (Test-AiNovelGateLiveIdentity -Identity $LegacyBridge.ObservedInstallerIdentity)
+}
+
+function Test-AiNovelGateLegacyBridgeTerminationArmedCleanupWindow {
+  param(
+    [AllowNull()]$LegacyBridge,
+    [AllowNull()]$Window,
+    [Parameter(Mandatory = $true)][hashtable]$TrackedProcessIdentities,
+    [Parameter(Mandatory = $true)][DateTime]$NowUtc
+  )
+
+  # Stop-Process can make the exact bound installer cease being live before
+  # its durable Job Object exit event is consumed. Bound this destruction gap
+  # from the accepted termination control, without trusting a reused PID.
+  if (
+    $null -eq $LegacyBridge -or
+    $LegacyBridge.State -ne 'termination-armed' -or
+    $null -eq $LegacyBridge.TerminationArmedAtUtc -or
+    $null -eq $LegacyBridge.ObservedInstallerIdentity -or
+    $null -eq $Window -or
+    -not [bool]$Window.Visible -or
+    [string]$Window.ClassName -ne '#32770' -or
+    [int]$Window.ProcessId -ne [int]$LegacyBridge.ObservedInstallerIdentity.processId
+  ) {
+    return $false
+  }
+  $terminationArmedAtUtc = [DateTime]$LegacyBridge.TerminationArmedAtUtc
+  $cleanupAge = $NowUtc - $terminationArmedAtUtc
+  if ($cleanupAge.TotalMilliseconds -lt 0 -or $cleanupAge.TotalSeconds -gt 5) {
+    return $false
+  }
+  $installerProcessId = [int]$LegacyBridge.ObservedInstallerIdentity.processId
+  if (-not $TrackedProcessIdentities.ContainsKey($installerProcessId)) {
+    return $false
+  }
+  if (-not (Test-AiNovelGateExactIdentity `
+    -Identity $TrackedProcessIdentities[$installerProcessId] `
+    -ProcessId $installerProcessId `
+    -StartTimeTicks ([string]$LegacyBridge.ObservedInstallerIdentity.startTimeTicks) `
+    -ExecutablePath ([string]$LegacyBridge.ObservedInstallerIdentity.executablePath))) {
+    return $false
+  }
+  $title = [string]$Window.Title
+  if ([string]::IsNullOrWhiteSpace($title)) {
+    return $true
+  }
+  $expectedTitle = 'InkWeaver Setup'
+  return [string]::Equals($title.TrimEnd(), $expectedTitle, [System.StringComparison]::Ordinal)
+}
+
+function Test-AiNovelGateLegacyBridgeTerminationCleanupWindow {
+  param(
+    [AllowNull()]$LegacyBridge,
+    [AllowNull()]$Window,
+    [Parameter(Mandatory = $true)][hashtable]$TrackedProcessIdentities,
+    [Parameter(Mandatory = $true)][DateTime]$NowUtc
+  )
+
+  if (
+    $null -eq $LegacyBridge -or
+    $LegacyBridge.State -ne 'terminated' -or
+    $null -eq $LegacyBridge.TerminatedAtUtc -or
+    $null -eq $LegacyBridge.ObservedInstallerIdentity -or
+    $null -eq $Window -or
+    -not [bool]$Window.Visible -or
+    [string]$Window.ClassName -ne '#32770' -or
+    [int]$Window.ProcessId -ne [int]$LegacyBridge.ObservedInstallerIdentity.processId
+  ) {
+    return $false
+  }
+  $terminatedAtUtc = [DateTime]$LegacyBridge.TerminatedAtUtc
+  $cleanupAge = $NowUtc - $terminatedAtUtc
+  if ($cleanupAge.TotalMilliseconds -lt 0 -or $cleanupAge.TotalSeconds -gt 5) {
+    return $false
+  }
+  $installerProcessId = [int]$LegacyBridge.ObservedInstallerIdentity.processId
+  if (-not $TrackedProcessIdentities.ContainsKey($installerProcessId)) {
+    return $false
+  }
+  if (-not (Test-AiNovelGateExactIdentity `
+    -Identity $TrackedProcessIdentities[$installerProcessId] `
+    -ProcessId $installerProcessId `
+    -StartTimeTicks ([string]$LegacyBridge.ObservedInstallerIdentity.startTimeTicks) `
+    -ExecutablePath ([string]$LegacyBridge.ObservedInstallerIdentity.executablePath))) {
+    return $false
+  }
+  $title = [string]$Window.Title
+  if ([string]::IsNullOrWhiteSpace($title)) {
+    return $true
+  }
+  $expectedTitle = 'InkWeaver Setup'
+  return [string]::Equals($title.TrimEnd(), $expectedTitle, [System.StringComparison]::Ordinal)
+}
 
 if ($LoadMonitorLibrary) {
   return
@@ -3435,6 +3321,7 @@ $trackedNames = [System.Collections.Generic.HashSet[string]]::new([System.String
 foreach ($name in @(
   'InkWeaver.exe',
   '织墨',
+  'inkweaver',
   'electron-builder',
   'electron-rebuild',
   'rcedit',
@@ -3445,11 +3332,6 @@ foreach ($name in @(
 }
 
 $activeStep = ''
-$activeResultPath = ''
-$electronBuilderWorkspaceProbeObserved = $false
-$electronBuilderWorkspaceProbeProcessKeys = @{}
-$electronBuilderPnpmListProbeObserved = $false
-$electronBuilderPnpmListProbeProcessKeys = @{}
 $lastSequence = -1
 $completionDeadline = $null
 $completionQuietDeadline = $null
@@ -3462,6 +3344,7 @@ $deferredNsisCmdExitFailure = New-AiNovelGateDeferredNsisCmdExitFailureState
 $armedRootIdentity = $null
 $verifiedNsisFindParentKeys = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
 $pendingNsisCmdExitFailures = @{}
+$legacyBridge = $null
 $drainSequence = 0
 
 New-Item -ItemType Directory -Path $EvidencePath -Force | Out-Null
@@ -3530,11 +3413,6 @@ try {
 
       if ([string]$control.state -eq 'running') {
         $activeStep = [string]$control.step
-        $activeResultPath = if ($null -ne $control.resultPath) { [string]$control.resultPath } else { '' }
-        $electronBuilderWorkspaceProbeObserved = $false
-        $electronBuilderWorkspaceProbeProcessKeys.Clear()
-        $electronBuilderPnpmListProbeObserved = $false
-        $electronBuilderPnpmListProbeProcessKeys.Clear()
         $trackedProcessIds.Clear()
         $trackedProcessStartTimeTicks.Clear()
         $trackedProcessIdentities.Clear()
@@ -3544,6 +3422,7 @@ try {
         $armedRootIdentity = $null
         $verifiedNsisFindParentKeys.Clear()
         $pendingNsisCmdExitFailures.Clear()
+        $legacyBridge = New-AiNovelGateLegacyBridgeState -Control $control -Step $activeStep
         $rootIdentityAccepted = Initialize-AiNovelGateRootIdentity `
           -RootProcessId ([int]$control.rootProcessId) `
           -RootProcessStartTimeTicks ([long]$control.rootProcessStartTimeTicks) `
@@ -3558,6 +3437,13 @@ try {
         if ($null -eq $armedRootIdentity) {
           throw "Release gate could not capture the immutable PID/start/path identity for root process $($control.rootProcessId) in step '$activeStep'."
         }
+        # The root is captured before it is assigned to the Job Object, so it
+        # does not necessarily emit a process-start completion event. Seed the
+        # identity map explicitly; descendant ancestry checks (notably the
+        # NSIS uninstaller helper chain) must be able to terminate at this exact
+        # PID/start/path identity rather than treating the missing map entry as
+        # an unrelated process.
+        $trackedProcessIdentities[[int]$control.rootProcessId] = $armedRootIdentity
         try {
           # The launcher is deliberately held at its gate. Assigning it to the
           # Job Object before publishing `monitoring` makes every real command
@@ -3581,7 +3467,50 @@ try {
           -ProcessIds $trackedProcessIds `
           -ProcessStartTimeTicks $trackedProcessStartTimeTicks `
           -Reason 'root-assigned-before-release'
-        Write-AiNovelGateStatus -State 'monitoring' -Step $activeStep
+        Write-AiNovelGateStatus -State 'monitoring' -Step $activeStep -LegacyBridge (Get-AiNovelGateLegacyBridgeStatus -LegacyBridge $legacyBridge)
+      }
+      elseif ([string]$control.state -eq 'legacy-bridge-arm') {
+        Request-AiNovelGateLegacyBridgeArm -LegacyBridge $legacyBridge -Control $control -ActiveStep $activeStep
+        Write-AiNovelGateStatus -State 'legacy-bridge-awaiting-old-application' -Step $activeStep -LegacyBridge (Get-AiNovelGateLegacyBridgeStatus -LegacyBridge $legacyBridge)
+      }
+      elseif ([string]$control.state -eq 'legacy-bridge-authorize') {
+        if ($null -eq $legacyBridge -or $activeStep -ne 'windows-in-app-update-e2e' -or $legacyBridge.State -ne 'observed') {
+          throw 'Release gate rejected an unexpected legacy bridge authorization request.'
+        }
+        if (
+          [string]$control.step -ne $activeStep -or
+          [string]$control.sourceTag -ne $legacyBridge.SourceTag -or
+          -not [bool]$control.pendingInstallerDigestMatched -or
+          [string]$control.stagingInstallerSha256 -cne $legacyBridge.ExpectedInstallerSha256 -or
+          -not (Test-AiNovelGateExactIdentity `
+            -Identity $legacyBridge.ObservedInstallerIdentity `
+            -ProcessId ([int]$control.processId) `
+            -StartTimeTicks ([string]$control.processStartTimeTicks) `
+            -ExecutablePath ([string]$control.executablePath))
+        ) {
+          throw 'Release gate rejected a legacy bridge authorization request that did not bind the observed installer identity and release digest.'
+        }
+        $legacyBridge.State = 'authorized'
+        Write-AiNovelGateStatus -State 'legacy-bridge-authorized' -Step $activeStep -LegacyBridge (Get-AiNovelGateLegacyBridgeStatus -LegacyBridge $legacyBridge)
+      }
+      elseif ([string]$control.state -eq 'legacy-bridge-terminate') {
+        if ($null -eq $legacyBridge -or $activeStep -ne 'windows-in-app-update-e2e' -or $legacyBridge.State -ne 'authorized') {
+          throw 'Release gate rejected an unexpected legacy bridge termination request.'
+        }
+        if (
+          [string]$control.step -ne $activeStep -or
+          [string]$control.sourceTag -ne $legacyBridge.SourceTag -or
+          -not (Test-AiNovelGateExactIdentity `
+            -Identity $legacyBridge.ObservedInstallerIdentity `
+            -ProcessId ([int]$control.processId) `
+            -StartTimeTicks ([string]$control.processStartTimeTicks) `
+            -ExecutablePath ([string]$control.executablePath))
+        ) {
+          throw 'Release gate rejected a legacy bridge termination request that did not bind the observed installer identity.'
+        }
+        $legacyBridge.State = 'termination-armed'
+        $legacyBridge.TerminationArmedAtUtc = [DateTime]::UtcNow
+        Write-AiNovelGateStatus -State 'legacy-bridge-termination-armed' -Step $activeStep -LegacyBridge (Get-AiNovelGateLegacyBridgeStatus -LegacyBridge $legacyBridge)
       }
       elseif ([string]$control.state -eq 'step-complete') {
         $completionDeadline = [DateTime]::UtcNow.AddSeconds(5)
@@ -3589,11 +3518,6 @@ try {
       }
       elseif ([string]$control.state -eq 'quiet') {
         $activeStep = [string]$control.step
-        $activeResultPath = ''
-        $electronBuilderWorkspaceProbeObserved = $false
-        $electronBuilderWorkspaceProbeProcessKeys.Clear()
-        $electronBuilderPnpmListProbeObserved = $false
-        $electronBuilderPnpmListProbeProcessKeys.Clear()
         $trackedProcessIds.Clear()
         $trackedProcessStartTimeTicks.Clear()
         $trackedProcessIdentities.Clear()
@@ -3603,6 +3527,7 @@ try {
         $armedRootIdentity = $null
         $verifiedNsisFindParentKeys.Clear()
         $pendingNsisCmdExitFailures.Clear()
+        $legacyBridge = $null
         $completionDeadline = $null
         $completionQuietDeadline = $null
         $quietDeadline = New-AiNovelGateQuietDeadline `
@@ -3669,6 +3594,38 @@ try {
           -ProcessIdentity $processIdentity `
           -ExitClassification 'identity-captured'
         $processEventEvidenceWritten = $true
+        if ($null -ne $legacyBridge) {
+          $legacyParentIdentity = $null
+          if (
+            $null -ne $processIdentity.parentProcessId -and
+            $trackedProcessIdentities.ContainsKey([int]$processIdentity.parentProcessId)
+          ) {
+            $legacyParentIdentity = $trackedProcessIdentities[[int]$processIdentity.parentProcessId]
+          }
+          if (Test-AiNovelGateLegacyBridgeInstaller `
+            -Step $activeStep `
+            -LegacyBridge $legacyBridge `
+            -InstallerIdentity $processIdentity `
+            -ParentIdentity $legacyParentIdentity) {
+            $legacyBridge.ObservedInstallerIdentity = $processIdentity
+            $legacyBridge.State = 'observed'
+            Write-AiNovelGateStatus -State 'legacy-bridge-observed' -Step $activeStep -LegacyBridge (Get-AiNovelGateLegacyBridgeStatus -LegacyBridge $legacyBridge)
+          }
+          elseif (
+            $legacyBridge.State -eq 'armed' -and
+            (Test-AiNovelGateNsisInstallerImage -ImagePath ([string]$processIdentity.executablePath))
+          ) {
+            throw 'Release gate rejected an unbound NSIS installer while the legacy bridge was armed.'
+          }
+          elseif (
+            $legacyBridge.State -in @('observed', 'authorized', 'termination-armed') -and
+            (Test-AiNovelGateSameAbsolutePath `
+              -Left ([string]$processIdentity.executablePath) `
+              -Right $legacyBridge.ExpectedPendingInstallerPath)
+          ) {
+            throw 'Release gate rejected a second legacy bridge installer process.'
+          }
+        }
       }
       elseif ([string]$processEvent.Kind -eq 'process-exit') {
         if ($trackedProcessIdentities.ContainsKey([int]$processEvent.ProcessId)) {
@@ -3702,22 +3659,68 @@ try {
           # Missing parent metadata remains fail-closed in the classifier.
         }
         $exitFailure = Get-AiNovelGateProcessExitFailure -Step $activeStep -Event $processEvent
-        if (Test-AiNovelGateNativeUpdaterOldApplicationExit `
+        if (Test-AiNovelGateLegacyBridgeTermination `
           -Step $activeStep `
+          -LegacyBridge $legacyBridge `
+          -InstallerIdentity $processIdentity) {
+          $legacyBridge.State = 'terminated'
+          $legacyBridge.TerminatedAtUtc = [DateTime]::UtcNow
+          $exitClassification = 'legacy-bridge-terminated'
+          Write-AiNovelGateStatus -State 'legacy-bridge-terminated' -Step $activeStep -LegacyBridge (Get-AiNovelGateLegacyBridgeStatus -LegacyBridge $legacyBridge)
+        }
+        elseif (Test-AiNovelGateLegacyBridgeOldApplicationExit `
+          -Step $activeStep `
+          -LegacyBridge $legacyBridge `
+          -Event $processEvent `
+          -ProcessIdentity $processIdentity) {
+          $exitClassification = 'legacy-bridge-old-application-breakpoint'
+        }
+        elseif (Test-AiNovelGateExpectedPackageManagerProbeExit `
+          -Step $activeStep `
+          -Event $processEvent `
+          -ProcessIdentity $processIdentity `
+          -ParentIdentity $parentIdentity) {
+          $exitClassification = 'expected-package-manager-probe'
+        }
+        elseif (Test-AiNovelGateExpectedInstallerOldUninstallerProbeExit `
+          -Step $activeStep `
+          -Event $processEvent `
+          -ProcessIdentity $processIdentity `
+          -ParentIdentity $parentIdentity `
+          -GrandParentIdentity $grandParentIdentity `
+          -GreatGrandParentIdentity $greatGrandParentIdentity `
+          -ArmedRootIdentity $armedRootIdentity `
+          -TrackedProcessIdentities $trackedProcessIdentities) {
+          $exitClassification = 'expected-installer-old-uninstaller-probe'
+        }
+        elseif (Test-AiNovelGateExpectedElectronChildTerminationExit `
+          -Step $activeStep `
+          -Event $processEvent `
+          -ProcessIdentity $processIdentity `
+          -ParentIdentity $parentIdentity) {
+          $exitClassification = 'expected-electron-child-termination'
+        }
+        elseif (Test-AiNovelGateNativeUpdaterOldApplicationExit `
+          -Step $activeStep `
+          -LegacyBridge $legacyBridge `
           -Event $processEvent `
           -ProcessIdentity $processIdentity `
           -TrackedProcessIdentities $trackedProcessIdentities) {
           $exitClassification = 'native-updater-old-application-breakpoint'
         }
-        elseif (Test-AiNovelGateExpectedElectronSmokeChildTerminationExit `
-          -Step $activeStep `
-          -Event $processEvent `
-          -ProcessIdentity $processIdentity `
-          -ParentIdentity $parentIdentity) {
-          $exitClassification = 'expected-electron-smoke-child-termination'
-        }
         elseif ($null -eq $exitFailure) {
           $exitClassification = 'succeeded'
+        }
+        elseif (Test-AiNovelGateExpectedLegacyBridgeOldUninstallerPowerShellProbeExit `
+          -Step $activeStep `
+          -LegacyBridge $legacyBridge `
+          -Event $processEvent `
+          -ProcessIdentity $processIdentity `
+          -ParentIdentity $parentIdentity `
+          -GrandParentIdentity $grandParentIdentity `
+          -ArmedRootIdentity $armedRootIdentity `
+          -TrackedProcessIdentities $trackedProcessIdentities) {
+          $exitClassification = 'expected-legacy-bridge-old-uninstaller-powershell-probe'
         }
         elseif (Test-AiNovelGateExpectedNsisPowerShellProbeExit `
           -Step $activeStep `
@@ -3725,6 +3728,7 @@ try {
           -ProcessIdentity $processIdentity `
           -ParentIdentity $parentIdentity `
           -GrandParentIdentity $grandParentIdentity `
+          -LegacyBridge $legacyBridge `
           -ArmedRootIdentity $armedRootIdentity `
           -TrackedProcessIdentities $trackedProcessIdentities) {
           $exitClassification = 'expected-nsis-powershell-probe'
@@ -3736,6 +3740,7 @@ try {
           -ParentIdentity $parentIdentity `
           -GrandParentIdentity $grandParentIdentity `
           -GreatGrandParentIdentity $greatGrandParentIdentity `
+          -LegacyBridge $legacyBridge `
           -ArmedRootIdentity $armedRootIdentity `
           -TrackedProcessIdentities $trackedProcessIdentities) {
           $parentProcessIdentityKey = Get-AiNovelGateProcessIdentityKey -ProcessIdentity $parentIdentity
@@ -3758,6 +3763,7 @@ try {
           -ProcessIdentity $processIdentity `
           -ParentIdentity $parentIdentity `
           -GrandParentIdentity $grandParentIdentity `
+          -LegacyBridge $legacyBridge `
           -ArmedRootIdentity $armedRootIdentity `
           -TrackedProcessIdentities $trackedProcessIdentities `
           -VerifiedFindParentKeys $verifiedNsisFindParentKeys) {
@@ -3769,6 +3775,7 @@ try {
           -ProcessIdentity $processIdentity `
           -ParentIdentity $parentIdentity `
           -GrandParentIdentity $grandParentIdentity `
+          -LegacyBridge $legacyBridge `
           -ArmedRootIdentity $armedRootIdentity `
           -TrackedProcessIdentities $trackedProcessIdentities) {
           $processIdentityKey = Get-AiNovelGateProcessIdentityKey -ProcessIdentity $processIdentity
@@ -3783,82 +3790,6 @@ try {
           } else {
             $exitClassification = 'failure'
           }
-        }
-        elseif (Test-AiNovelGateExpectedElectronBuilderPnpmListProbeExit -Step $activeStep -Event $processEvent -ProcessIdentity $processIdentity -ParentIdentity $parentIdentity -ArmedRootIdentity $armedRootIdentity -TrackedProcessIdentities $trackedProcessIdentities) {
-          if ([string]::IsNullOrWhiteSpace($activeResultPath)) {
-            $exitClassification = 'failure'
-          } else {
-            $probeChain = @(Get-AiNovelGateElectronBuilderPnpmListProbeChain -ProbeIdentity $processIdentity -ArmedRootIdentity $armedRootIdentity -TrackedProcessIdentities $trackedProcessIdentities)
-            if ($probeChain.Count -eq 0) {
-              $exitClassification = 'failure'
-            } else {
-              foreach ($probeIdentity in $probeChain) {
-                $probeIdentityKey = Get-AiNovelGateProcessIdentityKey -ProcessIdentity $probeIdentity
-                if ($null -eq $probeIdentityKey) {
-                  $probeChain = @()
-                  break
-                }
-                $electronBuilderPnpmListProbeProcessKeys[$probeIdentityKey] = $true
-              }
-              if ($probeChain.Count -eq 0) {
-                $exitClassification = 'failure'
-              } else {
-                $electronBuilderPnpmListProbeObserved = $true
-                $exitClassification = 'expected-electron-builder-pnpm-list-probe'
-              }
-            }
-          }
-        }
-        elseif ($electronBuilderPnpmListProbeObserved -and (Test-AiNovelGateExpectedElectronBuilderPnpmListProbeFollowUpExit -Step $activeStep -Event $processEvent -ProcessIdentity $processIdentity -ArmedRootIdentity $armedRootIdentity -TrackedProcessIdentities $trackedProcessIdentities -ProbeProcessKeys $electronBuilderPnpmListProbeProcessKeys)) {
-          $exitClassification = 'expected-electron-builder-pnpm-list-probe'
-        }
-        elseif (Test-AiNovelGateExpectedElectronBuilderWorkspaceProbeExit `
-          -Step $activeStep `
-          -Event $processEvent `
-          -ProcessIdentity $processIdentity `
-          -ParentIdentity $parentIdentity `
-          -ArmedRootIdentity $armedRootIdentity `
-          -TrackedProcessIdentities $trackedProcessIdentities) {
-          if ([string]::IsNullOrWhiteSpace($activeResultPath)) {
-            $exitClassification = 'failure'
-          } else {
-            $probeChain = @(
-              Get-AiNovelGateElectronBuilderPnpmWorkspaceProbeChain `
-                -ProbeIdentity $processIdentity `
-                -ArmedRootIdentity $armedRootIdentity `
-                -TrackedProcessIdentities $trackedProcessIdentities
-            )
-            if ($probeChain.Count -eq 0) {
-              $exitClassification = 'failure'
-            } else {
-              foreach ($probeIdentity in $probeChain) {
-                $probeIdentityKey = Get-AiNovelGateProcessIdentityKey -ProcessIdentity $probeIdentity
-                if ($null -eq $probeIdentityKey) {
-                  $probeChain = @()
-                  break
-                }
-                $electronBuilderWorkspaceProbeProcessKeys[$probeIdentityKey] = $true
-              }
-              if ($probeChain.Count -eq 0) {
-                $exitClassification = 'failure'
-              } else {
-                $electronBuilderWorkspaceProbeObserved = $true
-                $exitClassification = 'expected-electron-builder-pnpm-pwd-probe'
-              }
-            }
-          }
-        }
-        elseif (
-          $electronBuilderWorkspaceProbeObserved -and
-          (Test-AiNovelGateExpectedElectronBuilderWorkspaceProbeFollowUpExit `
-            -Step $activeStep `
-            -Event $processEvent `
-            -ProcessIdentity $processIdentity `
-            -ArmedRootIdentity $armedRootIdentity `
-            -TrackedProcessIdentities $trackedProcessIdentities `
-            -ProbeProcessKeys $electronBuilderWorkspaceProbeProcessKeys)
-        ) {
-          $exitClassification = 'expected-electron-builder-pnpm-pwd-probe'
         }
         else {
           $exitClassification = 'failure'
@@ -3896,14 +3827,17 @@ try {
         # explicit step-complete acknowledgement, or after a bounded drain
         # deadline if the launcher never completes.
         if ($exitClassification -in @(
+          'expected-legacy-bridge-old-uninstaller-powershell-probe',
           'expected-nsis-powershell-probe',
           'expected-nsis-cmd-process-check',
           'expected-nsis-find-no-match',
+          'expected-package-manager-probe',
+          'expected-installer-old-uninstaller-probe',
+          'expected-electron-child-termination',
           'pending-nsis-cmd-process-check',
-          'native-updater-old-application-breakpoint',
-          'expected-electron-smoke-child-termination',
-          'expected-electron-builder-pnpm-list-probe',
-          'expected-electron-builder-pnpm-pwd-probe'
+          'legacy-bridge-terminated',
+          'legacy-bridge-old-application-breakpoint',
+          'native-updater-old-application-breakpoint'
         )) {
           continue
         }
@@ -3919,6 +3853,12 @@ try {
             -Reason 'process-failure-awaiting-launch-result'
         }
       }
+    }
+
+    if (Complete-AiNovelGateLegacyBridgeArm `
+      -LegacyBridge $legacyBridge `
+      -TrackedProcessIdentities $trackedProcessIdentities) {
+      Write-AiNovelGateStatus -State 'legacy-bridge-armed' -Step $activeStep -LegacyBridge (Get-AiNovelGateLegacyBridgeStatus -LegacyBridge $legacyBridge)
     }
 
     if ($jobBecameEmpty -and $null -eq $deferredProcessFailure) {
@@ -3994,6 +3934,62 @@ try {
         -TargetProcessIds $trackedProcessIds `
         -TargetProcessStartTimeTicks $trackedProcessStartTimeTicks `
         -TargetNames $targetNameSnapshot)
+      if ($null -ne $legacyBridge -and $newErrorWindows.Count -gt 0) {
+        $unallowedErrorWindows = [System.Collections.Generic.List[object]]::new()
+        foreach ($window in $newErrorWindows) {
+          if (Test-AiNovelGateLegacyBridgeWizardWindow -LegacyBridge $legacyBridge -Window $window) {
+            $windowKey = Get-AiNovelGateLegacyBridgeWindowKey -Window $window
+            if (
+              $legacyBridge.AllowedWizardWindowKeys.Contains($windowKey) -or
+              $legacyBridge.AllowedWizardWindowKeys.Count -eq 0
+            ) {
+              [void]$legacyBridge.AllowedWizardWindowKeys.Add($windowKey)
+              continue
+            }
+          }
+          if (Test-AiNovelGateLegacyBridgeTransientWindow -LegacyBridge $legacyBridge -Window $window) {
+            continue
+          }
+          if (Test-AiNovelGateLegacyBridgeTerminationArmedCleanupWindow `
+            -LegacyBridge $legacyBridge `
+            -Window $window `
+            -TrackedProcessIdentities $trackedProcessIdentities `
+            -NowUtc ([DateTime]::UtcNow)) {
+            if (-not [string]::IsNullOrWhiteSpace([string]$window.Title)) {
+              $windowKey = Get-AiNovelGateLegacyBridgeWindowKey -Window $window
+              if (
+                -not $legacyBridge.AllowedWizardWindowKeys.Contains($windowKey) -and
+                $legacyBridge.AllowedWizardWindowKeys.Count -gt 0
+              ) {
+                $unallowedErrorWindows.Add($window)
+                continue
+              }
+              [void]$legacyBridge.AllowedWizardWindowKeys.Add($windowKey)
+            }
+            continue
+          }
+          if (Test-AiNovelGateLegacyBridgeTerminationCleanupWindow `
+            -LegacyBridge $legacyBridge `
+            -Window $window `
+            -TrackedProcessIdentities $trackedProcessIdentities `
+            -NowUtc ([DateTime]::UtcNow)) {
+            if (-not [string]::IsNullOrWhiteSpace([string]$window.Title)) {
+              $windowKey = Get-AiNovelGateLegacyBridgeWindowKey -Window $window
+              if (
+                -not $legacyBridge.AllowedWizardWindowKeys.Contains($windowKey) -and
+                $legacyBridge.AllowedWizardWindowKeys.Count -gt 0
+              ) {
+                $unallowedErrorWindows.Add($window)
+                continue
+              }
+              [void]$legacyBridge.AllowedWizardWindowKeys.Add($windowKey)
+            }
+            continue
+          }
+          $unallowedErrorWindows.Add($window)
+        }
+        $newErrorWindows = @($unallowedErrorWindows)
+      }
       if ($newErrorWindows.Count -gt 0) {
         $failure = "Release gate step '$activeStep' displayed a new Windows error dialog: $(Format-AiNovelWindowEvidence -Windows $newErrorWindows)"
         Save-AiNovelSmokeFailureEvidence `
@@ -4032,32 +4028,6 @@ try {
         -PostExitQuietDeadline $completionQuietDeadline
       $completionQuietDeadline = $completionDecision.PostExitQuietDeadline
       if ($completionDecision.State -eq 'complete') {
-        if (
-          ($electronBuilderWorkspaceProbeObserved -or $electronBuilderPnpmListProbeObserved) -and
-          -not (Test-AiNovelGateElectronBuilderWorkspaceProbeResult `
-            -ResultPath $activeResultPath `
-            -ArmedRootIdentity $armedRootIdentity)
-        ) {
-          $failure = "Release gate step '$activeStep' observed the electron-builder pnpm workspace probe without a completed result.json reporting targetExitCode 0."
-          Save-AiNovelSmokeFailureEvidence `
-            -Path $EvidencePath `
-            -Failure $failure `
-            -Windows $lastWindowSnapshot `
-            -ObservedProcessIds @($trackedProcessIds)
-          Write-AiNovelGateProcessTreeEvidence `
-            -Path $EvidencePath `
-            -Step $activeStep `
-            -ProcessIds $trackedProcessIds `
-            -ProcessStartTimeTicks $trackedProcessStartTimeTicks `
-            -Reason 'electron-builder-workspace-probe-result-invalid'
-          $script:AiNovelGateMonitorStoppedAt = [DateTime]::UtcNow.ToString('o')
-          Write-AiNovelGateStatus -State 'failed' -Step $activeStep -Failure $failure
-          Stop-AiNovelGateAtomicJob -AtomicMonitor $atomicMonitor
-          Stop-AiNovelGateProcesses `
-            -ProcessIds $trackedProcessIds `
-            -ProcessStartTimeTicks $trackedProcessStartTimeTicks
-          exit 1
-        }
         # If the Job Object did not deliver its terminal notification, keep
         # draining through the normal post-exit quiet period and fail closed
         # immediately before this step could otherwise be marked complete.

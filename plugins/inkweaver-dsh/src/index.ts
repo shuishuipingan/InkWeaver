@@ -1,16 +1,16 @@
-/** Host entry and public domain exports for the InkWeaver bundle. */
+/** Host entry and public domain exports for the AI novel bundle. */
 
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
-import type { ConnectionRpcHandler, HostConnectionHandle } from '@deepseek-ai/dsh-client-connection'
+import type { ConnectionFetchRoute, ConnectionRpcHandler } from '@deepseek-ai/dsh-client-connection'
 import { dshHomePath } from '@deepseek-ai/dsh-home-paths'
+import type {} from '@deepseek-ai/dsh-settings'
 import { WorkspaceId } from '@deepseek-ai/dsh-workspace'
 import z from '@deepseek-ai/schemastery'
 import { createAiNovelCommandRpcHandler, type NovelWorkspaceRegistry } from './command-rpc.ts'
 import { parseNovelAssetRef } from './context-types.ts'
 import { readNovelAsset, readNovelContext } from './context-window.ts'
-import { INKWEAVER_PRESET_ID, INKWEAVER_RPC_CHANNEL } from './identity.ts'
 import { createBundledPresetInstaller, type PresetInstaller } from './preset-installer.ts'
 import type { AssetRef } from './types.ts'
 
@@ -62,13 +62,12 @@ export type {
   NovelTaskNextValue,
   NovelTaskStatus,
 } from './novel-store.ts'
-export { importLegacyProject, previewLegacyProjectImport } from './legacy-project-import.ts'
+export { migrateV1NovelProject, previewV1NovelMigration } from './novel-migration.ts'
 export type {
-  LegacyImportPreview,
-  LegacyImportReceipt,
-  LegacyImportSourcePreview,
   NovelMigrationReceipt,
-} from './legacy-project-import.ts'
+  NovelV1MigrationPreview,
+  NovelV1SourcePreview,
+} from './novel-migration.ts'
 export { NovelProjectError } from './types.ts'
 export type {
   AssetRef,
@@ -90,14 +89,6 @@ export type {
 } from './types.ts'
 export { createPresetInstaller } from './preset-installer.ts'
 export type { PresetInstaller, PresetInstallResult, PresetInstallStatus } from './preset-installer.ts'
-export {
-  INKWEAVER_PACKAGE_NAME,
-  INKWEAVER_IMPORT_MARKER,
-  INKWEAVER_PRESET_ID,
-  INKWEAVER_PROJECT_DIRECTORY,
-  INKWEAVER_RPC_CHANNEL,
-  INKWEAVER_V2_PRESET_ID,
-} from './identity.ts'
 export { createAiNovelCommandRpcHandler } from './command-rpc.ts'
 export type {
   NovelCommandDiffChange,
@@ -115,10 +106,13 @@ export type {
 } from './command-rpc.ts'
 
 /** Stable Host plugin name used by Cordis diagnostics. */
-export const name = INKWEAVER_PRESET_ID
+export const name = 'inkweaver'
 
 /** Required Host services. */
-export const inject = ['connection', 'workspaceRegistry']
+export const inject = ['connection', 'workspaceRegistry', 'settings']
+
+/** Settings namespace owned by the browser status card. */
+const INKWEAVER_SETTINGS_NAMESPACE = 'inkweaver'
 
 /** Host configuration for the explicit preset setup surface. */
 export interface Config {
@@ -143,6 +137,76 @@ function internalFailure(message: string): Awaited<ReturnType<ConnectionRpcHandl
   return {
     ok: false,
     error: { code: 'internal', message, details: {} },
+  }
+}
+
+/** Every closed InkWeaver endpoint exposed through DSH 0.1.5's shared API. */
+const INKWEAVER_RPC_ENDPOINTS = [
+  'preset/status',
+  'preset/install',
+  'context/read',
+  'asset/read',
+  'workspace/initialize',
+  'workspace/state/read',
+  'state/read',
+  'chapter/context',
+  'proposal/list',
+  'command/preview',
+  'command/commit',
+  'task/read',
+  'proposal/apply',
+  'proposal/retry',
+  'proposal/discard',
+  'proposal/regenerate',
+  'workspace/reattach',
+  'workspace/clone',
+] as const
+
+type InkWeaverRpcEnvelope = {
+  readonly type?: unknown
+  readonly rpcId?: unknown
+  readonly method?: unknown
+  readonly payload?: unknown
+}
+
+function rpcErrorResult(message: string): Awaited<ReturnType<ConnectionRpcHandler>> {
+  return {
+    ok: false,
+    error: { code: 'bad-request', message, details: { issues: [] } },
+  }
+}
+
+function rpcResponse(rpcId: string, result: Awaited<ReturnType<ConnectionRpcHandler>>): Response {
+  return Response.json({ type: 'server-response', rpcId, result })
+}
+
+/** Build one exact shared-API Fetch route without claiming the gateway interceptor. */
+function createInkWeaverFetchRoute(
+  endpoint: string,
+  lifecycle: NovelHostRpcLifecycle,
+): ConnectionFetchRoute {
+  const wireEndpoint = `inkweaver/${endpoint}`
+  return {
+    path: `/api/inkweaver/${endpoint}`,
+    methods: ['POST'],
+    requestBody: 'buffered',
+    fetch: async request => {
+      let body: InkWeaverRpcEnvelope
+      try {
+        const parsed = await request.json() as unknown
+        if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+          return rpcResponse('invalid-request', rpcErrorResult('request envelope must be an object'))
+        }
+        body = parsed as InkWeaverRpcEnvelope
+      } catch {
+        return rpcResponse('invalid-request', rpcErrorResult('request envelope must be valid JSON'))
+      }
+      const rpcId = typeof body.rpcId === 'string' ? body.rpcId : 'invalid-request'
+      if (body.type !== 'client-request' || body.method !== wireEndpoint) {
+        return rpcResponse(rpcId, rpcErrorResult(`method ${JSON.stringify(body.method)} does not match endpoint ${JSON.stringify(wireEndpoint)}`))
+      }
+      return rpcResponse(rpcId, await lifecycle.handler(endpoint, body.payload, request.signal))
+    },
   }
 }
 
@@ -202,7 +266,7 @@ export function createPresetSetupRpcHandler(
       switch (endpoint) {
         case 'preset/status': return { ok: true, value: await installer.status(signal) }
         case 'preset/install': return { ok: true, value: await installer.install(signal) }
-        default: return badRequest(`Unknown InkWeaver endpoint: ${endpoint}`)
+        default: return badRequest(`Unknown AI novel endpoint: ${endpoint}`)
       }
     } catch (error) {
       if (signal.aborted) {
@@ -241,7 +305,7 @@ export function createAiNovelRpcHandler(
       return command(endpoint, payload, signal)
     }
     if (endpoint !== 'context/read' && endpoint !== 'asset/read') {
-      return badRequest(`Unknown InkWeaver endpoint: ${endpoint}`)
+      return badRequest(`Unknown AI novel endpoint: ${endpoint}`)
     }
     let workspaceId: WorkspaceId
     let read: (root: string) => Promise<unknown>
@@ -295,7 +359,7 @@ export function createAiNovelHostRpcLifecycle(handler: ConnectionRpcHandler): No
   const inFlight = new Set<Promise<unknown>>()
   let disposal: Promise<void> | undefined
   const guarded: ConnectionRpcHandler = (endpoint, payload, signal) => {
-    if (closing) return Promise.resolve(internalFailure('InkWeaver Host is reloading'))
+    if (closing) return Promise.resolve(internalFailure('AI novel Host is reloading'))
     const invocation = Promise.resolve().then(() => handler(endpoint, payload, signal))
     inFlight.add(invocation)
     return invocation.finally(() => { inFlight.delete(invocation) })
@@ -322,21 +386,28 @@ export function createAiNovelHostRpcLifecycle(handler: ConnectionRpcHandler): No
 export function apply(ctx: Context, config: Config): void {
   const presetRoot = config.presetRoot ?? dshHomePath('.agent-presets')
   const installer = createBundledPresetInstaller(templateRoot(), presetRoot)
-  const connection = ctx.get('connection') as HostConnectionHandle
-  const workspaces = ctx.get('workspaceRegistry') as NovelWorkspaceRegistry
-  ctx.effect(
-    () => {
-      const lifecycle = createAiNovelHostRpcLifecycle(createAiNovelRpcHandler(
-        installer,
-        workspaces,
-        error => { ctx.logger.error('inkweaver: request failed: %o', error) },
-      ))
-      const unregister = connection.rpc.handle(INKWEAVER_RPC_CHANNEL, lifecycle.handler, { authority: 'loopback' })
-      return async () => {
+  ctx.inject(['settings'], settingsCtx => {
+    settingsCtx.settings.register(INKWEAVER_SETTINGS_NAMESPACE, z.object({}))
+  })
+  // DSH 0.1.5 reserves the shared `/api` interceptor for its official
+  // `api-gateway`. Register exact Fetch routes instead: they are dispatched by
+  // Connection before that gateway fallback and keep InkWeaver isolated from
+  // the host's singleton interceptor.
+  ctx.inject(['connection'], connectionCtx => {
+    const workspaces = ctx.get('workspaceRegistry') as NovelWorkspaceRegistry
+    const lifecycle = createAiNovelHostRpcLifecycle(createAiNovelRpcHandler(
+      installer,
+      workspaces,
+      error => { ctx.logger.error('inkweaver: request failed: %o', error) },
+    ))
+    const unregister = INKWEAVER_RPC_ENDPOINTS.map(endpoint =>
+      connectionCtx.connection.fetch.register(createInkWeaverFetchRoute(endpoint, lifecycle)))
+    connectionCtx.effect(
+      () => async () => {
         await lifecycle.dispose()
-        await unregister()
-      }
-    },
-    'inkweaver: setup and read-only context RPC',
-  )
+        await Promise.all(unregister.map(dispose => dispose()))
+      },
+      'inkweaver: setup and read-only context RPC',
+    )
+  })
 }

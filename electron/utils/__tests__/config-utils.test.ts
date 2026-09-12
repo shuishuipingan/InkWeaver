@@ -46,6 +46,18 @@ describe('config-utils', () => {
     expect(fs.readdirSync(directory)).toEqual(['config.json'])
   })
 
+  it('accepts a UTF-8 BOM written by Windows migration tools', async () => {
+    const directory = createTemporaryDirectory()
+    const configPath = path.join(directory, 'config.json')
+    fs.writeFileSync(configPath, `\uFEFF${JSON.stringify({ version: 'bom-safe' })}`, 'utf-8')
+    const configUtils = await import('../config-utils')
+
+    expect(configUtils.tryReadJsonFile(configPath)).toEqual({
+      status: 'ok',
+      value: { version: 'bom-safe' },
+    })
+  })
+
   it('keeps the old JSON intact and removes the temporary file when writing fails', async () => {
     const directory = createTemporaryDirectory()
     const configPath = path.join(directory, 'config.json')

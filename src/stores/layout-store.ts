@@ -1,6 +1,5 @@
 import { create } from 'zustand'
-import { createJSONStorage, persist } from 'zustand/middleware'
-import { isPreV1LayoutPreference, migratePreV1PreferenceIfAvailable } from './pre-v1-preference-migration'
+import { persist } from 'zustand/middleware'
 
 /** 左侧活动栏的视图类型 */
 export type SidebarView = 'home' | 'project' | 'knowledge' | 'characters' | 'settings'
@@ -12,7 +11,7 @@ export type BottomTab = 'tasks' | 'log' | 'models' | 'stats'
 export type RightView = 'agent' | 'ai-output'
 
 /** 左侧主导航当前视觉激活项 */
-export type LeftRailItem = SidebarView | 'blueprint' | 'world' | 'ai' | BottomTab
+export type LeftRailItem = SidebarView | 'blueprint' | 'world' | 'reader' | 'ai' | BottomTab
 
 /** 设置弹窗分类 */
 export type SettingsSection = 'llm' | 'embedding' | 'proxy' | 'editor' | 'prompts' | 'about'
@@ -90,12 +89,6 @@ interface LayoutState {
   closeChapterCreation: () => void
 }
 
-migratePreV1PreferenceIfAvailable({
-  targetKey: 'inkweaver-layout',
-  suffix: '-layout',
-  validate: isPreV1LayoutPreference,
-})
-
 export const useLayoutStore = create<LayoutState>()(persist((set) => ({
   // 默认值
   sidebarOpen: true,
@@ -171,7 +164,6 @@ export const useLayoutStore = create<LayoutState>()(persist((set) => ({
   closeChapterCreation: () => set({ chapterCreationOpen: false, chapterCreationPrefill: null }),
 }), {
   name: 'inkweaver-layout',
-  storage: createJSONStorage(() => localStorage),
   partialize: (s) => ({
     bottomPanelFloating: s.bottomPanelFloating,
     floatingBounds: s.floatingBounds,

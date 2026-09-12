@@ -9,6 +9,9 @@ export interface FinalizedContinuityFact {
   entities: string[]
   statement: string
   sourceChapter: number
+  /** Story chapters during which this fact remains valid. */
+  validFromChapter?: number
+  validUntilChapter?: number
   evidence: string
 }
 
@@ -25,4 +28,13 @@ export interface SaveFinalizedContinuityRequest {
   chapterNumber: number
   chapterNotes: string
   facts?: FinalizedContinuityFact[]
+}
+
+export function factAppliesAtChapter(
+  fact: Pick<FinalizedContinuityFact, 'sourceChapter' | 'validFromChapter' | 'validUntilChapter'>,
+  chapterNumber: number,
+): boolean {
+  const start = fact.validFromChapter ?? fact.sourceChapter
+  const end = fact.validUntilChapter
+  return chapterNumber >= start && (end === undefined || chapterNumber <= end)
 }

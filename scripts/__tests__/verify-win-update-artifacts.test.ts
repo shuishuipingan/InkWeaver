@@ -112,7 +112,7 @@ describe('Windows update release artifact verification', () => {
   it('rejects a portable ZIP alongside the formal NSIS update assets', () => {
     const root = fixture()
     createFormalWindowsRelease(root)
-    write(root, 'inkweaver-0.2.6-windows-x64.zip', 'legacy portable package')
+    write(root, 'AI-Novel-Writer-0.2.6-windows-x64.zip', 'legacy portable package')
 
     expect(() => verifyWindowsUpdateArtifacts(root)).toThrow('must not contain portable ZIP archives')
   })

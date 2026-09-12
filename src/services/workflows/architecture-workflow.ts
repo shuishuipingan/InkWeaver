@@ -13,6 +13,7 @@ import {
 import { randomUUID } from '../../utils/id'
 import { requireWorkflowProjectSession } from './workflow-project-session'
 import type { ArchitectureProjectSnapshot } from './commands/architecture.command'
+import { canResumeWorkflowCheckpoint, type WorkflowRecoveryCheckpoint } from '../../shared/workflow-recovery'
 
 // ==========================================
 // 1. 类型定义
@@ -44,6 +45,88 @@ export interface ConfigGenerationWorkflowParams {
   totalChapters: number
   wordsPerChapter: number
   onGenerated: (config: Partial<NovelConfig>) => void
+}
+
+/** Rebuild configuration generation from the serialized user inputs only. */
+export function resumeConfigGenerationWorkflowFromCheckpoint(
+  checkpoint: WorkflowRecoveryCheckpoint,
+  currentSession: ProjectSessionContext,
+): WorkflowDefinition {
+  if (checkpoint.type !== 'config_generation' || checkpoint.resumeMetadata?.kind !== 'config-generation') {
+    throw new Error('该恢复收据不是配置生成工作流，不能由配置恢复入口处理')
+  }
+  if (!canResumeWorkflowCheckpoint(checkpoint, currentSession)) {
+    throw new Error('恢复收据所属项目会话已变化，已拒绝继续配置生成')
+  }
+
+  const metadata = checkpoint.resumeMetadata
+  const idea = typeof metadata.idea === 'string' ? metadata.idea.trim() : ''
+  if (!idea) throw new Error('配置恢复收据缺少创作脑洞')
+  const totalChapters = parsePositiveInteger(metadata.totalChapters, '总章数')
+  const wordsPerChapter = parsePositiveInteger(metadata.wordsPerChapter, '每章字数')
+
+  return createConfigGenerationWorkflow({
+    projectPath: currentSession.projectPath,
+    projectSession: currentSession,
+    idea,
+    totalChapters,
+    wordsPerChapter,
+    onGenerated: (config) => {
+      useProjectStore.getState().updateNovelConfig(config, currentSession)
+    },
+  })
+}
+
+function parsePositiveInteger(value: unknown, label: string): number {
+  if (!Number.isSafeInteger(value) || Number(value) < 1) {
+    throw new Error(`配置恢复收据的${label}无效`)
+  }
+  return Number(value)
+}
+
+/** Rebuild architecture generation from selected steps and safe guidance only. */
+export function resumeArchitectureWorkflowFromCheckpoint(
+  checkpoint: WorkflowRecoveryCheckpoint,
+  currentSession: ProjectSessionContext,
+): WorkflowDefinition {
+  if (checkpoint.type !== 'architecture_generation' || checkpoint.resumeMetadata?.kind !== 'architecture') {
+    throw new Error('该恢复收据不是架构生成工作流，不能由架构恢复入口处理')
+  }
+  if (!canResumeWorkflowCheckpoint(checkpoint, currentSession)) {
+    throw new Error('恢复收据所属项目会话已变化，已拒绝继续架构生成')
+  }
+  const metadata = checkpoint.resumeMetadata
+  const selectedSteps = parseArchitectureSteps(metadata.selectedStepsJson)
+  const stepGuidance = parseArchitectureGuidance(metadata.stepGuidanceJson)
+  return createArchitectureWorkflow({
+    projectPath: currentSession.projectPath,
+    projectSession: currentSession,
+    selectedSteps,
+    stepGuidance,
+  })
+}
+
+function parseArchitectureSteps(value: unknown): Array<'premise' | 'characters' | 'worldbuilding' | 'synopsis'> {
+  if (typeof value !== 'string') throw new Error('架构恢复收据缺少步骤参数')
+  try {
+    const parsed = JSON.parse(value) as unknown
+    const allowed = new Set(['premise', 'characters', 'worldbuilding', 'synopsis'])
+    if (!Array.isArray(parsed) || !parsed.every(item => typeof item === 'string' && allowed.has(item))) throw new Error('invalid steps')
+    return [...new Set(parsed)] as Array<'premise' | 'characters' | 'worldbuilding' | 'synopsis'>
+  } catch {
+    throw new Error('架构恢复收据步骤参数无效')
+  }
+}
+
+function parseArchitectureGuidance(value: unknown): Record<string, string> {
+  if (typeof value !== 'string') return {}
+  try {
+    const parsed = JSON.parse(value) as unknown
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('invalid guidance')
+    return Object.fromEntries(Object.entries(parsed).filter(([, item]) => typeof item === 'string'))
+  } catch {
+    throw new Error('架构恢复收据指导参数无效')
+  }
 }
 
 // ==========================================
@@ -126,6 +209,11 @@ export function createArchitectureWorkflow(params: ArchitectureWorkflowParams): 
     title: text('生成故事架构', 'Generate story architecture'),
     projectPath: expectedProjectPath,
     projectSession,
+    resumeMetadata: {
+      kind: 'architecture',
+      selectedStepsJson: JSON.stringify(sel),
+      stepGuidanceJson: JSON.stringify(guidance),
+    },
     resourceKeys: [
       workflowResourceKey('architecture'),
       ...(sel.includes('characters') ? [workflowResourceKey('character-roster')] : []),
@@ -154,6 +242,12 @@ export function createConfigGenerationWorkflow(params: ConfigGenerationWorkflowP
     title: text('AI 生成小说配置', 'Generate novel configuration with AI'),
     projectPath: params.projectPath,
     projectSession,
+    resumeMetadata: {
+      kind: 'config-generation',
+      idea: params.idea,
+      totalChapters: params.totalChapters,
+      wordsPerChapter: params.wordsPerChapter,
+    },
     resourceKeys: [workflowResourceKey('novel-config')],
     steps: [
       {

@@ -259,7 +259,7 @@ export class ModelCapabilityProbe {
         })
         const verified = res.ok
         // 部分服务在响应体或错误信息中给出能力提示；尽力解析
-        const contextWindowTokens: number | null = null
+        let contextWindowTokens: number | null = null
         let maxOutputTokens: number | null = null
         if (res.ok) {
           const payload = await res.json().catch(() => null)

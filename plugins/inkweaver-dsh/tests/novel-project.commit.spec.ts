@@ -44,7 +44,7 @@ describe('NovelProject commit semantics', () => {
     await expect(project.apply(initialize, new AbortController().signal)).rejects.toMatchObject({
       code: 'WRITE_FAILED',
     })
-    await expect(access(join(root, '.inkweaver', 'project.json'))).rejects.toThrow()
+    await expect(access(join(root, '.ai-novel', 'project.json'))).rejects.toThrow()
   })
 
   it('returns a receipt when cancellation arrives after the atomic commit point', async () => {

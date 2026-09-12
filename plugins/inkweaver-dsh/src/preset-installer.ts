@@ -1,10 +1,9 @@
 import { lstat, mkdir, mkdtemp, readdir, readFile, rename, rm } from 'node:fs/promises'
 import { isAbsolute, join } from 'node:path'
 import { writeFileAtomic } from '@deepseek-ai/dsh-atomic-write'
-import { INKWEAVER_PRESET_ID, INKWEAVER_V2_PRESET_ID } from './identity.ts'
 
-const PRESET_DIRECTORY = INKWEAVER_PRESET_ID
-const BUNDLED_PRESET_DIRECTORIES = [INKWEAVER_PRESET_ID, INKWEAVER_V2_PRESET_ID] as const
+const PRESET_DIRECTORY = 'inkweaver'
+const BUNDLED_PRESET_DIRECTORIES = ['inkweaver', 'inkweaver-v2'] as const
 const PRESET_FILES = ['agent.cordis.yml', 'preset.yml'] as const
 
 /** Observable installation state for the bundled 织墨 preset. */

@@ -36,7 +36,7 @@ async function runScenario(scenario: 'approval-never' | 'invalid-args'): Promise
     maxBuffer: 10 * 1024 * 1024,
     timeout: 15_000,
   })
-  await expect(access(join(workspace, '.inkweaver', 'project.json'))).rejects.toMatchObject({ code: 'ENOENT' })
+  await expect(access(join(workspace, '.ai-novel', 'project.json'))).rejects.toMatchObject({ code: 'ENOENT' })
   return stdout.trimEnd().split('\n').map(line => JSON.parse(line) as DriverLine)
 }
 
@@ -56,7 +56,7 @@ function textOf(event: SessionEvent): string {
   return ''
 }
 
-describe('InkWeaver model guardrail snapshots', () => {
+describe('AI novel model guardrail snapshots', () => {
   it('explains disabled approval before mutation and stops after one invalid nested call', async () => {
     const never = await runScenario('approval-never')
     const invalid = await runScenario('invalid-args')

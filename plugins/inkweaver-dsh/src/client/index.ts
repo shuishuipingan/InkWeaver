@@ -7,11 +7,6 @@ import type {} from '@deepseek-ai/dsh-client-ui-settings-plugins/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import { parseNovelAssetReadResult, parseNovelContextReadResult } from '../context-types.ts'
 import {
-  INKWEAVER_PACKAGE_NAME,
-  INKWEAVER_PRESET_ID,
-  INKWEAVER_RPC_CHANNEL,
-} from '../identity.ts'
-import {
   PresetSetupController,
   PresetSetupDisconnectedError,
   type PresetSetupPort,
@@ -25,6 +20,13 @@ import {
 import { observeNovelContextSources, type NovelContextSelectionSources } from './context-observer.ts'
 import { NovelWorkbenchRouteController, observeNovelV2Workspace } from './workbench-v2-observer.ts'
 import { installNovelContextStyle } from './setup-style.ts'
+
+const INKWEAVER_RPC_CHANNEL = '/api'
+const INKWEAVER_RPC_PREFIX = 'inkweaver'
+
+function inkweaverRpcEndpoint(endpoint: string): string {
+  return `${INKWEAVER_RPC_PREFIX}/${endpoint}`
+}
 import {
   NovelWorkbenchController,
   NovelWorkbenchDisconnectedError,
@@ -114,7 +116,8 @@ export const inject = ['slots', 'connection', 'sessions', 'workspaces', 'layout'
  * to emulate the rail through sidebar preferences, DOM state, or Host layout CSS.
  */
 type SidebarRailLayout = Readonly<{
-  acquireSidebarRail: () => () => void
+  acquireSidebarRail?: () => () => void
+  toggleSidebar?: () => void
 }>
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -124,18 +127,34 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 /** Return the official idempotent sidebar-rail lease factory, or an explicit V2 compatibility failure. */
 function sidebarRailLeaseFactory(ctx: ClientContext): () => () => void {
   const layout = (ctx as unknown as { readonly layout?: unknown }).layout
-  if (!isRecord(layout) || typeof layout.acquireSidebarRail !== 'function') {
+  if (!isRecord(layout)) {
     return () => {
-      throw new Error('InkWeaver V2 focused workbench requires a Harness Host with layout.acquireSidebarRail()')
+      throw new Error('AI novel V2 focused workbench requires the Harness layout panel service')
     }
   }
-  return (layout as SidebarRailLayout).acquireSidebarRail.bind(layout)
+  const railLayout = layout as SidebarRailLayout
+  if (typeof railLayout.acquireSidebarRail === 'function') {
+    return railLayout.acquireSidebarRail.bind(layout)
+  }
+  if (typeof railLayout.toggleSidebar === 'function') {
+    return () => {
+      const frame = typeof document === 'undefined'
+        ? undefined
+        : document.querySelector<HTMLElement>('[data-shell-overlay]')?.parentElement
+      const wasCollapsed = frame?.hasAttribute('data-sidebar-collapsed') ?? false
+      if (!wasCollapsed) railLayout.toggleSidebar!()
+      return () => { if (!wasCollapsed) railLayout.toggleSidebar!() }
+    }
+  }
+  return () => {
+    throw new Error('AI novel V2 focused workbench requires a Harness Host with layout panel actions')
+  }
 }
 
 function readStatus(value: unknown): { readonly status: 'not-installed' | 'installed' | 'conflict' } {
   if (!isRecord(value)
     || (value.status !== 'not-installed' && value.status !== 'installed' && value.status !== 'conflict')) {
-    throw new Error('InkWeaver preset status response is invalid')
+    throw new Error('AI novel preset status response is invalid')
   }
   return { status: value.status }
 }
@@ -144,7 +163,7 @@ function readInstall(value: unknown): { readonly status: 'installed' | 'conflict
   if (!isRecord(value)
     || (value.status !== 'installed' && value.status !== 'conflict')
     || typeof value.changed !== 'boolean') {
-    throw new Error('InkWeaver preset install response is invalid')
+    throw new Error('AI novel preset install response is invalid')
   }
   return { status: value.status, changed: value.changed }
 }
@@ -156,7 +175,7 @@ async function callSetup(
 ): Promise<unknown> {
   let result
   try {
-    result = await rpc.call(INKWEAVER_RPC_CHANNEL, endpoint, {}, signal)
+    result = await rpc.call(INKWEAVER_RPC_CHANNEL, inkweaverRpcEndpoint(endpoint), {}, signal)
   } catch (error) {
     throw new PresetSetupDisconnectedError(error)
   }
@@ -193,7 +212,7 @@ export function createNovelContextPort(
     read: async (workspaceId, chapter, signal) => {
       let result
       try {
-        result = await rpc.call(INKWEAVER_RPC_CHANNEL, 'context/read', { workspaceId, chapter }, signal)
+        result = await rpc.call(INKWEAVER_RPC_CHANNEL, inkweaverRpcEndpoint('context/read'), { workspaceId, chapter }, signal)
       } catch (error) {
         throw new NovelWorkbenchDisconnectedError(error)
       }
@@ -203,7 +222,7 @@ export function createNovelContextPort(
     readAsset: async (workspaceId, target, signal) => {
       let result
       try {
-        result = await rpc.call(INKWEAVER_RPC_CHANNEL, 'asset/read', { workspaceId, target }, signal)
+        result = await rpc.call(INKWEAVER_RPC_CHANNEL, inkweaverRpcEndpoint('asset/read'), { workspaceId, target }, signal)
       } catch (error) {
         throw new NovelWorkbenchDisconnectedError(error)
       }
@@ -246,7 +265,7 @@ function rejectPathBearingValue(value: unknown): void {
   if (!isRecord(value)) return
   for (const [key, nested] of Object.entries(value)) {
     if (key === 'path' || key === 'workspacePath' || key === 'archivePath') {
-      throw new Error('InkWeaver V2 response must not contain a local path')
+      throw new Error('AI novel V2 response must not contain a local path')
     }
     rejectPathBearingValue(nested)
   }
@@ -407,14 +426,48 @@ function isV2ChapterFinal(value: unknown): value is NovelChapterFinal {
     && isOpaqueIdentifier(value.artifactId) && isNonEmptyString(value.summary) && isTimestamp(value.selectedAt)
 }
 
+function isV2ChapterHandoff(value: unknown, requestedChapter: number): boolean {
+  return isRecord(value)
+    && exactKeysOf(value, ['sourceChapter', 'sourceRevision', 'transition', 'scene', 'emotionalState', 'openActions', 'unresolvedQuestions'])
+    && value.sourceChapter === requestedChapter - 1
+    && isNonNegativeInteger(value.sourceRevision)
+    && (value.transition === 'immediate' || value.transition === 'deliberate')
+    && isNonEmptyString(value.scene)
+    && typeof value.emotionalState === 'string'
+    && Array.isArray(value.openActions) && value.openActions.every(isNonEmptyString)
+    && Array.isArray(value.unresolvedQuestions) && value.unresolvedQuestions.every(isNonEmptyString)
+}
+
+function isV2KnowledgeEvent(value: unknown, requestedChapter: number): boolean {
+  if (!isRecord(value)) return false
+  const keys = Object.keys(value)
+  const allowed = ['eventId', 'characterId', 'statement', 'kind', 'acquisition', 'sourceChapter', 'validFromChapter', 'validUntilChapter', 'evidence', 'status']
+  if (keys.some(key => !allowed.includes(key))
+    || ['eventId', 'characterId', 'statement', 'kind', 'acquisition', 'sourceChapter', 'validFromChapter', 'evidence', 'status'].some(key => !(key in value))) return false
+  return isOpaqueIdentifier(value.eventId)
+    && isOpaqueIdentifier(value.characterId)
+    && isNonEmptyString(value.statement)
+    && (value.kind === 'fact' || value.kind === 'belief' || value.kind === 'rumor' || value.kind === 'misbelief')
+    && isNonEmptyString(value.acquisition)
+    && isNonNegativeInteger(value.sourceChapter) && value.sourceChapter > 0 && value.sourceChapter <= requestedChapter
+    && isNonNegativeInteger(value.validFromChapter) && value.validFromChapter > 0 && value.validFromChapter <= requestedChapter
+    && (value.validUntilChapter === undefined || (isNonNegativeInteger(value.validUntilChapter) && value.validUntilChapter >= value.validFromChapter))
+    && isNonEmptyString(value.evidence)
+    && value.status === 'confirmed'
+}
+
 function isV2ChapterContext(value: unknown, requestedChapter: number): value is NovelChapterContext {
-  if (!isRecord(value) || (!exactKeysOf(value, ['chapter']) && !exactKeysOf(value, ['chapter', 'previousFinal']))
+  if (!isRecord(value) || Object.keys(value).some(key => !['chapter', 'previousFinal', 'handoff', 'knowledgeEvents'].includes(key))
     || value.chapter !== requestedChapter || !isNonNegativeInteger(value.chapter) || value.chapter === 0) return false
-  if (value.previousFinal === undefined) return true
-  if (!isRecord(value.previousFinal) || !exactKeysOf(value.previousFinal, ['chapter', 'artifactId', 'content', 'summary'])) return false
-  return requestedChapter > 1 && value.previousFinal.chapter === requestedChapter - 1
-    && isOpaqueIdentifier(value.previousFinal.artifactId) && isNonEmptyString(value.previousFinal.content)
-    && isNonEmptyString(value.previousFinal.summary)
+  if (value.previousFinal !== undefined && (!isRecord(value.previousFinal) || !exactKeysOf(value.previousFinal, ['chapter', 'artifactId', 'content', 'summary'])
+    || requestedChapter <= 1 || value.previousFinal.chapter !== requestedChapter - 1
+    || !isOpaqueIdentifier(value.previousFinal.artifactId) || !isNonEmptyString(value.previousFinal.content)
+    || !isNonEmptyString(value.previousFinal.summary))) return false
+  if (value.handoff !== undefined && !isV2ChapterHandoff(value.handoff, requestedChapter)) return false
+  if (value.knowledgeEvents !== undefined && (!Array.isArray(value.knowledgeEvents)
+    || value.knowledgeEvents.length === 0
+    || value.knowledgeEvents.every(event => isV2KnowledgeEvent(event, requestedChapter)) === false)) return false
+  return value.previousFinal === undefined || requestedChapter > 1
 }
 
 function hasValidArtifactProjection(artifacts: readonly NovelArtifact[], chapterFinals: readonly NovelChapterFinal[]): boolean {
@@ -576,7 +629,7 @@ async function callV2Workbench(
 ): Promise<unknown> {
   let result
   try {
-    result = await rpc.call(INKWEAVER_RPC_CHANNEL, endpoint, payload, signal)
+    result = await rpc.call(INKWEAVER_RPC_CHANNEL, inkweaverRpcEndpoint(endpoint), payload, signal)
   } catch (error) {
     throw new NovelWorkbenchDisconnectedError(error)
   }
@@ -612,52 +665,52 @@ export function createNovelV2WorkbenchPort(
     readWorkspaceState: async (workspaceId, signal) => {
       const value = await callV2Workbench(rpc, 'workspace/state/read', { workspaceId }, signal)
       if (!isV2WorkspaceStateReadResult(value, workspaceId)) {
-        throw new Error('InkWeaver V2 workspace state response is invalid')
+        throw new Error('AI novel V2 workspace state response is invalid')
       }
       return value
     },
     readState: async (workspaceId, signal) => {
       const value = await callV2Workbench(rpc, 'state/read', { workspaceId }, signal)
       if (!isV2StateReadResult(value) || value.workspaceId !== workspaceId) {
-        throw new Error('InkWeaver V2 state response is invalid')
+        throw new Error('AI novel V2 state response is invalid')
       }
       return value
     },
     listProposals: async (workspaceId, signal) => {
       const value = await callV2Workbench(rpc, 'proposal/list', { workspaceId }, signal)
-      if (!isV2ProposalList(value)) throw new Error('InkWeaver V2 proposal response is invalid')
+      if (!isV2ProposalList(value)) throw new Error('AI novel V2 proposal response is invalid')
       return value.proposals
     },
     initializeWorkspace: async (workspaceId, draft, signal) => {
       const value = await callV2Workbench(rpc, 'workspace/initialize', { workspaceId, ...draft }, signal)
       if (!isV2WorkspaceInitializeResult(value, workspaceId)) {
-        throw new Error('InkWeaver V2 workspace initialization response is invalid')
+        throw new Error('AI novel V2 workspace initialization response is invalid')
       }
       return value
     },
     readChapterContext: async (workspaceId, chapter, signal) => {
       const value = await callV2Workbench(rpc, 'chapter/context', { workspaceId, chapter }, signal)
       if (!isV2ChapterContext(value, chapter)) {
-        throw new Error('InkWeaver V2 chapter context response is invalid')
+        throw new Error('AI novel V2 chapter context response is invalid')
       }
       return value
     },
     readTask: async (workspaceId, taskId, signal) => {
       const value = await callV2Workbench(rpc, 'task/read', { workspaceId, taskId }, signal)
-      if (!isV2Task(value) || value.taskId !== taskId) throw new Error('InkWeaver V2 task response is invalid')
+      if (!isV2Task(value) || value.taskId !== taskId) throw new Error('AI novel V2 task response is invalid')
       return value
     },
     applyProposal: async (workspaceId, proposalId, signal) => {
       const value = await callV2Workbench(rpc, 'proposal/apply', { workspaceId, proposalId }, signal)
       if (!isV2ProposalApplyResult(value) || value.proposal.proposalId !== proposalId) {
-        throw new Error('InkWeaver V2 proposal apply response is invalid')
+        throw new Error('AI novel V2 proposal apply response is invalid')
       }
       return value
     },
     retryProposalItem: async (workspaceId, proposalId, itemId, signal) => {
       const value = await callV2Workbench(rpc, 'proposal/retry', { workspaceId, proposalId, itemId }, signal)
       if (!isV2ProposalApplyResult(value) || value.proposal.proposalId !== proposalId) {
-        throw new Error('InkWeaver V2 proposal retry response is invalid')
+        throw new Error('AI novel V2 proposal retry response is invalid')
       }
       return value
     },
@@ -665,7 +718,7 @@ export function createNovelV2WorkbenchPort(
       const value = await callV2Workbench(rpc, 'proposal/discard', { workspaceId, proposalId, itemId }, signal)
       if (!isV2ProposalItemMutationResult(value)
         || value.proposal.proposalId !== proposalId || value.item.itemId !== itemId) {
-        throw new Error('InkWeaver V2 proposal discard response is invalid')
+        throw new Error('AI novel V2 proposal discard response is invalid')
       }
       return value
     },
@@ -673,7 +726,7 @@ export function createNovelV2WorkbenchPort(
       const value = await callV2Workbench(rpc, 'proposal/regenerate', { workspaceId, proposalId, itemId }, signal)
       if (!isV2ProposalRegenerationResult(value)
         || value.proposal.proposalId !== proposalId || value.item.itemId !== itemId) {
-        throw new Error('InkWeaver V2 proposal regenerate response is invalid')
+        throw new Error('AI novel V2 proposal regenerate response is invalid')
       }
       return value
     },
@@ -695,7 +748,7 @@ export function apply(ctx: ClientContext): void {
   const sessions = ctx.get('sessions' as never) as ISessions | undefined
   const workspaces = ctx.get('workspaces' as never) as IWorkspaces | undefined
   if (sessions === undefined || workspaces === undefined) {
-    throw new Error('InkWeaver context requires the browser Session and Workspace services')
+    throw new Error('AI novel context requires the browser Session and Workspace services')
   }
   const workbenchController = new NovelWorkbenchController(
     createNovelWorkbenchPort(connection.rpc, sessions),
@@ -726,20 +779,27 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(() => {
     let stopped = false
     let refreshScheduled = false
+    const generation = connection.generation
+      ?? (connection as unknown as {
+        readonly hostDescription?: { getSnapshot(): unknown; subscribe(listener: () => void): () => void }
+      }).hostDescription
+    if (generation === undefined) {
+      throw new Error('AI novel Client requires the DSH connection generation source')
+    }
     const refreshConnectedState = (): void => {
       if (stopped || refreshScheduled) return
       refreshScheduled = true
       queueMicrotask(() => {
         refreshScheduled = false
-        if (stopped || connection.hostDescription.getSnapshot() === undefined) return
+        if (stopped || generation.getSnapshot() === undefined) return
         if (controller.getSnapshot().status !== 'idle') void controller.load()
         if (workbenchController.getSnapshot().open) void workbenchController.refresh()
         else void workbenchController.inspect()
         if (v2WorkbenchController.getSnapshot().open) void v2WorkbenchController.refresh()
       })
     }
-    const stopDescription = connection.hostDescription.subscribe(() => {
-      if (connection.hostDescription.getSnapshot() === undefined) {
+    const stopDescription = generation.subscribe(() => {
+      if (generation.getSnapshot() === undefined) {
         controller.disconnected()
         workbenchController.disconnected()
         v2WorkbenchController.disconnected()
@@ -764,21 +824,26 @@ export function apply(ctx: ClientContext): void {
   })
   ctx.slots.inject('sidebar.footer.action', () => ctx.slots.register({
     name: 'sidebar.footer.action',
-    id: `${INKWEAVER_PRESET_ID}-workbench`,
+    id: 'inkweaver-workbench',
     order: 90,
     label: '小说工作台',
     inject: workbenchInjected,
   }, NovelWorkbenchTrigger))
   ctx.slots.inject('shell.overlay', () => ctx.slots.register({
     name: 'shell.overlay',
-    id: `${INKWEAVER_PRESET_ID}-workbench`,
+    id: 'inkweaver-workbench',
     order: 90,
     inject: workbenchInjected,
   }, NovelWorkbenchOverlay))
   ctx.slots.inject('settings.plugin.item', () => ctx.slots.register({
     name: 'settings.plugin.item',
-    id: INKWEAVER_PACKAGE_NAME,
+    // dsh-client-runtime@0.1.1-rc.2 (the official runtime paired with
+    // dsh@0.1.2-rc.1) still dispatches this slot as a list at runtime. Keep
+    // the stable id/order contract and cast only this compatibility seam;
+    // newer keyed hosts ignore the extra list metadata when they remount it.
+    key: 'inkweaver',
+    id: 'inkweaver',
     order: 90,
     inject: workbenchInjected,
-  }, NovelPluginStatusCard))
+  } as never, NovelPluginStatusCard))
 }

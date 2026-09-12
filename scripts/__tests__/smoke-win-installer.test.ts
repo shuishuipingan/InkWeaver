@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -419,6 +419,7 @@ describe('Windows installer smoke contract', () => {
     expect(script).toContain('RelatedProcessStartTimeTicks')
     expect(script).toContain('$fixtureRecentEntry')
     expect(script).toContain('did not retain the opened fixture in recent projects')
+    expect(script).toContain('ConvertTo-Json -InputObject @(')
     expect(script).not.toContain('Start-Process -FilePath $Path -ArgumentList $Arguments -Wait')
     expect(script).toContain('smoke-win-app.ps1')
     expect(script).toContain('VelaHome = $velaHome')
@@ -521,7 +522,7 @@ describe('Windows installer smoke contract', () => {
 
     const releaseGate = readFileSync('scripts/release-win-verify.mjs', 'utf8')
     const cloudWorkflow = readFileSync('.github/workflows/windows-cloud-build-test.yml', 'utf8')
-    expect(releaseGate).not.toContain("'smoke:win-v025-upgrade'")
+    expect(releaseGate).toContain("'smoke:win-v025-upgrade'")
     expect(cloudWorkflow).toContain('pnpm run build:win')
   })
 
@@ -717,11 +718,19 @@ describe('Windows installer smoke contract', () => {
     }
   })
 
-  it('starts the v1 release line without a prior-release smoke gate', () => {
+  it('exposes a release smoke gate that requires an explicit official v0.2.5 installer', () => {
+    const script = readFileSync('scripts/smoke-win-v025-upgrade.ps1', 'utf8')
     const packageJson = readFileSync('package.json', 'utf8')
 
-    expect(existsSync('scripts/smoke-win-v025-upgrade.ps1')).toBe(false)
-    expect(packageJson).not.toContain('smoke:win-v025-upgrade')
+    expect(script).toContain('AI_NOVEL_PREVIOUS_INSTALLER')
+    expect(script).toContain('AI_NOVEL_PREVIOUS_PORTABLE_ZIP')
+    expect(script).toContain('AE9C88997A7DF3A48A8BEECCB0AB624BF947358CBBF702C19E70EC8460B9DFE7')
+    expect(script).toContain('22B38B7337A456882BF130CCB898F17616FFFB85D6C8B8B3D0EE431409F18531')
+    expect(script).toContain('Get-Sha256')
+    expect(script).toContain('RequireCompleteV025Fixture = $true')
+    expect(script).toContain('SHA256]::Create')
+    expect(script).toContain('smoke-win-installer.ps1')
+    expect(packageJson).toContain('smoke:win-v025-upgrade')
   })
 
   windowsPowerShellIt('detects only new error windows, including system-owned dialogs outside the app process tree', () => {
@@ -749,7 +758,7 @@ $identities = New-AiNovelWindowIdentitySet -Windows $baseline
 $targetProcessIds = [System.Collections.Generic.HashSet[int]]::new()
 [void]$targetProcessIds.Add(505)
 [void]$targetProcessIds.Add(707)
-$matches = @(Get-AiNovelNewErrorWindows -BaselineIdentities $identities -CurrentWindows $current -TargetProcessIds $targetProcessIds -TargetNames @('InkWeaver.exe', '织墨'))
+$matches = @(Get-AiNovelNewErrorWindows -BaselineIdentities $identities -CurrentWindows $current -TargetProcessIds $targetProcessIds -TargetNames @('InkWeaver.exe', 'inkweaver'))
 [pscustomobject]@{
   Count = $matches.Count
   Processes = @($matches | ForEach-Object ProcessName)
@@ -941,6 +950,27 @@ $results = @($windows | ForEach-Object {
     expect(result.Results).toEqual([false, false, false, false, false, false, false, true])
   })
 
+  windowsPowerShellIt('accepts the historical v0.2.5 product title only when explicitly enabled', () => {
+    const output = runProbeLibrary(String.raw`
+$appProcessIds = [System.Collections.Generic.HashSet[int]]::new()
+[void]$appProcessIds.Add(505)
+$legacyWindow = [pscustomobject]@{
+  ProcessId = 505
+  Visible = $true
+  ClassName = 'Chrome_WidgetWin_1'
+  Title = 'AI小说作家 — AI Novel Writer'
+}
+$results = @(
+  (Test-AiNovelVisibleMainWindow -Window $legacyWindow -TargetProcessIds $appProcessIds),
+  (Test-AiNovelVisibleMainWindow -Window $legacyWindow -TargetProcessIds $appProcessIds -AllowLegacyMainWindowTitle)
+)
+[pscustomobject]@{ Results = $results } | ConvertTo-Json -Compress
+`)
+    const result = parseLastJsonLine(output)
+
+    expect(result.Results).toEqual([false, true])
+  })
+
   windowsPowerShellIt('detects new global error windows when both target collections are empty', () => {
     const output = runProbeLibrary(String.raw`
 $baseline = [System.Collections.Generic.HashSet[string]]::new()
@@ -1034,11 +1064,11 @@ $watch.Stop()
 
     expect(result.ElapsedMilliseconds).toEqual(expect.any(Number))
     expect(result.ElapsedMilliseconds as number).toBeGreaterThanOrEqual(4900)
-    // The production contract remains a continuous five-second quiet period;
-    // the wider bound absorbs Windows PowerShell cold-start contention under
-    // the full release preflight without weakening that invariant.
-    expect(result.ElapsedMilliseconds as number).toBeLessThan(30_000)
-  }, 35_000)
+    // Windows CI can add a small process/PowerShell startup gap around the
+    // five-second quiet window; keep the assertion bounded without turning a
+    // stuck monitor into a pass.
+    expect(result.ElapsedMilliseconds as number).toBeLessThan(25_000)
+  }, 30_000)
 
   windowsPowerShellIt('finalizes redirected output before accepting a zero exit code', () => {
     const output = runInstallerLibrary(`
@@ -1155,13 +1185,390 @@ $uncaptured = Get-GateExitFailure ([pscustomobject]@{ ProcessId = 704; ExitCode 
     expect(result.Uncaptured).toContain('could not capture the exit code')
   })
 
+  windowsPowerShellIt('binds the legacy bridge to captured official identities without trusting command contents', () => {
+    const output = runReleaseMonitorLibrary(`
+$installRoot = 'C:\\e2e\\installed app'
+$oldExe = $installRoot + '\\InkWeaver.exe'
+$pendingExe = 'C:\\Users\\runneradmin\\AppData\\Local\\inkweaver-updater\\pending\\inkweaver-setup-0.7.0.exe'
+$old = [pscustomobject]@{
+  processId = 410
+  startTimeTicks = '638900000000000410'
+  executablePath = $oldExe
+  identityCaptured = $true
+  commandLineCaptured = $true
+}
+$bridge = [pscustomobject]@{
+  State = 'armed'
+  OldApplicationIdentity = $old
+  ExpectedPendingInstallerPath = $pendingExe
+  ExpectedInstallerName = 'inkweaver-setup-0.7.0.exe'
+  InstallRoot = $installRoot
+  ObservedInstallerIdentity = $null
+  AllowedWizardWindowKeys = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+}
+function New-LegacyInstallerIdentity {
+  param([string]$CommandLine = ('"' + $pendingExe + '" --updated'))
+  return [pscustomobject]@{
+    processId = 411
+    startTimeTicks = '638900000000000411'
+    executablePath = $pendingExe
+    commandLine = $CommandLine
+    identityCaptured = $true
+    commandLineCaptured = $true
+    parentProcessId = 410
+    parentProcessStartTimeTicks = '638900000000000410'
+    parentExecutablePath = $oldExe
+  }
+}
+$installer = New-LegacyInstallerIdentity
+$exact = Test-AiNovelGateLegacyBridgeInstaller -Step 'windows-in-app-update-e2e' -LegacyBridge $bridge -InstallerIdentity $installer -ParentIdentity $old
+$unexpectedArguments = New-LegacyInstallerIdentity -CommandLine ('"' + $pendingExe + '" --unexpected /S --force-run')
+$unexpectedArgumentsRecorded = Test-AiNovelGateLegacyBridgeInstaller -Step 'windows-in-app-update-e2e' -LegacyBridge $bridge -InstallerIdentity $unexpectedArguments -ParentIdentity $old
+$missingCommandCapture = New-LegacyInstallerIdentity
+$missingCommandCapture.commandLineCaptured = $false
+$missingCommandCaptureRejected = -not (Test-AiNovelGateLegacyBridgeInstaller -Step 'windows-in-app-update-e2e' -LegacyBridge $bridge -InstallerIdentity $missingCommandCapture -ParentIdentity $old)
+$wrongParent = [pscustomobject]@{ processId = 410; startTimeTicks = '638900000000000409'; executablePath = $oldExe; identityCaptured = $true }
+$wrongParentRejected = -not (Test-AiNovelGateLegacyBridgeInstaller -Step 'windows-in-app-update-e2e' -LegacyBridge $bridge -InstallerIdentity $installer -ParentIdentity $wrongParent)
+$wrongStepRejected = -not (Test-AiNovelGateLegacyBridgeInstaller -Step 'other-step' -LegacyBridge $bridge -InstallerIdentity $installer -ParentIdentity $old)
+$bridge.ObservedInstallerIdentity = $installer
+$bridge.State = 'terminated'
+$statusBeforeWizard = Get-AiNovelGateLegacyBridgeStatus -LegacyBridge $bridge
+$wizard = [pscustomobject]@{
+  WindowHandle = '0x1'
+  ProcessId = 411
+  Title = ('InkWeaver Setup ')
+  ClassName = '#32770'
+  Visible = $true
+}
+[void]$bridge.AllowedWizardWindowKeys.Add((Get-AiNovelGateLegacyBridgeWindowKey -Window $wizard))
+$statusAfterWizard = Get-AiNovelGateLegacyBridgeStatus -LegacyBridge $bridge
+$wizard.Title = 'Other Setup '
+$wrongTitleRejected = -not (Test-AiNovelGateLegacyBridgeWizardWindow -LegacyBridge $bridge -Window $wizard)
+[pscustomobject]@{
+  HistoricalSource = Test-AiNovelGateLegacyBridgeSourceTag -SourceTag 'v0.6.0'
+  NativeSourceRejected = -not (Test-AiNovelGateLegacyBridgeSourceTag -SourceTag 'v0.7.0')
+  ExactInstaller = $exact
+  UnexpectedArgumentsRecorded = $unexpectedArgumentsRecorded
+  MissingCommandCaptureRejected = $missingCommandCaptureRejected
+  WrongParentRejected = $wrongParentRejected
+  WrongStepRejected = $wrongStepRejected
+  InstallerHandoffObserved = $statusAfterWizard.legacyInstallerHandoffObserved
+  CommandLineCaptured = $statusAfterWizard.commandLineCaptured
+  CommandLineAuthorizationMode = $statusAfterWizard.commandLineAuthorizationMode
+  InteractiveWizardAbsentBeforeObservation = -not $statusBeforeWizard.legacyInteractiveWizardObserved
+  InteractiveWizardObserved = $statusAfterWizard.legacyInteractiveWizardObserved
+  WrongTitleRejected = $wrongTitleRejected
+} | ConvertTo-Json -Compress
+`)
+    const result = parseLastJsonLine(output)
+
+    expect(result).toEqual({
+      HistoricalSource: true,
+      NativeSourceRejected: true,
+      ExactInstaller: true,
+      UnexpectedArgumentsRecorded: true,
+      MissingCommandCaptureRejected: true,
+      WrongParentRejected: true,
+      WrongStepRejected: true,
+      InstallerHandoffObserved: true,
+      CommandLineCaptured: true,
+      CommandLineAuthorizationMode: 'record-only',
+      InteractiveWizardAbsentBeforeObservation: true,
+      InteractiveWizardObserved: true,
+      WrongTitleRejected: true,
+    })
+  })
+
+  windowsPowerShellIt('allows only a bound live installer blank dialog during the legacy termination handshake', () => {
+    const output = runReleaseMonitorLibrary(`
+$current = [System.Diagnostics.Process]::GetProcessById($PID)
+try {
+  $identity = [pscustomobject]@{
+    processId = $PID
+    startTimeTicks = [string]$current.StartTime.ToUniversalTime().Ticks
+    executablePath = [System.IO.Path]::GetFullPath([string]$current.MainModule.FileName)
+    identityCaptured = $true
+    commandLineCaptured = $true
+  }
+  $bridge = [pscustomobject]@{
+    Mode = 'legacy-bridge'
+    SourceTag = 'v0.6.0'
+    State = 'termination-armed'
+    ObservedInstallerIdentity = $identity
+    ExpectedPendingInstallerPath = $identity.executablePath
+    ExpectedInstallerName = [System.IO.Path]::GetFileName($identity.executablePath)
+    ExpectedInstallerSize = 1
+    ExpectedInstallerSha256 = ('a' * 64)
+    AllowedWizardWindowKeys = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+  }
+  $blank = [pscustomobject]@{ WindowHandle = '0x11'; ProcessId = $PID; Title = ''; ClassName = '#32770'; Visible = $true }
+  $blankAccepted = Test-AiNovelGateLegacyBridgeTransientWindow -LegacyBridge $bridge -Window $blank
+  $statusAfterBlank = Get-AiNovelGateLegacyBridgeStatus -LegacyBridge $bridge
+  $otherTitle = [pscustomobject]@{ WindowHandle = '0x12'; ProcessId = $PID; Title = 'Other'; ClassName = '#32770'; Visible = $true }
+  $setupTitle = [pscustomobject]@{ WindowHandle = '0x13'; ProcessId = $PID; Title = ('InkWeaver Setup '); ClassName = '#32770'; Visible = $true }
+  $setupTitleWithTrailingWhitespace = [pscustomobject]@{ WindowHandle = '0x16'; ProcessId = $PID; Title = (('InkWeaver Setup') + [char]9 + '  '); ClassName = '#32770'; Visible = $true }
+  $setupTitleWithLeadingWhitespace = [pscustomobject]@{ WindowHandle = '0x17'; ProcessId = $PID; Title = (' InkWeaver Setup '); ClassName = '#32770'; Visible = $true }
+  $setupTitleWithSuffix = [pscustomobject]@{ WindowHandle = '0x18'; ProcessId = $PID; Title = ('InkWeaver Setup extra'); ClassName = '#32770'; Visible = $true }
+  $wrongPid = [pscustomobject]@{ WindowHandle = '0x14'; ProcessId = ($PID + 1); Title = ''; ClassName = '#32770'; Visible = $true }
+  $wrongClass = [pscustomobject]@{ WindowHandle = '0x15'; ProcessId = $PID; Title = ''; ClassName = 'OtherClass'; Visible = $true }
+  $otherTitleRejected = -not (Test-AiNovelGateLegacyBridgeTransientWindow -LegacyBridge $bridge -Window $otherTitle)
+  $setupTitleRejected = -not (Test-AiNovelGateLegacyBridgeTransientWindow -LegacyBridge $bridge -Window $setupTitle)
+  $setupTitleTrailingWhitespaceAccepted = Test-AiNovelGateLegacyBridgeWizardWindow -LegacyBridge $bridge -Window $setupTitleWithTrailingWhitespace
+  $setupTitleLeadingWhitespaceRejected = -not (Test-AiNovelGateLegacyBridgeWizardWindow -LegacyBridge $bridge -Window $setupTitleWithLeadingWhitespace)
+  $setupTitleSuffixRejected = -not (Test-AiNovelGateLegacyBridgeWizardWindow -LegacyBridge $bridge -Window $setupTitleWithSuffix)
+  $wrongPidRejected = -not (Test-AiNovelGateLegacyBridgeTransientWindow -LegacyBridge $bridge -Window $wrongPid)
+  $wrongClassRejected = -not (Test-AiNovelGateLegacyBridgeTransientWindow -LegacyBridge $bridge -Window $wrongClass)
+  $bridge.State = 'terminated'
+  $terminatedRejected = -not (Test-AiNovelGateLegacyBridgeTransientWindow -LegacyBridge $bridge -Window $blank)
+  $bridge.State = 'termination-armed'
+  $identity.startTimeTicks = [string]([long]$identity.startTimeTicks - 1)
+  $reusedPidRejected = -not (Test-AiNovelGateLegacyBridgeTransientWindow -LegacyBridge $bridge -Window $blank)
+  [pscustomobject]@{
+    BlankAccepted = $blankAccepted
+    BlankDidNotMarkWizard = -not $statusAfterBlank.legacyInteractiveWizardObserved
+    OtherTitleRejected = $otherTitleRejected
+    SetupTitleRejected = $setupTitleRejected
+    SetupTitleTrailingWhitespaceAccepted = $setupTitleTrailingWhitespaceAccepted
+    SetupTitleLeadingWhitespaceRejected = $setupTitleLeadingWhitespaceRejected
+    SetupTitleSuffixRejected = $setupTitleSuffixRejected
+    WrongPidRejected = $wrongPidRejected
+    WrongClassRejected = $wrongClassRejected
+    TerminatedRejected = $terminatedRejected
+    ReusedPidRejected = $reusedPidRejected
+  } | ConvertTo-Json -Compress
+}
+finally {
+  $current.Dispose()
+}
+`)
+    const result = parseLastJsonLine(output)
+
+    expect(result).toEqual({
+      BlankAccepted: true,
+      BlankDidNotMarkWizard: true,
+      OtherTitleRejected: true,
+      SetupTitleRejected: true,
+      SetupTitleTrailingWhitespaceAccepted: true,
+      SetupTitleLeadingWhitespaceRejected: true,
+      SetupTitleSuffixRejected: true,
+      WrongPidRejected: true,
+      WrongClassRejected: true,
+      TerminatedRejected: true,
+      ReusedPidRejected: true,
+    })
+
+    const releaseMonitor = readFileSync(releaseMonitorScript, 'utf8')
+    const wizardDecision = releaseMonitor.indexOf(
+      'if (Test-AiNovelGateLegacyBridgeWizardWindow -LegacyBridge $legacyBridge -Window $window)',
+    )
+    const transientDecision = releaseMonitor.indexOf(
+      'if (Test-AiNovelGateLegacyBridgeTransientWindow -LegacyBridge $legacyBridge -Window $window)',
+    )
+    const terminationArmedCleanupDecision = releaseMonitor.indexOf(
+      'if (Test-AiNovelGateLegacyBridgeTerminationArmedCleanupWindow `',
+    )
+    const cleanupDecision = releaseMonitor.indexOf(
+      'if (Test-AiNovelGateLegacyBridgeTerminationCleanupWindow `',
+    )
+    const failClosedDecision = releaseMonitor.indexOf('$unallowedErrorWindows.Add($window)', cleanupDecision)
+    expect(wizardDecision).toBeGreaterThan(-1)
+    expect(transientDecision).toBeGreaterThan(wizardDecision)
+    expect(terminationArmedCleanupDecision).toBeGreaterThan(transientDecision)
+    expect(cleanupDecision).toBeGreaterThan(terminationArmedCleanupDecision)
+    expect(failClosedDecision).toBeGreaterThan(cleanupDecision)
+  })
+
+  windowsPowerShellIt('bounds legacy installer window cleanup after exact termination', () => {
+    const output = runReleaseMonitorLibrary(`
+$terminatedAt = [DateTime]::new(2026, 8, 8, 0, 0, 0, [DateTimeKind]::Utc)
+$installer = [pscustomobject]@{
+  processId = 5568
+  startTimeTicks = '639218304000005568'
+  executablePath = 'C:\\Users\\runneradmin\\AppData\\Local\\inkweaver-updater\\pending\\inkweaver-setup-0.7.0.exe'
+  identityCaptured = $true
+}
+$bridge = [pscustomobject]@{
+  State = 'terminated'
+  TerminatedAtUtc = $terminatedAt
+  ObservedInstallerIdentity = $installer
+}
+$tracked = @{ 5568 = $installer }
+$setup = [pscustomobject]@{ WindowHandle = '0x21'; ProcessId = 5568; Title = ('InkWeaver Setup '); ClassName = '#32770'; Visible = $true }
+$blank = [pscustomobject]@{ WindowHandle = '0x22'; ProcessId = 5568; Title = ''; ClassName = '#32770'; Visible = $true }
+$differentTitle = [pscustomobject]@{ WindowHandle = '0x23'; ProcessId = 5568; Title = 'Other Setup'; ClassName = '#32770'; Visible = $true }
+$wrongPid = [pscustomobject]@{ WindowHandle = '0x24'; ProcessId = 5569; Title = ''; ClassName = '#32770'; Visible = $true }
+$wrongClass = [pscustomobject]@{ WindowHandle = '0x25'; ProcessId = 5568; Title = ''; ClassName = 'OtherClass'; Visible = $true }
+$inGrace = $terminatedAt.AddSeconds(2)
+$setupAccepted = Test-AiNovelGateLegacyBridgeTerminationCleanupWindow -LegacyBridge $bridge -Window $setup -TrackedProcessIdentities $tracked -NowUtc $inGrace
+$blankAccepted = Test-AiNovelGateLegacyBridgeTerminationCleanupWindow -LegacyBridge $bridge -Window $blank -TrackedProcessIdentities $tracked -NowUtc $inGrace
+$expiredRejected = -not (Test-AiNovelGateLegacyBridgeTerminationCleanupWindow -LegacyBridge $bridge -Window $blank -TrackedProcessIdentities $tracked -NowUtc $terminatedAt.AddSeconds(6))
+$beforeTerminationRejected = -not (Test-AiNovelGateLegacyBridgeTerminationCleanupWindow -LegacyBridge $bridge -Window $blank -TrackedProcessIdentities $tracked -NowUtc $terminatedAt.AddMilliseconds(-1))
+$differentTitleRejected = -not (Test-AiNovelGateLegacyBridgeTerminationCleanupWindow -LegacyBridge $bridge -Window $differentTitle -TrackedProcessIdentities $tracked -NowUtc $inGrace)
+$wrongPidRejected = -not (Test-AiNovelGateLegacyBridgeTerminationCleanupWindow -LegacyBridge $bridge -Window $wrongPid -TrackedProcessIdentities $tracked -NowUtc $inGrace)
+$wrongClassRejected = -not (Test-AiNovelGateLegacyBridgeTerminationCleanupWindow -LegacyBridge $bridge -Window $wrongClass -TrackedProcessIdentities $tracked -NowUtc $inGrace)
+$tracked[5568] = [pscustomobject]@{ processId = 5568; startTimeTicks = '639218304000005569'; executablePath = $installer.executablePath; identityCaptured = $true }
+$pidReuseRejected = -not (Test-AiNovelGateLegacyBridgeTerminationCleanupWindow -LegacyBridge $bridge -Window $blank -TrackedProcessIdentities $tracked -NowUtc $inGrace)
+[pscustomobject]@{
+  SetupAccepted = $setupAccepted
+  BlankAccepted = $blankAccepted
+  ExpiredRejected = $expiredRejected
+  BeforeTerminationRejected = $beforeTerminationRejected
+  DifferentTitleRejected = $differentTitleRejected
+  WrongPidRejected = $wrongPidRejected
+  WrongClassRejected = $wrongClassRejected
+  PidReuseRejected = $pidReuseRejected
+} | ConvertTo-Json -Compress
+`)
+    const result = parseLastJsonLine(output)
+
+    expect(result).toEqual({
+      SetupAccepted: true,
+      BlankAccepted: true,
+      ExpiredRejected: true,
+      BeforeTerminationRejected: true,
+      DifferentTitleRejected: true,
+      WrongPidRejected: true,
+      WrongClassRejected: true,
+      PidReuseRejected: true,
+    })
+  })
+
+  windowsPowerShellIt('bounds the termination-armed window gap before the exact exit event is consumed', () => {
+    const output = runReleaseMonitorLibrary(`
+$armedAt = [DateTime]::new(2026, 8, 8, 0, 0, 0, [DateTimeKind]::Utc)
+$installer = [pscustomobject]@{
+  processId = 1032
+  startTimeTicks = '639218304000001032'
+  executablePath = 'C:\\Users\\runneradmin\\AppData\\Local\\inkweaver-updater\\pending\\inkweaver-setup-0.7.0.exe'
+  identityCaptured = $true
+}
+$bridge = [pscustomobject]@{
+  State = 'termination-armed'
+  TerminationArmedAtUtc = $armedAt
+  ObservedInstallerIdentity = $installer
+}
+$tracked = @{ 1032 = $installer }
+$setup = [pscustomobject]@{ WindowHandle = '0x31'; ProcessId = 1032; Title = ('InkWeaver Setup '); ClassName = '#32770'; Visible = $true }
+$blank = [pscustomobject]@{ WindowHandle = '0x32'; ProcessId = 1032; Title = ''; ClassName = '#32770'; Visible = $true }
+$differentTitle = [pscustomobject]@{ WindowHandle = '0x33'; ProcessId = 1032; Title = 'Other Setup'; ClassName = '#32770'; Visible = $true }
+$wrongPid = [pscustomobject]@{ WindowHandle = '0x34'; ProcessId = 1033; Title = ''; ClassName = '#32770'; Visible = $true }
+$wrongClass = [pscustomobject]@{ WindowHandle = '0x35'; ProcessId = 1032; Title = ''; ClassName = 'OtherClass'; Visible = $true }
+$inGrace = $armedAt.AddSeconds(2)
+$setupAccepted = Test-AiNovelGateLegacyBridgeTerminationArmedCleanupWindow -LegacyBridge $bridge -Window $setup -TrackedProcessIdentities $tracked -NowUtc $inGrace
+$blankAccepted = Test-AiNovelGateLegacyBridgeTerminationArmedCleanupWindow -LegacyBridge $bridge -Window $blank -TrackedProcessIdentities $tracked -NowUtc $inGrace
+$expiredRejected = -not (Test-AiNovelGateLegacyBridgeTerminationArmedCleanupWindow -LegacyBridge $bridge -Window $blank -TrackedProcessIdentities $tracked -NowUtc $armedAt.AddSeconds(6))
+$beforeArmedRejected = -not (Test-AiNovelGateLegacyBridgeTerminationArmedCleanupWindow -LegacyBridge $bridge -Window $blank -TrackedProcessIdentities $tracked -NowUtc $armedAt.AddMilliseconds(-1))
+$differentTitleRejected = -not (Test-AiNovelGateLegacyBridgeTerminationArmedCleanupWindow -LegacyBridge $bridge -Window $differentTitle -TrackedProcessIdentities $tracked -NowUtc $inGrace)
+$wrongPidRejected = -not (Test-AiNovelGateLegacyBridgeTerminationArmedCleanupWindow -LegacyBridge $bridge -Window $wrongPid -TrackedProcessIdentities $tracked -NowUtc $inGrace)
+$wrongClassRejected = -not (Test-AiNovelGateLegacyBridgeTerminationArmedCleanupWindow -LegacyBridge $bridge -Window $wrongClass -TrackedProcessIdentities $tracked -NowUtc $inGrace)
+$tracked[1032] = [pscustomobject]@{ processId = 1032; startTimeTicks = '639218304000001033'; executablePath = $installer.executablePath; identityCaptured = $true }
+$pidReuseRejected = -not (Test-AiNovelGateLegacyBridgeTerminationArmedCleanupWindow -LegacyBridge $bridge -Window $blank -TrackedProcessIdentities $tracked -NowUtc $inGrace)
+$tracked[1032] = [pscustomobject]@{ processId = 1032; startTimeTicks = $installer.startTimeTicks; executablePath = 'C:\\other\\installer.exe'; identityCaptured = $true }
+$wrongPathRejected = -not (Test-AiNovelGateLegacyBridgeTerminationArmedCleanupWindow -LegacyBridge $bridge -Window $blank -TrackedProcessIdentities $tracked -NowUtc $inGrace)
+$tracked[1032] = $installer
+$bridge.State = 'authorized'
+$wrongStateRejected = -not (Test-AiNovelGateLegacyBridgeTerminationArmedCleanupWindow -LegacyBridge $bridge -Window $blank -TrackedProcessIdentities $tracked -NowUtc $inGrace)
+[pscustomobject]@{
+  SetupAccepted = $setupAccepted
+  BlankAccepted = $blankAccepted
+  ExpiredRejected = $expiredRejected
+  BeforeArmedRejected = $beforeArmedRejected
+  DifferentTitleRejected = $differentTitleRejected
+  WrongPidRejected = $wrongPidRejected
+  WrongClassRejected = $wrongClassRejected
+  PidReuseRejected = $pidReuseRejected
+  WrongPathRejected = $wrongPathRejected
+  WrongStateRejected = $wrongStateRejected
+} | ConvertTo-Json -Compress
+`)
+    const result = parseLastJsonLine(output)
+
+    expect(result).toEqual({
+      SetupAccepted: true,
+      BlankAccepted: true,
+      ExpiredRejected: true,
+      BeforeArmedRejected: true,
+      DifferentTitleRejected: true,
+      WrongPidRejected: true,
+      WrongClassRejected: true,
+      PidReuseRejected: true,
+      WrongPathRejected: true,
+      WrongStateRejected: true,
+    })
+
+    expect(readFileSync(releaseMonitorScript, 'utf8')).toContain(
+      '$legacyBridge.TerminationArmedAtUtc = [DateTime]::UtcNow',
+    )
+  })
+
+  windowsPowerShellIt('classifies only the exact historical old app breakpoint after a bound installer handoff', () => {
+    const output = runReleaseMonitorLibrary(`
+$oldExe = 'D:\\e2e\\installed-app\\InkWeaver.exe'
+$pendingExe = 'C:\\Users\\runneradmin\\AppData\\Local\\inkweaver-updater\\pending\\inkweaver-setup-0.7.0.exe'
+$old = [pscustomobject]@{ processId = 3472; startTimeTicks = '639217245409219881'; executablePath = $oldExe; identityCaptured = $true }
+$installer = [pscustomobject]@{
+  processId = 5180
+  startTimeTicks = '639217245535054565'
+  executablePath = $pendingExe
+  identityCaptured = $true
+  commandLineCaptured = $true
+  parentProcessId = 3472
+  parentProcessStartTimeTicks = '639217245409219881'
+  parentExecutablePath = $oldExe
+}
+$bridge = [pscustomobject]@{
+  SourceTag = 'v0.5.2'
+  State = 'termination-armed'
+  OldApplicationIdentity = $old
+  ObservedInstallerIdentity = $installer
+  ExpectedPendingInstallerPath = $pendingExe
+}
+$breakpoint = [pscustomobject]@{ ExitCode = -2147483645; ExitCodeCaptured = $true; JobMessage = 8 }
+$accepted = Test-AiNovelGateLegacyBridgeOldApplicationExit -Step 'windows-in-app-update-e2e' -LegacyBridge $bridge -Event $breakpoint -ProcessIdentity $old
+$wrongCode = [pscustomobject]@{ ExitCode = -1; ExitCodeCaptured = $true; JobMessage = 8 }
+$wrongCodeRejected = -not (Test-AiNovelGateLegacyBridgeOldApplicationExit -Step 'windows-in-app-update-e2e' -LegacyBridge $bridge -Event $wrongCode -ProcessIdentity $old)
+$normalExitEvent = [pscustomobject]@{ ExitCode = -2147483645; ExitCodeCaptured = $true; JobMessage = 7 }
+$normalExitRejected = -not (Test-AiNovelGateLegacyBridgeOldApplicationExit -Step 'windows-in-app-update-e2e' -LegacyBridge $bridge -Event $normalExitEvent -ProcessIdentity $old)
+$bridge.State = 'armed'
+$preHandoffRejected = -not (Test-AiNovelGateLegacyBridgeOldApplicationExit -Step 'windows-in-app-update-e2e' -LegacyBridge $bridge -Event $breakpoint -ProcessIdentity $old)
+$bridge.State = 'termination-armed'
+$bridge.SourceTag = 'v0.7.0'
+$nativeSourceRejected = -not (Test-AiNovelGateLegacyBridgeOldApplicationExit -Step 'windows-in-app-update-e2e' -LegacyBridge $bridge -Event $breakpoint -ProcessIdentity $old)
+$bridge.SourceTag = 'v0.5.2'
+$wrongOld = [pscustomobject]@{ processId = 3472; startTimeTicks = '639217245409219882'; executablePath = $oldExe; identityCaptured = $true }
+$wrongOldRejected = -not (Test-AiNovelGateLegacyBridgeOldApplicationExit -Step 'windows-in-app-update-e2e' -LegacyBridge $bridge -Event $breakpoint -ProcessIdentity $wrongOld)
+$installer.parentProcessStartTimeTicks = '639217245409219882'
+$wrongInstallerParentRejected = -not (Test-AiNovelGateLegacyBridgeOldApplicationExit -Step 'windows-in-app-update-e2e' -LegacyBridge $bridge -Event $breakpoint -ProcessIdentity $old)
+[pscustomobject]@{
+  Accepted = $accepted
+  WrongCodeRejected = $wrongCodeRejected
+  NormalExitRejected = $normalExitRejected
+  PreHandoffRejected = $preHandoffRejected
+  NativeSourceRejected = $nativeSourceRejected
+  WrongOldRejected = $wrongOldRejected
+  WrongInstallerParentRejected = $wrongInstallerParentRejected
+} | ConvertTo-Json -Compress
+`)
+    const result = parseLastJsonLine(output)
+
+    expect(result).toEqual({
+      Accepted: true,
+      WrongCodeRejected: true,
+      NormalExitRejected: true,
+      PreHandoffRejected: true,
+      NativeSourceRejected: true,
+      WrongOldRejected: true,
+      WrongInstallerParentRejected: true,
+    })
+  })
+
   windowsPowerShellIt('classifies only a verified native updater old app breakpoint handoff', () => {
     const output = runReleaseMonitorLibrary(`
 $e2eEvidenceRoot = 'D:\\a\\_temp\\ai-novel-windows-in-app-update-e2e'
 $env:AI_NOVEL_UPDATE_E2E_EVIDENCE_ROOT = $e2eEvidenceRoot
 $oldExe = $e2eEvidenceRoot + '\\runtime\\installed-app\\InkWeaver.exe'
 $pendingRoot = Join-Path $env:LOCALAPPDATA 'inkweaver-updater\\pending'
-$pendingExe = Join-Path $pendingRoot 'inkweaver-setup-1.1.0.exe'
+$pendingExe = Join-Path $pendingRoot 'inkweaver-setup-0.8.0.exe'
 $old = [pscustomobject]@{
   processId = 5660
   startTimeTicks = '639219070367704249'
@@ -1208,7 +1615,7 @@ $preHandoffRejected = -not (Test-AiNovelGateNativeUpdaterOldApplicationExit -Ste
 $multipleCandidates = New-NativeUpdaterTrackedProcesses -Installer $installer
 $multipleCandidates[5013] = New-NativeUpdaterInstallerIdentity -ProcessId 5013
 $multipleCandidatesRejected = -not (Test-AiNovelGateNativeUpdaterOldApplicationExit -Step 'windows-in-app-update-e2e' -Event $breakpoint -ProcessIdentity $old -TrackedProcessIdentities $multipleCandidates)
-$wrongPathRejected = -not (Test-AiNovelGateNativeUpdaterOldApplicationExit -Step 'windows-in-app-update-e2e' -Event $breakpoint -ProcessIdentity $old -TrackedProcessIdentities (New-NativeUpdaterTrackedProcesses -Installer (New-NativeUpdaterInstallerIdentity -Path 'C:\\temp\\inkweaver-setup-1.1.0.exe')))
+$wrongPathRejected = -not (Test-AiNovelGateNativeUpdaterOldApplicationExit -Step 'windows-in-app-update-e2e' -Event $breakpoint -ProcessIdentity $old -TrackedProcessIdentities (New-NativeUpdaterTrackedProcesses -Installer (New-NativeUpdaterInstallerIdentity -Path 'C:\\temp\\inkweaver-setup-0.8.0.exe')))
 $wrongOldExe = 'D:\\e2e-other\\runtime\\installed-app\\InkWeaver.exe'
 $wrongOldPath = [pscustomobject]@{ processId = 5660; startTimeTicks = '639219070367704249'; executablePath = $wrongOldExe; identityCaptured = $true; commandLineCaptured = $true }
 $wrongOldPathRejected = -not (Test-AiNovelGateNativeUpdaterOldApplicationExit -Step 'windows-in-app-update-e2e' -Event $breakpoint -ProcessIdentity $wrongOldPath -TrackedProcessIdentities (New-NativeUpdaterTrackedProcesses -Installer (New-NativeUpdaterInstallerIdentity -ParentPath $wrongOldExe) -TrackedOld $wrongOldPath))
@@ -1220,7 +1627,7 @@ try {
 finally {
   $env:AI_NOVEL_UPDATE_E2E_EVIDENCE_ROOT = $evidenceRootBeforeMissingEnvironmentCheck
 }
-$nonFinalSemverRejected = -not (Test-AiNovelGateNativeUpdaterOldApplicationExit -Step 'windows-in-app-update-e2e' -Event $breakpoint -ProcessIdentity $old -TrackedProcessIdentities (New-NativeUpdaterTrackedProcesses -Installer (New-NativeUpdaterInstallerIdentity -Path (Join-Path $pendingRoot 'inkweaver-setup-1.1.0-beta.1.exe'))))
+$nonFinalSemverRejected = -not (Test-AiNovelGateNativeUpdaterOldApplicationExit -Step 'windows-in-app-update-e2e' -Event $breakpoint -ProcessIdentity $old -TrackedProcessIdentities (New-NativeUpdaterTrackedProcesses -Installer (New-NativeUpdaterInstallerIdentity -Path (Join-Path $pendingRoot 'inkweaver-setup-0.8.0-beta.1.exe'))))
 $wrongParentRejected = -not (Test-AiNovelGateNativeUpdaterOldApplicationExit -Step 'windows-in-app-update-e2e' -Event $breakpoint -ProcessIdentity $old -TrackedProcessIdentities (New-NativeUpdaterTrackedProcesses -Installer (New-NativeUpdaterInstallerIdentity -ParentProcessId 9999)))
 $pidReuseRejected = -not (Test-AiNovelGateNativeUpdaterOldApplicationExit -Step 'windows-in-app-update-e2e' -Event $breakpoint -ProcessIdentity $old -TrackedProcessIdentities (New-NativeUpdaterTrackedProcesses -Installer (New-NativeUpdaterInstallerIdentity -ParentStartTimeTicks '639219070367704250')))
 $missingIdentityCaptureRejected = -not (Test-AiNovelGateNativeUpdaterOldApplicationExit -Step 'windows-in-app-update-e2e' -Event $breakpoint -ProcessIdentity $old -TrackedProcessIdentities (New-NativeUpdaterTrackedProcesses -Installer (New-NativeUpdaterInstallerIdentity -IdentityCaptured $false)))
@@ -1282,7 +1689,7 @@ $otherProcessRejected = -not (Test-AiNovelGateNativeUpdaterOldApplicationExit -S
 $e2eEvidenceRoot = 'D:\\a\\_temp\\ai-novel-windows-in-app-update-e2e'
 $env:AI_NOVEL_UPDATE_E2E_EVIDENCE_ROOT = $e2eEvidenceRoot
 $oldExe = $e2eEvidenceRoot + '\\runtime\\installed-app\\InkWeaver.exe'
-$pendingExe = Join-Path $env:LOCALAPPDATA 'inkweaver-updater\\pending\\inkweaver-setup-1.1.0.exe'
+$pendingExe = Join-Path $env:LOCALAPPDATA 'inkweaver-updater\\pending\\inkweaver-setup-0.8.0.exe'
 $oldUninstallerPath = Join-Path (Join-Path ([System.IO.Path]::GetTempPath()) 'nsn315E.tmp') 'old-uninstaller.exe'
 $system32 = Join-Path $env:SystemRoot 'System32\\WindowsPowerShell\\v1.0\\powershell.exe'
 $cmdPath = Join-Path $env:SystemRoot 'System32\\cmd.exe'
@@ -1369,9 +1776,9 @@ $verifiedFindParentKeys = [System.Collections.Generic.HashSet[string]]::new([Sys
 [void]$verifiedFindParentKeys.Add((Get-AiNovelGateProcessIdentityKey -ProcessIdentity $cmd))
 [pscustomobject]@{
   PowerShell = Test-AiNovelGateExpectedNsisPowerShellProbeExit -Step 'windows-in-app-update-e2e' -Event $powerShellEvent -ProcessIdentity $powerShell -ParentIdentity $oldUninstaller -GrandParentIdentity $pendingInstaller -TrackedProcessIdentities $tracked
-  CmdCandidate = Test-AiNovelGateNsisCmdProcessCheckCandidate -Step 'windows-in-app-update-e2e' -Event $cmdEvent -ProcessIdentity $cmd -ParentIdentity $oldUninstaller -GrandParentIdentity $pendingInstaller -TrackedProcessIdentities $tracked
-  Cmd = Test-AiNovelGateExpectedNsisCmdProcessCheckExit -Step 'windows-in-app-update-e2e' -Event $cmdEvent -ProcessIdentity $cmd -ParentIdentity $oldUninstaller -GrandParentIdentity $pendingInstaller -TrackedProcessIdentities $tracked -VerifiedFindParentKeys $verifiedFindParentKeys
-  Find = Test-AiNovelGateExpectedNsisFindNoMatchExit -Step 'windows-in-app-update-e2e' -Event $findEvent -ProcessIdentity $find -ParentIdentity $cmd -GrandParentIdentity $oldUninstaller -GreatGrandParentIdentity $pendingInstaller -TrackedProcessIdentities $tracked
+  CmdCandidate = Test-AiNovelGateNsisCmdProcessCheckCandidate -Step 'windows-in-app-update-e2e' -Event $cmdEvent -ProcessIdentity $cmd -ParentIdentity $oldUninstaller -GrandParentIdentity $pendingInstaller -LegacyBridge $null -TrackedProcessIdentities $tracked
+  Cmd = Test-AiNovelGateExpectedNsisCmdProcessCheckExit -Step 'windows-in-app-update-e2e' -Event $cmdEvent -ProcessIdentity $cmd -ParentIdentity $oldUninstaller -GrandParentIdentity $pendingInstaller -LegacyBridge $null -TrackedProcessIdentities $tracked -VerifiedFindParentKeys $verifiedFindParentKeys
+  Find = Test-AiNovelGateExpectedNsisFindNoMatchExit -Step 'windows-in-app-update-e2e' -Event $findEvent -ProcessIdentity $find -ParentIdentity $cmd -GrandParentIdentity $oldUninstaller -GreatGrandParentIdentity $pendingInstaller -LegacyBridge $null -TrackedProcessIdentities $tracked
 } | ConvertTo-Json -Compress
 `)
     const result = parseLastJsonLine(output)
@@ -1384,6 +1791,285 @@ $verifiedFindParentKeys = [System.Collections.Generic.HashSet[string]]::new([Sys
     })
   })
 
+  windowsPowerShellIt('accepts only the exact legacy bridge old-uninstaller PowerShell probe chain', () => {
+    const output = runReleaseMonitorLibrary(`
+$system32 = Join-Path $env:SystemRoot 'System32\\WindowsPowerShell\\v1.0\\powershell.exe'
+$cmdPath = Join-Path $env:SystemRoot 'System32\\cmd.exe'
+$findPath = Join-Path $env:SystemRoot 'System32\\find.exe'
+$policyPayload = 'if ((Get-ExecutionPolicy -Scope Process) -eq ''Restricted'') { exit 1 } else { exit 0 }'
+$policyCommand = '"' + $system32 + '" -C "' + $policyPayload + '"'
+$cmdCommand = '"' + $cmdPath + '" /C tasklist /FI "USERNAME eq %USERNAME%" /FI "IMAGENAME eq InkWeaver.exe" /FO CSV | "' + $findPath + '" "InkWeaver.exe"'
+$findCommand = '"' + $findPath + '"  "InkWeaver.exe"'
+$event = [pscustomobject]@{ ProcessId = 7956; ExitCode = 1; ExitCodeCaptured = $true; JobMessage = 7 }
+$installRoot = 'D:\\a\\_temp\\ai-novel-e2e\\runtime\\installed-app'
+$stagingPath = 'D:\\a\\_temp\\ai-novel-e2e\\runtime\\legacy-bridge-staging\\inkweaver-setup-0.6.0.exe'
+$tempRoot = [System.IO.Path]::GetFullPath([System.IO.Path]::GetTempPath())
+$oldUninstallerPath = Join-Path (Join-Path $tempRoot 'nsh2922.tmp') 'old-uninstaller.exe'
+$armedRoot = [pscustomobject]@{
+  processId = 1
+  startTimeTicks = '639217250000000001'
+  executablePath = 'D:\\actions\\node.exe'
+  identityCaptured = $true
+}
+$runner = [pscustomobject]@{
+  processId = 7264
+  startTimeTicks = '639217250000007264'
+  executablePath = 'C:\\Program Files\\PowerShell\\7\\pwsh.exe'
+  identityCaptured = $true
+  parentProcessId = 1
+  parentProcessStartTimeTicks = '639217250000000001'
+  parentExecutablePath = 'D:\\actions\\node.exe'
+}
+$stagingInstaller = [pscustomobject]@{
+  processId = 2964
+  startTimeTicks = '639217250000002964'
+  executablePath = $stagingPath
+  identityCaptured = $true
+  commandLineCaptured = $true
+  parentProcessId = 7264
+  parentProcessStartTimeTicks = '639217250000007264'
+  parentExecutablePath = 'C:\\Program Files\\PowerShell\\7\\pwsh.exe'
+}
+$oldUninstaller = [pscustomobject]@{
+  processId = 4636
+  startTimeTicks = '639217250000004636'
+  executablePath = $oldUninstallerPath
+  identityCaptured = $true
+  commandLineCaptured = $true
+  parentProcessId = 2964
+  parentProcessStartTimeTicks = '639217250000002964'
+  parentExecutablePath = $stagingPath
+}
+$powerShell = [pscustomobject]@{
+  processId = 7956
+  startTimeTicks = '639217250000007956'
+  executablePath = $system32
+  commandLine = $policyCommand
+  identityCaptured = $true
+  commandLineCaptured = $true
+  parentProcessId = 4636
+  parentProcessStartTimeTicks = '639217250000004636'
+  parentExecutablePath = $oldUninstallerPath
+}
+$cmd = [pscustomobject]@{
+  processId = 7548
+  startTimeTicks = '639217250000007548'
+  executablePath = $cmdPath
+  commandLine = $cmdCommand
+  identityCaptured = $true
+  commandLineCaptured = $true
+  parentProcessId = 4636
+  parentProcessStartTimeTicks = '639217250000004636'
+  parentExecutablePath = $oldUninstallerPath
+}
+$find = [pscustomobject]@{
+  processId = 4600
+  startTimeTicks = '639217250000004600'
+  executablePath = $findPath
+  commandLine = $findCommand
+  identityCaptured = $true
+  commandLineCaptured = $true
+  parentProcessId = 7548
+  parentProcessStartTimeTicks = '639217250000007548'
+  parentExecutablePath = $cmdPath
+}
+$bridge = [pscustomobject]@{
+  Mode = 'legacy-bridge'
+  SourceTag = 'v0.5.2'
+  State = 'terminated'
+  InstallRoot = $installRoot
+  ExpectedInstallerName = 'inkweaver-setup-0.6.0.exe'
+}
+$tracked = @{
+  1 = $armedRoot
+  7264 = $runner
+  2964 = $stagingInstaller
+  4636 = $oldUninstaller
+  7548 = $cmd
+  4600 = $find
+  7956 = $powerShell
+}
+function Test-LegacyOldUninstallerProbe {
+  param($LegacyBridge = $bridge, $Child = $powerShell, $Parent = $oldUninstaller, $GrandParent = $stagingInstaller, $Root = $armedRoot)
+  return Test-AiNovelGateExpectedLegacyBridgeOldUninstallerPowerShellProbeExit -Step 'windows-in-app-update-e2e' -LegacyBridge $LegacyBridge -Event $event -ProcessIdentity $Child -ParentIdentity $Parent -GrandParentIdentity $GrandParent -ArmedRootIdentity $Root -TrackedProcessIdentities $tracked
+}
+function Test-LegacyOldUninstallerDirectory {
+  param([string]$DirectoryName, [string]$FileName = 'old-uninstaller.exe', [bool]$Nested = $false)
+  $directory = Join-Path $tempRoot $DirectoryName
+  if ($Nested) { $directory = Join-Path $directory 'nested' }
+  $helperPath = Join-Path $directory $FileName
+  $helper = $oldUninstaller.PSObject.Copy()
+  $helper.executablePath = $helperPath
+  $child = $powerShell.PSObject.Copy()
+  $child.parentExecutablePath = $helperPath
+  return Test-LegacyOldUninstallerProbe -Child $child -Parent $helper
+}
+$exact = Test-LegacyOldUninstallerProbe
+$nsiDirectory = Test-LegacyOldUninstallerDirectory -DirectoryName 'nsiCC8F.tmp'
+$nshDirectory = Test-LegacyOldUninstallerDirectory -DirectoryName 'nsh2922.tmp'
+$nsoDirectory = Test-LegacyOldUninstallerDirectory -DirectoryName 'nso8049.tmp'
+$wrongDirectoryRejected = -not (Test-LegacyOldUninstallerDirectory -DirectoryName 'other8049.tmp')
+$nestedDirectoryRejected = -not (Test-LegacyOldUninstallerDirectory -DirectoryName 'nso8049.tmp' -Nested $true)
+$wrongFileNameRejected = -not (Test-LegacyOldUninstallerDirectory -DirectoryName 'nso8049.tmp' -FileName 'other.exe')
+$missingDirectParentRejected = -not (Test-LegacyOldUninstallerProbe -Parent $null)
+$exactCmd = Test-AiNovelGateNsisCmdProcessCheckCandidate -Step 'windows-in-app-update-e2e' -Event $event -ProcessIdentity $cmd -ParentIdentity $oldUninstaller -GrandParentIdentity $stagingInstaller -LegacyBridge $bridge -ArmedRootIdentity $armedRoot -TrackedProcessIdentities $tracked
+$exactFind = Test-AiNovelGateExpectedNsisFindNoMatchExit -Step 'windows-in-app-update-e2e' -Event $event -ProcessIdentity $find -ParentIdentity $cmd -GrandParentIdentity $oldUninstaller -GreatGrandParentIdentity $stagingInstaller -LegacyBridge $bridge -ArmedRootIdentity $armedRoot -TrackedProcessIdentities $tracked
+$missingBridgeCmdRejected = -not (Test-AiNovelGateNsisCmdProcessCheckCandidate -Step 'windows-in-app-update-e2e' -Event $event -ProcessIdentity $cmd -ParentIdentity $oldUninstaller -GrandParentIdentity $stagingInstaller -ArmedRootIdentity $armedRoot -TrackedProcessIdentities $tracked)
+$missingBridgeFindRejected = -not (Test-AiNovelGateExpectedNsisFindNoMatchExit -Step 'windows-in-app-update-e2e' -Event $event -ProcessIdentity $find -ParentIdentity $cmd -GrandParentIdentity $oldUninstaller -GreatGrandParentIdentity $stagingInstaller -ArmedRootIdentity $armedRoot -TrackedProcessIdentities $tracked)
+$bridge.State = 'termination-armed'
+$wrongStateRejected = -not (Test-LegacyOldUninstallerProbe)
+$bridge.State = 'terminated'
+$bridge.SourceTag = 'v0.7.0'
+$nativeSourceRejected = -not (Test-LegacyOldUninstallerProbe)
+$bridge.SourceTag = 'v0.5.2'
+$wrongStaging = $stagingInstaller.PSObject.Copy()
+$wrongStaging.executablePath = 'D:\\a\\_temp\\ai-novel-e2e\\runtime\\other\\inkweaver-setup-0.6.0.exe'
+$wrongStagingRejected = -not (Test-LegacyOldUninstallerProbe -GrandParent $wrongStaging)
+$wrongHelper = $oldUninstaller.PSObject.Copy()
+$wrongHelper.executablePath = Join-Path (Join-Path $tempRoot 'nsh2922.tmp') 'other.exe'
+$wrongHelperRejected = -not (Test-LegacyOldUninstallerProbe -Parent $wrongHelper)
+$wrongParentStart = $powerShell.PSObject.Copy()
+$wrongParentStart.parentProcessStartTimeTicks = '639217250000004637'
+$reusedParentRejected = -not (Test-LegacyOldUninstallerProbe -Child $wrongParentStart)
+$wrongCommand = $powerShell.PSObject.Copy()
+$wrongCommand.commandLine = '"' + $system32 + '" -C "Write-Error ''not a probe''; exit 1"'
+$wrongCommandRejected = -not (Test-LegacyOldUninstallerProbe -Child $wrongCommand)
+$missingRunner = @{
+  1 = $armedRoot
+  2964 = $stagingInstaller
+  4636 = $oldUninstaller
+  7956 = $powerShell
+}
+$trackedBefore = $tracked
+$tracked = $missingRunner
+$missingAncestryRejected = -not (Test-LegacyOldUninstallerProbe)
+$tracked = $trackedBefore
+[pscustomobject]@{
+  Exact = $exact
+  NsiDirectory = $nsiDirectory
+  NshDirectory = $nshDirectory
+  NsoDirectory = $nsoDirectory
+  WrongDirectoryRejected = $wrongDirectoryRejected
+  NestedDirectoryRejected = $nestedDirectoryRejected
+  WrongFileNameRejected = $wrongFileNameRejected
+  MissingDirectParentRejected = $missingDirectParentRejected
+  ExactCmd = $exactCmd
+  ExactFind = $exactFind
+  MissingBridgeCmdRejected = $missingBridgeCmdRejected
+  MissingBridgeFindRejected = $missingBridgeFindRejected
+  WrongStateRejected = $wrongStateRejected
+  NativeSourceRejected = $nativeSourceRejected
+  WrongStagingRejected = $wrongStagingRejected
+  WrongHelperRejected = $wrongHelperRejected
+  ReusedParentRejected = $reusedParentRejected
+  WrongCommandRejected = $wrongCommandRejected
+  MissingAncestryRejected = $missingAncestryRejected
+} | ConvertTo-Json -Compress
+`)
+    const result = parseLastJsonLine(output)
+
+    expect(result).toEqual({
+      Exact: true,
+      NsiDirectory: true,
+      NshDirectory: true,
+      NsoDirectory: true,
+      WrongDirectoryRejected: true,
+      NestedDirectoryRejected: true,
+      WrongFileNameRejected: true,
+      MissingDirectParentRejected: true,
+      ExactCmd: true,
+      ExactFind: true,
+      MissingBridgeCmdRejected: true,
+      MissingBridgeFindRejected: true,
+      WrongStateRejected: true,
+      NativeSourceRejected: true,
+      WrongStagingRejected: true,
+      WrongHelperRejected: true,
+      ReusedParentRejected: true,
+      WrongCommandRejected: true,
+      MissingAncestryRejected: true,
+    })
+  })
+
+  it('persists captured process-start identity before evaluating the legacy bridge handoff', () => {
+    const releaseMonitor = readFileSync(releaseMonitorScript, 'utf8')
+    const identityEvidence = releaseMonitor.indexOf("-ExitClassification 'identity-captured'")
+    const legacyBridgeDecision = releaseMonitor.indexOf('if (Test-AiNovelGateLegacyBridgeInstaller `')
+
+    expect(identityEvidence).toBeGreaterThan(-1)
+    expect(legacyBridgeDecision).toBeGreaterThan(identityEvidence)
+    expect(releaseMonitor).toContain('if (-not $processEventEvidenceWritten) {')
+  })
+
+  windowsPowerShellIt('arms the legacy bridge only after the monitor captures the exact old application identity', () => {
+    const output = runReleaseMonitorLibrary(`
+$oldExe = 'C:\\e2e\\installed-app\\InkWeaver.exe'
+$request = [pscustomobject]@{
+  step = 'windows-in-app-update-e2e'
+  sourceTag = 'v0.5.2'
+  processId = 410
+  processStartTimeTicks = '638900000000000410'
+  executablePath = $oldExe
+  installRoot = 'C:\\e2e\\installed-app'
+}
+function New-BridgeArmFixture {
+  return [pscustomobject]@{
+    State = 'pre-armed'
+    SourceTag = 'v0.5.2'
+    PendingOldApplicationIdentity = $null
+    OldApplicationIdentity = $null
+    InstallRoot = $null
+  }
+}
+$bridge = New-BridgeArmFixture
+$captured = [pscustomobject]@{
+  processId = 410
+  startTimeTicks = '638900000000000410'
+  executablePath = $oldExe
+  identityCaptured = $true
+}
+$tracked = [System.Collections.Generic.Dictionary[int,object]]::new()
+Request-AiNovelGateLegacyBridgeArm -LegacyBridge $bridge -Control $request -ActiveStep 'windows-in-app-update-e2e'
+$waitingWithoutCapture = (
+  $bridge.State -eq 'arm-requested' -and
+  -not (Complete-AiNovelGateLegacyBridgeArm -LegacyBridge $bridge -TrackedProcessIdentities $tracked)
+)
+$tracked[410] = $captured
+$armedAfterCapture = Complete-AiNovelGateLegacyBridgeArm -LegacyBridge $bridge -TrackedProcessIdentities $tracked
+$exactIdentityRetained = Test-AiNovelGateExactIdentity -Identity $bridge.OldApplicationIdentity -ProcessId 410 -StartTimeTicks '638900000000000410' -ExecutablePath $oldExe
+
+$mismatchBridge = New-BridgeArmFixture
+$mismatchTracked = [System.Collections.Generic.Dictionary[int,object]]::new()
+$mismatchTracked[410] = [pscustomobject]@{
+  processId = 410
+  startTimeTicks = '638900000000000409'
+  executablePath = $oldExe
+  identityCaptured = $true
+}
+Request-AiNovelGateLegacyBridgeArm -LegacyBridge $mismatchBridge -Control $request -ActiveStep 'windows-in-app-update-e2e'
+$mismatchRejected = $false
+try {
+  [void](Complete-AiNovelGateLegacyBridgeArm -LegacyBridge $mismatchBridge -TrackedProcessIdentities $mismatchTracked)
+}
+catch {
+  $mismatchRejected = $_.Exception.Message -like '*without the captured old application identity*'
+}
+[pscustomobject]@{
+  WaitingWithoutCapture = $waitingWithoutCapture
+  ArmedAfterCapture = $armedAfterCapture
+  ExactIdentityRetained = $exactIdentityRetained
+  MismatchRejected = $mismatchRejected
+} | ConvertTo-Json -Compress
+`)
+    const result = parseLastJsonLine(output)
+
+    expect(result).toEqual({
+      WaitingWithoutCapture: true,
+      ArmedAfterCapture: true,
+      ExactIdentityRetained: true,
+      MismatchRejected: true,
+    })
+  })
 
   windowsPowerShellIt('reads Node-authored UTF-8 monitor control paths without corrupting non-ASCII characters', () => {
     const releaseMonitor = readFileSync(releaseMonitorScript, 'utf8')
@@ -1395,7 +2081,7 @@ $verifiedFindParentKeys = [System.Collections.Generic.HashSet[string]]::new([Sys
     const executablePath = join(root, 'installed-app', 'InkWeaver.exe')
     writeFileSync(controlPath, `${JSON.stringify({
       sequence: 1,
-      state: 'quiet',
+      state: 'legacy-bridge-arm',
       executablePath,
     })}\n`, 'utf8')
 
@@ -1409,96 +2095,13 @@ $control = Get-AiNovelGateControl
 } | ConvertTo-Json -Compress
 `)
       expect(parseLastJsonLine(output)).toEqual({
-        State: 'quiet',
+        State: 'legacy-bridge-arm',
         ExecutablePath: executablePath,
       })
     }
     finally {
       rmSync(root, { recursive: true, force: true })
     }
-  })
-
-  windowsPowerShellIt('accepts only a release-token Electron child termination during packaged smoke', () => {
-    const output = runReleaseMonitorLibrary(`
-$exe = 'D:\\temp\\InkWeaver.exe'
-$token = 'a' * 64
-$parent = [pscustomobject]@{
-  processId = 700
-  startTimeTicks = '638900000000000000'
-  executablePath = $exe
-  commandLine = '"' + $exe + '" --ai-novel-release-skin-smoke=' + $token
-  identityCaptured = $true
-  commandLineCaptured = $true
-}
-$child = [pscustomobject]@{
-  processId = 701
-  startTimeTicks = '638900000000000001'
-  executablePath = $exe
-  commandLine = '"' + $exe + '" --type=renderer'
-  identityCaptured = $true
-  commandLineCaptured = $true
-  parentProcessId = $parent.processId
-  parentProcessStartTimeTicks = $parent.startTimeTicks
-  parentExecutablePath = $parent.executablePath
-}
-$event = [pscustomobject]@{ ProcessId = $child.processId; ExitCode = -1073741558; ExitCodeCaptured = $true; CaptureEstablished = $true; JobMessage = 7 }
-$wrongStep = [pscustomobject]@{ ProcessId = $child.processId; ExitCode = -1073741558; ExitCodeCaptured = $true; CaptureEstablished = $true; JobMessage = 7 }
-$wrongToken = $parent.PSObject.Copy()
-$wrongToken.commandLine = '"' + $exe + '" --ai-novel-release-skin-smoke=not-a-token'
-$wrongChild = $child.PSObject.Copy()
-$wrongChild.executablePath = 'D:\\temp\\other.exe'
-$tracked = @{ $child.processId = $child; $parent.processId = $parent }
-[pscustomobject]@{
-  Accepted = Test-AiNovelGateExpectedElectronSmokeChildTerminationExit -Step 'smoke:win-installer' -Event $event -ProcessIdentity $child -ParentIdentity $parent
-  WrongStepRejected = -not (Test-AiNovelGateExpectedElectronSmokeChildTerminationExit -Step 'verify:win-package' -Event $wrongStep -ProcessIdentity $child -ParentIdentity $parent)
-  WrongTokenRejected = -not (Test-AiNovelGateExpectedElectronSmokeChildTerminationExit -Step 'smoke:win-installer' -Event $event -ProcessIdentity $child -ParentIdentity $wrongToken)
-  WrongImageRejected = -not (Test-AiNovelGateExpectedElectronSmokeChildTerminationExit -Step 'smoke:win-installer' -Event $event -ProcessIdentity $wrongChild -ParentIdentity $parent)
-  WrongCodeRejected = -not (Test-AiNovelGateExpectedElectronSmokeChildTerminationExit -Step 'smoke:win-installer' -Event ([pscustomobject]@{ ProcessId = $child.processId; ExitCode = -1; ExitCodeCaptured = $true; CaptureEstablished = $true; JobMessage = 7 }) -ProcessIdentity $child -ParentIdentity $parent)
-} | ConvertTo-Json -Compress
-`)
-    expect(parseLastJsonLine(output)).toEqual({
-      Accepted: true,
-      WrongStepRejected: true,
-      WrongTokenRejected: true,
-      WrongImageRejected: true,
-      WrongCodeRejected: true,
-    })
-  })
-
-  windowsPowerShellIt('accepts the exact old-uninstaller probe chain owned by the current installer', () => {
-    const output = runReleaseMonitorLibrary(`
-$nodePath = 'C:\\Users\\shuishui\\AppData\\Local\\nvm\\v24.19.0\\node.exe'
-$installerPath = 'D:\\temp\\inkweaver-setup-1.0.0.exe'
-$oldUninstallerPath = Join-Path (Join-Path ([System.IO.Path]::GetTempPath()) 'nsSmokeProbe.tmp') 'old-uninstaller.exe'
-$system32PowerShell = Join-Path $env:SystemRoot 'System32\\WindowsPowerShell\\v1.0\\powershell.exe'
-$syswow64PowerShell = Join-Path $env:SystemRoot 'SysWOW64\\WindowsPowerShell\\v1.0\\powershell.exe'
-$syswow64Cmd = Join-Path $env:SystemRoot 'SysWOW64\\cmd.exe'
-$syswow64Find = Join-Path $env:SystemRoot 'SysWOW64\\find.exe'
-$policyPayload = 'if ((Get-ExecutionPolicy -Scope Process) -eq ''Restricted'') { exit 1 } else { exit 0 }'
-$policyCommand = '"' + $system32PowerShell + '" -C "' + $policyPayload + '"'
-$cmdCommand = '"' + $syswow64Cmd + '" /C tasklist /FI "USERNAME eq %USERNAME%" /FI "IMAGENAME eq InkWeaver.exe" /FO CSV | "' + $syswow64Find + '" "InkWeaver.exe"'
-$findCommand = '"' + $syswow64Find + '"  "InkWeaver.exe"'
-$root = [pscustomobject]@{ processId = 700; startTimeTicks = '638900000000000000'; executablePath = $nodePath; identityCaptured = $true; commandLineCaptured = $true }
-$installer = [pscustomobject]@{ processId = 704; startTimeTicks = '638900000000000004'; executablePath = $installerPath; commandLine = '"' + $installerPath + '" --win'; identityCaptured = $true; commandLineCaptured = $true; parentProcessId = $root.processId; parentProcessStartTimeTicks = $root.startTimeTicks; parentExecutablePath = $root.executablePath }
-$old = [pscustomobject]@{ processId = 705; startTimeTicks = '638900000000000005'; executablePath = $oldUninstallerPath; commandLine = '"' + $oldUninstallerPath + '" /S /KEEP_APP_DATA /currentuser --updated _?=C:\\temp\\installed-app'; identityCaptured = $true; commandLineCaptured = $true; parentProcessId = $installer.processId; parentProcessStartTimeTicks = $installer.startTimeTicks; parentExecutablePath = $installer.executablePath }
-$powerShell = [pscustomobject]@{ processId = 706; startTimeTicks = '638900000000000006'; executablePath = $syswow64PowerShell; commandLine = $policyCommand; identityCaptured = $true; commandLineCaptured = $true; parentProcessId = $old.processId; parentProcessStartTimeTicks = $old.startTimeTicks; parentExecutablePath = $old.executablePath }
-$cmd = [pscustomobject]@{ processId = 707; startTimeTicks = '638900000000000007'; executablePath = $syswow64Cmd; commandLine = $cmdCommand; identityCaptured = $true; commandLineCaptured = $true; parentProcessId = $old.processId; parentProcessStartTimeTicks = $old.startTimeTicks; parentExecutablePath = $old.executablePath }
-$find = [pscustomobject]@{ processId = 708; startTimeTicks = '638900000000000008'; executablePath = $syswow64Find; commandLine = $findCommand; identityCaptured = $true; commandLineCaptured = $true; parentProcessId = $cmd.processId; parentProcessStartTimeTicks = $cmd.startTimeTicks; parentExecutablePath = $cmd.executablePath }
-$tracked = @{ $root.processId = $root; $installer.processId = $installer; $old.processId = $old; $powerShell.processId = $powerShell; $cmd.processId = $cmd; $find.processId = $find }
-$powerShellEvent = [pscustomobject]@{ ProcessId = $powerShell.processId; ExitCode = 1; ExitCodeCaptured = $true; JobMessage = 7 }
-$cmdEvent = [pscustomobject]@{ ProcessId = $cmd.processId; ExitCode = 1; ExitCodeCaptured = $true; JobMessage = 7 }
-$findEvent = [pscustomobject]@{ ProcessId = $find.processId; ExitCode = 1; ExitCodeCaptured = $true; JobMessage = 7 }
-[pscustomobject]@{
-  PowerShell = Test-AiNovelGateExpectedNsisPowerShellProbeExit -Step 'smoke:win-installer' -Event $powerShellEvent -ProcessIdentity $powerShell -ParentIdentity $old -GrandParentIdentity $installer -ArmedRootIdentity $root -TrackedProcessIdentities $tracked
-  CmdCandidate = Test-AiNovelGateNsisCmdProcessCheckCandidate -Step 'smoke:win-installer' -Event $cmdEvent -ProcessIdentity $cmd -ParentIdentity $old -GrandParentIdentity $installer -ArmedRootIdentity $root -TrackedProcessIdentities $tracked
-  Find = Test-AiNovelGateExpectedNsisFindNoMatchExit -Step 'smoke:win-installer' -Event $findEvent -ProcessIdentity $find -ParentIdentity $cmd -GrandParentIdentity $old -GreatGrandParentIdentity $installer -ArmedRootIdentity $root -TrackedProcessIdentities $tracked
-} | ConvertTo-Json -Compress
-`)
-    expect(parseLastJsonLine(output)).toEqual({
-      PowerShell: true,
-      CmdCandidate: true,
-      Find: true,
-    })
   })
 
   windowsPowerShellIt('exempts only the known NSIS PowerShell probes during installer smoke steps', () => {
@@ -1575,7 +2178,7 @@ $abnormal = [pscustomobject]@{ ProcessId = 701; ExitCode = 1; ExitCodeCaptured =
 [pscustomobject]@{
   InstallerAvailability = Test-SyntheticNsisProbe -Step 'smoke:win-installer' -Event $event -Identity $validAvailability -Parent $parent
   UnquotedInstallerAvailability = Test-SyntheticNsisProbe -Step 'smoke:win-installer' -Event $event -Identity (New-ProbeIdentity -ImagePath $system32 -CommandLine $unquotedAvailabilityCommand) -Parent $parent
-  RemovedUpgradePolicy = Test-SyntheticNsisProbe -Step 'smoke:win-v025-upgrade' -Event $event -Identity $validPolicy -Parent $parent
+  UpgradePolicy = Test-SyntheticNsisProbe -Step 'smoke:win-v025-upgrade' -Event $event -Identity $validPolicy -Parent $parent
   UpdateE2ERunningProcess = Test-SyntheticNsisProbe -Step 'windows-in-app-update-e2e' -Event $event -Identity $validRunningProcess -Parent $parent
   SysWow64RunningProcess = Test-SyntheticNsisProbe -Step 'smoke:win-installer' -Event $event -Identity $validRunningProcess -Parent $parent
   PathCaseOnly = Test-SyntheticNsisProbe -Step 'smoke:win-installer' -Event $event -Identity (New-ProbeIdentity -ImagePath $system32 -CommandLine $pathCaseCommand) -Parent $parent
@@ -1604,7 +2207,7 @@ $abnormal = [pscustomobject]@{ ProcessId = 701; ExitCode = 1; ExitCodeCaptured =
 
     expect(result.InstallerAvailability).toBe(true)
     expect(result.UnquotedInstallerAvailability).toBe(true)
-    expect(result.RemovedUpgradePolicy).toBe(false)
+    expect(result.UpgradePolicy).toBe(true)
     expect(result.UpdateE2ERunningProcess).toBe(true)
     expect(result.SysWow64RunningProcess).toBe(true)
     expect(result.PathCaseOnly).toBe(true)
@@ -2026,7 +2629,6 @@ $cmdPath = Join-Path $env:SystemRoot 'System32\\cmd.exe'
 $findPath = Join-Path $env:SystemRoot 'System32\\find.exe'
 $tempRoot = [System.IO.Path]::GetTempPath()
 $helperPath = Join-Path (Join-Path $tempRoot '~nsuA9.tmp') 'Un_A9.exe'
-$bareHelperPath = Join-Path (Join-Path $tempRoot '~nsu.tmp') 'Un_A9.exe'
 $nestedHelperPath = Join-Path (Join-Path (Join-Path $tempRoot '~nsuA9.tmp') 'nested') 'Un_A9.exe'
 $wrongFileHelperPath = Join-Path (Join-Path $tempRoot '~nsuA9.tmp') 'Un_A9-.exe'
 $uninstallerPath = 'C:\\temp\\installed-app\\Uninstall InkWeaver.exe'
@@ -2185,7 +2787,6 @@ $cycleTracked[[int]$wrapperCmd.processId] = $cycleCmd
 $cycleTracked[[int]$wrapperPowerShell.processId] = $wrapperPowerShell
 [pscustomobject]@{
   HelperImage = Test-AiNovelGateNsisUninstallerHelperImage -ImagePath $helperPath
-  BareHelperImage = Test-AiNovelGateNsisUninstallerHelperImage -ImagePath $bareHelperPath
   UninstallerAncestry = Test-AiNovelGateIdentityAncestryToArmedRoot -StartIdentity $uninstaller -TrackedProcessIdentities $trackedProcessIdentities -ArmedRootIdentity $armedRoot
   HelperParent = Test-AiNovelGateCapturedNsisUninstallerHelperParent -HelperIdentity $helper -UninstallerIdentity $uninstaller -ArmedRootIdentity $armedRoot -TrackedProcessIdentities $trackedProcessIdentities
   PowerShellChain = Test-AiNovelGateExpectedNsisPowerShellProbeExit -Step 'smoke:win-installer' -Event $event -ProcessIdentity $powerShell -ParentIdentity $helper -GrandParentIdentity $uninstaller -ArmedRootIdentity $armedRoot -TrackedProcessIdentities $trackedProcessIdentities
@@ -2211,7 +2812,6 @@ $cycleTracked[[int]$wrapperPowerShell.processId] = $wrapperPowerShell
 
     expect(result).toEqual({
       HelperImage: true,
-      BareHelperImage: true,
       UninstallerAncestry: true,
       HelperParent: true,
       PowerShellChain: true,
@@ -2233,492 +2833,6 @@ $cycleTracked[[int]$wrapperPowerShell.processId] = $wrapperPowerShell
       FindWrongGreatGrandParent: false,
     })
   })
-
-  windowsPowerShellIt('classifies only the exact electron-builder pnpm workspace probe through its captured ancestry', () => {
-    const output = runReleaseMonitorLibrary(`
-$nodePath = (Get-Command node.exe).Source
-$nodeArgv0 = $nodePath
-$cmdPath = Join-Path $env:SystemRoot 'System32\\cmd.exe'
-$armedRoot = [pscustomobject]@{
-  processId = 700
-  startTimeTicks = '638900000000000000'
-  executablePath = $nodePath
-  identityCaptured = $true
-  commandLineCaptured = $true
-}
-$electronBuilder = [pscustomobject]@{
-  processId = 704
-  startTimeTicks = '638900000000000004'
-  executablePath = $nodePath
-  commandLine = '"' + $nodeArgv0 + '" "D:\\repo\\node_modules\\.pnpm\\electron-builder@26.8.1\\node_modules\\electron-builder\\cli.js" --win --x64 --publish never'
-  identityCaptured = $true
-  commandLineCaptured = $true
-  parentProcessId = $armedRoot.processId
-  parentProcessStartTimeTicks = $armedRoot.startTimeTicks
-  parentExecutablePath = $armedRoot.executablePath
-}
-$wrapper = [pscustomobject]@{
-  processId = 706
-  startTimeTicks = '638900000000000006'
-  executablePath = $cmdPath
-  commandLine = '"' + $cmdPath + '" /d /s /c "pnpm ^"--workspace-root^" ^"exec^" ^"pwd^""'
-  identityCaptured = $true
-  commandLineCaptured = $true
-  parentProcessId = $electronBuilder.processId
-  parentProcessStartTimeTicks = $electronBuilder.startTimeTicks
-  parentExecutablePath = $electronBuilder.executablePath
-}
-$pnpm = [pscustomobject]@{
-  processId = 707
-  startTimeTicks = '638900000000000007'
-  executablePath = $nodePath
-  commandLine = '"' + $nodeArgv0 + '"   "D:\\.pnpm-store\\v11\\links\\@\\pnpm\\11.11.0\\aa0b10ea51319568f8ffa6e9bed1b7f5a712a52379f3a54af34e502b9d547cf8\\node_modules\\pnpm\\bin\\pnpm.mjs" "--workspace-root" "exec" "pwd"'
-  identityCaptured = $true
-  commandLineCaptured = $true
-  parentProcessId = $wrapper.processId
-  parentProcessStartTimeTicks = $wrapper.startTimeTicks
-  parentExecutablePath = $wrapper.executablePath
-}
-$probe = [pscustomobject]@{
-  processId = 709
-  startTimeTicks = '638900000000000009'
-  executablePath = $cmdPath
-  commandLine = $cmdPath + ' /q /d /s /c "pwd"'
-  identityCaptured = $true
-  commandLineCaptured = $true
-  parentProcessId = $pnpm.processId
-  parentProcessStartTimeTicks = $pnpm.startTimeTicks
-  parentExecutablePath = $pnpm.executablePath
-}
-$event = [pscustomobject]@{
-  ProcessId = $probe.processId
-  ExitCode = 1
-  ExitCodeCaptured = $true
-  CaptureEstablished = $true
-  JobMessage = 7
-}
-$tracked = @{}
-$tracked[$electronBuilder.processId] = $electronBuilder
-$tracked[$wrapper.processId] = $wrapper
-$tracked[$pnpm.processId] = $pnpm
-$tracked[$probe.processId] = $probe
-$crossSpawnProbe = $probe.PSObject.Copy()
-$crossSpawnProbe.commandLine = $cmdPath + ' /d /s /c "pwd"'
-$crossSpawnEvent = $event.PSObject.Copy()
-$crossSpawnEvent.ProcessId = $crossSpawnProbe.processId
-$crossSpawnAccepted = Test-AiNovelGateExpectedElectronBuilderWorkspaceProbeExit -Step 'build:win:artifacts' -Event $crossSpawnEvent -ProcessIdentity $crossSpawnProbe -ParentIdentity $pnpm -ArmedRootIdentity $armedRoot -TrackedProcessIdentities $tracked
-$crossSpawnProcessAccepted = Test-AiNovelGateKnownElectronBuilderPnpmWorkspaceProbeProcess -ProcessIdentity $crossSpawnProbe
-$crossSpawnExtraArgumentProbe = $crossSpawnProbe.PSObject.Copy()
-$crossSpawnExtraArgumentProbe.commandLine = $cmdPath + ' /d /s /c "pwd" extra'
-$crossSpawnExtraArgumentRejected = -not (Test-AiNovelGateKnownElectronBuilderPnpmWorkspaceProbeProcess -ProcessIdentity $crossSpawnExtraArgumentProbe)
-$crossSpawnUnquotedProbe = $crossSpawnProbe.PSObject.Copy()
-$crossSpawnUnquotedProbe.commandLine = $cmdPath + ' /d /s /c pwd'
-$crossSpawnUnquotedRejected = -not (Test-AiNovelGateKnownElectronBuilderPnpmWorkspaceProbeProcess -ProcessIdentity $crossSpawnUnquotedProbe)
-$chain = @(Get-AiNovelGateElectronBuilderPnpmWorkspaceProbeChain -ProbeIdentity $probe -ArmedRootIdentity $armedRoot -TrackedProcessIdentities $tracked)
-$accepted = Test-AiNovelGateExpectedElectronBuilderWorkspaceProbeExit -Step 'build:win:artifacts' -Event $event -ProcessIdentity $probe -ParentIdentity $pnpm -ArmedRootIdentity $armedRoot -TrackedProcessIdentities $tracked
-$allUnquotedPnpmAccepted = Test-AiNovelGateKnownElectronBuilderPnpmWorkspaceProbeCommand -CommandLine ('node "D:\\repo\\node_modules\\pnpm\\bin\\pnpm.mjs" --workspace-root exec pwd') -NodeImagePath $nodePath
-$mixedLeadingQuotePnpmAccepted = Test-AiNovelGateKnownElectronBuilderPnpmWorkspaceProbeCommand -CommandLine ('node "D:\\repo\\node_modules\\pnpm\\bin\\pnpm.mjs" "--workspace-root" exec pwd') -NodeImagePath $nodePath
-$mixedTrailingQuotePnpmAccepted = Test-AiNovelGateKnownElectronBuilderPnpmWorkspaceProbeCommand -CommandLine ('node "D:\\repo\\node_modules\\pnpm\\bin\\pnpm.mjs" --workspace-root "exec" "pwd"') -NodeImagePath $nodePath
-$binDotDotPnpmAccepted = Test-AiNovelGateKnownElectronBuilderPnpmWorkspaceProbeCommand -CommandLine ('node "D:\\repo\\bin\\..\\node_modules\\pnpm\\bin\\pnpm.mjs" --workspace-root exec pwd') -NodeImagePath $nodePath
-$probeProcessKeys = @{}
-foreach ($identity in @($probe, $pnpm, $wrapper)) {
-  $identityKey = Get-AiNovelGateProcessIdentityKey -ProcessIdentity $identity
-  $probeProcessKeys[$identityKey] = $true
-}
-$followUpAccepted = @($probe, $pnpm, $wrapper | ForEach-Object {
-  $followUpEvent = $event.PSObject.Copy()
-  $followUpEvent.ProcessId = $_.processId
-  Test-AiNovelGateExpectedElectronBuilderWorkspaceProbeFollowUpExit \`
-    -Step 'build:win:artifacts' \`
-    -Event $followUpEvent \`
-    -ProcessIdentity $_ \`
-    -ArmedRootIdentity $armedRoot \`
-    -TrackedProcessIdentities $tracked \`
-    -ProbeProcessKeys $probeProcessKeys
-})
-$wrongExitEvent = $event.PSObject.Copy()
-$wrongExitEvent.ExitCode = 42
-$wrongJobMessageEvent = $event.PSObject.Copy()
-$wrongJobMessageEvent.JobMessage = 8
-$uncapturedExitEvent = $event.PSObject.Copy()
-$uncapturedExitEvent.ExitCodeCaptured = $false
-$uncapturedProcessEvent = $event.PSObject.Copy()
-$uncapturedProcessEvent.CaptureEstablished = $false
-$wrongExitAccepted = Test-AiNovelGateExpectedElectronBuilderWorkspaceProbeFollowUpExit \`
-  -Step 'build:win:artifacts' -Event $wrongExitEvent -ProcessIdentity $probe \`
-  -ArmedRootIdentity $armedRoot -TrackedProcessIdentities $tracked -ProbeProcessKeys $probeProcessKeys
-$wrongJobMessageAccepted = Test-AiNovelGateExpectedElectronBuilderWorkspaceProbeFollowUpExit \`
-  -Step 'build:win:artifacts' -Event $wrongJobMessageEvent -ProcessIdentity $probe \`
-  -ArmedRootIdentity $armedRoot -TrackedProcessIdentities $tracked -ProbeProcessKeys $probeProcessKeys
-$uncapturedExitAccepted = Test-AiNovelGateExpectedElectronBuilderWorkspaceProbeFollowUpExit \`
-  -Step 'build:win:artifacts' -Event $uncapturedExitEvent -ProcessIdentity $probe \`
-  -ArmedRootIdentity $armedRoot -TrackedProcessIdentities $tracked -ProbeProcessKeys $probeProcessKeys
-$uncapturedProcessAccepted = Test-AiNovelGateExpectedElectronBuilderWorkspaceProbeFollowUpExit \`
-  -Step 'build:win:artifacts' -Event $uncapturedProcessEvent -ProcessIdentity $probe \`
-  -ArmedRootIdentity $armedRoot -TrackedProcessIdentities $tracked -ProbeProcessKeys $probeProcessKeys
-$wrongStepAccepted = Test-AiNovelGateExpectedElectronBuilderWorkspaceProbeFollowUpExit \`
-  -Step 'other-step' -Event $event -ProcessIdentity $probe \`
-  -ArmedRootIdentity $armedRoot -TrackedProcessIdentities $tracked -ProbeProcessKeys $probeProcessKeys
-$wrongAncestry = $pnpm.PSObject.Copy()
-$wrongAncestry.parentProcessStartTimeTicks = '638900000000000999'
-$wrongAncestryAccepted = Test-AiNovelGateExpectedElectronBuilderWorkspaceProbeFollowUpExit \`
-  -Step 'build:win:artifacts' -Event $event -ProcessIdentity $wrongAncestry \`
-  -ArmedRootIdentity $armedRoot -TrackedProcessIdentities $tracked -ProbeProcessKeys $probeProcessKeys
-$wrongProbe = $probe.PSObject.Copy()
-$wrongProbe.commandLine = $cmdPath + ' /q /d /s /c "whoami"'
-$wrongProbeAccepted = Test-AiNovelGateExpectedElectronBuilderWorkspaceProbeExit -Step 'build:win:artifacts' -Event $event -ProcessIdentity $wrongProbe -ParentIdentity $pnpm -ArmedRootIdentity $armedRoot -TrackedProcessIdentities $tracked
-$wrongParent = $pnpm.PSObject.Copy()
-$wrongParent.commandLine = 'node "D:\\repo\\node_modules\\pnpm\\bin\\pnpm.mjs" "--workspace-root" "exec" "whoami"'
-$wrongParentAccepted = Test-AiNovelGateExpectedElectronBuilderWorkspaceProbeExit -Step 'build:win:artifacts' -Event $event -ProcessIdentity $probe -ParentIdentity $wrongParent -ArmedRootIdentity $armedRoot -TrackedProcessIdentities $tracked
-$orphanedTracked = @{}
-$orphanedTracked[$pnpm.processId] = $pnpm
-$orphanedTracked[$probe.processId] = $probe
-$orphanedAccepted = Test-AiNovelGateExpectedElectronBuilderWorkspaceProbeExit -Step 'build:win:artifacts' -Event $event -ProcessIdentity $probe -ParentIdentity $pnpm -ArmedRootIdentity $armedRoot -TrackedProcessIdentities $orphanedTracked
-$resultRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('ai-novel-electron-builder-result-' + [guid]::NewGuid().ToString('N'))
-$resultPath = Join-Path $resultRoot 'result.json'
-New-Item -ItemType Directory -Path $resultRoot -Force | Out-Null
-$writeResult = {
-  param([int]$targetExitCode)
-  [ordered]@{
-    state = 'completed'
-    processId = $armedRoot.processId
-    targetExitCode = $targetExitCode
-    targetSignal = $null
-    targetProcessId = 704
-  } | ConvertTo-Json -Compress | Set-Content -LiteralPath $resultPath -Encoding UTF8
-}
-& $writeResult 42
-$nonzeroResultRejected = -not (Test-AiNovelGateElectronBuilderWorkspaceProbeResult -ResultPath $resultPath -ArmedRootIdentity $armedRoot)
-Remove-Item -LiteralPath $resultPath -Force
-$missingResultRejected = -not (Test-AiNovelGateElectronBuilderWorkspaceProbeResult -ResultPath $resultPath -ArmedRootIdentity $armedRoot)
-& $writeResult 0
-$validResultAccepted = Test-AiNovelGateElectronBuilderWorkspaceProbeResult -ResultPath $resultPath -ArmedRootIdentity $armedRoot
-Remove-Item -LiteralPath $resultRoot -Recurse -Force
-[pscustomobject]@{
-  Accepted = $accepted
-  ChainProcessIds = @($chain | ForEach-Object { [int]$_.processId })
-  WrapperAccepted = Test-AiNovelGateKnownElectronBuilderPnpmWorkspaceProbeProcess -ProcessIdentity $wrapper
-  PnpmAccepted = Test-AiNovelGateKnownElectronBuilderPnpmWorkspaceProbeProcess -ProcessIdentity $pnpm
-  ProbeAccepted = Test-AiNovelGateKnownElectronBuilderPnpmWorkspaceProbeProcess -ProcessIdentity $probe
-  AllUnquotedPnpmAccepted = $allUnquotedPnpmAccepted
-  MixedLeadingQuotePnpmAccepted = $mixedLeadingQuotePnpmAccepted
-  MixedTrailingQuotePnpmAccepted = $mixedTrailingQuotePnpmAccepted
-  BinDotDotPnpmAccepted = $binDotDotPnpmAccepted
-  FollowUpAccepted = @($followUpAccepted)
-  WrongExitRejected = -not $wrongExitAccepted
-  WrongJobMessageRejected = -not $wrongJobMessageAccepted
-  UncapturedExitRejected = -not $uncapturedExitAccepted
-  UncapturedProcessRejected = -not $uncapturedProcessAccepted
-  WrongStepRejected = -not $wrongStepAccepted
-  WrongAncestryRejected = -not $wrongAncestryAccepted
-  WrongProbeRejected = -not $wrongProbeAccepted
-  WrongParentRejected = -not $wrongParentAccepted
-  MissingBuilderAncestryRejected = -not $orphanedAccepted
-  NonzeroResultRejected = $nonzeroResultRejected
-  MissingResultRejected = $missingResultRejected
-  ValidResultAccepted = $validResultAccepted
-  CrossSpawnAccepted = $crossSpawnAccepted
-  CrossSpawnProcessAccepted = $crossSpawnProcessAccepted
-  CrossSpawnExtraArgumentRejected = $crossSpawnExtraArgumentRejected
-  CrossSpawnUnquotedRejected = $crossSpawnUnquotedRejected
-} | ConvertTo-Json -Compress
-`)
-    const result = parseLastJsonLine(output)
-
-    expect(result).toEqual({
-      Accepted: true,
-      ChainProcessIds: [709, 707, 706],
-      WrapperAccepted: true,
-      PnpmAccepted: true,
-      ProbeAccepted: true,
-      AllUnquotedPnpmAccepted: true,
-      MixedLeadingQuotePnpmAccepted: false,
-      MixedTrailingQuotePnpmAccepted: false,
-      BinDotDotPnpmAccepted: true,
-      FollowUpAccepted: [true, true, true],
-      WrongExitRejected: true,
-      WrongJobMessageRejected: true,
-      UncapturedExitRejected: true,
-      UncapturedProcessRejected: true,
-      WrongStepRejected: true,
-      WrongAncestryRejected: true,
-      WrongProbeRejected: true,
-      WrongParentRejected: true,
-      MissingBuilderAncestryRejected: true,
-      NonzeroResultRejected: true,
-      MissingResultRejected: true,
-      ValidResultAccepted: true,
-      CrossSpawnAccepted: true,
-      CrossSpawnProcessAccepted: true,
-      CrossSpawnExtraArgumentRejected: true,
-      CrossSpawnUnquotedRejected: true,
-    })
-  })
-
-  windowsPowerShellIt('classifies only the exact electron-builder pnpm production-list fallback through its captured ancestry', () => {
-    const output = runReleaseMonitorLibrary(`
-$nodePath = (Get-Command node.exe).Source
-$nodeArgv0 = $nodePath
-$cmdPath = Join-Path $env:SystemRoot 'System32\\cmd.exe'
-$listArguments = ' list --prod --json --depth Infinity --silent --loglevel=error'
-$batchPath = Join-Path ([System.IO.Path]::GetTempPath()) 't-ListProbe\\pnpm-1.bat'
-$root = [pscustomobject]@{ processId=700; startTimeTicks='638900000000000000'; executablePath=$nodePath; commandLine=('"' + $nodeArgv0 + '" "D:\\repo\\node_modules\\.bin\\..\\electron-builder\\cli.js" --win --x64 --publish never'); identityCaptured=$true; commandLineCaptured=$true; parentProcessId=701; parentProcessStartTimeTicks='638900000000000001'; parentExecutablePath=$cmdPath }
-$outer = [pscustomobject]@{ processId=701; startTimeTicks='638900000000000001'; executablePath=$cmdPath; commandLine=($cmdPath + ' /d /s /c "cmd.exe /c "' + $batchPath + '"' + $listArguments + '"'); identityCaptured=$true; commandLineCaptured=$true; parentProcessId=700; parentProcessStartTimeTicks=$root.startTimeTicks; parentExecutablePath=$root.executablePath }
-$inner = [pscustomobject]@{ processId=704; startTimeTicks='638900000000000004'; executablePath=$cmdPath; commandLine=('cmd.exe /c "' + $batchPath + '"' + $listArguments); identityCaptured=$true; commandLineCaptured=$true; parentProcessId=701; parentProcessStartTimeTicks=$outer.startTimeTicks; parentExecutablePath=$outer.executablePath }
-$pnpm = [pscustomobject]@{ processId=702; startTimeTicks='638900000000000002'; executablePath=$nodePath; commandLine=('"' + $nodeArgv0 + '" "C:\\nvm4w\\nodejs\\node_modules\\pnpm\\bin\\pnpm.mjs"' + $listArguments); identityCaptured=$true; commandLineCaptured=$true; parentProcessId=704; parentProcessStartTimeTicks=$inner.startTimeTicks; parentExecutablePath=$inner.executablePath }
-$quotedPnpm = $pnpm.PSObject.Copy(); $quotedPnpm.commandLine=('"' + $nodeArgv0 + '" "C:\\nvm4w\\nodejs\\node_modules\\pnpm\\bin\\pnpm.mjs" "list" "--prod" "--json" "--depth" "Infinity" "--silent" "--loglevel=error"')
-$wrongPnpmPath = $pnpm.PSObject.Copy(); $wrongPnpmPath.commandLine=('"' + $nodeArgv0 + '" "D:\\evil\\pnpm\\bin\\pnpm.mjs"' + $listArguments)
-$storeWrapper = [pscustomobject]@{ processId=703; startTimeTicks='638900000000000003'; executablePath=$cmdPath; commandLine=($cmdPath + ' /d /s /c "D:\\.pnpm-store\\v11\\links\\@\\pnpm\\11.11.0\\aa0b10ea51319568f8ffa6e9bed1b7f5a712a52379f3a54af34e502b9d547cf8\\bin\\pnpm ^"list^" ^"--prod^" ^"--json^" ^"--depth^" ^"Infinity^" ^"--silent^" ^"--loglevel=error^""'); identityCaptured=$true; commandLineCaptured=$true; parentProcessId=702; parentProcessStartTimeTicks=$pnpm.startTimeTicks; parentExecutablePath=$pnpm.executablePath }
-$mixedPnpm = $pnpm.PSObject.Copy(); $mixedPnpm.commandLine=('"' + $nodeArgv0 + '" "C:\\nvm4w\\nodejs\\node_modules\\pnpm\\bin\\pnpm.mjs" "list" --prod --json --depth Infinity --silent --loglevel=error')
-$outsideBatch = $outer.PSObject.Copy(); $outsideBatch.commandLine=($cmdPath + ' /c "' + (Join-Path ([System.IO.Path]::GetTempPath()) 'outside-t-ListProbe\\pnpm-1.bat') + '"' + $listArguments)
-$untrackedStoreWrapper = $storeWrapper.PSObject.Copy(); $untrackedStoreWrapper.startTimeTicks='638900000000000099'
-$tracked=@{}; foreach($identity in @($root,$outer,$inner,$pnpm,$storeWrapper)){ $tracked[$identity.processId]=$identity }
-$event=[pscustomobject]@{ ProcessId=703; ExitCode=1; ExitCodeCaptured=$true; CaptureEstablished=$true; JobMessage=7 }
-$chain=@(Get-AiNovelGateElectronBuilderPnpmListProbeChain -ProbeIdentity $storeWrapper -ArmedRootIdentity $root -TrackedProcessIdentities $tracked)
-$accepted=Test-AiNovelGateExpectedElectronBuilderPnpmListProbeExit -Step 'build:win:artifacts' -Event $event -ProcessIdentity $storeWrapper -ParentIdentity $pnpm -ArmedRootIdentity $root -TrackedProcessIdentities $tracked
-$keys=@{}; foreach($identity in @($storeWrapper,$pnpm,$inner,$outer)){ $keys[(Get-AiNovelGateProcessIdentityKey -ProcessIdentity $identity)]=$true }
-$followUpAccepted=@($storeWrapper,$pnpm,$inner,$outer | ForEach-Object { $e=$event.PSObject.Copy(); $e.ProcessId=$_.processId; Test-AiNovelGateExpectedElectronBuilderPnpmListProbeFollowUpExit -Step 'build:win:artifacts' -Event $e -ProcessIdentity $_ -ArmedRootIdentity $root -TrackedProcessIdentities $tracked -ProbeProcessKeys $keys })
-$wrong=$storeWrapper.PSObject.Copy(); $wrong.commandLine=$cmdPath+' /d /s /c "D:\\.pnpm-store\\bin\\pnpm ^"list^" ^"--prod^" ^"--json^" ^"--depth^" ^"Infinity^" ^"--silent^" ^"--loglevel=error^" extra"'
-$wrongRoot=$root.PSObject.Copy(); $wrongRoot.commandLine='"'+$nodeArgv0+'" "D:\\repo\\node_modules\\.bin\\..\\other-builder\\cli.js" --win --x64 --publish never'
-$wrongTracked=@{}; foreach($identity in @($wrongRoot,$outer,$inner,$pnpm,$storeWrapper)){ $wrongTracked[$identity.processId]=$identity }
-$resultRoot=Join-Path ([System.IO.Path]::GetTempPath()) ('ai-novel-pnpm-list-result-'+[guid]::NewGuid().ToString('N')); $resultPath=Join-Path $resultRoot 'result.json'; New-Item -ItemType Directory -Path $resultRoot -Force|Out-Null
-$write={param([int]$code); [ordered]@{state='completed';processId=700;targetExitCode=$code;targetSignal=$null;targetProcessId=700}|ConvertTo-Json -Compress|Set-Content -LiteralPath $resultPath -Encoding UTF8}
-&$write 42; $badResult=-not(Test-AiNovelGateElectronBuilderWorkspaceProbeResult -ResultPath $resultPath -ArmedRootIdentity $root); Remove-Item $resultPath -Force
-$missing=-not(Test-AiNovelGateElectronBuilderWorkspaceProbeResult -ResultPath $resultPath -ArmedRootIdentity $root); &$write 0; $goodResult=Test-AiNovelGateElectronBuilderWorkspaceProbeResult -ResultPath $resultPath -ArmedRootIdentity $root; Remove-Item $resultRoot -Recurse -Force
-[pscustomobject]@{Accepted=$accepted;ChainProcessIds=@($chain|ForEach-Object{[int]$_.processId});StoreWrapperAccepted=Test-AiNovelGateKnownElectronBuilderPnpmListProbeProcess $storeWrapper;PnpmAccepted=Test-AiNovelGateKnownElectronBuilderPnpmListProbeProcess $pnpm;QuotedPnpmAccepted=Test-AiNovelGateKnownElectronBuilderPnpmListProbeProcess $quotedPnpm;WrongPnpmPathRejected=-not(Test-AiNovelGateKnownElectronBuilderPnpmListProbeProcess $wrongPnpmPath);OuterAccepted=Test-AiNovelGateKnownElectronBuilderPnpmListProbeProcess $outer;InnerAccepted=Test-AiNovelGateKnownElectronBuilderPnpmListProbeProcess $inner;FollowUpAccepted=@($followUpAccepted);MixedPnpmRejected=-not(Test-AiNovelGateKnownElectronBuilderPnpmListProbeProcess $mixedPnpm);OutsideBatchRejected=-not(Test-AiNovelGateKnownElectronBuilderPnpmListProbeProcess $outsideBatch);UntrackedIdentityRejected=-not(Test-AiNovelGateExpectedElectronBuilderPnpmListProbeExit -Step 'build:win:artifacts' -Event $event -ProcessIdentity $untrackedStoreWrapper -ParentIdentity $pnpm -ArmedRootIdentity $root -TrackedProcessIdentities $tracked);WrongProbeRejected=-not(Test-AiNovelGateKnownElectronBuilderPnpmListProbeProcess $wrong);WrongRootRejected=-not(Test-AiNovelGateExpectedElectronBuilderPnpmListProbeExit -Step 'build:win:artifacts' -Event $event -ProcessIdentity $storeWrapper -ParentIdentity $pnpm -ArmedRootIdentity $wrongRoot -TrackedProcessIdentities $wrongTracked);NonzeroResultRejected=$badResult;MissingResultRejected=$missing;ValidResultAccepted=$goodResult}|ConvertTo-Json -Compress
-`)
-    expect(parseLastJsonLine(output)).toEqual({
-      Accepted: true,
-      ChainProcessIds: [703, 702, 704, 701],
-      StoreWrapperAccepted: true,
-      PnpmAccepted: true,
-      QuotedPnpmAccepted: true,
-      WrongPnpmPathRejected: true,
-      InnerAccepted: true,
-      OuterAccepted: true,
-      FollowUpAccepted: [true, true, true, true],
-      MixedPnpmRejected: true,
-      OutsideBatchRejected: true,
-      UntrackedIdentityRejected: true,
-      WrongProbeRejected: true,
-      WrongRootRejected: true,
-      NonzeroResultRejected: true,
-      MissingResultRejected: true,
-      ValidResultAccepted: true,
-    })
-  })
-
-  // The temporary electron-builder-shaped CLI is only a bounded stand-in for
-  // the expensive packager; Node, pnpm, cmd.exe, and JobProcessMonitor events
-  // in this chain are real and are classified through the monitor library.
-  windowsPowerShellIt('captures and classifies a real bounded node-pnpm-cmd workspace probe chain', () => {
-    const output = runReleaseMonitorLibrary(`
-$root = Join-Path ([System.IO.Path]::GetTempPath()) ('InkWeaver Probe Space-' + [guid]::NewGuid().ToString('N'))
-$builderDirectory = Join-Path $root 'electron-builder'
-$pnpmDirectory = Join-Path $root 'node_modules\\pnpm\\bin'
-$launcherScript = Join-Path $root 'launcher.js'
-$builderScript = Join-Path $builderDirectory 'cli.js'
-$pnpmScript = Join-Path $pnpmDirectory 'pnpm.mjs'
-$readyPath = Join-Path $root 'ready'
-$releasePath = Join-Path $root 'release'
-$nodePath = (Get-Command node.exe).Source
-$cmdPath = (Get-Command cmd.exe).Source
-$atomic = $null
-$launcher = $null
-$events = [System.Collections.Generic.List[object]]::new()
-$previousReady = $env:INKWEAVER_PROBE_READY
-$previousRelease = $env:INKWEAVER_PROBE_RELEASE
-$previousBuilder = $env:INKWEAVER_PROBE_BUILDER
-$previousPnpmScript = $env:INKWEAVER_PROBE_PNPM_SCRIPT
-$previousCmd = $env:INKWEAVER_PROBE_CMD
-$previousPath = $env:Path
-try {
-  New-Item -ItemType Directory -Path $builderDirectory -Force | Out-Null
-  New-Item -ItemType Directory -Path $pnpmDirectory -Force | Out-Null
-  $pwdShimSource = @'
-@echo off
-ping.exe -n 3 127.0.0.1 >nul
-exit /b 1
-'@
-  [System.IO.File]::WriteAllText((Join-Path $root 'pwd.cmd'), $pwdShimSource, [System.Text.UTF8Encoding]::new($false))
-  $launcherSource = @'
-const fs = require('node:fs');
-const { spawn } = require('node:child_process');
-const readyPath = process.env.INKWEAVER_PROBE_READY;
-const releasePath = process.env.INKWEAVER_PROBE_RELEASE;
-const builderScript = process.env.INKWEAVER_PROBE_BUILDER;
-fs.writeFileSync(readyPath, String(process.pid));
-const launch = () => {
-  if (!fs.existsSync(releasePath)) {
-    setTimeout(launch, 10);
-    return;
-  }
-  const builder = spawn(process.execPath, [builderScript, '--win', '--x64', '--publish', 'never'], { stdio: 'ignore' });
-  builder.once('close', (code) => {
-    setTimeout(() => process.exit(code === 0 ? 0 : 1), 100);
-  });
-  builder.once('error', () => {
-    process.exit(1);
-  });
-};
-launch();
-'@
-  $builderSource = @'
-const { spawn } = require('node:child_process');
-const pnpmScript = process.env.INKWEAVER_PROBE_PNPM_SCRIPT;
-const child = spawn(process.execPath, [pnpmScript, '--workspace-root', 'exec', 'pwd'], { stdio: 'ignore' });
-child.once('close', () => setTimeout(() => process.exit(0), 100));
-child.once('error', () => process.exit(0));
-'@
-  $pnpmSource = @'
-import { spawn } from 'node:child_process';
-const cmdPath = process.env.ComSpec;
-if (!cmdPath) {
-  process.exit(2);
-}
-const startProbe = () => {
-  let child;
-  try {
-    child = spawn(cmdPath, ['/q', '/d', '/s', '/c', '"pwd"'], { stdio: 'ignore', windowsVerbatimArguments: true });
-  } catch (error) {
-    process.exit(2);
-  }
-  child.once('close', () => setTimeout(() => process.exit(0), 100));
-  child.once('error', () => process.exit(2));
-};
-setTimeout(startProbe, 250);
-'@
-  [System.IO.File]::WriteAllText($launcherScript, $launcherSource, [System.Text.UTF8Encoding]::new($false))
-  [System.IO.File]::WriteAllText($builderScript, $builderSource, [System.Text.UTF8Encoding]::new($false))
-  [System.IO.File]::WriteAllText($pnpmScript, $pnpmSource, [System.Text.UTF8Encoding]::new($false))
-  $env:INKWEAVER_PROBE_READY = $readyPath
-  $env:INKWEAVER_PROBE_RELEASE = $releasePath
-  $env:INKWEAVER_PROBE_BUILDER = $builderScript
-  $env:INKWEAVER_PROBE_PNPM_SCRIPT = $pnpmScript
-  $env:INKWEAVER_PROBE_CMD = $cmdPath
-  $env:Path = $root + ';' + $previousPath
-  $launcher = Start-Process -FilePath $nodePath -ArgumentList @('"' + $launcherScript + '"') -PassThru
-  $readyDeadline = [DateTime]::UtcNow.AddSeconds(10)
-  while (-not (Test-Path -LiteralPath $readyPath) -and [DateTime]::UtcNow -lt $readyDeadline) {
-    Start-Sleep -Milliseconds 25
-  }
-  if (-not (Test-Path -LiteralPath $readyPath)) {
-    throw 'Real workspace probe launcher did not publish its arm marker.'
-  }
-  $atomic = New-AiNovelGateAtomicMonitor
-  $atomic.Job.AssignProcess($launcher.Id)
-  [System.IO.File]::WriteAllText($releasePath, 'release', [System.Text.UTF8Encoding]::new($false))
-  $eventDeadline = [DateTime]::UtcNow.AddSeconds(20)
-  $jobEmpty = $false
-  while ([DateTime]::UtcNow -lt $eventDeadline -and -not $jobEmpty) {
-    foreach ($item in @($atomic.Job.Drain())) {
-      [void]$events.Add($item)
-      if ([string]$item.Kind -eq 'job-empty') { $jobEmpty = $true }
-    }
-    if (-not $jobEmpty) { Start-Sleep -Milliseconds 25 }
-  }
-  foreach ($item in @($atomic.Job.Drain())) { [void]$events.Add($item) }
-  if (-not $jobEmpty) { throw 'Real workspace probe Job Object did not become empty within the test bound.' }
-
-  $tracked = @{}
-  foreach ($startEvent in @($events | Where-Object { [string]$_.Kind -eq 'process-start' })) {
-    $expectedStartTimeTicks = 0
-    try { $expectedStartTimeTicks = [long]$startEvent.ProcessStartTimeTicks } catch { }
-    $identity = Get-AiNovelGateProcessIdentity -Event $startEvent -ExpectedStartTimeTicks $expectedStartTimeTicks
-    if ($identity.identityCaptured) { $tracked[[int]$identity.processId] = $identity }
-  }
-  $armedRoot = if ($tracked.ContainsKey([int]$launcher.Id)) { $tracked[[int]$launcher.Id] } else { $null }
-  $builderIdentity = @($tracked.Values | Where-Object {
-    Test-AiNovelGateKnownElectronBuilderCliCommand -CommandLine ([string]$_.commandLine) -NodeImagePath ([string]$_.executablePath)
-  }) | Select-Object -First 1
-  $probeIdentity = @($tracked.Values | Where-Object {
-    Test-AiNovelGateKnownElectronBuilderPnpmWorkspaceProbeProcess -ProcessIdentity $_
-  } | Where-Object {
-    (Test-AiNovelGateSystemUtilityImage -ImagePath ([string]$_.executablePath) -FileName 'cmd.exe') -and
-    [string]::Equals(
-      [string](Get-AiNovelGateBoundCommandArguments -CommandLine ([string]$_.commandLine) -ImagePath ([string]$_.executablePath)),
-      ' /q /d /s /c "pwd"',
-      [System.StringComparison]::Ordinal
-    )
-  }) | Select-Object -First 1
-  $probeExit = if ($null -ne $probeIdentity) {
-    @($events | Where-Object {
-      [string]$_.Kind -eq 'process-exit' -and [int]$_.ProcessId -eq [int]$probeIdentity.processId
-    }) | Select-Object -First 1
-  } else { $null }
-  $probeParent = if ($null -ne $probeIdentity -and $tracked.ContainsKey([int]$probeIdentity.parentProcessId)) {
-    $tracked[[int]$probeIdentity.parentProcessId]
-  } else { $null }
-  $probeChain = if ($null -ne $probeIdentity) {
-    @(Get-AiNovelGateElectronBuilderPnpmWorkspaceProbeChain -ProbeIdentity $probeIdentity -ArmedRootIdentity $armedRoot -TrackedProcessIdentities $tracked)
-  } else { @() }
-  $accepted = if ($null -ne $probeExit) {
-    Test-AiNovelGateExpectedElectronBuilderWorkspaceProbeExit \`
-      -Step 'build:win:artifacts' \`
-      -Event $probeExit \`
-      -ProcessIdentity $probeIdentity \`
-      -ParentIdentity $probeParent \`
-      -ArmedRootIdentity $armedRoot \`
-      -TrackedProcessIdentities $tracked
-  } else { $false }
-  [pscustomobject]@{
-    JobEmpty = $jobEmpty
-    StartCount = @($tracked.Values).Count
-    BuilderCaptured = $null -ne $builderIdentity
-    ProbeCaptured = $null -ne $probeIdentity
-    ProbeExitCaptured = $null -ne $probeExit -and [bool]$probeExit.CaptureEstablished -and [bool]$probeExit.ExitCodeCaptured
-    ProbeExitCode = if ($null -ne $probeExit) { $probeExit.ExitCode } else { $null }
-    ProbeJobMessage = if ($null -ne $probeExit) { $probeExit.JobMessage } else { $null }
-    ChainProcessIds = @($probeChain | ForEach-Object { [int]$_.processId })
-    EventKinds = @($events | ForEach-Object { [string]$_.Kind + ':' + [string]$_.ProcessId + ':' + [string]$_.ExitCode + ':' + [string]$_.JobMessage })
-    Accepted = $accepted
-  } | ConvertTo-Json -Compress
-}
-finally {
-  $env:INKWEAVER_PROBE_READY = $previousReady
-  $env:INKWEAVER_PROBE_RELEASE = $previousRelease
-  $env:INKWEAVER_PROBE_BUILDER = $previousBuilder
-  $env:INKWEAVER_PROBE_PNPM_SCRIPT = $previousPnpmScript
-  $env:INKWEAVER_PROBE_CMD = $previousCmd
-  $env:Path = $previousPath
-  if ($null -ne $launcher) {
-    try {
-      $launcher.Refresh()
-      if (-not $launcher.HasExited) {
-        if ($null -ne $atomic) {
-          $atomic.Job.Terminate(99)
-        } else {
-          $launcher.Kill()
-        }
-      }
-    } catch {
-      if ($null -eq $atomic) {
-        try { $launcher.Kill() } catch { }
-      }
-    }
-  }
-  if ($null -ne $atomic) { Complete-AiNovelGateAtomicMonitor -AtomicMonitor $atomic }
-  if ($null -ne $launcher) { try { [void]$launcher.WaitForExit(2000) } catch { } }
-  Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
-}
-`)
-    const result = parseLastJsonLine(output)
-    expect(result).toMatchObject({
-      JobEmpty: true,
-      BuilderCaptured: true,
-      ProbeCaptured: true,
-      ProbeExitCaptured: true,
-      ProbeExitCode: 1,
-      ProbeJobMessage: 7,
-      Accepted: true,
-    })
-    expect(result.StartCount).toBeGreaterThanOrEqual(5)
-    // This bounded harness directly invokes pnpm.mjs, so its shortest valid
-    // chain is cmd probe -> pnpm Node -> electron-builder -> launcher. The
-    // separate synthetic contract above covers the additional pnpm.cmd
-    // wrapper shape emitted by the production launcher.
-    expect(result.ChainProcessIds.length).toBeGreaterThanOrEqual(2)
-  }, 35_000)
 
   windowsPowerShellIt('keeps command-line secrets in memory and redacts them from process evidence', () => {
     const root = mkdtempSync(join(tmpdir(), 'ai-novel-release-evidence-redaction-'))

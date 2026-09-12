@@ -500,7 +500,7 @@ static NSDictionary *ListDirectory(
 
 static int OpenTemporaryFile(int parent, NSString **temporaryName, NSString **errorCode) {
   for (NSUInteger attempt = 0; attempt < 32; attempt++) {
-    NSString *candidate = [NSString stringWithFormat:@".inkweaver-%d-%08x.tmp", getpid(), arc4random()];
+    NSString *candidate = [NSString stringWithFormat:@".ai-novel-%d-%08x.tmp", getpid(), arc4random()];
     int fd = openat(parent, candidate.fileSystemRepresentation,
       O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0600);
     if (fd >= 0) {

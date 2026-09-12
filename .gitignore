@@ -65,7 +65,3 @@ tailwind.config.js.bak
 /public/logos/
 *.tsbuildinfo
 .mimosa/
-
-# Test-runner attachments and temporary process placeholders are local-only.
-.vitest-attachments/
-_tmp_*

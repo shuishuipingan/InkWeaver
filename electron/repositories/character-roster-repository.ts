@@ -37,6 +37,14 @@ interface CharacterRosterOperationRow {
   projection_hash: string
 }
 
+interface CharacterIdentityRow {
+  character_id: string
+  current_name: string
+  aliases_json: string
+}
+
+const CHARACTER_ID_PATTERN = /^char_[a-f0-9]{32}$/u
+
 const ROLE_ORDER: Record<CharacterRosterRole, number> = {
   protagonist: 0,
   supporting: 1,
@@ -57,6 +65,17 @@ function isObject(value: unknown): value is Record<string, unknown> {
 function requiredText(value: unknown, label: string): string {
   if (typeof value !== 'string') throw new Error(`${label}必须是文本`)
   return value.trim()
+}
+
+function parseIdentityAliases(value: string): string[] {
+  try {
+    const parsed = JSON.parse(value) as unknown
+    return Array.isArray(parsed)
+      ? [...new Set(parsed.filter((item): item is string => typeof item === 'string').map(item => item.trim()).filter(Boolean))]
+      : []
+  } catch {
+    return []
+  }
 }
 
 /** Only fields whose domain explicitly permits numeric scalar expression use this normalizer. */
@@ -129,10 +148,29 @@ function normalizeRelationships(value: unknown, ownerName: string): CharacterRos
     if (!target) throw new Error(`角色「${ownerName}」的关系目标不能为空`)
     if (!relation) throw new Error(`角色「${ownerName}」的关系说明不能为空`)
     if (target === ownerName) throw new Error(`角色「${ownerName}」不能建立自指关系`)
-    const key = `${target}\u0000${relation}`
+    const key = `${target}\u0000${relation}\u0000${String(relationship.direction ?? '')}`
     if (seen.has(key)) throw new Error(`角色「${ownerName}」存在重复关系`)
     seen.add(key)
-    return { target, relation }
+    const direction = relationship.direction === undefined ? undefined : relationship.direction
+    if (direction !== undefined && !['outgoing', 'incoming', 'mutual'].includes(String(direction))) {
+      throw new Error(`角色「${ownerName}」的关系方向无效`)
+    }
+    const rawSourceChapter = relationship.sourceChapter
+    const sourceChapter = rawSourceChapter === undefined
+      ? undefined
+      : typeof rawSourceChapter === 'number' ? rawSourceChapter : NaN
+    if (sourceChapter !== undefined && (!Number.isSafeInteger(sourceChapter) || sourceChapter < 1)) {
+      throw new Error(`角色「${ownerName}」的关系来源章节无效`)
+    }
+    const evidence = relationship.evidence === undefined ? undefined : requiredText(relationship.evidence, '关系证据')
+    if (evidence !== undefined && evidence.length > 300) throw new Error('关系证据过长')
+    return {
+      target,
+      relation,
+      ...(direction === undefined ? {} : { direction: direction as 'outgoing' | 'incoming' | 'mutual' }),
+      ...(sourceChapter === undefined ? {} : { sourceChapter: sourceChapter as number }),
+      ...(evidence === undefined ? {} : { evidence }),
+    }
   }).sort((left, right) => (
     compareText(left.target, right.target) || compareText(left.relation, right.relation)
   ))
@@ -146,6 +184,18 @@ function normalizeEntry(
   const name = requiredText(value.name, '角色名')
   if (!name) throw new Error('角色名不能为空')
   if (!isRosterRole(value.role)) throw new Error(`角色「${name}」的定位无效`)
+  const characterId = value.characterId === undefined ? undefined : requiredText(value.characterId, `角色「${name}」的身份 ID`)
+  if (characterId !== undefined && !CHARACTER_ID_PATTERN.test(characterId)) {
+    throw new Error(`角色「${name}」的身份 ID 无效`)
+  }
+  const aliases = value.aliases === undefined
+    ? undefined
+    : (() => {
+        if (!Array.isArray(value.aliases) || value.aliases.length > 16) throw new Error(`角色「${name}」的别名无效`)
+        const result = [...new Set(value.aliases.map(alias => requiredText(alias, `角色「${name}」的别名`)).filter(alias => alias !== name))]
+        if (result.some(alias => alias.length > 80)) throw new Error(`角色「${name}」的别名过长`)
+        return result
+      })()
 
   if (Object.hasOwn(value, 'legacyRelationshipNotes') && !allowLegacyRelationshipNotes) {
     throw new Error('只有手工角色管理可以提交自由文本关系')
@@ -154,7 +204,9 @@ function normalizeEntry(
     ? value.legacyRelationshipNotes.trim()
     : undefined
   return {
+    ...(characterId ? { characterId } : {}),
     name,
+    ...(aliases?.length ? { aliases } : {}),
     role: value.role,
     gender: requiredText(value.gender, `角色「${name}」的性别`),
     age: requiredTextOrFiniteNumber(value.age, `角色「${name}」的年龄`),
@@ -249,10 +301,24 @@ function normalizeRequest(value: unknown): CharacterRosterCommitRequest {
 function canonicalEntries(entries: CharacterRosterEntry[]): CharacterRosterEntry[] {
   return [...entries]
     .map(entry => ({
-      ...entry,
+      ...(entry.characterId ? { characterId: entry.characterId } : {}),
+      name: entry.name,
+      ...(entry.aliases?.length ? { aliases: [...new Set(entry.aliases)].sort(compareText) } : {}),
+      role: entry.role,
+      gender: entry.gender,
+      age: entry.age,
+      appearance: entry.appearance,
+      personality: entry.personality,
+      background: entry.background,
+      abilities: entry.abilities,
+      motivation: entry.motivation,
       relationships: [...entry.relationships].sort((left, right) => (
         compareText(left.target, right.target) || compareText(left.relation, right.relation)
       )),
+      arc: entry.arc,
+      notes: entry.notes,
+      ...(entry.currentState ? { currentState: entry.currentState } : {}),
+      ...(entry.legacyRelationshipNotes ? { legacyRelationshipNotes: entry.legacyRelationshipNotes } : {}),
     }))
     .sort((left, right) => compareText(left.name, right.name))
 }
@@ -286,13 +352,21 @@ function isStructuredRelationships(value: string): value is string {
   }
 }
 
-function entryFromCharacter(character: CharacterData): CharacterRosterEntry {
+function entryFromCharacter(db: BetterSqlite3.Database, character: CharacterData): CharacterRosterEntry {
   const hasStructuredRelationships = isStructuredRelationships(character.relationships)
   const relationships = hasStructuredRelationships
     ? JSON.parse(character.relationships) as CharacterRosterRelationship[]
     : []
+  const identity = db.prepare(`
+    SELECT character_id, aliases_json
+    FROM character_identity_map
+    WHERE current_name = ?
+  `).get(character.name) as Pick<CharacterIdentityRow, 'character_id' | 'aliases_json'> | undefined
+  const aliases = identity ? parseIdentityAliases(identity.aliases_json) : []
   return {
+    ...(identity ? { characterId: identity.character_id } : {}),
     name: character.name,
+    ...(aliases.length ? { aliases } : {}),
     role: normalizeCharacterRole(character.role),
     gender: character.gender,
     age: character.age,
@@ -311,6 +385,54 @@ function entryFromCharacter(character: CharacterData): CharacterRosterEntry {
       ? {}
       : { legacyRelationshipNotes: character.relationships }),
   }
+}
+
+function hydrateIdentityEntries(
+  db: BetterSqlite3.Database,
+  entries: CharacterRosterEntry[],
+  renameByOriginal: ReadonlyMap<string, string>,
+): CharacterRosterEntry[] {
+  const rows = db.prepare('SELECT character_id, current_name, aliases_json FROM character_identity_map').all() as CharacterIdentityRow[]
+  const byName = new Map(rows.map(row => [row.current_name, row]))
+  const byId = new Map(rows.map(row => [row.character_id, row]))
+  const used = new Set<string>()
+  const insert = db.prepare(`
+    INSERT INTO character_identity_map (character_id, current_name, aliases_json)
+    VALUES (?, ?, ?)
+  `)
+  const update = db.prepare(`
+    UPDATE character_identity_map
+    SET current_name = ?, aliases_json = ?, updated_at = datetime('now')
+    WHERE character_id = ?
+  `)
+  return entries.map((entry) => {
+    const renamedFrom = [...renameByOriginal.entries()].find(([, next]) => next === entry.name)?.[0]
+    const existing = (entry.characterId ? byId.get(entry.characterId) : undefined)
+      ?? byName.get(renamedFrom ?? entry.name)
+      ?? byName.get(entry.name)
+    const characterId = existing?.character_id
+      ?? entry.characterId
+      ?? `char_${hashText(entry.name).slice(0, 32)}`
+    if (!CHARACTER_ID_PATTERN.test(characterId) || used.has(characterId)) {
+      throw new Error(`角色「${entry.name}」的稳定身份冲突`)
+    }
+    used.add(characterId)
+    const aliases = [...new Set([
+      ...(existing ? parseIdentityAliases(existing.aliases_json) : []),
+      ...(entry.aliases ?? []),
+      ...(renamedFrom && renamedFrom !== entry.name ? [renamedFrom] : []),
+    ].filter(alias => alias && alias !== entry.name))]
+    if (existing) {
+      update.run(entry.name, JSON.stringify(aliases), characterId)
+    } else {
+      insert.run(characterId, entry.name, JSON.stringify(aliases))
+    }
+    return {
+      ...entry,
+      characterId,
+      ...(aliases.length ? { aliases } : {}),
+    }
+  })
 }
 
 function characterFromEntry(entry: CharacterRosterEntry): CharacterData {
@@ -386,7 +508,7 @@ function assertRelationshipClosure(entries: readonly CharacterRosterEntry[]): vo
       if (!relationship.target.trim() || !relationship.relation.trim() || relationship.target === entry.name || !names.has(relationship.target)) {
         throw new Error('已有角色关系不完整，已拒绝合并')
       }
-      const key = `${relationship.target}\u0000${relationship.relation}`
+      const key = `${relationship.target}\u0000${relationship.relation}\u0000${String(relationship.direction ?? '')}`
       if (relationshipKeys.has(key)) throw new Error('已有角色关系存在重复，已拒绝合并')
       relationshipKeys.add(key)
     }
@@ -630,7 +752,7 @@ function deriveRosterStatus(
 
 function readSnapshot(db: BetterSqlite3.Database): CharacterRosterSnapshot {
   const meta = readMeta(db)
-  const entries = sortedEntries(CharacterRepository.getAll().map(entryFromCharacter))
+  const entries = sortedEntries(CharacterRepository.getAll().map(entry => entryFromCharacter(db, entry)))
   const renderedMarkdown = renderCharacterRosterMarkdown(entries)
   const projectionHash = hashText(renderedMarkdown)
   const currentProjection = readCurrentProjection(db)
@@ -724,7 +846,7 @@ export class CharacterRosterRepository {
       if (request.expectedRevision !== meta.revision) {
         throw new Error('角色名单 revision 已过期，已拒绝覆盖')
       }
-      const existingEntries = CharacterRepository.getAll().map(entryFromCharacter)
+      const existingEntries = CharacterRepository.getAll().map(entry => entryFromCharacter(db, entry))
       const currentSnapshot = readSnapshot(db)
       const intent = request.intent ?? 'initialize'
       const maySafelyRegenerate = intent === 'architecture_generation'
@@ -792,9 +914,10 @@ export class CharacterRosterRepository {
                   intent as Extract<CharacterRosterCommitIntent, 'blueprint_sync' | 'chapter_progress'>,
                 )
               : request.entries
-      const projection = renderCharacterRosterMarkdown(committedEntries)
+      const hydratedEntries = hydrateIdentityEntries(db, committedEntries, renameByOriginal)
+      const projection = renderCharacterRosterMarkdown(hydratedEntries)
       const projectionHash = hashText(projection)
-      const factHash = fullFactHash(committedEntries)
+      const factHash = fullFactHash(hydratedEntries)
       const nextRevision = meta.revision + 1
 
       // adoption 的唯一职责是以已有结构化卡片重建只读投影。它不能重写
@@ -803,16 +926,16 @@ export class CharacterRosterRepository {
         // 手工保存提交的是完整名单快照。先清空再回填使删除、改名（包括交换）
         // 与资料变更受同一事务保护；transaction 回滚时不会留下半个名单。
         db.prepare('DELETE FROM characters').run()
-        for (const entry of committedEntries) {
+        for (const entry of hydratedEntries) {
           CharacterRepository.upsert(characterFromEntry(entry))
         }
         updateBlueprintReferencesForManualEdit(
           db,
           renameByOriginal,
-          new Set(committedEntries.map(entry => entry.name)),
+          new Set(hydratedEntries.map(entry => entry.name)),
         )
       } else if (!isLegacyCardsAdoption) {
-        for (const entry of committedEntries) CharacterRepository.upsert(characterFromEntry(entry))
+        for (const entry of hydratedEntries) CharacterRepository.upsert(characterFromEntry(entry))
       }
       const coreUpdate = db.prepare(`
         UPDATE project_core
@@ -835,7 +958,7 @@ export class CharacterRosterRepository {
       const snapshot = assertReadBack(
         db,
         nextRevision,
-        committedEntries,
+        hydratedEntries,
         projection,
         projectionHash,
         factHash,

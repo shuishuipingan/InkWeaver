@@ -4,19 +4,17 @@
 
 InkWeaver is a local-first desktop workspace for long-form fiction. It brings project settings, characters, worldbuilding, chapter blueprints, prose, review, revision, and finalization into a traceable writing chain while keeping the author in control of every durable change.
 
-Current version: **v1.0.0**
+Current version: **v1.1.0 (freeze candidate, not released)**
 
-[Download for Windows or macOS](https://github.com/shuishuipingan/InkWeaver/releases/latest) · [View source](https://github.com/shuishuipingan/InkWeaver)
+> InkWeaver 1.1.0 has passed the internal engineering acceptance for its writing features and is now a freeze candidate, but no public Release has been created. GitHub tarball, Windows/macOS installers, and final Release backread are still in progress.
 
-## Optional DSH extension
+New contributors should start with the [project file guide](docs/PROJECT-FILE-GUIDE.md), then read the [full feature map](docs/upgrade/INKWEAVER-1.1.0-FULL-FEATURE-MAP.md) and [delivery tracker](docs/upgrade/INKWEAVER-1.1.0-DELIVERY-TRACKER.md). The guide explains source-of-truth ownership, main-process side effects, renderer projections, the DSH plugin, and generated release files.
 
-InkWeaver also ships an optional InkWeaver DSH Extension for the external DeepSeek Harness host. It organizes novel settings, characters, chapter planning, prose, and revision proposals into an author-reviewed writing chain. It uses an independent \`.inkweaver\` workspace and does not read or replace desktop projects.
+The current source branch, GitHub topic, and remaining release gates are recorded in the [GitHub/distribution receipt](docs/upgrade/GITHUB-DISTRIBUTION-RECEIPT.md).
 
-Install v1.0.0 into the DSH Web profile:
+User-visible changes are listed in the [changelog](CHANGELOG.md); every `1.1.0 development` entry is explicitly not a formal Release claim.
 
-Run `dsh plugin --profile web add https://github.com/shuishuipingan/InkWeaver/releases/download/v1.0.0/shuishuipingan-inkweaver-dsh-1.0.0.tgz`.
-
-See the [DSH extension guide](plugins/inkweaver-dsh/README.md) for the two presets (\`inkweaver\` / \`inkweaver-v2\`) and the legacy migration boundary.
+[Download for Windows or macOS](https://github.com/shuishuipingan/InkWeaver/releases/latest) · [View source](https://github.com/shuishuipingan/InkWeaver) · [DSH plugin guide](plugins/inkweaver-dsh/README.md)
 
 ## What InkWeaver is for
 
@@ -42,9 +40,30 @@ InkWeaver is not a hosted model service or an online fiction platform. It includ
 - **Human-confirmed review loop** keeps AI findings editable and non-authoritative until the author confirms them, revises, and inspects the diff.
 - **Reference material and knowledge retrieval** support TXT, Markdown, and EPUB import, semantic search, and SQLite full-text fallback.
 - **Character cards and relationship graph** keep structured character facts and support zoom, pan, or clear operations.
-- **Recoverable operations** record progress for long generation, batch writing, imports, finalization, and post-processing.
+- **Recoverable operations** record safe-boundary progress for long generation, batch writing, imports, drafting, character extraction, review, review-driven revision, revision, finalization, finalization post-process repair, architecture generation, configuration generation, and chapter-blueprint generation. Resume actions reload authoritative sources or safe startup inputs and validate the current project lease without storing prose or model output in the checkpoint.
 - **Independent UI and writing languages** let the interface and the novel use different languages.
 - **More precise failure messages** distinguish content restrictions, provider failures, prompt-budget exhaustion, and resource conflicts from successful output.
+
+## The 1.1.0 writing-experience line
+
+The goal of 1.1.0 is to make a long novel feel like one continuously developing
+story rather than a sequence of unrelated generations. The following pieces are
+already implemented in the development line:
+
+- **Chapter continuity sheets** record scene entry state, goal, obstacle, choice, consequence, and exit state while distinguishing author plans, AI candidates, confirmed facts, and observed prose. The same sheet can record volume-level contributions, emotional carry-over, reader expectations, and viewpoint landing points.
+- **Evidence-backed handoffs** preserve the previous finalized scene, viewpoint, unfinished actions, immediate goal, emotion, and open questions with manuscript evidence. When the source final changes, the old handoff is no longer presented as current.
+- **Serial reading and repetition notes** present finalized chapters in authoritative order with chapter boundaries, search, reading-position memory, and an editor return action. Repeated openings, endings, or weather openings are suggestions only; authors can explicitly keep intentional repetition.
+- **Layered pre-writing context** selects complete entries instead of cutting through evidence or negation. The AI output surface reports what was included and what was omitted, while the receipt avoids copying private prose.
+- **Knowledge boundaries and false beliefs** separate facts, beliefs, rumors, and false beliefs with acquisition method, source chapter, validity range, and evidence. Only confirmed knowledge active at the current chapter enters drafting context.
+- **Safe historical revision** lists downstream continuity projections, handoffs, and narrative lines affected by an older edit. Revision proposals bind to the base-content fingerprint and refuse to merge after the source changes.
+- **Field-level character review** keeps evidence, aliases, relationships, and current state on extraction candidates. Authors can accept individual fields; unchecked values never enter the authoritative roster. Stable character IDs preserve references across renames.
+- **Relationship graph workspace** supports name/alias search, one- and two-hop focus, relationship filtering, a keyboard-accessible list, pin/unpin/reset layout, and project-level layout persistence. Directed relationships can show arrows, source chapters, and manuscript evidence.
+- **Consistency snapshots and blueprint-free export** use SQLite's backup API with file hashes, and export finalized manuscript authority even when no chapter blueprint exists.
+
+These capabilities are still being verified one requirement at a time. Features
+that have not passed the roadmap gates are not presented as released 1.1.0
+functionality, and this section does not imply that cross-platform installers
+are available yet.
 
 ## Model connections
 
@@ -104,7 +123,28 @@ inkweaver-mac-arm64-<version>-installer.dmg
 inkweaver-mac-x64-<version>-installer.dmg
 ```
 
-The current macOS installers do not have a Developer ID signature and are not notarized. Download only from the official Release and follow the operating system's first-launch confirmation. Formal releases qualify Windows installation and update files, the macOS Apple Silicon and macOS Intel installers and checksums, and the InkWeaver DSH extension together as one eight-asset set.
+The current macOS installers do not have a Developer ID signature and are not notarized. Download only from the official Release and follow the operating system's first-launch confirmation. The formal Release uses a seven-asset contract covering Windows install/update assets, macOS Apple Silicon, and macOS Intel.
+const fs = require('fs')
+const p = 'D:/Game APP/AI-Novel-Writer/README_en.md'
+let s = fs.readFileSync(p, 'utf8')
+const content = fs.readFileSync(process.argv[1], 'utf8')
+const anchor = '\n## DeepSeek Harness plugin\n'
+if (!s.includes(anchor)) throw new Error('anchor missing')
+s = s.replace(anchor, content + anchor)
+fs.writeFileSync(p, s, 'utf8')
+console.log('en quickstart added')
+## DeepSeek Harness plugin
+
+The bundled `@shuishuipingan/inkweaver-dsh` package is an independent plugin under development, not a replacement for the desktop application. It provides a narrow reviewed chain for project settings, story architecture, characters, the whole-book outline, chapter blueprints, and chapter prose. Model changes enter a Proposal inbox and become authoritative only after the user applies them. This 1.1.0 release scope intentionally excludes npm; the plugin will be delivered as a GitHub Release tarball with local installation instructions.
+
+Migration note: `@ethanyoq/dsh-ai-novel-writer` was the historical package name before the repository move; it is not the 1.1.0 development-line delivery package. New installations should use only `@shuishuipingan/inkweaver-dsh`. The DSH host and its Web UI companion are maintained by the DeepSeek Harness ecosystem and are not packages from this repository.
+
+```sh
+dsh plugin --profile web add '<path-to-inkweaver-dsh-tarball.tgz>'
+dsh --profile web
+```
+
+The plugin uses its own `.ai-novel` format and does not read desktop projects. See the [plugin documentation](plugins/inkweaver-dsh/README.md) for details.
 
 ## Local development
 
@@ -133,4 +173,4 @@ pnpm build
 
 ## License
 
-This project is licensed under [GPL-3.0](LICENSE).
+The desktop application is licensed under [GPL-3.0](LICENSE). The bundled DeepSeek Harness plugin has its own MIT license.

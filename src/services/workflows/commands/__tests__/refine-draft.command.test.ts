@@ -859,7 +859,7 @@ describe('ReviewChapterCommand reasoning stage', () => {
     await chapterReviewCommand(completeWithLease).execute({ step: {}, context: workflowContext(), callbacks: callbacks() })
 
     expect(JSON.parse(createParams[0]!.content).items).toEqual([
-      expect.objectContaining({ category: '确定性一致性预检', stableFactKey: expect.stringMatching(/^fact:[0-9a-f]{16}$/u) }),
+      expect.objectContaining({ category: '确定性一致性预检 [conflict]', stableFactKey: expect.stringMatching(/^fact:[0-9a-f]{16}$/u) }),
     ])
   })
 

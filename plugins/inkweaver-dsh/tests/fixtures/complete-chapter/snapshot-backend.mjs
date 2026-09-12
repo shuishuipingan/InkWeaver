@@ -2,7 +2,7 @@
 import { createHash } from 'node:crypto'
 import { access, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { CallId, LlmAdapter } from '@deepseek-ai/dsh-llm'
+import { ToolCallId, LlmAdapter } from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
 
 const PROJECT_ID = '123e4567-e89b-42d3-a456-426614174000'
@@ -253,7 +253,14 @@ function assertV2AuthoringChainPrompt(options, stage) {
 }
 
 function assertV2ProposalProtocol(options) {
-  const system = options.system
+  const system = typeof options.system === 'string'
+    ? options.system
+    : (options.messages ?? [])
+      .filter(message => message?.role === 'system')
+      .flatMap(message => Array.isArray(message.content) ? message.content : [])
+      .filter(block => block?.type === 'text' && typeof block.text === 'string')
+      .map(block => block.text)
+      .join('\n\n')
   const required = [
     '织墨 V2 使用宿主的原生函数调用',
     '每个工具的完整输入就是直接传给工具的 JSON 对象',
@@ -314,7 +321,7 @@ function toolCall(callId, request) {
 }
 
 function rawToolCall(callId, name, args) {
-  const id = CallId(callId)
+  const id = ToolCallId(callId)
   const argumentsJson = JSON.stringify(args)
   return [
     { type: 'block-start', index: 0, blockType: 'tool-call' },
@@ -431,7 +438,7 @@ export const inject = ['llm', 'agents', 'agentLoop', 'agentPresets', 'approval']
  * @returns {Promise<void>} Completion after the root agent is published.
  */
 export async function apply(ctx) {
-  const manifest = join(process.cwd(), '.inkweaver', 'project.json')
+  const manifest = join(process.cwd(), '.ai-novel', 'project.json')
   let initialized = true
   try {
     await access(manifest)

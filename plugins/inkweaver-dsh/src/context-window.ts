@@ -109,10 +109,10 @@ export async function readNovelContext(
   const result = await project.read({ kind: 'working-set', chapter }, signal)
   if (result.kind !== 'working-set') throw new Error('NovelProject returned a non-working-set context result')
   const bySource = new Map(result.assets.map(asset => [asset.source, asset]))
-  const charactersAsset = bySource.get('.inkweaver/characters.json')
-  const storyAsset = bySource.get('.inkweaver/blueprints/story.json')
+  const charactersAsset = bySource.get('.ai-novel/characters.json')
+  const storyAsset = bySource.get('.ai-novel/blueprints/story.json')
   const chapterName = String(chapter).padStart(4, '0')
-  const chapterAsset = bySource.get(`.inkweaver/blueprints/chapters/${chapterName}.json`)
+  const chapterAsset = bySource.get(`.ai-novel/blueprints/chapters/${chapterName}.json`)
   const draftAsset = bySource.get(`chapters/${chapterName}.md`)
   const chapterBlueprint = chapterOf(chapterAsset)
   const draftPresent = draftAsset !== undefined && draftAsset.revision !== 'absent'

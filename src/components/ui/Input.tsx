@@ -77,7 +77,4 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
 )
 Input.displayName = 'Input'
 
-// The style factory is part of the public component API; Fast Refresh's
-// component-only export rule does not apply to this intentional helper export.
-// eslint-disable-next-line react-refresh/only-export-components
 export { Input, inputVariants }

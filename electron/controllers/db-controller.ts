@@ -43,8 +43,14 @@ import { PostProcessRepository } from '../repositories/post-process-repository'
 // 沿用的旧表
 import { LLMHistoryRepository } from '../repositories/llm-repository'
 import { SummaryRepository } from '../repositories/summary-repository'
+import { ChapterHandoffRepository } from '../repositories/chapter-handoff-repository'
+import { CharacterExtractionCandidateRepository } from '../repositories/character-extraction-candidate-repository'
 import { ConsistencyExemptionRepository } from '../repositories/consistency-exemption-repository'
 import { NarrativeThreadRepository } from '../repositories/narrative-thread-repository'
+import { StoryContinuityRepository } from '../repositories/story-continuity-repository'
+import { StyleHistoryRepository } from '../repositories/style-history-repository'
+import { KnowledgeEventRepository } from '../repositories/knowledge-event-repository'
+import { ProjectSnapshotService } from '../services/project-snapshot-service'
 import { safeConsole } from '../utils/safe-console'
 
 type ProjectDatabaseHandler = (event: unknown, ...args: never[]) => unknown
@@ -97,6 +103,16 @@ const MUTATING_DATABASE_CHANNELS = new Set([
   'db:narrative-thread-plan-update',
   'db:narrative-thread-plan-delete',
   'db:narrative-thread-event-confirm',
+  'db:story-continuity-save',
+  'db:knowledge-event-save-candidate',
+  'db:knowledge-event-status',
+  'db:project-snapshot-create',
+  'db:chapter-handoff-save-candidate',
+  'db:chapter-handoff-confirm',
+  'db:character-extraction-candidates-save',
+  'db:character-extraction-candidate-status',
+  'db:character-extraction-candidates-stale',
+  'db:writing-style-history-record',
 ])
 
 function registerProjectDatabaseHandler(channel: string, handler: ProjectDatabaseHandler): void {
@@ -473,6 +489,24 @@ export function registerDatabaseController() {
   // ============================================================
   // 2. blueprints — 章节蓝图
   // ============================================================
+  ipcMain.handle('db:writing-style-history-list', async (_event, expectedProjectPath: string) => {
+    assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+    return StyleHistoryRepository.list()
+  })
+
+  ipcMain.handle('db:writing-style-history-record', async (_event, input: {
+    previousStyle: string
+    nextStyle: string
+    sourceFingerprint: string
+  }, expectedProjectPath: string) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      return { success: true, record: StyleHistoryRepository.record(input.previousStyle, input.nextStyle, input.sourceFingerprint) }
+    } catch (error) {
+      return { success: false, error: String(error) }
+    }
+  })
+
   ipcMain.handle('db:blueprint-get-all', async (_event, expectedProjectPath: string) => {
     assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
     return BlueprintRepository.getAll()
@@ -693,6 +727,84 @@ export function registerDatabaseController() {
     return SummaryRepository.listFinalizedContinuityBefore(chapterNumber)
   })
 
+  ipcMain.handle('db:continuity-list-all', async (_event, expectedProjectPath: string) => {
+    assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+    return SummaryRepository.listAllFinalizedContinuity()
+  })
+
+  ipcMain.handle('db:chapter-handoff-save-candidate', async (_event, request, expectedProjectPath: string) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      return { success: true, handoff: ChapterHandoffRepository.saveCandidate(request) }
+    } catch (error) {
+      return { success: false, error: String(error) }
+    }
+  })
+
+  ipcMain.handle('db:chapter-handoff-get', async (_event, handoffId: string, expectedProjectPath: string) => {
+    assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+    return ChapterHandoffRepository.get(handoffId)
+  })
+
+  ipcMain.handle('db:chapter-handoff-confirm', async (_event, handoffId: string, expectedProjectPath: string) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      return { success: true, handoff: ChapterHandoffRepository.confirm(handoffId) }
+    } catch (error) {
+      return { success: false, error: String(error) }
+    }
+  })
+
+  ipcMain.handle('db:chapter-handoff-latest-before', async (_event, chapterNumber: number, expectedProjectPath: string) => {
+    assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+    return ChapterHandoffRepository.getLatestConfirmedBefore(chapterNumber)
+  })
+
+  ipcMain.handle('db:chapter-handoff-list-for-chapter', async (_event, chapterNumber: number, expectedProjectPath: string) => {
+    assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+    return ChapterHandoffRepository.listForChapter(chapterNumber)
+  })
+
+  ipcMain.handle('db:chapter-handoff-list-all', async (_event, expectedProjectPath: string) => {
+    assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+    return ChapterHandoffRepository.listAll()
+  })
+
+  ipcMain.handle('db:character-extraction-candidates-save', async (_event, candidates, expectedProjectPath: string) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      return {
+        success: true,
+        candidates: CharacterExtractionCandidateRepository.saveBatch(candidates),
+      }
+    } catch (error) {
+      return { success: false, error: String(error) }
+    }
+  })
+
+  ipcMain.handle('db:character-extraction-candidates-list', async (_event, sourceId: string, sourceHash: string, expectedProjectPath: string) => {
+    assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+    return CharacterExtractionCandidateRepository.list(sourceId, sourceHash)
+  })
+
+  ipcMain.handle('db:character-extraction-candidate-status', async (_event, candidateId: string, status, expectedProjectPath: string) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      return { success: true, candidate: CharacterExtractionCandidateRepository.setStatus(candidateId, status) }
+    } catch (error) {
+      return { success: false, error: String(error) }
+    }
+  })
+
+  ipcMain.handle('db:character-extraction-candidates-stale', async (_event, sourceId: string, sourceHash: string, expectedProjectPath: string) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      return { success: true, count: CharacterExtractionCandidateRepository.markSourceStale(sourceId, sourceHash) }
+    } catch (error) {
+      return { success: false, error: String(error) }
+    }
+  })
+
   ipcMain.handle('db:consistency-exemption-list', async (_event, expectedProjectPath: string) => {
     assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
     return ConsistencyExemptionRepository.list()
@@ -747,6 +859,91 @@ export function registerDatabaseController() {
   ipcMain.handle('db:narrative-thread-event-confirm', async (_event, input, expectedProjectPath: string) => {
     assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
     return { success: true, event: NarrativeThreadRepository.confirmEvent(input) }
+  })
+
+  ipcMain.handle('db:story-continuity-read', async (_event, chapterNumber: number, expectedProjectPath: string) => {
+    assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+    return StoryContinuityRepository.read(chapterNumber)
+  })
+
+  ipcMain.handle('db:story-continuity-list-all', async (_event, expectedProjectPath: string) => {
+    assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+    return StoryContinuityRepository.listAll()
+  })
+
+  ipcMain.handle('db:story-continuity-save', async (_event, request, expectedProjectPath: string) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      return { success: true, document: StoryContinuityRepository.save(request) }
+    } catch (error) {
+      return { success: false, error: String(error) }
+    }
+  })
+
+  ipcMain.handle('db:knowledge-event-list-for-chapter', async (_event, characters: string[], chapterNumber: number, expectedProjectPath: string) => {
+    assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+    return KnowledgeEventRepository.listForChapter(characters, chapterNumber)
+  })
+
+  ipcMain.handle('db:knowledge-event-list-review', async (_event, characters: string[], chapterNumber: number, expectedProjectPath: string) => {
+    assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+    return KnowledgeEventRepository.listForReview(characters, chapterNumber)
+  })
+
+  ipcMain.handle('db:knowledge-event-save-candidate', async (_event, event, expectedProjectPath: string) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      return { success: true, event: KnowledgeEventRepository.saveCandidate(event) }
+    } catch (error) {
+      return { success: false, error: String(error) }
+    }
+  })
+
+  ipcMain.handle('db:knowledge-event-status', async (_event, eventId: string, status, expectedProjectPath: string) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      return { success: true, event: KnowledgeEventRepository.setStatus(eventId, status) }
+    } catch (error) {
+      return { success: false, error: String(error) }
+    }
+  })
+
+  ipcMain.handle('db:project-snapshot-create', async (_event, expectedProjectPath: string) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      return { success: true, manifest: await ProjectSnapshotService.create(expectedProjectPath) }
+    } catch (error) {
+      return { success: false, error: String(error) }
+    }
+  })
+
+  ipcMain.handle('db:project-snapshot-list', async (_event, expectedProjectPath: string) => {
+    assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+    return ProjectSnapshotService.list(expectedProjectPath)
+  })
+
+  ipcMain.handle('db:project-snapshot-verify', async (_event, snapshotId: string, expectedProjectPath: string) => {
+    assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+    return ProjectSnapshotService.verify(snapshotId, expectedProjectPath)
+  })
+
+  ipcMain.handle('db:project-snapshot-restore-preview', async (_event, snapshotId: string, destinationPath: string, expectedProjectPath: string) => {
+    assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+    return ProjectSnapshotService.previewRestore(snapshotId, destinationPath, expectedProjectPath)
+  })
+
+  ipcMain.handle('db:project-snapshot-restore', async (_event, snapshotId: string, destinationPath: string, expectedProjectPath: string) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      return { success: true, result: await ProjectSnapshotService.restore(snapshotId, destinationPath, expectedProjectPath) }
+    } catch (error) {
+      return { success: false, error: String(error) }
+    }
+  })
+
+  ipcMain.handle('db:project-snapshot-prune', async (_event, options, expectedProjectPath: string) => {
+    assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+    return ProjectSnapshotService.prune(expectedProjectPath, options)
   })
 
   ipcMain.handle('db:draft-next-version', async (_event, chapterNumber: number, expectedProjectPath: string) => {

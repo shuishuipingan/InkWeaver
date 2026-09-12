@@ -1,14 +1,12 @@
 import { mkdirSync, rmSync, renameSync, existsSync, readFileSync, readdirSync, statSync, copyFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
-import { tmpdir } from 'node:os'
-import { dirname, join, relative, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join, relative } from 'node:path'
 
-const PROJ = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const INST = resolve(process.env.INKWEAVER_INSTALL_ROOT ?? join(process.env.LOCALAPPDATA ?? PROJ, 'Programs', 'InkWeaver'))
-const APP_ASAR = join(INST, 'resources', 'app.asar')
-const TMP = join(tmpdir(), 'inkweaver-asar-repack-final')
-const TMP_SRC = join(TMP, 'asar-src')
+const PROJ = 'D:/Game APP/AI-Novel-Writer'
+const INST = 'D:/Game APP/ai-novel/inkweaver'
+const APP_ASAR = INST + '/resources/app.asar'
+const TMP = '/tmp/asar-repack-final'
+const TMP_SRC = TMP + '/asar-src'
 
 const asar = createRequire(PROJ + '/node_modules/.pnpm/@electron+asar@3.4.1/node_modules/@electron/asar/package.json')('./lib/asar.js')
 

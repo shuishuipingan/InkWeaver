@@ -624,12 +624,7 @@ async function executeToolWithTimeout(
   }
   return new Promise<ToolResult>((resolve, reject) => {
     let settled = false
-    const timeoutId: ReturnType<typeof setTimeout> = setTimeout(() => {
-      if (settled) return
-      settled = true
-      cleanup()
-      reject(new Error(`工具执行超时（${timeoutMs / 1000}s）`))
-    }, timeoutMs)
+    let timeoutId: ReturnType<typeof setTimeout> | undefined
     const onAbort = () => {
       if (settled) return
       settled = true
@@ -640,6 +635,12 @@ async function executeToolWithTimeout(
       if (timeoutId !== undefined) clearTimeout(timeoutId)
       abortSignal?.removeEventListener('abort', onAbort)
     }
+    timeoutId = setTimeout(() => {
+      if (settled) return
+      settled = true
+      cleanup()
+      reject(new Error(`工具执行超时（${timeoutMs / 1000}s）`))
+    }, timeoutMs)
     abortSignal?.addEventListener('abort', onAbort, { once: true })
 
     executeFn(args, context).then(

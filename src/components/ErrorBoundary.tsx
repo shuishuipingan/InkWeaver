@@ -76,9 +76,6 @@ export class ErrorBoundary extends Component<Props, State> {
 }
 
 /** 函数式错误面板 — 订阅 locale，切换语言即时刷新 */
-// Fast Refresh cannot classify the local function rendered by the exported
-// class boundary; keeping the fallback private is intentional.
-// eslint-disable-next-line react-refresh/only-export-components
 function ErrorFallback({
   label,
   errorMessage,

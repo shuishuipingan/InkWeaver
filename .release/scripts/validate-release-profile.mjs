@@ -7,7 +7,6 @@ import { pathToFileURL } from 'node:url';
 // family. macOS architectures must remain independently qualified so their
 // run identities, artifacts, and signing receipts cannot be interchanged.
 const PLATFORM_NAMES = new Set(['windows', 'macos-arm64', 'macos-x64']);
-const RELEASE_ASSET_PLATFORM_NAMES = new Set([...PLATFORM_NAMES, 'dsh']);
 const REQUIRED_PLATFORM_ARCHITECTURES = new Map([
   ['windows', 'x64'],
   ['macos-arm64', 'arm64'],
@@ -170,13 +169,8 @@ export function validateReleaseProfile(profile) {
         if (names.has(key)) errors.push(`releaseAssets contains a case-insensitive duplicate: ${asset.name}`);
         names.add(key);
       }
-      if (!RELEASE_ASSET_PLATFORM_NAMES.has(asset.platform)
-        || (asset.platform !== 'dsh' && !platforms.includes(asset.platform))) {
+      if (!PLATFORM_NAMES.has(asset.platform) || !platforms.includes(asset.platform)) {
         errors.push(`releaseAssets[${index}].platform must reference a configured platform.`);
-      }
-      if (asset.platform === 'dsh'
-        && (asset.role !== 'extension' || !/^shuishuipingan-inkweaver-dsh-\{version\}\.tgz$/.test(asset.name))) {
-        errors.push(`releaseAssets[${index}] must declare the exact qualified DSH extension tarball.`);
       }
       const requiredArchitecture = REQUIRED_PLATFORM_ARCHITECTURES.get(asset.platform);
       if (asset.platform?.startsWith('macos-') && isNonEmptyString(asset.name) && !asset.name.includes(`-mac-${requiredArchitecture}-`)) {

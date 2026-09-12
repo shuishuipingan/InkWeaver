@@ -2,11 +2,10 @@
 
 import type { SessionId, WorkspaceId } from '@deepseek-ai/dsh-client-runtime/client'
 import type { NovelV2WorkbenchController } from './workbench-v2.ts'
-import { INKWEAVER_V2_PRESET_ID } from '../identity.ts'
 import { AI_NOVEL_PRESET_ID } from './workbench-store.ts'
 
 /** The V2 sidebar is opt-in: existing sessions stay on the V1 workbench. */
-export const AI_NOVEL_V2_PRESET_ID = INKWEAVER_V2_PRESET_ID
+export const AI_NOVEL_V2_PRESET_ID = 'inkweaver-v2'
 
 export type NovelWorkbenchMode = 'none' | 'v1' | 'v2'
 
@@ -63,7 +62,10 @@ export interface NovelV2WorkspaceSelectionSources {
   readonly sessions: {
     readonly list: Observable<{
       readonly current: SessionId | undefined
-      readonly byId?: Readonly<Record<SessionId, { readonly agentPreset?: string }>>
+      readonly byId?: Readonly<Record<SessionId, {
+        readonly agentPreset?: string
+        readonly projectionValues?: { readonly agentPreset?: string | null }
+      }>>
     }>
     binding(sessionId: SessionId): { readonly session: Observable<ConversationSessionView> } | undefined
   }
@@ -72,6 +74,13 @@ export interface NovelV2WorkspaceSelectionSources {
       readonly items: ReadonlyArray<{ readonly workspaceId: WorkspaceId; readonly sessionIds: readonly SessionId[] }>
     }>
   }
+}
+
+function sessionAgentPreset(value: {
+  readonly agentPreset?: string
+  readonly projectionValues?: { readonly agentPreset?: string | null }
+} | undefined): string | undefined {
+  return value?.agentPreset ?? value?.projectionValues?.agentPreset ?? undefined
 }
 
 function highestUserSeq(nodes: readonly ConversationNodeView[]): number {
@@ -162,7 +171,8 @@ export function observeNovelV2Workspace(
     stopConversation = conversation.subscribe(() => {
       if (disposed) return
       const sessions = sources.sessions.list.getSnapshot()
-      if (sessions.current !== sessionId || sessions.byId?.[sessionId]?.agentPreset !== AI_NOVEL_V2_PRESET_ID) return
+      if (sessions.current !== sessionId
+        || sessionAgentPreset(sessions.byId?.[sessionId]) !== AI_NOVEL_V2_PRESET_ID) return
       const snapshot = conversation?.getSnapshot()
       if (snapshot === undefined) return
       const requestText = controller.currentAuthoringRequestText()
@@ -201,7 +211,7 @@ export function observeNovelV2Workspace(
     if (disposed) return
     const sessions = sources.sessions.list.getSnapshot()
     const sessionId = sessions.current
-    const agentPreset = sessionId === undefined ? undefined : sessions.byId?.[sessionId]?.agentPreset
+    const agentPreset = sessionId === undefined ? undefined : sessionAgentPreset(sessions.byId?.[sessionId])
     route.setPreset(agentPreset)
     if (agentPreset !== AI_NOVEL_V2_PRESET_ID) {
       controller.setSession(undefined)

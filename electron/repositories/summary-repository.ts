@@ -17,6 +17,13 @@ function normalizedFacts(value: unknown, chapterNumber: number): FinalizedContin
       : []
     const statement = typeof fact.statement === 'string' ? fact.statement.trim() : ''
     const evidence = typeof fact.evidence === 'string' ? fact.evidence.trim() : ''
+    const validFromChapter = fact.validFromChapter === undefined
+      ? chapterNumber
+      : fact.validFromChapter
+    const hasExplicitValidFrom = fact.validFromChapter !== undefined
+    const validUntilChapter = fact.validUntilChapter === undefined
+      ? undefined
+      : fact.validUntilChapter
     if (
       !FACT_CATEGORIES.has(String(fact.category))
       || fact.sourceChapter !== chapterNumber
@@ -26,12 +33,18 @@ function normalizedFacts(value: unknown, chapterNumber: number): FinalizedContin
       || statement.length > 280
       || !evidence
       || evidence.length > 240
+      || !Number.isSafeInteger(validFromChapter)
+      || (validFromChapter as number) < 1
+      || (validUntilChapter !== undefined
+        && (!Number.isSafeInteger(validUntilChapter) || (validUntilChapter as number) < (validFromChapter as number)))
     ) throw new Error('连续性事实参数无效')
     return {
       category: fact.category as FinalizedContinuityFact['category'],
       entities: [...new Set(entities)],
       statement,
       sourceChapter: chapterNumber,
+      ...(hasExplicitValidFrom ? { validFromChapter: validFromChapter as number } : {}),
+      ...(validUntilChapter === undefined ? {} : { validUntilChapter: validUntilChapter as number }),
       evidence,
     }
   })
@@ -109,6 +122,33 @@ export class SummaryRepository {
         chapterTitle: row.chapterTitle,
         chapterNotes: row.chapterNotes,
         facts: parseFacts(row.continuityFacts, row.chapterNumber),
+    }))
+  }
+
+  /** Returns all finalized continuity projections for impact analysis. */
+  static listAllFinalizedContinuity(): FinalizedContinuityProjection[] {
+    const db = getProjectDb()
+    if (!db) return []
+    const rows = db.prepare(`
+      SELECT summary_snapshots.draft_id AS draftId,
+             summary_snapshots.chapter_number AS chapterNumber,
+             COALESCE(finalization_outbox.chapter_title, '') AS chapterTitle,
+             summary_snapshots.chapter_notes AS chapterNotes,
+             summary_snapshots.continuity_facts AS continuityFacts
+      FROM summary_snapshots
+      JOIN drafts ON drafts.id = summary_snapshots.draft_id
+      LEFT JOIN finalization_outbox ON finalization_outbox.draft_id = drafts.id
+      WHERE summary_snapshots.draft_id IS NOT NULL
+        AND summary_snapshots.chapter_notes <> ''
+        AND drafts.status = 'finalized'
+      ORDER BY summary_snapshots.chapter_number ASC, summary_snapshots.draft_id ASC
+    `).all() as Array<Omit<FinalizedContinuityProjection, 'facts'> & { continuityFacts: string }>
+    return rows.map(row => ({
+      draftId: row.draftId,
+      chapterNumber: row.chapterNumber,
+      chapterTitle: row.chapterTitle,
+      chapterNotes: row.chapterNotes,
+      facts: parseFacts(row.continuityFacts, row.chapterNumber),
     }))
   }
 

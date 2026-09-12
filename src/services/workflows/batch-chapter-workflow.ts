@@ -12,6 +12,7 @@ import type { FinalizationSnapshot } from '../finalization-snapshot'
 import { FINALIZATION_SHARED_WRITE_RESOURCE_KINDS } from '../../shared/workflow-resource-claims'
 import { requireWorkflowProjectSession } from './workflow-project-session'
 import { normalizeChapterWordsTarget } from './chapter-creation-parameters'
+import { canResumeWorkflowCheckpoint, type WorkflowRecoveryCheckpoint } from '../../shared/workflow-recovery'
 
 /** 单次批量创作的安全上限，避免无边界调用模型。 */
 export const MIN_BATCH_CHAPTERS = 1
@@ -44,6 +45,48 @@ export interface BatchChapterWorkflowDefinition extends WorkflowDefinition {
   chapterWordsTarget: number
   /** 随定义冻结的批量完成模式，供启动收据与 UI 验证。 */
   completionMode: BatchChapterCompletionMode
+}
+
+/** Rebuild a batch definition only from its JSON-safe frozen recovery inputs. */
+export function resumeBatchChapterWorkflowFromCheckpoint(
+  checkpoint: WorkflowRecoveryCheckpoint,
+  currentSession: ProjectSessionContext,
+): BatchChapterWorkflowDefinition {
+  if (checkpoint.type !== 'batch_generate') {
+    throw new Error('该恢复收据不是批量章节工作流，不能由批量恢复入口处理')
+  }
+  if (!canResumeWorkflowCheckpoint(checkpoint, currentSession)) {
+    throw new Error('恢复收据所属项目会话已变化，已拒绝继续批量创作')
+  }
+  const metadata = checkpoint.resumeMetadata
+  const startChapterNumber = Number(metadata?.startChapterNumber)
+  const chapterCount = Number(metadata?.chapterCount)
+  const chapterWordsTarget = Number(metadata?.chapterWordsTarget)
+  const generationModelId = typeof metadata?.generationModelId === 'string'
+    ? metadata.generationModelId
+    : ''
+  const completionMode = metadata?.completionMode === 'auto_finalize' ? 'auto_finalize' : 'draft_review'
+  if (
+    !Number.isSafeInteger(startChapterNumber)
+    || startChapterNumber < 1
+    || !Number.isSafeInteger(chapterCount)
+    || chapterCount < MIN_BATCH_CHAPTERS
+    || chapterCount > MAX_BATCH_CHAPTERS
+    || !Number.isSafeInteger(chapterWordsTarget)
+    || chapterWordsTarget < 1
+    || !generationModelId.trim()
+  ) throw new Error('批量恢复收据缺少完整的冻结参数')
+
+  return createBatchChapterWorkflow({
+    projectPath: currentSession.projectPath,
+    projectSession: currentSession,
+    startChapterNumber,
+    chapterCount,
+    locale: checkpoint.uiLocale,
+    generationModelId,
+    chapterWordsTarget,
+    completionMode,
+  })
 }
 
 /** 将 UI 或外部输入收敛到安全的 1–10 章范围。 */
@@ -254,6 +297,7 @@ async function runOneBatchChapter(
     chapterInfo,
     stopOnPostProcessFailure: true,
     eventSource: 'batch',
+    enableChapterHandoff: true,
     ...(snapshot ? { snapshot } : {}),
   }).execute({ step, context, callbacks })
 
@@ -312,6 +356,13 @@ export function createBatchChapterWorkflow(params: BatchChapterWorkflowParams): 
       workflowResourceKey('architecture'),
       workflowResourceKey('blueprints'),
     ],
+    resumeMetadata: {
+      startChapterNumber,
+      chapterCount,
+      completionMode,
+      generationModelId,
+      chapterWordsTarget,
+    },
     completionMode,
     title: completionMode === 'draft_review'
       ? localeText(

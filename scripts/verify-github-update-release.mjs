@@ -47,7 +47,7 @@ async function fetchJson(fetcher, url, label) {
   const response = await fetcher(url, {
     headers: {
       Accept: 'application/vnd.github+json',
-      'User-Agent': 'InkWeaver-release-verifier',
+      'User-Agent': 'AI-Novel-Writer-release-verifier',
     },
   })
   assert(response?.ok, `${label} request failed${response ? ` (${response.status})` : ''}`)
@@ -58,7 +58,7 @@ async function fetchBytes(fetcher, url, label) {
   const response = await fetcher(url, {
     headers: {
       Accept: 'application/octet-stream',
-      'User-Agent': 'InkWeaver-release-verifier',
+      'User-Agent': 'AI-Novel-Writer-release-verifier',
     },
   })
   assert(response?.ok, `${label} download failed${response ? ` (${response.status})` : ''}`)

@@ -1,4 +1,4 @@
-import type { FinalizedContinuityProjection } from './finalized-continuity'
+import { factAppliesAtChapter, type FinalizedContinuityProjection } from './finalized-continuity'
 
 export interface ConsistencyExemption {
   stableFactKey: string
@@ -6,9 +6,12 @@ export interface ConsistencyExemption {
   revoked: boolean
 }
 
+export type ConsistencyFindingCertainty = 'conflict' | 'suspected' | 'insufficient'
+
 export interface ConsistencyFinding {
   stableFactKey: string
   severity: 'warning'
+  certainty: ConsistencyFindingCertainty
   sourceChapter: number
   evidence: string
   issue: { zhCN: string; enUS: string }
@@ -55,6 +58,44 @@ function isExplicitTerminalSubject(statement: string, entity: string): boolean {
   return chinese.test(statement) || english.test(statement)
 }
 
+function explicitLocation(statement: string, entity: string): string | undefined {
+  const subject = escapeRegExp(entity)
+  const match = new RegExp(
+    `${subject}.{0,24}?(?:位于|在|处于)\s*([^，。；,.;\\n]+)`,
+    'u',
+  ).exec(statement)
+  return match?.[1]?.trim() || undefined
+}
+
+function explicitHeldItem(statement: string, entity: string): string | undefined {
+  const subject = escapeRegExp(entity)
+  const match = new RegExp(
+    `${subject}.{0,20}?(?:持有|拥有|拿着|握着|获得|得到)\s*([^，。；,.;\\n]+?)(?=[，。；,.;\\n]|走进|走向|进入|离开|回到|来到|$)`,
+    'u',
+  ).exec(statement)
+  return match?.[1]?.trim() || undefined
+}
+
+function explicitStoryDay(statement: string, entity: string): number | undefined {
+  const subject = escapeRegExp(entity)
+  const match = new RegExp(
+    `(?:第\\s*(\\d+)\\s*天|day\\s*(\\d+)).{0,24}?${subject}|${subject}.{0,24}?(?:第\\s*(\\d+)\\s*天|day\\s*(\\d+))`,
+    'iu',
+  ).exec(statement)
+  const value = match?.slice(1).find(Boolean)
+  const day = value ? Number(value) : NaN
+  return Number.isSafeInteger(day) && day > 0 ? day : undefined
+}
+
+function explicitKnowledge(statement: string, entity: string): string | undefined {
+  const subject = escapeRegExp(entity)
+  const match = new RegExp(
+    `${subject}.{0,20}?(?:知道|得知|获悉|听说)\s*[“"「]?([^，。；,.;”"」\\n]+)`,
+    'u',
+  ).exec(statement)
+  return match?.[1]?.trim() || undefined
+}
+
 export function continuityStableFactKey(fact: {
   category: string
   sourceChapter: number
@@ -92,27 +133,137 @@ export function findBlueprintContinuityRisks(
   const characters = new Set(blueprint.characters.map(normalizedKeyPart))
 
   return projections.flatMap(projection => (projection.facts ?? []).flatMap((fact) => {
-    if (fact.category !== 'character-state') return []
+    if (!factAppliesAtChapter(fact, blueprint.chapterNumber)) return []
+    if (fact.category !== 'character-state' && fact.category !== 'timeline') return []
     const stableFactKey = continuityStableFactKey(fact)
     if (activeExemptions.has(stableFactKey)) return []
-    const subject = fact.entities
+    const subject = fact.category === 'character-state'
+      ? fact.entities
       .map(normalizedKeyPart)
       .find(entity => characters.has(entity) && isExplicitTerminalSubject(fact.statement, entity))
-    if (!subject) return []
-    return [{
-      stableFactKey,
-      severity: 'warning' as const,
-      sourceChapter: fact.sourceChapter,
-      evidence: fact.evidence,
-      issue: {
-        zhCN: `已定稿事实记录“${subject}”处于死亡终态，但当前蓝图仍将其列为出场角色。`,
-        enUS: `Finalized facts record “${subject}” as dead, but the current blueprint still schedules the character to appear.`,
-      },
-      suggestion: {
-        zhCN: '调整蓝图，或说明这是回忆、幻象等刻意安排。',
-        enUS: 'Adjust the blueprint, or record an intentional device such as a flashback or vision.',
-      },
-    }]
+      : undefined
+    if (subject) {
+      return [{
+        stableFactKey,
+        severity: 'warning' as const,
+        certainty: 'conflict' as const,
+        sourceChapter: fact.sourceChapter,
+        evidence: fact.evidence,
+        issue: {
+          zhCN: `已定稿事实记录“${subject}”处于死亡终态，但当前蓝图仍将其列为出场角色。`,
+          enUS: `Finalized facts record “${subject}” as dead, but the current blueprint still schedules the character to appear.`,
+        },
+        suggestion: {
+          zhCN: '调整蓝图，或说明这是回忆、幻象等刻意安排。',
+          enUS: 'Adjust the blueprint, or record an intentional device such as a flashback or vision.',
+        },
+      }]
+    }
+
+    for (const entity of fact.entities.map(normalizedKeyPart).filter(name => characters.has(name))) {
+      if (fact.category === 'timeline') {
+        const finalizedDay = explicitStoryDay(`${fact.statement}。${fact.evidence}`, entity)
+        const blueprintDay = explicitStoryDay(`${blueprint.purpose}。${blueprint.keyEvents}`, entity)
+        if (finalizedDay !== undefined && blueprintDay !== undefined && finalizedDay !== blueprintDay) {
+          const timelineKey = `${stableFactKey}:day:${entity}`
+          if (!activeExemptions.has(timelineKey)) {
+            return [{
+              stableFactKey: timelineKey,
+              severity: 'warning' as const,
+              certainty: 'conflict' as const,
+              sourceChapter: fact.sourceChapter,
+              evidence: fact.evidence,
+              issue: {
+                zhCN: `时间线冲突：定稿事实将“${entity}”置于第${finalizedDay}天，但当前蓝图写为第${blueprintDay}天。`,
+                enUS: `Timeline conflict: finalized facts place “${entity}” on story day ${finalizedDay}, but the current blueprint says day ${blueprintDay}.`,
+              },
+              suggestion: {
+                zhCN: '补充时间跳转或调整蓝图日期。',
+                enUS: 'Add the time transition or adjust the blueprint day.',
+              },
+            }]
+          }
+        }
+        continue
+      }
+      const knownSecret = explicitKnowledge(`${fact.statement}。${fact.evidence}`, entity)
+      if (knownSecret) {
+        for (const other of blueprint.characters.map(normalizedKeyPart)) {
+          if (other === entity || fact.entities.map(normalizedKeyPart).includes(other)) continue
+          const blueprintSecret = explicitKnowledge(`${blueprint.purpose}。${blueprint.keyEvents}`, other)
+          if (!blueprintSecret || normalizedKeyPart(blueprintSecret) !== normalizedKeyPart(knownSecret)) continue
+          const knowledgeKey = `${stableFactKey}:knowledge:${entity}:${other}`
+          if (activeExemptions.has(knowledgeKey)) continue
+          return [{
+            stableFactKey: knowledgeKey,
+            severity: 'warning' as const,
+            certainty: 'conflict' as const,
+            sourceChapter: fact.sourceChapter,
+            evidence: fact.evidence,
+            issue: {
+              zhCN: `知情范围冲突：当前证据只证明“${entity}”得知“${knownSecret}”，但蓝图直接让“${other}”知情。`,
+              enUS: `Knowledge-boundary conflict: evidence only proves “${entity}” learned “${knownSecret}”, but the blueprint gives that knowledge to “${other}”.`,
+            },
+            suggestion: {
+              zhCN: '补充该角色获知秘密的事件，或调整蓝图中的信息状态。',
+              enUS: 'Add how this character learned the secret, or adjust the blueprint knowledge state.',
+            },
+          }]
+        }
+      }
+      const finalizedLocation = explicitLocation(fact.statement, entity)
+      const blueprintLocation = explicitLocation(
+        `${blueprint.purpose}。${blueprint.keyEvents}`,
+        entity,
+      )
+      if (!finalizedLocation || !blueprintLocation || finalizedLocation === blueprintLocation) continue
+      const locationKey = `${stableFactKey}:location:${entity}`
+      if (activeExemptions.has(locationKey)) continue
+      return [{
+        stableFactKey: locationKey,
+        severity: 'warning' as const,
+        certainty: 'conflict' as const,
+        sourceChapter: fact.sourceChapter,
+        evidence: fact.evidence,
+        issue: {
+          zhCN: `地点冲突：已定稿事实记录“${entity}”位于“${finalizedLocation}”，但当前蓝图将其安排在“${blueprintLocation}”。`,
+          enUS: `Finalized facts place “${entity}” at “${finalizedLocation}”, but the current blueprint places the character at “${blueprintLocation}”.`,
+        },
+        suggestion: {
+          zhCN: '补充移动或转场依据，或调整蓝图中的地点。',
+          enUS: 'Add the missing movement or transition, or adjust the blueprint location.',
+        },
+      }]
+    }
+
+    const factText = `${fact.statement}。${fact.evidence}`
+    for (const owner of fact.entities.map(normalizedKeyPart).filter(name => characters.has(name))) {
+      const item = explicitHeldItem(factText, owner)
+      if (!item) continue
+      for (const other of blueprint.characters.map(normalizedKeyPart)) {
+        if (other === owner) continue
+        const blueprintItem = explicitHeldItem(`${blueprint.purpose}。${blueprint.keyEvents}`, other)
+        if (!blueprintItem || normalizedKeyPart(blueprintItem) !== normalizedKeyPart(item)) continue
+        const ownershipKey = `${stableFactKey}:possession:${owner}:${item}`
+        if (activeExemptions.has(ownershipKey)) continue
+        return [{
+          stableFactKey: ownershipKey,
+          severity: 'warning' as const,
+          certainty: 'conflict' as const,
+          sourceChapter: fact.sourceChapter,
+          evidence: fact.evidence,
+          issue: {
+            zhCN: `物品归属冲突：已定稿事实记录“${owner}”持有“${item}”，但当前蓝图写成“${other}”持有。`,
+            enUS: `Item ownership conflict: finalized facts say “${owner}” holds “${item}”, but the current blueprint says “${other}” holds it.`,
+          },
+          suggestion: {
+            zhCN: '补充物品转交过程，或调整蓝图中的持有者。',
+            enUS: 'Add the transfer event, or adjust the blueprint owner.',
+          },
+        }]
+      }
+    }
+    return []
   }))
 }
 
@@ -121,13 +272,60 @@ export function mergeConsistencyFindingsIntoReview(
   findings: readonly ConsistencyFinding[],
   locale: 'zh-CN' | 'en-US',
 ): ReviewLike & { items: Array<Record<string, unknown>> } {
-  const mapped = findings.map(finding => ({
-    category: locale === 'en-US' ? 'Deterministic continuity preflight' : '确定性一致性预检',
-    severity: finding.severity,
+  const mapped = findings.map(finding => {
+    const certaintyLabel = finding.certainty === 'insufficient'
+      ? locale === 'en-US' ? ' [insufficient evidence]' : ' [信息不足]'
+      : finding.certainty === 'suspected'
+        ? locale === 'en-US' ? ' [suspected]' : ' [疑似]'
+        : ' [conflict]'
+    return {
+      category: (locale === 'en-US' ? 'Deterministic continuity preflight' : '确定性一致性预检') + certaintyLabel,
+      severity: finding.severity,
+      certainty: finding.certainty,
     description: locale === 'en-US' ? finding.issue.enUS : finding.issue.zhCN,
     quote: finding.evidence,
-    stableFactKey: finding.stableFactKey,
-    sourceChapter: finding.sourceChapter,
-  }))
+      stableFactKey: finding.stableFactKey,
+      sourceChapter: finding.sourceChapter,
+    }
+  })
   return { ...review, items: [...(Array.isArray(review.items) ? review.items : []), ...mapped] }
 }
+/**
+ * Report blueprint characters whose current state has no finalized evidence at
+ * all. This is deliberately an information-insufficient finding, never an
+ * assertion that the blueprint is wrong: the author may still be introducing
+ * the character or may have omitted an old fact deliberately.
+ */
+export function findMissingCharacterStateFindings(
+  projections: readonly FinalizedContinuityProjection[],
+  blueprint: BlueprintForPreflight,
+): ConsistencyFinding[] {
+  const known = new Set<string>()
+  for (const projection of projections) {
+    for (const fact of projection.facts ?? []) {
+      if (fact.category !== 'character-state' && fact.category !== 'timeline') continue
+      if (!factAppliesAtChapter(fact, blueprint.chapterNumber)) continue
+      for (const entity of fact.entities.map(normalizedKeyPart)) known.add(entity)
+    }
+  }
+  const characters = blueprint.characters.map(normalizedKeyPart).filter(Boolean)
+  const uniqueCharacters = [...new Set(characters)]
+  return uniqueCharacters
+    .filter(character => !known.has(character))
+    .map(character => ({
+      stableFactKey: `missing:state:${character}`,
+      severity: 'warning' as const,
+      certainty: 'insufficient' as const,
+      sourceChapter: blueprint.chapterNumber,
+      evidence: '',
+      issue: {
+        zhCN: `蓝图安排“${character}”出场，但已定稿连续性事实中没有该角色在当前章节有效的状态记录；需要补充状态或说明这是首次出场。`,
+        enUS: `Blueprint schedules “${character}”, but no finalized continuity fact records a current state for the character; add one or mark the appearance as a first introduction.`,
+      },
+      suggestion: {
+        zhCN: '补充角色当前地点/伤势/知识等状态事实，或明确这是首次出场。',
+        enUS: 'Add the character current state (location, injury, knowledge), or mark this as a first appearance.',
+      },
+    }))
+}
+

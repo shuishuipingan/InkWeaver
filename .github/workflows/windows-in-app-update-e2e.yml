@@ -4,14 +4,14 @@ on:
   workflow_dispatch:
     inputs:
       from_tag:
-        description: Official installed InkWeaver source; v1.0.0 or newer
+        description: Official installed source release; final semantic version only (for example v0.5.2)
         required: true
-        default: v1.0.0
+        default: v0.5.2
         type: string
       expected_tag:
-        description: Current official latest InkWeaver release; newer than from_tag
+        description: Current official latest release; final semantic version only (for example v0.6.0)
         required: true
-        default: v1.1.0
+        default: v0.6.0
         type: string
 
 permissions:
@@ -51,7 +51,7 @@ jobs:
       - name: Create isolated evidence root
         shell: pwsh
         run: |
-          $evidenceRoot = Join-Path $env:RUNNER_TEMP "inkweaver-windows-in-app-update-e2e-$env:GITHUB_RUN_ID"
+          $evidenceRoot = Join-Path $env:RUNNER_TEMP "ai-novel-windows-in-app-update-e2e-$env:GITHUB_RUN_ID"
           New-Item -ItemType Directory -Path $evidenceRoot -Force | Out-Null
           "AI_NOVEL_UPDATE_E2E_EVIDENCE_ROOT=$evidenceRoot" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 

@@ -16,6 +16,11 @@ import type {
   FinalizedContinuityProjection,
   SaveFinalizedContinuityRequest,
 } from './finalized-continuity'
+import type {
+  ChapterHandoffRecord,
+  SaveChapterHandoffRequest,
+} from './chapter-handoff'
+import type { CharacterExtractionCandidate } from './character-extraction'
 import type { ConsistencyExemption } from './consistency-preflight'
 import type {
   NarrativeThreadEvent,
@@ -25,6 +30,9 @@ import type {
   NarrativeThreadPlanRecord,
   NarrativeThreadView,
 } from './narrative-thread'
+import type { StoryContinuityDocument } from './story-continuity'
+import type { SaveStoryContinuityRequest } from '../../electron/repositories/story-continuity-repository'
+import type { KnowledgeEvent } from './knowledge-event'
 import type {
   UpdateActionResponse,
   UpdateCheckResponse,
@@ -690,6 +698,14 @@ import type {
 } from './import-global-facts'
 
 // ===== 数据库操作 =====
+export interface WritingStyleHistoryRecord {
+  id: number
+  previousStyle: string
+  nextStyle: string
+  sourceFingerprint: string
+  createdAt: string
+}
+
 export interface DatabaseChannels {
   'db:close': { args: [expectedProjectPath: string]; return: { success: boolean } }
 
@@ -701,6 +717,14 @@ export interface DatabaseChannels {
   'db:project-core-update': {
     args: [data: Partial<ProjectCoreData>, expectedProjectPath: string]
     return: { success: boolean; error?: string }
+  }
+  'db:writing-style-history-list': {
+    args: [expectedProjectPath: string]
+    return: WritingStyleHistoryRecord[]
+  }
+  'db:writing-style-history-record': {
+    args: [input: { previousStyle: string; nextStyle: string; sourceFingerprint: string }, expectedProjectPath: string]
+    return: { success: boolean; record?: WritingStyleHistoryRecord; error?: string }
   }
   'db:import-global-facts-commit': {
     args: [request: ImportGlobalFactsRequest, expectedProjectPath: string]
@@ -821,6 +845,50 @@ export interface DatabaseChannels {
     args: [chapterNumber: number, expectedProjectPath: string]
     return: FinalizedContinuityProjection[]
   }
+  'db:continuity-list-all': {
+    args: [expectedProjectPath: string]
+    return: FinalizedContinuityProjection[]
+  }
+  'db:chapter-handoff-save-candidate': {
+    args: [request: SaveChapterHandoffRequest, expectedProjectPath: string]
+    return: { success: boolean; handoff?: ChapterHandoffRecord; error?: string }
+  }
+  'db:chapter-handoff-get': {
+    args: [handoffId: string, expectedProjectPath: string]
+    return: ChapterHandoffRecord | null
+  }
+  'db:chapter-handoff-confirm': {
+    args: [handoffId: string, expectedProjectPath: string]
+    return: { success: boolean; handoff?: ChapterHandoffRecord; error?: string }
+  }
+  'db:chapter-handoff-latest-before': {
+    args: [chapterNumber: number, expectedProjectPath: string]
+    return: ChapterHandoffRecord | null
+  }
+  'db:chapter-handoff-list-for-chapter': {
+    args: [chapterNumber: number, expectedProjectPath: string]
+    return: ChapterHandoffRecord[]
+  }
+  'db:chapter-handoff-list-all': {
+    args: [expectedProjectPath: string]
+    return: ChapterHandoffRecord[]
+  }
+  'db:character-extraction-candidates-save': {
+    args: [candidates: CharacterExtractionCandidate[], expectedProjectPath: string]
+    return: { success: boolean; candidates?: CharacterExtractionCandidate[]; error?: string }
+  }
+  'db:character-extraction-candidates-list': {
+    args: [sourceId: string, sourceHash: string, expectedProjectPath: string]
+    return: CharacterExtractionCandidate[]
+  }
+  'db:character-extraction-candidate-status': {
+    args: [candidateId: string, status: CharacterExtractionCandidate['status'], expectedProjectPath: string]
+    return: { success: boolean; candidate?: CharacterExtractionCandidate; error?: string }
+  }
+  'db:character-extraction-candidates-stale': {
+    args: [sourceId: string, sourceHash: string, expectedProjectPath: string]
+    return: { success: boolean; count?: number; error?: string }
+  }
   'db:consistency-exemption-list': { args: [expectedProjectPath: string]; return: ConsistencyExemption[] }
   'db:consistency-exemption-save': {
     args: [stableFactKey: string, reason: string, expectedProjectPath: string]
@@ -854,6 +922,58 @@ export interface DatabaseChannels {
     args: [input: NarrativeThreadEventInput, expectedProjectPath: string]
     return: { success: boolean; event?: NarrativeThreadEvent; error?: string }
   }
+  'db:story-continuity-read': {
+    args: [chapterNumber: number, expectedProjectPath: string]
+    return: StoryContinuityDocument
+  }
+  'db:story-continuity-list-all': {
+    args: [expectedProjectPath: string]
+    return: StoryContinuityDocument[]
+  }
+  'db:story-continuity-save': {
+    args: [request: SaveStoryContinuityRequest, expectedProjectPath: string]
+    return: { success: boolean; document?: StoryContinuityDocument; error?: string }
+  }
+  'db:knowledge-event-list-for-chapter': {
+    args: [characters: string[], chapterNumber: number, expectedProjectPath: string]
+    return: KnowledgeEvent[]
+  }
+  'db:knowledge-event-list-review': {
+    args: [characters: string[], chapterNumber: number, expectedProjectPath: string]
+    return: KnowledgeEvent[]
+  }
+  'db:knowledge-event-save-candidate': {
+    args: [event: KnowledgeEvent, expectedProjectPath: string]
+    return: { success: boolean; event?: KnowledgeEvent; error?: string }
+  }
+  'db:knowledge-event-status': {
+    args: [eventId: string, status: KnowledgeEvent['status'], expectedProjectPath: string]
+    return: { success: boolean; event?: KnowledgeEvent; error?: string }
+  }
+  'db:project-snapshot-create': {
+    args: [expectedProjectPath: string]
+    return: { success: boolean; manifest?: import('./project-snapshot').ProjectSnapshotManifest; error?: string }
+  }
+  'db:project-snapshot-list': {
+    args: [expectedProjectPath: string]
+    return: import('./project-snapshot').ProjectSnapshotManifest[]
+  }
+  'db:project-snapshot-verify': {
+    args: [snapshotId: string, expectedProjectPath: string]
+    return: import('./project-snapshot').ProjectSnapshotVerification
+  }
+  'db:project-snapshot-restore-preview': {
+    args: [snapshotId: string, destinationPath: string, expectedProjectPath: string]
+    return: import('./project-snapshot').ProjectSnapshotRestorePreview
+  }
+  'db:project-snapshot-restore': {
+    args: [snapshotId: string, destinationPath: string, expectedProjectPath: string]
+    return: { success: boolean; result?: import('./project-snapshot').ProjectSnapshotRestoreResult; error?: string }
+  }
+  'db:project-snapshot-prune': {
+    args: [options: import('./project-snapshot').ProjectSnapshotPruneOptions | undefined, expectedProjectPath: string]
+    return: import('./project-snapshot').ProjectSnapshotPruneResult
+  }
   'db:draft-next-version': { args: [chapterNumber: number, expectedProjectPath: string]; return: number }
   'db:draft-update-status': { args: [id: number, status: string, wordCount: number | undefined, expectedProjectPath: string]; return: { success: boolean; error?: string } }
   'db:draft-update-content': { args: [id: number, content: string, wordCount: number, expectedProjectPath: string]; return: { success: boolean; error?: string } }
@@ -864,8 +984,8 @@ export interface DatabaseChannels {
   }
 
   // 5. revisions
-  'db:revision-create': { args: [params: { baseDraftId: number; revisionType: 'refine' | 'review-fix'; userPrompt?: string; reviewSourceId?: number; content: string; wordCount: number }, expectedProjectPath: string]; return: { success: boolean; id?: number; revisionIndex?: number; error?: string } }
-  'db:revision-replace-pending': { args: [params: { baseDraftId: number; revisionType: 'refine' | 'review-fix'; userPrompt?: string; reviewSourceId?: number; content: string; wordCount: number }, expectedProjectPath: string]; return: { success: boolean; id?: number; revisionIndex?: number; error?: string } }
+  'db:revision-create': { args: [params: { baseDraftId: number; revisionType: 'refine' | 'review-fix'; userPrompt?: string; reviewSourceId?: number; content: string; wordCount: number; baseContentHash?: string }, expectedProjectPath: string]; return: { success: boolean; id?: number; revisionIndex?: number; error?: string } }
+  'db:revision-replace-pending': { args: [params: { baseDraftId: number; revisionType: 'refine' | 'review-fix'; userPrompt?: string; reviewSourceId?: number; content: string; wordCount: number; baseContentHash?: string }, expectedProjectPath: string]; return: { success: boolean; id?: number; revisionIndex?: number; error?: string } }
   'db:revision-list': { args: [baseDraftId: number, expectedProjectPath: string]; return: RevisionMeta[] }
   'db:revision-get-pending': { args: [baseDraftId: number, expectedProjectPath: string]; return: RevisionMeta[] }
   'db:revision-get-full': { args: [id: number, expectedProjectPath: string]; return: RevisionFull | null }

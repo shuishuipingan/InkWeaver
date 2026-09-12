@@ -16,6 +16,7 @@ import DraftEditor from '../editor/DraftEditor'
 import VersionHistory from '../editor/VersionHistory'
 import ReviewReport from '../editor/ReviewReport'
 import NarrativeThreadEditor from '../editor/NarrativeThreadEditor'
+import ContinuousReader from '../editor/ContinuousReader'
 import ThreeWayMerge from '../editor/ThreeWayMerge'  // 保留引用以防其他入口使用
 import WelcomePage from '../pages/WelcomePage'
 import KnowledgeOverview from '../pages/KnowledgeOverview'
@@ -479,6 +480,7 @@ export default function EditorArea({ onNewProject }: EditorAreaProps) {
     if (type === 'world-building') return <Globe size={14} />
     if (type === 'version-history') return <History size={14} />
     if (type === 'review-report') return <ClipboardCheck size={14} />
+    if (type === 'continuous-reader') return <BookOpen size={14} />
     return <FileText size={14} />
   }
 
@@ -656,6 +658,9 @@ export default function EditorArea({ onNewProject }: EditorAreaProps) {
         )}
         {activeTab?.type === 'narrative-thread' && activeTab.projectKey === currentProject.path && (
           <NarrativeThreadEditor key={activeTab.id} projectKey={activeTab.projectKey} />
+        )}
+        {activeTab?.type === 'continuous-reader' && activeTab.projectKey === currentProject.path && (
+          <ContinuousReader key={activeTab.id} projectKey={activeTab.projectKey} />
         )}
         {activeTab?.type === 'arch-file' && activeTab.filePath && activeTab.projectKey && (
           <ArchFileViewer

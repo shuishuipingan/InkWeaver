@@ -8,11 +8,12 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { WorkspaceId, type WorkspaceId as WorkspaceIdType } from '@deepseek-ai/dsh-workspace'
 import { openNovelStore, recoverNovelStoreBinding } from '../src/novel-store.ts'
 import type { NovelProposalRequest, NovelStore, NovelStoreInitializeRequest } from '../src/novel-store.ts'
-import { makeTestWorkspace, supportsSymbolicLink } from './test-workspace.ts'
+import { makeTestWorkspace } from './test-workspace.ts'
+import { symlinkAvailable } from './symlink-available.ts'
 
+const symlinkSupported = await symlinkAvailable()
 const signal = new AbortController().signal
 const WORKSPACE_ID = WorkspaceId('workspace-a')
-const canCreateFileSymlink = await supportsSymbolicLink('file')
 
 const initialization: NovelStoreInitializeRequest = {
   workspaceId: WORKSPACE_ID,
@@ -61,7 +62,7 @@ function proposalRequest(payload: unknown): NovelProposalRequest {
 }
 
 function downgradeDatabaseToV2(root: string): void {
-  const database = new DatabaseSync(join(root, '.inkweaver', 'novel.db'))
+  const database = new DatabaseSync(join(root, '.ai-novel', 'novel.db'))
   try {
     database.exec('DROP TABLE chapter_finals')
     database.exec('ALTER TABLE artifacts DROP COLUMN summary')
@@ -139,7 +140,7 @@ describe('NovelStore SQLite core', () => {
       readOnly: false,
       storage: {
         applicationId: 0x41_4e_4f_56,
-        userVersion: 4,
+        userVersion: 5,
         foreignKeys: true,
         journalMode: 'delete',
         synchronous: 'full',
@@ -175,7 +176,7 @@ describe('NovelStore SQLite core', () => {
     await expect(store.initialize(initialization, signal)).rejects.toMatchObject({
       code: 'ALREADY_INITIALIZED',
     })
-    await expect(readFile(join(root, '.inkweaver', '.gitignore'), 'utf8')).resolves.toContain('novel.db')
+    await expect(readFile(join(root, '.ai-novel', '.gitignore'), 'utf8')).resolves.toContain('novel.db')
   })
 
   it('commits one aggregate transaction idempotently and records audit', async () => {
@@ -467,7 +468,7 @@ describe('NovelStore SQLite core', () => {
 
   it('fails closed when a second OS process holds the database write lock, then recovers after release', async () => {
     await store.dispose()
-    const child = await holdExternalExclusiveWriteLock(join(root, '.inkweaver', 'novel.db'))
+    const child = await holdExternalExclusiveWriteLock(join(root, '.ai-novel', 'novel.db'))
     try {
       await expect(openNovelStore(root, WORKSPACE_ID)).rejects.toMatchObject({ code: 'WRITE_LOCKED' })
     } finally {
@@ -562,7 +563,7 @@ describe('NovelStore SQLite core', () => {
       projectId: source.projectId,
       workspaceId: movedWorkspace,
       readOnly: false,
-      storage: { userVersion: 4 },
+      storage: { userVersion: 5 },
       project: source.project,
       changes: source.changes,
     })
@@ -614,7 +615,7 @@ describe('NovelStore SQLite core', () => {
       projectId: clone.projectId,
       workspaceId: clonedWorkspace,
       readOnly: false,
-      storage: { userVersion: 4 },
+      storage: { userVersion: 5 },
       project: source.project,
       changes: source.changes,
     })
@@ -651,9 +652,9 @@ describe('NovelStore SQLite core', () => {
     const originalReceipt = original.proposals[0]?.items[0]?.receipt
     expect(originalReceipt !== undefined && 'projectId' in originalReceipt ? originalReceipt.projectId : undefined).toBe(original.projectId)
     await store.dispose()
-    await mkdir(join(copiedRoot, '.inkweaver'), { recursive: true })
-    await copyFile(join(root, '.inkweaver', '.gitignore'), join(copiedRoot, '.inkweaver', '.gitignore'))
-    await copyFile(join(root, '.inkweaver', 'novel.db'), join(copiedRoot, '.inkweaver', 'novel.db'))
+    await mkdir(join(copiedRoot, '.ai-novel'), { recursive: true })
+    await copyFile(join(root, '.ai-novel', '.gitignore'), join(copiedRoot, '.ai-novel', '.gitignore'))
+    await copyFile(join(root, '.ai-novel', 'novel.db'), join(copiedRoot, '.ai-novel', 'novel.db'))
 
     const detachedCopy = await openStore(copiedRoot, copiedWorkspace)
     expect((await detachedCopy.read(signal)).readOnly).toBe(true)
@@ -706,18 +707,18 @@ describe('NovelStore SQLite core', () => {
 
   it('refuses to overwrite an unexpected ignore file', async () => {
     const emptyRoot = await makeTestWorkspace('novel-store-gitignore-')
-    await mkdir(join(emptyRoot, '.inkweaver'), { recursive: true })
-    await writeFile(join(emptyRoot, '.inkweaver', '.gitignore'), 'user-owned\n', 'utf8')
+    await mkdir(join(emptyRoot, '.ai-novel'), { recursive: true })
+    await writeFile(join(emptyRoot, '.ai-novel', '.gitignore'), 'user-owned\n', 'utf8')
 
     await expect(openNovelStore(emptyRoot, WORKSPACE_ID)).rejects.toMatchObject({ code: 'INVALID_CONTENT' })
   })
 
   it('rejects a foreign or unversioned SQLite database', async () => {
     const foreignRoot = await makeTestWorkspace('novel-store-foreign-db-')
-    await mkdir(join(foreignRoot, '.inkweaver'), { recursive: true })
-    await copyFile(join(root, '.inkweaver', '.gitignore'), join(foreignRoot, '.inkweaver', '.gitignore'))
+    await mkdir(join(foreignRoot, '.ai-novel'), { recursive: true })
+    await copyFile(join(root, '.ai-novel', '.gitignore'), join(foreignRoot, '.ai-novel', '.gitignore'))
     const { DatabaseSync } = await import('node:sqlite')
-    const foreign = new DatabaseSync(join(foreignRoot, '.inkweaver', 'novel.db'))
+    const foreign = new DatabaseSync(join(foreignRoot, '.ai-novel', 'novel.db'))
     foreign.exec('CREATE TABLE outsider (id INTEGER PRIMARY KEY) STRICT')
     foreign.close()
 
@@ -725,7 +726,7 @@ describe('NovelStore SQLite core', () => {
   })
 
   it('does not recreate a missing ignore file when an existing database is opened', async () => {
-    const ignorePath = join(root, '.inkweaver', '.gitignore')
+    const ignorePath = join(root, '.ai-novel', '.gitignore')
     await store.dispose()
     await rm(ignorePath)
 
@@ -756,16 +757,16 @@ describe('NovelStore SQLite core', () => {
     await emptyStore.dispose()
   })
 
-  it('rejects a project directory that escapes the workspace through a link', async () => {
+  it.runIf(symlinkSupported)('rejects a project directory that escapes the workspace through a link', async () => {
     const linkedRoot = await makeTestWorkspace('novel-store-link-root-')
     const outside = await makeTestWorkspace('novel-store-link-outside-')
-    await symlink(outside, join(linkedRoot, '.inkweaver'), 'junction')
+    await symlink(outside, join(linkedRoot, '.ai-novel'), 'junction')
 
     await expect(openNovelStore(linkedRoot, WORKSPACE_ID)).rejects.toMatchObject({ code: 'PATH_REJECTED' })
   })
 
-  it.skipIf(!canCreateFileSymlink)('rejects a linked database file even when its target is a valid project', async () => {
-    const databasePath = join(root, '.inkweaver', 'novel.db')
+  it.runIf(symlinkSupported)('rejects a linked database file even when its target is a valid project', async () => {
+    const databasePath = join(root, '.ai-novel', 'novel.db')
     const outsideDatabase = join(await makeTestWorkspace('novel-store-db-target-'), 'novel.db')
     await store.dispose()
     await copyFile(databasePath, outsideDatabase)

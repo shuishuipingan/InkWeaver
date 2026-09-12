@@ -35,7 +35,7 @@ describe('V2 browser qualification journey', () => {
       encoding: 'utf8',
     })
     expect(JSON.parse(result.stdout)).toEqual({
-      kind: 'inkweaver-dsh-v2-browser-journey',
+      kind: 'dsh-ai-novel-v2-browser-journey',
       browser: 'Google Chrome',
       workspaceStateEndpoint: 'workspace/state/read',
       initializeEndpoint: 'workspace/initialize',
@@ -49,7 +49,7 @@ describe('V2 browser qualification journey', () => {
       requiresHarnessRoot: true,
       directStoreBootstrap: false,
       userAppliesProposal: true,
-      presetPreflight: { endpoint: 'agentPreset.list', requiredPresetId: 'inkweaver-v2' },
+      presetPreflight: { endpoint: 'agentPresets/list', requiredPresetId: 'inkweaver-v2' },
     })
   })
 
@@ -115,6 +115,57 @@ describe('V2 browser qualification journey', () => {
     expect(source).toContain("page.getByRole('button', { name: SEND_MESSAGE_BUTTON_NAME })")
   })
 
+  it('scopes the settings plugin navigation to the exact Plugin label', async () => {
+    const source = await readFile(browserJourney, 'utf8')
+    expect(source).toContain("settings.getByRole('button', { name: '插件', exact: true })")
+  })
+
+  it('triggers a fresh preset roster request before awaiting its response', async () => {
+    const source = await readFile(browserJourney, 'utf8')
+    const request = source.indexOf('const agentPresetResponse = page.waitForResponse')
+    const select = source.indexOf('await selectNovelPreset(page, { forceRoster: true })')
+    const roster = source.indexOf('await assertNovelPresetFromApi(await agentPresetResponse)')
+    expect(request).toBeGreaterThan(-1)
+    expect(select).toBeGreaterThan(request)
+    expect(roster).toBeGreaterThan(select)
+    expect(source).toContain('forceRoster')
+  })
+
+  it('matches the V2 preset menu item when Harness includes its description', async () => {
+    const source = await readFile(browserJourney, 'utf8')
+    expect(source).toContain("page.getByRole('menuitem', { name: /^织墨 V2(?:\\s|$)/ })")
+  })
+
+  it('accepts the current Harness composer placeholder suffix', async () => {
+    const source = await readFile(browserJourney, 'utf8')
+    expect(source).toContain("page.getByRole('textbox', { name: /^描述你想要构建的内容/ })")
+  })
+
+  it('selects the V2 preset before creating the current Harness session', async () => {
+    const source = await readFile(browserJourney, 'utf8')
+    const connect = source.indexOf('await connectWorkspace(page, { createSession: false })')
+    const select = source.indexOf('await selectNovelPreset(page, { forceRoster: true })')
+    const create = source.lastIndexOf('await createWorkspaceSession(page, basename(workspaceRoot))')
+    const reselect = source.lastIndexOf('await selectNovelPreset(page, { forceRoster: true })')
+    expect(connect).toBeGreaterThan(-1)
+    expect(select).toBeGreaterThan(connect)
+    expect(create).toBeGreaterThan(select)
+    expect(reselect).toBeGreaterThan(create)
+  })
+
+  it('waits for the authoritative Harness session projection after the blank session is created', async () => {
+    const source = await readFile(browserJourney, 'utf8')
+    expect(source).toContain('waitForServerPreset')
+    expect(source).toContain('await waitForServerPreset(page, V2_PRESET_ID)')
+  })
+
+  it('falls back to the top-level New session control when the workspace row has no action', async () => {
+    const source = await readFile(browserJourney, 'utf8')
+    expect(source).toContain("page.getByRole('button', { name: '新建会话', exact: true })")
+    expect(source).toContain("button[data-dsh-part=\"new-session\"]")
+    expect(source).toContain('await existing.hover()')
+  })
+
   it('retries a freshly located review disclosure until the user-visible partial status is rendered', async () => {
     const source = await readFile(browserJourney, 'utf8')
     const apply = source.indexOf("await drawer.getByRole('button', { name: '依序应用未完成项', exact: true }).click()")
@@ -138,7 +189,7 @@ describe('V2 browser qualification journey', () => {
     expect(source).not.toContain("'已定稿'")
     expect(source).toContain("drawer.getByRole('region', { name: '当前创作步骤', exact: true })")
     expect(source).toContain("currentStage.getByRole('heading', { name: '第 2 章蓝图', exact: true, level: 3 })")
-    expect(source).toContain("drawer.getByRole('region', { name: `第 ${chapter} 章的上一章定稿上下文`, exact: true })")
+    expect(source).toContain("name: new RegExp(`^第 ${chapter} 章的(?:上一章定稿上下文|连续性上下文)$`)")
     expect(source.match(/chapterContextRegion\(drawer, 2\)\.getByText\('潮水退去，信件显露。', \{ exact: true \}\)/g)).toHaveLength(2)
   })
 

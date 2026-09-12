@@ -51,9 +51,6 @@ export function ViewTransition({
     prevKey.current = transitionKey
 
     if (!exit) {
-      // The transition state intentionally follows the prop after an effect;
-      // this branch is the no-exit fast path and avoids a stale child frame.
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setState({ key: transitionKey, node: children, leaving: false })
       return
     }

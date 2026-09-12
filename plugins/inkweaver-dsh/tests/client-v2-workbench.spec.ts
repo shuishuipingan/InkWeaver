@@ -92,7 +92,7 @@ describe('V2 workbench client port', () => {
     const signal = new AbortController().signal
 
     await expect(port.initializeWorkspace(WORKSPACE_ID, initializationDraft, signal)).resolves.toEqual(initialized)
-    expect(rpc.call).toHaveBeenCalledWith('/inkweaver', 'workspace/initialize', { workspaceId: WORKSPACE_ID, ...initializationDraft }, signal)
+    expect(rpc.call).toHaveBeenCalledWith('/api', 'inkweaver/workspace/initialize', { workspaceId: WORKSPACE_ID, ...initializationDraft }, signal)
     expect(JSON.stringify(rpc.call.mock.calls)).not.toContain('workspacePath')
   })
 
@@ -107,7 +107,7 @@ describe('V2 workbench client port', () => {
     ]) {
       const port = createNovelV2WorkbenchPort({ call: vi.fn(() => Promise.resolve({ ok: true as const, value })) })
       await expect(port.initializeWorkspace!(WORKSPACE_ID, initializationDraft, new AbortController().signal))
-        .rejects.toThrow('InkWeaver V2 workspace initialization response is invalid')
+        .rejects.toThrow('AI novel V2 workspace initialization response is invalid')
     }
   })
 
@@ -138,7 +138,7 @@ describe('V2 workbench client port', () => {
         call: vi.fn(() => Promise.resolve({ ok: true as const, value: malformed })),
       })
       await expect(malformedPort.readWorkspaceState!(WORKSPACE_ID, new AbortController().signal))
-        .rejects.toThrow('InkWeaver V2 workspace state response is invalid')
+        .rejects.toThrow('AI novel V2 workspace state response is invalid')
     }
   })
 
@@ -150,7 +150,7 @@ describe('V2 workbench client port', () => {
     const signal = new AbortController().signal
 
     await expect(port.readWorkspaceState!(WORKSPACE_ID, signal)).resolves.toEqual(ready)
-    expect(rpc.call).toHaveBeenCalledWith('/inkweaver', 'workspace/state/read', { workspaceId: WORKSPACE_ID }, signal)
+    expect(rpc.call).toHaveBeenCalledWith('/api', 'inkweaver/workspace/state/read', { workspaceId: WORKSPACE_ID }, signal)
   })
 
   it('uses only opaque Workspace, Proposal, and item IDs for Host-owned bundle lifecycle RPCs', async () => {
@@ -173,9 +173,9 @@ describe('V2 workbench client port', () => {
     const rpc = {
       call: vi.fn((_channel: string, endpoint: string) => Promise.resolve({
         ok: true as const,
-        value: endpoint === 'proposal/apply' || endpoint === 'proposal/retry' ? applied
-          : endpoint === 'proposal/discard' ? discarded
-            : endpoint === 'proposal/regenerate' ? regenerated : validState,
+        value: endpoint === 'inkweaver/proposal/apply' || endpoint === 'inkweaver/proposal/retry' ? applied
+          : endpoint === 'inkweaver/proposal/discard' ? discarded
+            : endpoint === 'inkweaver/proposal/regenerate' ? regenerated : validState,
       })),
     }
     const port = createNovelV2WorkbenchPort(rpc)
@@ -186,10 +186,10 @@ describe('V2 workbench client port', () => {
     await expect(port.discardProposalItem?.(WORKSPACE_ID, 'proposal-1', item.itemId, signal)).resolves.toEqual(discarded)
     await expect(port.regenerateProposalItem?.(WORKSPACE_ID, 'proposal-1', item.itemId, signal)).resolves.toEqual(regenerated)
 
-    expect(rpc.call).toHaveBeenNthCalledWith(1, '/inkweaver', 'proposal/apply', { workspaceId: WORKSPACE_ID, proposalId: 'proposal-1' }, signal)
-    expect(rpc.call).toHaveBeenNthCalledWith(2, '/inkweaver', 'proposal/retry', { workspaceId: WORKSPACE_ID, proposalId: 'proposal-1', itemId: item.itemId }, signal)
-    expect(rpc.call).toHaveBeenNthCalledWith(3, '/inkweaver', 'proposal/discard', { workspaceId: WORKSPACE_ID, proposalId: 'proposal-1', itemId: item.itemId }, signal)
-    expect(rpc.call).toHaveBeenNthCalledWith(4, '/inkweaver', 'proposal/regenerate', { workspaceId: WORKSPACE_ID, proposalId: 'proposal-1', itemId: item.itemId }, signal)
+    expect(rpc.call).toHaveBeenNthCalledWith(1, '/api', 'inkweaver/proposal/apply', { workspaceId: WORKSPACE_ID, proposalId: 'proposal-1' }, signal)
+    expect(rpc.call).toHaveBeenNthCalledWith(2, '/api', 'inkweaver/proposal/retry', { workspaceId: WORKSPACE_ID, proposalId: 'proposal-1', itemId: item.itemId }, signal)
+    expect(rpc.call).toHaveBeenNthCalledWith(3, '/api', 'inkweaver/proposal/discard', { workspaceId: WORKSPACE_ID, proposalId: 'proposal-1', itemId: item.itemId }, signal)
+    expect(rpc.call).toHaveBeenNthCalledWith(4, '/api', 'inkweaver/proposal/regenerate', { workspaceId: WORKSPACE_ID, proposalId: 'proposal-1', itemId: item.itemId }, signal)
     expect(JSON.stringify(rpc.call.mock.calls)).not.toContain('workspacePath')
     expect(JSON.stringify(rpc.call.mock.calls)).not.toContain('archivePath')
   })
@@ -204,7 +204,7 @@ describe('V2 workbench client port', () => {
     const rpc = {
       call: vi.fn((_channel: string, endpoint: string) => Promise.resolve({
         ok: true as const,
-        value: endpoint === 'state/read' ? state : endpoint === 'proposal/list' ? { proposals } : task,
+        value: endpoint === 'inkweaver/state/read' ? state : endpoint === 'inkweaver/proposal/list' ? { proposals } : task,
       })),
     }
     const port = createNovelV2WorkbenchPort(rpc)
@@ -214,19 +214,19 @@ describe('V2 workbench client port', () => {
     await expect(port.listProposals(WORKSPACE_ID, signal)).resolves.toEqual(proposals)
     await expect(port.readTask(WORKSPACE_ID, 'chapter-1', signal)).resolves.toBe(task)
 
-    expect(rpc.call).toHaveBeenNthCalledWith(1, '/inkweaver', 'state/read', { workspaceId: WORKSPACE_ID }, signal)
-    expect(rpc.call).toHaveBeenNthCalledWith(2, '/inkweaver', 'proposal/list', { workspaceId: WORKSPACE_ID }, signal)
-    expect(rpc.call).toHaveBeenNthCalledWith(3, '/inkweaver', 'task/read', { workspaceId: WORKSPACE_ID, taskId: 'chapter-1' }, signal)
+    expect(rpc.call).toHaveBeenNthCalledWith(1, '/api', 'inkweaver/state/read', { workspaceId: WORKSPACE_ID }, signal)
+    expect(rpc.call).toHaveBeenNthCalledWith(2, '/api', 'inkweaver/proposal/list', { workspaceId: WORKSPACE_ID }, signal)
+    expect(rpc.call).toHaveBeenNthCalledWith(3, '/api', 'inkweaver/task/read', { workspaceId: WORKSPACE_ID, taskId: 'chapter-1' }, signal)
     expect(rpc.call.mock.calls.map(call => call[1])).not.toContain('command/commit')
   })
 
   it('rejects a migration archivePath because no local path may cross into the browser', async () => {
-    const state = { migration: { archivePath: '.inkweaver/v1-archive/fingerprint' } }
+    const state = { migration: { archivePath: '.ai-novel/v1-archive/fingerprint' } }
     const rpc = { call: vi.fn(() => Promise.resolve({ ok: true as const, value: state })) }
     const port = createNovelV2WorkbenchPort(rpc)
 
     await expect(port.readState!(WORKSPACE_ID, new AbortController().signal))
-      .rejects.toThrow('InkWeaver V2 response must not contain a local path')
+      .rejects.toThrow('AI novel V2 response must not contain a local path')
   })
 
   it('turns malformed successful state, proposal, and task envelopes into controlled errors', async () => {
@@ -244,7 +244,7 @@ describe('V2 workbench client port', () => {
         : item.method === 'listProposals'
           ? port.listProposals(WORKSPACE_ID, signal)
           : port.readTask(WORKSPACE_ID, 'chapter-1', signal)
-      await expect(operation).rejects.toThrow('InkWeaver V2')
+      await expect(operation).rejects.toThrow('AI novel V2')
     }
   })
 
@@ -252,7 +252,7 @@ describe('V2 workbench client port', () => {
     const rpc = {
       call: vi.fn((_channel: string, endpoint: string) => Promise.resolve({
         ok: true as const,
-        value: endpoint === 'state/read'
+        value: endpoint === 'inkweaver/state/read'
           ? { ...validState, workspaceId: WorkspaceId('123e4567-e89b-42d3-a456-426614174125') }
           : {
             revision: 1, taskId: 'chapter-2', kind: 'chapter', stage: 'draft', status: 'pending', failure: '',
@@ -263,17 +263,17 @@ describe('V2 workbench client port', () => {
     const port = createNovelV2WorkbenchPort(rpc)
     const signal = new AbortController().signal
 
-    await expect(port.readState!(WORKSPACE_ID, signal)).rejects.toThrow('InkWeaver V2 state response is invalid')
-    await expect(port.readTask(WORKSPACE_ID, 'chapter-1', signal)).rejects.toThrow('InkWeaver V2 task response is invalid')
+    await expect(port.readState!(WORKSPACE_ID, signal)).rejects.toThrow('AI novel V2 state response is invalid')
+    await expect(port.readTask(WORKSPACE_ID, 'chapter-1', signal)).rejects.toThrow('AI novel V2 task response is invalid')
   })
 
   it('rejects incomplete nested V2 aggregates and proposal item change envelopes', async () => {
     const rpc = {
       call: vi.fn((_channel: string, endpoint: string) => Promise.resolve({
         ok: true as const,
-        value: endpoint === 'state/read'
+        value: endpoint === 'inkweaver/state/read'
           ? { ...validState, architecture: { ...validState.architecture, world: undefined } }
-          : endpoint === 'proposal/list'
+          : endpoint === 'inkweaver/proposal/list'
             ? { proposals: [{ ...validProposal, items: [{
               itemId: 'proposal-1-item-1', itemOrder: 1, status: 'pending', attemptCount: 0,
               change: {
@@ -287,9 +287,9 @@ describe('V2 workbench client port', () => {
     const port = createNovelV2WorkbenchPort(rpc)
     const signal = new AbortController().signal
 
-    await expect(port.readState!(WORKSPACE_ID, signal)).rejects.toThrow('InkWeaver V2 state response is invalid')
-    await expect(port.listProposals(WORKSPACE_ID, signal)).rejects.toThrow('InkWeaver V2 proposal response is invalid')
-    await expect(port.readTask(WORKSPACE_ID, 'chapter-1', signal)).rejects.toThrow('InkWeaver V2 task response is invalid')
+    await expect(port.readState!(WORKSPACE_ID, signal)).rejects.toThrow('AI novel V2 state response is invalid')
+    await expect(port.listProposals(WORKSPACE_ID, signal)).rejects.toThrow('AI novel V2 proposal response is invalid')
+    await expect(port.readTask(WORKSPACE_ID, 'chapter-1', signal)).rejects.toThrow('AI novel V2 task response is invalid')
   })
 
   it('rejects a task proposal whose nested next value changes the requested aggregate identity', async () => {
@@ -308,7 +308,7 @@ describe('V2 workbench client port', () => {
     const port = createNovelV2WorkbenchPort(rpc)
 
     await expect(port.listProposals(WORKSPACE_ID, new AbortController().signal))
-      .rejects.toThrow('InkWeaver V2 proposal response is invalid')
+      .rejects.toThrow('AI novel V2 proposal response is invalid')
   })
 
   it('rejects a chapter proposal whose nested next value changes the requested aggregate identity', async () => {
@@ -326,7 +326,7 @@ describe('V2 workbench client port', () => {
     const port = createNovelV2WorkbenchPort(rpc)
 
     await expect(port.listProposals(WORKSPACE_ID, new AbortController().signal))
-      .rejects.toThrow('InkWeaver V2 proposal response is invalid')
+      .rejects.toThrow('AI novel V2 proposal response is invalid')
   })
 
   it('reads the previous selected final through the bounded chapter context RPC', async () => {
@@ -346,7 +346,7 @@ describe('V2 workbench client port', () => {
     const signal = new AbortController().signal
 
     await expect(port.readChapterContext!(WORKSPACE_ID, 2, signal)).resolves.toEqual(context)
-    expect(rpc.call).toHaveBeenCalledWith('/inkweaver', 'chapter/context', { workspaceId: WORKSPACE_ID, chapter: 2 }, signal)
+    expect(rpc.call).toHaveBeenCalledWith('/api', 'inkweaver/chapter/context', { workspaceId: WORKSPACE_ID, chapter: 2 }, signal)
     expect(JSON.stringify(rpc.call.mock.calls)).not.toContain('workspacePath')
   })
 
@@ -388,7 +388,7 @@ describe('V2 workbench client port', () => {
     for (const state of corruptStates) {
       const port = createNovelV2WorkbenchPort({ call: vi.fn(() => Promise.resolve({ ok: true as const, value: state })) })
       await expect(port.readState!(WORKSPACE_ID, new AbortController().signal))
-        .rejects.toThrow('InkWeaver V2 state response is invalid')
+        .rejects.toThrow('AI novel V2 state response is invalid')
     }
 
     for (const context of [
@@ -397,7 +397,7 @@ describe('V2 workbench client port', () => {
     ]) {
       const port = createNovelV2WorkbenchPort({ call: vi.fn(() => Promise.resolve({ ok: true as const, value: context })) })
       await expect(port.readChapterContext!(WORKSPACE_ID, 2, new AbortController().signal))
-        .rejects.toThrow('InkWeaver V2 chapter context response is invalid')
+        .rejects.toThrow('AI novel V2 chapter context response is invalid')
     }
   })
 
@@ -421,7 +421,7 @@ describe('V2 workbench client port', () => {
     ]) {
       const port = createNovelV2WorkbenchPort({ call: vi.fn(() => Promise.resolve({ ok: true as const, value: state })) })
       await expect(port.readState!(WORKSPACE_ID, new AbortController().signal))
-        .rejects.toThrow('InkWeaver V2 state response is invalid')
+        .rejects.toThrow('AI novel V2 state response is invalid')
     }
   })
 })

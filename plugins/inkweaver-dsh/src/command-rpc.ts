@@ -432,6 +432,9 @@ function previewIntegrityError(
     if (nextValue.characters.some(characterId => !known.has(characterId))) {
       return new NovelStoreError('INVALID_CONTENT', 'chapter characters must already exist')
     }
+    if (nextValue.knowledgeEvents?.some(event => !known.has(event.characterId))) {
+      return new NovelStoreError('INVALID_CONTENT', 'knowledge event references an unknown character')
+    }
     return undefined
   }
   if (command.aggregate.kind === 'characters') {
@@ -500,7 +503,7 @@ export function createAiNovelCommandRpcHandler(
       && endpoint !== 'proposal/apply' && endpoint !== 'proposal/retry'
       && endpoint !== 'proposal/discard' && endpoint !== 'proposal/regenerate'
       && endpoint !== 'workspace/reattach' && endpoint !== 'workspace/clone') {
-      return badRequest(`Unknown InkWeaver endpoint: ${endpoint}`)
+      return badRequest(`Unknown AI novel endpoint: ${endpoint}`)
     }
     let workspaceId: WorkspaceId
     let taskId: string | undefined
@@ -582,7 +585,7 @@ export function createAiNovelCommandRpcHandler(
     let store: NovelStore
     try {
       // Only the closed initialization command may create the V2 store. Every other loopback
-      // read or command must not create the InkWeaver project directory or an empty novel.db.
+      // read or command must not create `.ai-novel` or an empty novel.db.
       store = await openNovelStore(workspace.path, workspaceId, { create: endpoint === 'workspace/initialize' })
     } catch (error) {
       if (endpoint === 'workspace/state/read' && error instanceof NovelStoreError && error.code === 'NOT_INITIALIZED') {

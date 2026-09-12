@@ -34,7 +34,7 @@ const LOG_FILE_NAME_PATTERN = /^app-\d{4}-\d{2}-\d{2}\.log(\.old)?$/
 
 /**
  * 日志目录：软件根目录下的 logs/ 子目录。
- * 打包后为 exe 所在目录（例如 C:\Program Files\InkWeaver\logs），
+ * 打包后为 exe 所在目录（例如 D:\Game APP\ai-novel\inkweaver\logs），
  * 未打包开发模式回退到 ~/.vela/logs。
  */
 function logDir(): string {
@@ -455,9 +455,11 @@ function redactSensitive(value: unknown, depth = 0): unknown {
  * 全局包装 ipcMain.handle，让所有 IPC 通道自动记录调用/完成/失败。
  * 必须在任何控制器注册之前调用。
  */
-export function installIPCGlobalTracing(ipc: Pick<typeof ipcMain, 'handle'>): void {
+export function installIPCGlobalTracing(ipc: {
+  handle: (channel: string, listener: (...args: any[]) => any) => void
+}): void {
   const originalHandle = ipc.handle.bind(ipc)
-  ipc.handle = ((channel, listener) => {
+  ipc.handle = ((channel: string, listener: (...args: any[]) => any) => {
     const wrapped = traceIPC(channel, listener)
     return originalHandle(channel, wrapped)
   }) as typeof ipc.handle

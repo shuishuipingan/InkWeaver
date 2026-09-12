@@ -246,7 +246,8 @@ function Test-AiNovelVisibleTargetWindow {
 function Test-AiNovelVisibleMainWindow {
   param(
     [Parameter(Mandatory = $true)]$Window,
-    [Parameter(Mandatory = $true)][System.Collections.Generic.HashSet[int]]$TargetProcessIds
+    [Parameter(Mandatory = $true)][System.Collections.Generic.HashSet[int]]$TargetProcessIds,
+    [switch]$AllowLegacyMainWindowTitle
   )
 
   if (-not (Test-AiNovelVisibleTargetWindow -Window $Window -TargetProcessIds $TargetProcessIds)) {
@@ -261,7 +262,9 @@ function Test-AiNovelVisibleMainWindow {
     return $false
   }
   return $title.IndexOf('织墨', [System.StringComparison]::OrdinalIgnoreCase) -ge 0 `
-    -or $title.IndexOf('InkWeaver', [System.StringComparison]::OrdinalIgnoreCase) -ge 0
+    -or $title.IndexOf('InkWeaver', [System.StringComparison]::OrdinalIgnoreCase) -ge 0 `
+    -or ($AllowLegacyMainWindowTitle -and
+      $title.IndexOf('AI小说作家', [System.StringComparison]::OrdinalIgnoreCase) -ge 0)
 }
 
 function New-AiNovelMainWindowContinuityState {
@@ -675,11 +678,15 @@ function Request-AiNovelGracefulMainWindowClose {
     [Parameter(Mandatory = $true)][System.Collections.Generic.HashSet[int]]$ProcessIds,
     [Parameter(Mandatory = $true)][hashtable]$StartTimeTicks,
     [scriptblock]$ProcessProvider,
-    [scriptblock]$CloseMainWindowProvider
+    [scriptblock]$CloseMainWindowProvider,
+    [switch]$AllowLegacyMainWindowTitle
   )
 
   $visibleMainWindows = @($Windows | Where-Object {
-    Test-AiNovelVisibleMainWindow -Window $_ -TargetProcessIds $ProcessIds
+    Test-AiNovelVisibleMainWindow `
+      -Window $_ `
+      -TargetProcessIds $ProcessIds `
+      -AllowLegacyMainWindowTitle:$AllowLegacyMainWindowTitle
   })
   if ($visibleMainWindows.Count -ne 1) {
     throw "Application must expose exactly one visible product main window before graceful close; found $($visibleMainWindows.Count)."
@@ -748,7 +755,8 @@ function Close-AiNovelProcessTreeGracefully {
     [Parameter(Mandatory = $true)][AllowEmptyCollection()][object[]]$Windows,
     [int]$TimeoutSeconds = 5,
     [scriptblock]$ProcessProvider,
-    [scriptblock]$CloseMainWindowProvider
+    [scriptblock]$CloseMainWindowProvider,
+    [switch]$AllowLegacyMainWindowTitle
   )
 
   if ($TimeoutSeconds -lt 1) {
@@ -760,7 +768,8 @@ function Close-AiNovelProcessTreeGracefully {
     -ProcessIds $ProcessIds `
     -StartTimeTicks $StartTimeTicks `
     -ProcessProvider $ProcessProvider `
-    -CloseMainWindowProvider $CloseMainWindowProvider
+    -CloseMainWindowProvider $CloseMainWindowProvider `
+    -AllowLegacyMainWindowTitle:$AllowLegacyMainWindowTitle
   Assert-AiNovelProcessTreeExited `
     -ProcessIds $ProcessIds `
     -StartTimeTicks $StartTimeTicks `
@@ -882,8 +891,10 @@ $targetNames = @(
   [System.IO.Path]::GetFileNameWithoutExtension($resolvedExe),
   'InkWeaver.exe',
   '织墨',
+  'inkweaver'
   $RelatedTargetNames
-) | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) }
+)
+$allowLegacyMainWindowTitle = -not [string]::IsNullOrWhiteSpace($LegacyProjectPathToOpen)
 $baselineWindowIdentities = $WindowBaselineIdentities
 if ($null -ne $RelatedProcessIds -and $null -ne $RelatedProcessStartTimeTicks) {
   foreach ($relatedProcessId in $RelatedProcessIds) {
@@ -998,7 +1009,10 @@ try {
     }
 
     $visibleMainWindow = @($lastWindowSnapshot | Where-Object {
-      Test-AiNovelVisibleMainWindow -Window $_ -TargetProcessIds $liveAppProcessIds
+      Test-AiNovelVisibleMainWindow `
+        -Window $_ `
+        -TargetProcessIds $liveAppProcessIds `
+        -AllowLegacyMainWindowTitle:$allowLegacyMainWindowTitle
     })
     $nowUtc = [DateTime]::UtcNow
     Assert-AiNovelMainWindowContinuity `
@@ -1047,12 +1061,18 @@ try {
     throw "Application displayed a new Windows error dialog in the final snapshot: $(Format-AiNovelWindowEvidence -Windows $newErrorWindows)"
   }
   if (-not ($lastWindowSnapshot | Where-Object {
-    Test-AiNovelVisibleMainWindow -Window $_ -TargetProcessIds $liveAppProcessIds
+    Test-AiNovelVisibleMainWindow `
+      -Window $_ `
+      -TargetProcessIds $liveAppProcessIds `
+      -AllowLegacyMainWindowTitle:$allowLegacyMainWindowTitle
   })) {
     throw 'Application main window was not visible in the final smoke-test snapshot.'
   }
   $acceptedMainWindowCount = @($lastWindowSnapshot | Where-Object {
-    Test-AiNovelVisibleMainWindow -Window $_ -TargetProcessIds $liveAppProcessIds
+    Test-AiNovelVisibleMainWindow `
+      -Window $_ `
+      -TargetProcessIds $liveAppProcessIds `
+      -AllowLegacyMainWindowTitle:$allowLegacyMainWindowTitle
   }).Count
   if (Test-Path -LiteralPath $chromiumLog) {
     $fatalGpuLines = Get-Content -LiteralPath $chromiumLog | Where-Object { $_ -match 'GPU process isn.t usable|:FATAL:' }
@@ -1080,7 +1100,8 @@ try {
     -Process $process `
     -ProcessIds $appProcessIds `
     -StartTimeTicks $appProcessStartTimeTicks `
-    -Windows $lastWindowSnapshot
+    -Windows $lastWindowSnapshot `
+    -AllowLegacyMainWindowTitle:$allowLegacyMainWindowTitle
   foreach ($processId in $appProcessIds) {
     [void]$observedProcessIds.Add([int]$processId)
     $observedProcessStartTimeTicks[[string]$processId] = $appProcessStartTimeTicks[[string]$processId]

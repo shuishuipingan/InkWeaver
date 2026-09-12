@@ -79,6 +79,7 @@ const expectedPromptVariables: Record<string, string[]> = {
     'character_states',
     'short_summary',
     'previous_ending',
+    'chapter_handoff',
     'chapter_info',
     'future_blueprints',
     'user_guidance',
@@ -293,6 +294,7 @@ describe('built-in prompt contract for local Qwen generation', () => {
         .withCharacterStates('角色状态')
         .withShortSummary('近期摘要')
         .withPreviousEnding('上一章结尾')
+        .withChapterHandoff('章节交接')
         .withChapterInfo('本章蓝图')
         .withFutureBlueprints('后续蓝图')
         .withFilteredContext('知识库')

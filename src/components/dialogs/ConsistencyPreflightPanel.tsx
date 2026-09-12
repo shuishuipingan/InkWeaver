@@ -35,6 +35,13 @@ export default function ConsistencyPreflightPanel({
       </div>}
       {findings.map(finding => (
         <div key={finding.stableFactKey} className="rounded-md px-2 py-2 text-xs space-y-2" style={{ backgroundColor: 'var(--color-hover)' }}>
+          <p className="font-medium" style={{ color: 'var(--color-warning-text)' }}>
+            {finding.certainty === 'insufficient'
+              ? text('[信息不足] 缺少当前状态证据', '[Insufficient evidence] Missing current-state evidence')
+              : finding.certainty === 'suspected'
+                ? text('[疑似冲突] 需要作者判断', '[Suspected conflict] Requires author judgment')
+                : text('[确定冲突] 已定稿事实与蓝图不一致', '[Confirmed conflict] Finalized facts disagree with the blueprint')}
+          </p>
           <p>{locale === 'en-US' ? finding.issue.enUS : finding.issue.zhCN}</p>
           <p style={{ color: 'var(--color-text-muted)' }}>{text(`来源：第${finding.sourceChapter}章 · ${finding.evidence}`, `Source: Chapter ${finding.sourceChapter} · ${finding.evidence}`)}</p>
           <p>{locale === 'en-US' ? finding.suggestion.enUS : finding.suggestion.zhCN}</p>

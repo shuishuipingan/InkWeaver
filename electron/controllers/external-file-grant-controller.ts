@@ -84,7 +84,7 @@ export function registerExternalFileGrantController(
     const grant = grants.issueDirectory({
       webContentsId: event.sender.id,
       directoryPath,
-      operations: ['write', 'create'],
+      operations: ['read', 'write', 'create'],
       ttlMs: EXPORT_GRANT_TTL_MS,
       maxUses: EXPORT_GRANT_MAX_USES,
     })

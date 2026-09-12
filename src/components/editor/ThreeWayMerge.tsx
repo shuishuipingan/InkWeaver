@@ -9,7 +9,7 @@
  * 布局：左栏原稿（只读）| 中栏合并结果（可编辑）| 右栏修稿（只读）
  */
 import React, { useState, useCallback, useRef, useMemo, useLayoutEffect } from 'react'
-import { ArrowLeft, ArrowRight, Check } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Check, Lock, Unlock } from 'lucide-react'
 import { Button } from '../ui/Button'
 import { useLocaleStore } from '../../stores/locale-store'
 import './three-way-merge.css'
@@ -287,14 +287,14 @@ function HunkLines({ lines, padCount, cls, emptyLabel }: {
 }
 
 /** contentEditable 子组件 — 仅在挂载时设置内容 */
-function EditableCell({ text, onChange }: { text: string; onChange: (t: string) => void }) {
+function EditableCell({ text, onChange, locked = false }: { text: string; onChange: (t: string) => void; locked?: boolean }) {
   const ref = useRef<HTMLDivElement>(null)
   useLayoutEffect(() => {
     if (ref.current) ref.current.textContent = text || '\u00A0'
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
   return (
-    <div ref={ref} className="twm-editable" contentEditable
+    <div ref={ref} className={`twm-editable${locked ? ' twm-locked' : ''}`} contentEditable={!locked}
       suppressContentEditableWarning
       onInput={e => onChange((e.target as HTMLDivElement).innerText)} />
   )
@@ -311,6 +311,7 @@ export default function ThreeWayMerge({
   const hunks = useMemo(() => segments.filter(s => s.type === 'hunk').map(s => s.hunk!), [segments])
 
   const [applied, setApplied] = useState<Record<number, boolean>>({})
+  const [locked, setLocked] = useState<Record<number, boolean>>({})
 
   // 每个 segment 的编辑文本
   const [segTexts, setSegTexts] = useState<Record<number, string>>(() => {
@@ -334,6 +335,7 @@ export default function ThreeWayMerge({
   }, [segments, segTexts])
 
   const toggleHunk = useCallback((idx: number) => {
+    if (locked[idx]) return
     setApplied(prev => {
       const next = { ...prev, [idx]: !prev[idx] }
       const hunk = hunks.find(h => h.index === idx)
@@ -344,22 +346,38 @@ export default function ThreeWayMerge({
       }
       return next
     })
-  }, [hunks, hunkSegIdx])
+  }, [hunks, hunkSegIdx, locked])
+
+  const toggleLock = useCallback((segmentIndex: number) => {
+    setLocked(previous => ({ ...previous, [segmentIndex]: !previous[segmentIndex] }))
+  }, [])
 
   const applyAll = useCallback(() => {
-    const next: Record<number, boolean> = {}
+    const next: Record<number, boolean> = { ...applied }
     const texts: Record<number, string> = {}
-    hunks.forEach(h => { next[h.index] = true; texts[hunkSegIdx[h.index]] = h.modifiedLines.join('\n') })
+    hunks.forEach(h => {
+      const segmentIndex = hunkSegIdx[h.index]
+      if (locked[segmentIndex]) return
+      next[h.index] = true
+      texts[segmentIndex] = h.modifiedLines.join('\n')
+    })
     setApplied(next); setSegTexts(p => ({ ...p, ...texts }))
-  }, [hunks, hunkSegIdx])
+  }, [applied, hunks, hunkSegIdx, locked])
 
   const revertAll = useCallback(() => {
+    const next: Record<number, boolean> = { ...applied }
     const texts: Record<number, string> = {}
-    hunks.forEach(h => { texts[hunkSegIdx[h.index]] = h.originalLines.join('\n') })
-    setApplied({}); setSegTexts(p => ({ ...p, ...texts }))
-  }, [hunks, hunkSegIdx])
+    hunks.forEach(h => {
+      const segmentIndex = hunkSegIdx[h.index]
+      if (locked[segmentIndex]) return
+      delete next[h.index]
+      texts[segmentIndex] = h.originalLines.join('\n')
+    })
+    setApplied(next); setSegTexts(p => ({ ...p, ...texts }))
+  }, [applied, hunks, hunkSegIdx, locked])
 
   const processedCount = Object.values(applied).filter(Boolean).length
+  const lockedCount = Object.values(locked).filter(Boolean).length
 
   const getPad = (oLen: number, mLen: number) => {
     const lV = oLen > 0 ? oLen : 1, rV = mLen > 0 ? mLen : 1
@@ -371,7 +389,7 @@ export default function ThreeWayMerge({
       <div className="twm-toolbar">
         <Button variant="ghost" size="sm" onClick={revertAll}><ArrowLeft size={13} />{text('全部原稿', 'Use all original')}</Button>
         <Button variant="ghost" size="sm" onClick={applyAll}>{text('全部修稿', 'Use all revision')}<ArrowRight size={13} /></Button>
-        <span className="twm-toolbar-progress">{text('已采用 {done}/{total} 处变更', '{done}/{total} changes applied', { done: processedCount, total: hunks.length })}</span>
+        <span className="twm-toolbar-progress">{text('已采用 {done}/{total} 处变更', '{done}/{total} changes applied', { done: processedCount, total: hunks.length })}{lockedCount > 0 ? text(` · 已锁定 ${lockedCount} 段`, ` · ${lockedCount} locked`) : ''}</span>
         {onCancel && <Button variant="ghost" size="sm" onClick={onCancel}>{text('取消', 'Cancel')}</Button>}
         <Button variant="success" size="sm" onClick={() => onComplete(buildMergedText())}>{text('完成合并', 'Finish merge')}</Button>
       </div>
@@ -394,8 +412,11 @@ export default function ThreeWayMerge({
                   <div className="twm-cell twm-cell-left">
                     {seg.lines?.map((l, i) => <div key={i} className="twm-line-same">{l || '\u00A0'}</div>)}
                   </div>
-                  <div className="twm-cell twm-cell-center">
-                    <EditableCell key={`s${idx}`} text={segTexts[idx] ?? ''}
+                  <div className={`twm-cell twm-cell-center${locked[idx] ? ' twm-segment-locked' : ''}`}>
+                    <button type="button" className="twm-lock-toggle" onClick={() => toggleLock(idx)} aria-label={locked[idx] ? text('解锁此段', 'Unlock this segment') : text('锁定此段，保留原文', 'Lock this segment and preserve the text')} aria-pressed={Boolean(locked[idx])} title={locked[idx] ? text('解锁此段', 'Unlock this segment') : text('锁定此段，保留原文', 'Lock this segment and preserve the text')}>
+                      {locked[idx] ? <Lock size={11} aria-hidden="true" /> : <Unlock size={11} aria-hidden="true" />}
+                    </button>
+                    <EditableCell key={`s${idx}`} text={segTexts[idx] ?? ''} locked={locked[idx]}
                       onChange={t => setSegTexts(p => ({ ...p, [idx]: t }))} />
                   </div>
                   <div className="twm-cell twm-cell-right">
@@ -419,8 +440,11 @@ export default function ThreeWayMerge({
                 </div>
 
                 {/* 中栏 */}
-                <div className={`twm-cell twm-cell-center ${isApplied ? 'adopted' : 'pending'}`}>
-                  <EditableCell key={`h${idx}-${isApplied ? 1 : 0}`} text={segTexts[idx] ?? ''}
+                <div className={`twm-cell twm-cell-center ${isApplied ? 'adopted' : 'pending'}${locked[idx] ? ' twm-segment-locked' : ''}`}>
+                  <button type="button" className="twm-lock-toggle" onClick={() => toggleLock(idx)} aria-label={locked[idx] ? text('解锁此段', 'Unlock this segment') : text('锁定此段，保留原文', 'Lock this segment and preserve the text')} aria-pressed={Boolean(locked[idx])} title={locked[idx] ? text('解锁此段', 'Unlock this segment') : text('锁定此段，保留原文', 'Lock this segment and preserve the text')}>
+                    {locked[idx] ? <Lock size={11} aria-hidden="true" /> : <Unlock size={11} aria-hidden="true" />}
+                  </button>
+                  <EditableCell key={`h${idx}-${isApplied ? 1 : 0}`} text={segTexts[idx] ?? ''} locked={locked[idx]}
                     onChange={t => setSegTexts(p => ({ ...p, [idx]: t }))} />
                 </div>
 

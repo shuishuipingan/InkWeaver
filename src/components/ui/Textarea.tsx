@@ -49,7 +49,4 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
 )
 Textarea.displayName = 'Textarea'
 
-// The style factory is part of the public component API; Fast Refresh's
-// component-only export rule does not apply to this intentional helper export.
-// eslint-disable-next-line react-refresh/only-export-components
 export { Textarea, textareaVariants }

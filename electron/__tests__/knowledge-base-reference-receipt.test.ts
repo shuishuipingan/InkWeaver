@@ -190,7 +190,7 @@ describe('stable reference knowledge receipt', () => {
       'openai',
       embeddingModel,
     )
-    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1), { timeout: 30_000 })
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
 
     vi.setSystemTime(2_101)
     const takeover = ImportRunRepository.startOrResume('single-flight-run', 'renderer-b', 2_101, 10_000)
@@ -274,7 +274,7 @@ describe('stable reference knowledge receipt', () => {
         embeddingOptions: { chunkSize: 100, chunkOverlap: 0, batchSize: 1 },
       },
     )
-    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1), { timeout: 30_000 })
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
     vi.setSystemTime(3_101)
     finishFirstEmbedding(embeddingResponse())
 

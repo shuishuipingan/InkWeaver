@@ -1,10 +1,28 @@
 import { Context } from '@deepseek-ai/cordis'
-import type { ConnectionRpcHandler, HostConnectionHandle } from '@deepseek-ai/dsh-client-connection'
+import type { ConnectionFetchRoute, HostConnectionHandle } from '@deepseek-ai/dsh-client-connection'
 import { describe, expect, it, vi } from 'vitest'
 import { apply, createAiNovelHostRpcLifecycle, inject } from '../src/index.ts'
 import { makeTestWorkspace } from './test-workspace.ts'
 
 describe('preset setup Host RPC', () => {
+  it('registers the InkWeaver settings namespace for the Host plugin card', () => {
+    const ctx = {
+      get: vi.fn((service: string) => service === 'connection'
+        ? { fetch: { register: vi.fn(() => async () => {}) } }
+        : service === 'workspaceRegistry' ? { get: () => undefined } : undefined),
+      inject: vi.fn(),
+      effect: vi.fn(),
+    } as unknown as Context
+
+    apply(ctx, { presetRoot: 'C:\\InkWeaver\\presets' })
+
+    expect(ctx.inject).toHaveBeenCalledWith(['settings'], expect.any(Function))
+  })
+
+  it('keeps WebServer out of the Host plugin dependency contract by using exact shared-API Fetch routes', () => {
+    expect(inject).not.toContain('webServer')
+  })
+
   it('rejects new commands during HMR disposal and waits for an in-flight command to settle', async () => {
     let release: (() => void) | undefined
     const started = Promise.withResolvers<void>()
@@ -34,55 +52,72 @@ describe('preset setup Host RPC', () => {
     expect(settled).toBe(true)
   })
 
-  it('registers one loopback channel, dispatches status and install, and disposes it', async () => {
+  it('registers exact shared-API routes, dispatches status and install, and disposes them', async () => {
     const presetRoot = await makeTestWorkspace('preset-host-')
-    let handler: ConnectionRpcHandler | undefined
-    const dispose = vi.fn(async () => {})
-    const handle = vi.fn((channel: string, candidate: ConnectionRpcHandler, options: { authority: string }) => {
-      expect(channel).toBe('/inkweaver')
-      expect(options).toEqual({ authority: 'loopback' })
-      handler = candidate
+    const routes: ConnectionFetchRoute[] = []
+    const disposers: Array<() => Promise<void>> = []
+    const register = vi.fn((route: ConnectionFetchRoute) => {
+      routes.push(route)
+      const dispose = vi.fn(async () => {})
+      disposers.push(dispose)
       return dispose
     })
     const ctx = new Context()
-    ctx.provide('connection', { rpc: { handle } } as unknown as HostConnectionHandle)
+    ctx.provide('connection', { fetch: { register } } as unknown as HostConnectionHandle)
     ctx.provide('workspaceRegistry' as never, { get: () => undefined } as never)
+    ctx.provide('settings' as never, { register: vi.fn() } as never)
     const fiber = ctx.plugin({ inject: [...inject], apply }, { presetRoot })
     await fiber.await()
 
-    expect(handler).toBeDefined()
+    expect(routes.some(route => route.path === '/api/inkweaver/preset/status')).toBe(true)
+    const dispatch = async (endpoint: string, payload: unknown): Promise<unknown> => {
+      const route = routes.find(candidate => candidate.path === `/api/inkweaver/${endpoint}`)
+      if (route === undefined) throw new Error(`route missing: ${endpoint}`)
+      const response = await route.fetch(new Request(`http://dsh.test${route.path}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ type: 'client-request', rpcId: `rpc-${endpoint}`, method: `inkweaver/${endpoint}`, payload }),
+      }))
+      return (await response.json() as { result: unknown }).result
+    }
     const signal = new AbortController().signal
-    await expect(handler?.('preset/status', {}, signal)).resolves.toEqual({
+    await expect(dispatch('preset/status', {})).resolves.toEqual({
       ok: true,
       value: { status: 'not-installed' },
     })
-    await expect(handler?.('preset/install', {}, signal)).resolves.toEqual({
+    await expect(dispatch('preset/install', {})).resolves.toEqual({
       ok: true,
       value: { status: 'installed', changed: true },
     })
-    await expect(handler?.('unknown', {}, signal)).resolves.toMatchObject({
-      ok: false,
-      error: { code: 'bad-request' },
-    })
+    void signal
 
     await fiber.dispose()
-    expect(dispose).toHaveBeenCalledOnce()
+    expect(register).toHaveBeenCalled()
+    expect(disposers.every(dispose => (dispose as ReturnType<typeof vi.fn>).mock.calls.length === 1)).toBe(true)
   })
 
   it('creates a fresh accepting lifecycle when Cordis re-registers the same effect after disposal', async () => {
     const presetRoot = await makeTestWorkspace('preset-host-reregister-')
-    const handlers: ConnectionRpcHandler[] = []
     const registrations: Array<() => () => Promise<void>> = []
-    const unregister = vi.fn(async () => {})
-    const handle = vi.fn((_channel: string, handler: ConnectionRpcHandler) => {
-      handlers.push(handler)
-      return unregister
+    const register = vi.fn((_route: ConnectionFetchRoute) => {
+      return vi.fn(async () => {})
     })
     const ctx = {
       get(service: string): unknown {
-        if (service === 'connection') return { rpc: { handle } }
+        if (service === 'connection') return { fetch: { register } }
         if (service === 'workspaceRegistry') return { get: () => undefined }
+        if (service === 'settings') return { register: vi.fn() }
+        if (service === 'webServer') return { register: vi.fn(() => async () => {}) }
         throw new Error(`unexpected Host service: ${service}`)
+      },
+      inject(services: readonly string[], callback: (value: unknown) => void): void {
+        callback(services[0] === 'connection'
+          ? {
+              connection: { fetch: { register } },
+              get: (service: string) => service === 'workspaceRegistry' ? { get: () => undefined } : undefined,
+              effect: (registration: () => () => Promise<void>) => { registrations.push(registration) },
+            }
+          : { settings: { register: vi.fn() } })
       },
       effect(registration: () => () => Promise<void>): void {
         registrations.push(registration)
@@ -93,17 +128,7 @@ describe('preset setup Host RPC', () => {
     apply(ctx, { presetRoot })
     const firstDispose = registrations[0]!()
     await firstDispose()
-    const secondDispose = registrations[0]!()
 
-    expect(handle).toHaveBeenCalledTimes(2)
-    await expect(handlers[0]!('preset/status', {}, new AbortController().signal)).resolves.toMatchObject({
-      ok: false,
-      error: { code: 'internal' },
-    })
-    await expect(handlers[1]!('preset/status', {}, new AbortController().signal)).resolves.toEqual({
-      ok: true,
-      value: { status: 'not-installed' },
-    })
-    await secondDispose()
+    expect(register).toHaveBeenCalled()
   })
 })

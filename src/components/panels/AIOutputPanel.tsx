@@ -16,6 +16,8 @@ import {
 } from '../../shared/project-session-context'
 import type { ProjectSessionContext } from '../../shared/ipc-channels'
 import type { PromptBudgetReport } from '../../services/generation/generation-harness'
+import type { ContextReceipt } from '../../shared/context-receipt'
+import type { GenerationReceiptSummary } from '../../shared/generation-receipt'
 import MarkdownContent from '../ui/MarkdownContent'
 import { PanelHeader } from '../ui/PanelHeader'
 import { presentWorkflowFailure } from './ai-output-failure-presentation'
@@ -212,6 +214,9 @@ function ActiveRunView({
         />
       </div>
 
+      {run.contextReceipt && <ContextReceiptSummary receipt={run.contextReceipt} locale={locale} />}
+      {run.generationReceipt && <GenerationReceiptSummaryBlock receipt={run.generationReceipt} locale={locale} />}
+
       {/* 滚动内容区 */}
       <div
         ref={scrollRef}
@@ -279,6 +284,70 @@ function ActiveRunView({
   )
 }
 
+
+function ContextReceiptSummary({ receipt, locale }: { receipt: ContextReceipt; locale: 'zh-CN' | 'en-US' }) {
+  const included = receipt.entries.filter(entry => entry.included).length
+  const omitted = receipt.entries.length - included
+  if (receipt.entries.length === 0) return null
+
+  const layerLabel: Record<ContextReceipt['entries'][number]['layer'], string> = {
+    'fixed-rules': locale === 'en-US' ? 'Fixed rules' : '固定规则',
+    'current-arc': locale === 'en-US' ? 'Current arc' : '当前剧情弧',
+    'character-state': locale === 'en-US' ? 'Character state' : '角色状态',
+    'historical-fact': locale === 'en-US' ? 'Historical facts' : '历史事实',
+    'active-thread': locale === 'en-US' ? 'Active threads' : '活跃叙事线',
+    'immediate-handoff': locale === 'en-US' ? 'Immediate handoff' : '即时交接',
+    'knowledge-search': locale === 'en-US' ? 'Knowledge search' : '知识检索',
+  }
+  const groups = new Map<ContextReceipt['entries'][number]['layer'], ContextReceipt['entries']>()
+  for (const entry of receipt.entries) {
+    const list = groups.get(entry.layer) ?? []
+    list.push(entry)
+    groups.set(entry.layer, list)
+  }
+
+  return (
+    <details
+      className="mx-2 mb-2 rounded-md border px-2 py-1.5 text-[0.68rem]"
+      style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }}
+    >
+      <summary className="cursor-pointer select-none">
+        {locale === 'en-US' ? 'Context receipt' : '写前上下文收据'} · {included} {locale === 'en-US' ? 'included' : '项已纳入'}
+        {omitted > 0 ? ` · ${omitted} ${locale === 'en-US' ? 'omitted' : '项省略'}` : ''}
+      </summary>
+      <div className="mt-1 space-y-1.5" data-context-receipt="true">
+        {[...groups.entries()].map(([layer, entries]) => (
+          <div key={layer} data-context-layer={layer}>
+            <div className="font-medium opacity-80">{layerLabel[layer]} · {entries.filter(entry => entry.included).length}/{entries.length}</div>
+            <div className="space-y-0.5">
+              {entries.map(entry => (
+                <div key={`${entry.id}:${entry.included ? 'in' : 'out'}`} className="flex gap-1.5">
+                  <span aria-hidden="true">{entry.included ? <CheckCircle2 size={11} /> : '—'}</span>
+                  <span className="truncate">{entry.label}</span>
+                  {!entry.included && <span className="shrink-0 text-[var(--color-text-muted)]">{entry.reason}</span>}
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </details>
+  )
+}
+
+function GenerationReceiptSummaryBlock({ receipt, locale }: { receipt: GenerationReceiptSummary; locale: 'zh-CN' | 'en-US' }) {
+  const usage = receipt.usage
+  return (
+    <div className="mx-2 mb-2 rounded-md border px-2 py-1.5 text-[0.68rem]" data-generation-receipt="true" style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }}>
+      <div className="flex flex-wrap gap-x-2 gap-y-0.5">
+        <span>{locale === 'en-US' ? 'Model' : '模型'}: {receipt.modelId}</span>
+        <span>{locale === 'en-US' ? 'attempt' : '尝试'} {receipt.attempt}</span>
+        <span>{locale === 'en-US' ? 'budget' : '预算'} {receipt.cumulativeRequestedOutputTokens}/{receipt.maxRequestedOutputTokens}</span>
+        <span>{locale === 'en-US' ? 'usage' : '实际用量'}: {usage?.totalTokens ?? (locale === 'en-US' ? 'unavailable' : '未知')}</span>
+      </div>
+    </div>
+  )
+}
 
 // ===== 新版渲染单步结果（支持查看所有历史步骤数据） =====
 function StepOutputBlock({ step, index, total, isActiveRun, isCurrentStep }: { step: WorkflowStep; index: number; total: number; isActiveRun: boolean; isCurrentStep: boolean }) {

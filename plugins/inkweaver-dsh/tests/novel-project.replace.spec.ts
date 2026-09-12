@@ -36,7 +36,7 @@ describe('NovelProject single-asset replacement', () => {
     await expect(project.read({ kind: 'asset', target: { kind: 'characters' } }, signal)).resolves.toEqual({
       kind: 'asset',
       target: { kind: 'characters' },
-      source: '.inkweaver/characters.json',
+      source: '.ai-novel/characters.json',
       revision: 'absent',
       text: '',
       bytes: 0,
@@ -67,7 +67,7 @@ describe('NovelProject single-asset replacement', () => {
     expect(receipt.target).toEqual({ kind: 'characters' })
     expect(receipt.oldRevision).toBe('absent')
     expect(receipt.newRevision).toMatch(/^[a-f0-9]{64}$/)
-    const disk = await readFile(join(root, '.inkweaver', 'characters.json'), 'utf8')
+    const disk = await readFile(join(root, '.ai-novel', 'characters.json'), 'utf8')
     expect(disk).toBe(`${JSON.stringify(JSON.parse(replacement), null, 2)}\n`)
     const read = await project.read({ kind: 'asset', target: { kind: 'characters' } }, signal)
     expect(read).toMatchObject({ kind: 'asset', text: disk, revision: receipt.newRevision })
@@ -174,7 +174,7 @@ describe('NovelProject single-asset replacement', () => {
   })
 
   it('rejects stale input before creating a generated parent directory', async () => {
-    const parent = join(root, '.inkweaver', 'blueprints')
+    const parent = join(root, '.ai-novel', 'blueprints')
 
     await expect(project.apply({
       kind: 'replace', target: { kind: 'chapter-blueprint', chapter: 1 },
@@ -198,7 +198,7 @@ describe('NovelProject single-asset replacement', () => {
       replacement, summary: '建立故事蓝图',
     }, signal)
 
-    await expect(readFile(join(root, '.inkweaver', 'blueprints', 'story.json'), 'utf8')).resolves.toBe(
+    await expect(readFile(join(root, '.ai-novel', 'blueprints', 'story.json'), 'utf8')).resolves.toBe(
       `${JSON.stringify({
         premise: '失联飞船收到未来求救。', themes: ['选择'], world: '潮汐锁定星球。',
         mainPlot: '追查信号。', endingGoal: '回到家园。',
@@ -237,7 +237,7 @@ describe('NovelProject single-asset replacement', () => {
 
   it('rejects a symlink in any generated asset path before touching its target', async () => {
     const outside = await makeTestWorkspace('outside-')
-    const link = join(root, '.inkweaver', 'blueprints')
+    const link = join(root, '.ai-novel', 'blueprints')
     await mkdir(outside, { recursive: true })
     await symlink(outside, link, 'junction')
 

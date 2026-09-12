@@ -2,10 +2,9 @@
 import type { Context } from '@deepseek-ai/cordis'
 import { applyV2, NovelV2Config } from './agent.ts'
 import type { NovelV2Config as NovelV2ConfigType } from './agent.ts'
-import { INKWEAVER_PRESET_ID } from './identity.ts'
 
 /** Stable Cordis plugin name for the isolated V2 tool surface. */
-export const name = `${INKWEAVER_PRESET_ID}-agent-v2`
+export const name = 'inkweaver-agent-v2'
 
 /** V2 needs the Host-owned Workspace registry; V1 deliberately does not. */
 export const inject = ['agents', 'systemPrompt', 'tools', 'workspaceRegistry']

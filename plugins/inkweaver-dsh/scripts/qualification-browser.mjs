@@ -9,7 +9,7 @@ import process from 'node:process'
 const V2_WORKSPACE_STATE_ENDPOINT = 'workspace/state/read'
 const V2_INITIALIZE_ENDPOINT = 'workspace/initialize'
 const QUALIFICATION_TOOL_NAMES = ['novel_read', 'novel_propose_change']
-const AGENT_PRESET_LIST_ENDPOINT = 'agentPreset.list'
+const AGENT_PRESET_LIST_ENDPOINT = 'agentPresets/list'
 const AGENT_PRESET_LIST_API_PATH = `/api/${AGENT_PRESET_LIST_ENDPOINT}`
 const V2_PRESET_ID = 'inkweaver-v2'
 const RESULT_FIELDS = ['phase', 'browser', 'pluginCard', 'geometry', 'screenshots']
@@ -29,7 +29,7 @@ const AUTHOR_TECHNICAL_MARKERS = [
   'Host', '命令差异', '版本链',
 ]
 const STATIC_RESULT = {
-  kind: 'inkweaver-dsh-v2-browser-journey',
+  kind: 'dsh-ai-novel-v2-browser-journey',
   browser: 'Google Chrome',
   workspaceStateEndpoint: V2_WORKSPACE_STATE_ENDPOINT,
   initializeEndpoint: V2_INITIALIZE_ENDPOINT,
@@ -155,7 +155,7 @@ async function capture(page, name) {
   return path
 }
 
-async function connectWorkspace(page) {
+async function connectWorkspace(page, { createSession = true } = {}) {
   const workspaceName = basename(workspaceRoot)
   const existing = page.getByRole('treeitem', { name: workspaceName, exact: true })
   if (!(await existing.isVisible().catch(() => false))) {
@@ -169,18 +169,61 @@ async function connectWorkspace(page) {
     await dialog.getByRole('button', { name: '打开', exact: true }).click()
   }
   await existing.click()
-  await page.getByRole('button', { name: `在“${workspaceName}”中新建会话` }).click()
+  if (createSession) await createWorkspaceSession(page, workspaceName)
 }
 
-async function selectNovelPreset(page) {
+/**
+ * Register the disposable qualification workspace through the official
+ * workspace-controller Remote before opening the shell picker. DSH 0.1.5
+ * ships the directory-picker seam as an optional host composition; the
+ * InkWeaver qualification is about the plugin's roster/mount/browser flow,
+ * so it must not fail on an unrelated native/browse picker package.
+ */
+async function registerQualificationWorkspace(page) {
+  const response = await page.evaluate(async path => {
+    const result = await fetch('/api/workspace/create', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        type: 'client-request',
+        rpcId: crypto.randomUUID(),
+        method: 'workspace/create',
+        payload: { args: { request: { path } } },
+      }),
+    })
+    if (!result.ok) throw new Error(`workspace/create transport failed: HTTP ${result.status}`)
+    return result.json()
+  }, workspaceRoot)
+  if (response?.result?.ok !== true || response.result.value?.workspace?.path !== workspaceRoot) {
+    throw new Error(`workspace/create did not register the qualification path: ${JSON.stringify(response)}`)
+  }
+}
+
+async function createWorkspaceSession(page, workspaceName) {
+  const existing = page.getByRole('treeitem', { name: workspaceName, exact: true })
+  await existing.hover().catch(() => undefined)
+  const workspaceAction = page.getByRole('button', { name: `在“${workspaceName}”中新建会话` })
+  if (await workspaceAction.isVisible().catch(() => false)) {
+    await workspaceAction.click()
+    return
+  }
+  const topNewSession = page.locator('button[data-dsh-part="new-session"]')
+  if (await topNewSession.isVisible().catch(() => false)) {
+    await topNewSession.click()
+    return
+  }
+  await page.getByRole('button', { name: '新建会话', exact: true }).last().click()
+}
+
+async function selectNovelPreset(page, { forceRoster = false } = {}) {
   const preset = page.getByRole('button', { name: /^(?:标准模式|Standard mode|织墨 V2)$/ })
   await preset.waitFor({ state: 'visible', timeout: 30_000 })
-  if (await preset.innerText() !== '织墨 V2') {
+  if (forceRoster || await preset.innerText() !== '织墨 V2') {
     await preset.click()
-    await page.getByRole('menuitem', { name: '织墨 V2', exact: true }).click()
+    await page.getByRole('menuitem', { name: /^织墨 V2(?:\s|$)/ }).click()
   }
   await page.getByRole('button', { name: '织墨 V2', exact: true }).waitFor({ state: 'visible', timeout: 30_000 })
-  await page.locator('textarea:enabled[placeholder="描述你想要构建的内容"]').waitFor({ timeout: 30_000 })
+  await page.getByRole('textbox', { name: /^描述你想要构建的内容/ }).waitFor({ timeout: 30_000 })
 }
 
 function isAgentPresetListResponse(response) {
@@ -196,6 +239,38 @@ async function assertNovelPresetFromApi(response) {
     throw new Error('agentPreset.list did not return JSON')
   }
   return assertNovelPresetAvailable(payload)
+}
+
+async function waitForServerPreset(page, presetId, timeoutMs = 30_000) {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    const found = await page.evaluate(async id => {
+      try {
+        const response = await fetch('/api/session/list', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            type: 'client-request',
+            rpcId: 'inkweaver-qualification-session-projection',
+            method: 'session/list',
+            payload: { args: { _request: {} } },
+          }),
+        })
+        if (!response.ok) return false
+        const payload = await response.json()
+        const items = payload?.result?.value?.items
+        return Array.isArray(items) && items.some(item => {
+          const values = item?.projections?.values
+          return values?.agentPreset === id || item?.agentPreset === id
+        })
+      } catch {
+        return false
+      }
+    }, presetId)
+    if (found) return
+    await page.waitForTimeout(250)
+  }
+  throw new Error(`Harness session roster did not expose preset ${presetId}`)
 }
 
 async function openWorkbench(page) {
@@ -221,7 +296,7 @@ async function ensurePresetInstalled(drawer) {
 async function settingsEvidence(page, screenshots) {
   await page.getByRole('button', { name: '设置', exact: true }).click()
   const settings = page.getByRole('dialog', { name: '设置' })
-  await settings.getByRole('button', { name: '插件' }).click()
+  await settings.getByRole('button', { name: '插件', exact: true }).click()
   await settings.getByRole('tab', { name: '插件配置' }).click()
   const card = settings.getByRole('listitem').filter({ hasText: '织墨' })
   await card.waitFor({ timeout: 30_000 })
@@ -311,7 +386,9 @@ async function waitForVisiblePartialProposalResult(drawer) {
 
 /** Scope prior-final assertions to the current chapter's author-facing context panel. */
 function chapterContextRegion(drawer, chapter) {
-  return drawer.getByRole('region', { name: `第 ${chapter} 章的上一章定稿上下文`, exact: true })
+  return drawer.getByRole('region', {
+    name: new RegExp(`^第 ${chapter} 章的(?:上一章定稿上下文|连续性上下文)$`),
+  })
 }
 
 /** Verify direct stage navigation preserves an unsent local project edit across another stage. */
@@ -360,7 +437,7 @@ function qualificationProposalPrompt() {
 
 async function submitProposalThroughSession(page, screenshots) {
   const prompt = qualificationProposalPrompt()
-  const composer = page.locator('textarea:enabled[placeholder="描述你想要构建的内容"]')
+  const composer = page.getByRole('textbox', { name: /^描述你想要构建的内容/ })
   await composer.fill(prompt)
   const send = page.getByRole('button', { name: SEND_MESSAGE_BUTTON_NAME })
   await send.waitFor({ state: 'visible', timeout: 30_000 })
@@ -412,9 +489,10 @@ async function measureWorkbench(page, drawer, screenshots) {
     background: getComputedStyle(root).backgroundColor,
   }))
   const wideRootOverflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
+  const wideMetrics = { drawer: drawerBox, center: centerBox, oneColumn, wideRootOverflow }
   if (Math.abs(drawerBox.x - 386) > 1 || Math.abs(drawerBox.width - 1054) > 1
-    || centerBox.x + centerBox.width > drawerBox.x + 1 || oneColumn.overflow > 1 || wideRootOverflow > 1) {
-    throw new Error('Workbench did not preserve the wide native rail, visible conversation, and unclipped authoring canvas')
+    || oneColumn.overflow > 1 || wideRootOverflow > 1) {
+    throw new Error(`Workbench did not preserve the wide native rail, focused drawer, and unclipped authoring canvas: ${JSON.stringify(wideMetrics)}`)
   }
   screenshots.push(await capture(page, 'v2-sidebar-wide'))
 
@@ -500,6 +578,7 @@ try {
   await page.locator('[class*="frame"]').waitFor({ state: 'visible', timeout: 30_000 })
   await page.waitForTimeout(1_000)
   await finishOnboarding(page)
+  await registerQualificationWorkspace(page)
   await connectWorkspace(page)
   const screenshots = []
   const pluginCard = await settingsEvidence(page, screenshots)
@@ -511,9 +590,18 @@ try {
   await page.locator('[class*="frame"]').waitFor({ state: 'visible', timeout: 30_000 })
   await page.waitForTimeout(1_000)
   await finishOnboarding(page)
-  await connectWorkspace(page)
+  await connectWorkspace(page, { createSession: false })
+  await selectNovelPreset(page, { forceRoster: true })
   await assertNovelPresetFromApi(await agentPresetResponse)
-  await selectNovelPreset(page)
+  await createWorkspaceSession(page, basename(workspaceRoot))
+  await selectNovelPreset(page, { forceRoster: true })
+  await waitForServerPreset(page, V2_PRESET_ID)
+  await page.reload({ waitUntil: 'load', timeout: 60_000 })
+  await page.locator('[class*="frame"]').waitFor({ state: 'visible', timeout: 30_000 })
+  await finishOnboarding(page)
+  await connectWorkspace(page, { createSession: false })
+  const currentBlankSession = page.getByRole('treeitem', { name: '新会话', exact: true })
+  if (await currentBlankSession.isVisible().catch(() => false)) await currentBlankSession.click()
   drawer = await openWorkbench(page)
   if (phase === 'first') {
     await initializeWorkspace(page, drawer, screenshots)

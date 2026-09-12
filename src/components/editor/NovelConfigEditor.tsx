@@ -20,6 +20,7 @@ import { Input } from '../ui/Input'
 import { Textarea } from '../ui/Textarea'
 import { NativeSelect } from '../ui/NativeSelect'
 import GenerateConfigDialog from '../dialogs/GenerateConfigDialog'
+import WritingStyleHistoryPanel from './WritingStyleHistoryPanel'
 import AITitleSynopsisDialog from '../dialogs/AITitleSynopsisDialog'
 import { useLocaleStore } from '../../stores/locale-store'
 import {
@@ -423,6 +424,8 @@ function NovelConfigEditorSession({ projectKey }: { projectKey: string }) {
               rows={6}
             />
           </Section>
+
+          <WritingStyleHistoryPanel projectKey={projectKey} />
 
           {/* 参考作品 */}
           <Section title={text('参考作品', 'Reference works')} desc={text('参考作品的风格、体系或机制，如：“参考《证道》的修炼体系”', 'Reference the style, setting, or mechanics of other works.')}>

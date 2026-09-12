@@ -11,6 +11,7 @@ import {
   WINDOWS_RELEASE_MONITOR_READY_TIMEOUT_MS,
   WINDOWS_UPDATE_RUNNER_COMMAND,
   appendMonitorControl,
+  createLegacyUpdateBridgePlan,
   createOfficialUpdatePlan,
   normalizeFinalReleaseTag,
   parseWindowsInAppUpdateE2eCli,
@@ -59,7 +60,7 @@ function runWindowsE2ePowerShellFunction(script: string): string {
 }
 
 function temporaryRoot(): string {
-  const root = mkdtempSync(join(tmpdir(), 'inkweaver-update-e2e-test-'))
+  const root = mkdtempSync(join(tmpdir(), 'ai-novel-update-e2e-test-'))
   temporaryRoots.push(root)
   return root
 }
@@ -168,13 +169,13 @@ describe('Windows heavy integration timeout contract', () => {
     )
 
     expect(smokeInstallerTests).toContain('WINDOWS_POWERSHELL_INTEGRATION_TIMEOUT_MS = 30_000')
-    expect(smokeInstallerTests.match(/^ {2}windowsPowerShellIt\(/gm)).toHaveLength(42)
+    expect(smokeInstallerTests.match(/^ {2}windowsPowerShellIt\(/gm)).toHaveLength(45)
     expect([
       smokeInstallerTests.match(/runProbeLibrary\(/g)?.length,
       smokeInstallerTests.match(/runInstallerLibrary\(/g)?.length,
       smokeInstallerTests.match(/runReleaseMonitorLibrary\(/g)?.length,
       smokeInstallerTests.match(/runWinFormsGracefulCloseProbe\(/g)?.length,
-    ]).toEqual([19, 8, 18, 3])
+    ]).toEqual([20, 8, 20, 3])
 
     expect(updateE2eTests).toContain('WINDOWS_POWERSHELL_INTEGRATION_TIMEOUT_MS = 30_000')
     expect(updateE2eTests.match(/^ {2}windowsPowerShellIt\(/gm)).toHaveLength(5)
@@ -183,8 +184,9 @@ describe('Windows heavy integration timeout contract', () => {
       updateE2eTests.match(/runWindowsE2ePowerShellFunction\(/g)?.length,
     ]).toEqual([6, 2])
 
-    expect(updateInteractionTests).toContain('VITE_SERVER_HOOK_TIMEOUT_MS = 120_000')
-    expect(updateInteractionTests).toContain('COLD_BROWSER_INTERACTION_TIMEOUT_MS = 60_000')
+    expect(updateInteractionTests).toContain('VITE_SERVER_HOOK_TIMEOUT_MS = 600_000')
+    expect(updateInteractionTests).toContain('UPDATE_SECTION_VITE_PORT = 41_730')
+    expect(updateInteractionTests).toContain('server: { host: \'127.0.0.1\', port: UPDATE_SECTION_VITE_PORT, strictPort: false }')
     expect(updateInteractionTests.match(/\bbeforeAll\(/g)).toHaveLength(1)
     expect(updateInteractionTests).toContain('}, VITE_SERVER_HOOK_TIMEOUT_MS)')
   })
@@ -196,7 +198,7 @@ describe('Windows official in-app update E2E contract', () => {
     const controlPath = join(root, 'control.jsonl')
     writeFileSync(controlPath, [
       JSON.stringify({ sequence: 1, state: 'running' }),
-      JSON.stringify({ sequence: 2, state: 'quiet' }),
+      JSON.stringify({ sequence: 2, state: 'legacy-bridge-arm' }),
       '',
     ].join('\n'))
 
@@ -211,21 +213,21 @@ describe('Windows official in-app update E2E contract', () => {
 
   it('pins the official repository and accepts final semantic release tags only', () => {
     expect(OFFICIAL_UPDATE_REPOSITORY).toEqual({ owner: 'shuishuipingan', repo: 'InkWeaver' })
-    expect(normalizeFinalReleaseTag('v1.0.0', 'from_tag')).toBe('v1.0.0')
-    expect(normalizeFinalReleaseTag('1.1.0', 'expected_tag')).toBe('v1.1.0')
+    expect(normalizeFinalReleaseTag('v0.5.2', 'from_tag')).toBe('v0.5.2')
+    expect(normalizeFinalReleaseTag('0.6.0', 'expected_tag')).toBe('v0.6.0')
 
-    for (const invalid of ['v1.1.0-rc.1', 'v1.1.0+build.4', 'refs/heads/main', ' v1.1.0', 'v1.1']) {
+    for (const invalid of ['v0.6.0-rc.1', 'v0.6.0+build.4', 'refs/heads/main', ' v0.6.0', 'v0.6']) {
       expect(() => normalizeFinalReleaseTag(invalid, 'expected_tag')).toThrow('final semantic version')
     }
   })
 
   it('writes verified official assets only when expected_tag is the current formal latest release', async () => {
     const evidenceRoot = temporaryRoot()
-    const { fetcher, requests } = fixtureFetcher('v1.0.0', 'v1.1.0')
+    const { fetcher, requests } = fixtureFetcher('v0.5.2', 'v0.6.0')
 
     const plan = await createOfficialUpdatePlan({
-      fromTag: 'v1.0.0',
-      expectedTag: 'v1.1.0',
+      fromTag: 'v0.5.2',
+      expectedTag: 'v0.6.0',
       evidenceRoot,
       fetcher,
     })
@@ -233,64 +235,87 @@ describe('Windows official in-app update E2E contract', () => {
     expect(plan).toMatchObject({
       schemaVersion: 1,
       officialRepository: OFFICIAL_UPDATE_REPOSITORY,
-      from: { tag: 'v1.0.0', version: '1.0.0' },
-      expected: { tag: 'v1.1.0', version: '1.1.0' },
-      latest: { tag: 'v1.1.0' },
+      from: { tag: 'v0.5.2', version: '0.5.2' },
+      expected: { tag: 'v0.6.0', version: '0.6.0' },
+      latest: { tag: 'v0.6.0' },
     })
-    expect(plan.expected.assets.installer.name).toBe('inkweaver-setup-1.1.0.exe')
+    expect(plan.expected.assets.installer.name).toBe('inkweaver-setup-0.6.0.exe')
     expect(readFileSync(join(evidenceRoot, 'release-plan.json'), 'utf8')).toContain('sha256:')
     expect(requests).toEqual(expect.arrayContaining([
       'https://api.github.com/repos/shuishuipingan/InkWeaver/releases/latest',
-      'https://api.github.com/repos/shuishuipingan/InkWeaver/releases/tags/v1.0.0',
-      'https://api.github.com/repos/shuishuipingan/InkWeaver/releases/tags/v1.1.0',
+      'https://api.github.com/repos/shuishuipingan/InkWeaver/releases/tags/v0.5.2',
+      'https://api.github.com/repos/shuishuipingan/InkWeaver/releases/tags/v0.6.0',
     ]))
     expect(requests.every(url => url.includes('shuishuipingan/InkWeaver') || url.startsWith('https://downloads.example.test/'))).toBe(true)
   })
 
   it('rejects a non-latest expected tag and any mismatched GitHub asset digest', async () => {
     await expect(createOfficialUpdatePlan({
-      fromTag: 'v1.0.0',
-      expectedTag: 'v1.1.0',
+      fromTag: 'v0.5.2',
+      expectedTag: 'v0.6.0',
       evidenceRoot: temporaryRoot(),
-      fetcher: fixtureFetcher('v1.0.0', 'v1.1.0', { latestTag: 'v1.1.1' }).fetcher,
+      fetcher: fixtureFetcher('v0.5.2', 'v0.6.0', { latestTag: 'v0.6.1' }).fetcher,
     })).rejects.toThrow('expected_tag must equal the current latest formal Release')
 
     await expect(createOfficialUpdatePlan({
-      fromTag: 'v1.0.0',
-      expectedTag: 'v1.1.0',
+      fromTag: 'v0.5.2',
+      expectedTag: 'v0.6.0',
       evidenceRoot: temporaryRoot(),
-      fetcher: fixtureFetcher('v1.0.0', 'v1.1.0', { corruptDigest: true }).fetcher,
+      fetcher: fixtureFetcher('v0.5.2', 'v0.6.0', { corruptDigest: true }).fetcher,
     })).rejects.toThrow('SHA-256 digest does not match')
   })
 
-  it('rejects a pre-v1 source before any network request', async () => {
-    let requested = false
-    await expect(createOfficialUpdatePlan({
-      fromTag: 'v0.9.9',
-      expectedTag: 'v1.0.0',
-      evidenceRoot: temporaryRoot(),
-      fetcher: async () => {
-        requested = true
-        throw new Error('network must not be reached')
+  it('pre-arms a one-time legacy bridge only for sources older than v0.7.0', () => {
+    const historicalPlan = {
+      from: { tag: 'v0.6.0' },
+      expected: {
+        tag: 'v0.7.0',
+        assets: {
+          installer: {
+            name: 'inkweaver-setup-0.7.0.exe',
+            size: 234_679_883,
+            sha256: 'd751d4ed6edbef1589380304c1cfff521f0b97eeb9f1a2f0936b0032f579f66c',
+          },
+        },
       },
-    })).rejects.toThrow('from_tag must be v1.0.0 or newer')
-    expect(requested).toBe(false)
+    }
+
+    expect(createLegacyUpdateBridgePlan(historicalPlan, {
+      localAppData: 'C:\\Users\\runneradmin\\AppData\\Local',
+    })).toEqual({
+      mode: 'legacy-bridge',
+      sourceTag: 'v0.6.0',
+      expectedPendingInstallerPath: 'C:\\Users\\runneradmin\\AppData\\Local\\inkweaver-updater\\pending\\inkweaver-setup-0.7.0.exe',
+      expectedInstaller: {
+        name: 'inkweaver-setup-0.7.0.exe',
+        size: 234_679_883,
+        sha256: 'd751d4ed6edbef1589380304c1cfff521f0b97eeb9f1a2f0936b0032f579f66c',
+      },
+    })
+
+    expect(createLegacyUpdateBridgePlan({
+      ...historicalPlan,
+      from: { tag: 'v0.7.0' },
+      expected: { ...historicalPlan.expected, tag: 'v0.7.1' },
+    }, {
+      localAppData: 'C:\\Users\\runneradmin\\AppData\\Local',
+    })).toBeNull()
   })
 
   it('exposes a CLI with only release-tag and evidence-root inputs', () => {
     expect(parseWindowsInAppUpdateE2eCli([
       'prepare',
-      '--from-tag', 'v1.0.0',
-      '--expected-tag', 'v1.1.0',
+      '--from-tag', 'v0.5.2',
+      '--expected-tag', 'v0.6.0',
       '--evidence-root', 'C:\\evidence',
     ])).toEqual({
       command: 'prepare',
-      fromTag: 'v1.0.0',
-      expectedTag: 'v1.1.0',
+      fromTag: 'v0.5.2',
+      expectedTag: 'v0.6.0',
       evidenceRoot: 'C:\\evidence',
     })
     expect(() => parseWindowsInAppUpdateE2eCli([
-      'prepare', '--from-tag', 'v1.0.0', '--expected-tag', 'v1.1.0', '--repository', 'other/repo',
+      'prepare', '--from-tag', 'v0.5.2', '--expected-tag', 'v0.6.0', '--repository', 'other/repo',
     ])).toThrow('Usage:')
   })
 
@@ -309,8 +334,8 @@ describe('Windows official in-app update E2E contract', () => {
     expect(workflow).not.toContain('path: ${{ env.AI_NOVEL_UPDATE_E2E_EVIDENCE_ROOT }}')
     expect(workflow).toContain('node scripts/windows-in-app-update-e2e.mjs run')
     expect(workflow).toContain('shuishuipingan/InkWeaver')
-    expect(workflow).toContain('v1.0.0')
-    expect(workflow).toContain('v1.1.0')
+    expect(workflow).toContain('v0.5.2')
+    expect(workflow).toContain('v0.6.0')
 
     expect(powershell).toContain('smoke-win-installer.ps1')
     expect(powershell).toContain('monitor-win-release-gate.ps1')
@@ -336,12 +361,34 @@ describe('Windows official in-app update E2E contract', () => {
     expect(driver).toContain('checkButton.isEnabled()')
     expect(driver).toContain('restartButton.isVisible()')
 
+    expect(orchestration).toContain('createLegacyUpdateBridgePlan')
+    expect(orchestration).toContain("mode: 'legacy-bridge'")
+    expect(orchestration).toContain('legacyBridge,')
     expect(orchestration).toContain('AI_NOVEL_UPDATE_E2E_EVIDENCE_ROOT: resolvedEvidenceRoot')
     expect(orchestration).toContain('-MonitorControlPath')
     expect(orchestration).toContain('-MonitorStatusPath')
+    expect(powershell).toContain("state = 'legacy-bridge-arm'")
+    expect(powershell).toContain(
+      'foreach ($line in @(Get-Content -LiteralPath $ControlPath -Encoding UTF8))',
+    )
+    expect(powershell).toContain('Test-E2eLegacyBridgePendingInstaller')
+    expect(powershell).toContain('Invoke-E2eLegacyBridge')
+    expect(powershell).toContain('legacyInstallerHandoffObserved')
+    expect(powershell).toContain('legacyInteractiveWizardObserved')
+    expect(powershell).not.toContain('legacyInteractiveHandoffObserved')
+    expect(powershell).toContain("commandLineAuthorizationMode = 'record-only'")
+    expect(powershell).toContain('$preTriggerOldAppIdentity = Get-E2eLiveProcessIdentity')
+    expect(powershell).toContain('Old application identity changed before triggering the legacy updater handoff.')
+    expect(powershell).toContain('pendingInstallerDigestMatched')
+    expect(powershell).toContain('nativeSilentSourceVersion = $false')
+    expect(releaseMonitor).toContain('Test-AiNovelGateLegacyBridgeInstaller')
     expect(releaseMonitor).toContain('$env:AI_NOVEL_UPDATE_E2E_EVIDENCE_ROOT')
     expect(releaseMonitor).toContain("'runtime',")
     expect(releaseMonitor).toContain("'installed-app',")
+    expect(releaseMonitor).toContain('Test-AiNovelGateLegacyBridgeWizardWindow')
+    expect(releaseMonitor).toContain("'legacy-bridge-observed'")
+    expect(releaseMonitor).toContain("'legacy-bridge-terminated'")
+    expect(releaseMonitor).toContain('Release gate rejected a second legacy bridge installer process.')
     expect(releaseMonitor).toContain("displayed a new Windows error dialog")
   })
 
@@ -519,7 +566,7 @@ $velaHome = 'C:\\polluted-by-dot-source'
   })
 
   windowsPowerShellIt('waits only for the exact pending installer root to exit before force-run cleanup', () => {
-    const pendingInstallerPath = 'C:\\Users\\runneradmin\\AppData\\Local\\inkweaver-updater\\pending\\inkweaver-setup-1.1.0.exe'
+    const pendingInstallerPath = 'C:\\Users\\runneradmin\\AppData\\Local\\inkweaver-updater\\pending\\inkweaver-setup-0.8.0.exe'
     const output = runWindowsE2ePowerShellFunctions([
       'Assert-E2eCondition',
       'Test-E2eSameAbsolutePath',
@@ -573,7 +620,7 @@ try {
     return [pscustomobject]@{
       processId = 5936
       startTimeTicks = '639219050918203812'
-      executablePath = 'C:\\unexpected\\inkweaver-setup-1.1.0.exe'
+      executablePath = 'C:\\unexpected\\inkweaver-setup-0.8.0.exe'
     }
   })
 }

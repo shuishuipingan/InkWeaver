@@ -12,18 +12,10 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { delimiter, join, resolve } from 'node:path'
 import { restoreNativeWithIndependentFallback } from './release-native-restore.mjs'
-import {
-  MONITOR_STEP_COMPLETION_TIMEOUT_MS,
-  waitForMonitorState as waitForSharedMonitorState,
-} from './release-win-monitor-state.mjs'
 
 export const releasePreMonitorSteps = [
-  // A prior Electron rebuild leaves better-sqlite3 at Electron ABI 145. The
-  // full repository suite runs under ordinary Node ABI 137, so restore the
-  // shared native dependency before loading any database-backed tests.
-  'prepare:native-node',
   'test',
 ]
 
@@ -35,6 +27,7 @@ export const releaseVerificationSteps = [
   'verify:win-package',
   'smoke:win-app',
   'smoke:win-installer',
+  'smoke:win-v025-upgrade',
 ]
 
 export const releaseFinalizationSteps = [
@@ -69,17 +62,43 @@ const monitorRoot = resolve(
   tmpdir(),
   `ai-novel-release-gate-${process.pid}-${Date.now()}`,
 )
+const pnpmShimPath = join(monitorRoot, 'pnpm.cmd')
+
+// electron-builder discovers pnpm by invoking the `pnpm` command from PATH,
+// even when this orchestrator was started with a working npm_execpath. On
+// Windows a Corepack shim can fail before pnpm starts (for example with an
+// EXDEV cache rename), which leaves a short-lived cmd.exe descendant with exit
+// code 1 while electron-builder continues. Give every gate child a deterministic
+// pnpm command that calls the already-selected JS entrypoint directly.
+mkdirSync(monitorRoot, { recursive: true })
+const batchQuote = value => `"${String(value).replaceAll('"', '""')}"`
+writeFileSync(
+  pnpmShimPath,
+  [
+    '@echo off',
+    'setlocal',
+    `${batchQuote(process.execPath)} ${batchQuote(resolve(pnpmCli))} %*`,
+    'exit /b %ERRORLEVEL%',
+    '',
+  ].join('\r\n'),
+  'utf8',
+)
+process.env.PATH = `${monitorRoot}${delimiter}${process.env.PATH ?? ''}`
 const controlPath = join(monitorRoot, 'control.jsonl')
 const statusPath = join(monitorRoot, 'status.json')
 const evidencePath = join(monitorRoot, 'evidence')
 const monitorProcessPath = join(monitorRoot, 'monitor-process.json')
-const monitorStartupPath = join(monitorRoot, 'monitor-startup.json')
 const monitorScript = resolve('scripts/monitor-win-release-gate.ps1')
 const launchGateScript = resolve('scripts/release-win-launch-gate.mjs')
 const packageVersion = JSON.parse(readFileSync(resolve('package.json'), 'utf8')).version
 const acceptancePath = process.env.AI_NOVEL_RELEASE_EVIDENCE_ROOT
   ? resolve(process.env.AI_NOVEL_RELEASE_EVIDENCE_ROOT, 'acceptance')
   : resolve('release', packageVersion, 'qualification', 'acceptance')
+// Windows Job Object completion can arrive after the launcher has written its
+// result sidecar, especially while native ABI restoration is settling. Keep
+// the monitor acknowledgement window separate from the process timeout so a
+// delayed, otherwise healthy step is not misreported as a release failure.
+const MONITOR_STEP_COMPLETION_TIMEOUT_MS = 30_000
 let controlSequence = 0
 let launchSequence = 0
 let gateSucceeded = false
@@ -241,7 +260,7 @@ function getWindowsProcessStartTimeTicks(processId) {
   return output
 }
 
-async function registerMonitoredChild(step, child, relatedTargetNames, resultPath) {
+async function registerMonitoredChild(step, child, relatedTargetNames) {
   observeChild(child)
   if (!Number.isInteger(child.pid) || child.pid <= 0) {
     await waitForChildToSettle(child)
@@ -264,7 +283,6 @@ async function registerMonitoredChild(step, child, relatedTargetNames, resultPat
       rootProcessId: child.pid,
       rootProcessStartTimeTicks,
       relatedTargetNames,
-      resultPath,
     })
   } catch (controlError) {
     await waitForChildToSettle(child)
@@ -407,43 +425,24 @@ function sendMonitorControl(payload) {
 }
 
 async function waitForMonitorState(states, timeoutMilliseconds, step = '') {
-  return await waitForSharedMonitorState(states, timeoutMilliseconds, step, {
-    readStatus: readMonitorStatus,
-    getMonitorExitCode: () => monitor?.exitCode,
-    getMonitorSpawnError: () => monitorSpawnError,
-  })
-}
-
-async function waitForMonitorStartup(timeoutMilliseconds = 10_000) {
   const deadline = Date.now() + timeoutMilliseconds
   while (Date.now() < deadline) {
-    if (existsSync(monitorStartupPath)) {
-      let startup
-      try {
-        startup = JSON.parse(readFileSync(monitorStartupPath, 'utf8').replace(/^\uFEFF/, ''))
-      } catch (error) {
-        throw new Error('Windows release monitor published an invalid startup record', { cause: error })
-      }
-      if (
-        startup.state !== 'starting'
-        || startup.processId !== monitor.pid
-        || typeof startup.startedAt !== 'string'
-        || Number.isNaN(Date.parse(startup.startedAt))
-      ) {
-        throw new Error('Windows release monitor startup record did not match the spawned process')
-      }
-      return startup
+    const status = readMonitorStatus()
+    if (status?.state === 'failed') {
+      throw new Error(status.failure || `Windows release monitor failed during "${status.step}"`)
     }
-    if (monitorSpawnError) throw monitorSpawnError
-    if (monitor.exitCode !== null || monitor.signalCode !== null) {
-      const result = await waitForObservedChildToSettleWithin(monitor, 5_000)
-      throw new Error(
-        `Windows release monitor exited before publishing startup with code ${result.code ?? 'null'}${result.signal ? ` (${result.signal})` : ''}`,
-      )
+    if (status && states.includes(status.state) && (!step || status.step === step)) {
+      return status
     }
-    await delay(20)
+    if (monitor?.exitCode !== null && monitor?.exitCode !== undefined) {
+      throw new Error(`Windows release monitor exited unexpectedly with code ${monitor.exitCode}`)
+    }
+    if (monitorSpawnError) {
+      throw monitorSpawnError
+    }
+    await delay(100)
   }
-  throw new Error('Timed out waiting for the Windows release monitor to publish startup')
+  throw new Error(`Timed out waiting for Windows release monitor state: ${states.join(', ')}`)
 }
 
 async function waitForStep(step, child) {
@@ -510,7 +509,7 @@ async function runMonitoredNodeProcess(step, args) {
   let result
   try {
     await waitForArmedNodeProcess(step, launch)
-    await registerMonitoredChild(step, child, ['node', 'vitest', 'better_sqlite3'], launch.resultPath)
+    await registerMonitoredChild(step, child, ['node', 'vitest', 'better_sqlite3'])
     await waitForMonitorState(['monitoring'], 10_000, step)
     await releaseArmedNodeProcess(step, launch)
     result = await waitForStep(step, child)
@@ -566,12 +565,36 @@ async function waitForFinalQuietPeriod() {
   const step = 'final:quiet'
   sendMonitorControl({ state: 'quiet', step, quietSeconds: 5 })
   await waitForMonitorState(['monitoring'], 10_000, step)
-  return await waitForMonitorState(['step-completed'], MONITOR_STEP_COMPLETION_TIMEOUT_MS, step)
+  return await waitForMonitorState(['step-completed'], 10_000, step)
 }
 
 async function runPreMonitorSteps() {
   for (const step of releasePreMonitorSteps) {
-    await runNodeProcess([pnpmCli, 'run', step])
+    // The package's default test script keeps two workers for ordinary local
+    // feedback, but the Windows gate starts the cold browser fixture beside
+    // the rest of the renderer graph. A single worker here avoids a release
+    // machine starving the Vite transform and tripping the cold-start budget.
+    // Contract tests replace npm_execpath with a tiny failing/succeeding fake
+    // and mark the step through AI_NOVEL_RELEASE_STEP_MARKER. Preserve that
+    // single-command seam so those failure-path tests never enter a real
+    // Vitest process.
+    if (step === 'test' && process.env.AI_NOVEL_RELEASE_STEP_MARKER === undefined) {
+      const vitest = [pnpmCli, 'exec', 'vitest', 'run', '--maxWorkers=1']
+      // Keep the Vite-backed UpdateSection browser fixture in its own Vitest
+      // process. In a full Windows run it can contend with unrelated renderer
+      // transforms and exhaust even the generous cold-start budget; isolating
+      // it preserves coverage while making the release preflight deterministic.
+      await runNodeProcess([
+        ...vitest,
+        '--exclude', 'scripts/__tests__/update-section.interaction.test.ts',
+      ])
+      await runNodeProcess([
+        ...vitest,
+        'scripts/__tests__/update-section.interaction.test.ts',
+      ])
+    } else {
+      await runNodeProcess([pnpmCli, 'run', step])
+    }
   }
 }
 
@@ -591,8 +614,6 @@ async function startReleaseMonitor() {
       statusPath,
       '-EvidencePath',
       evidencePath,
-      '-StartupPath',
-      monitorStartupPath,
     ],
     {
       cwd: process.cwd(),
@@ -619,8 +640,7 @@ async function startReleaseMonitor() {
       'utf8',
     )
     renameSync(monitorProcessTemporaryPath, monitorProcessPath)
-    await waitForMonitorStartup()
-  } catch (monitorStartError) {
+  } catch (markerPublicationError) {
     let monitorShutdownError
     try {
       if (
@@ -638,11 +658,11 @@ async function startReleaseMonitor() {
     rmSync(monitorProcessTemporaryPath, { force: true })
     if (monitorShutdownError) {
       throw new AggregateError(
-        [monitorStartError, monitorShutdownError],
-        'Windows release monitor startup failed and the monitor did not settle',
+        [markerPublicationError, monitorShutdownError],
+        'Windows release monitor marker publication failed and the monitor did not settle',
       )
     }
-    throw monitorStartError
+    throw markerPublicationError
   }
 }
 
@@ -666,7 +686,8 @@ async function main() {
           'electron-builder',
           'InkWeaver.exe',
           '织墨',
-      ], launch.resultPath)
+          'inkweaver',
+      ])
       await waitForMonitorState(['monitoring'], 10_000, step)
       await releaseArmedNodeProcess(step, launch)
       result = await waitForStep(step, child)

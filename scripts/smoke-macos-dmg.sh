@@ -50,6 +50,29 @@ dmg_mount_receipt="$acceptance_directory/dmg-mount.json"
 packaged_smoke_receipt="$acceptance_directory/packaged-smoke.json"
 signing_receipt="$acceptance_directory/signing.json"
 
+extractPackagedEvidence() {
+  local input_file="$1"
+  local output_file="$2"
+  local expected_kind="$3"
+  node - "$input_file" "$output_file" "$expected_kind" <<'NODE'
+const fs = require('node:fs')
+const [input, output, expectedKind] = process.argv.slice(2)
+const lines = fs.readFileSync(input, 'utf8').split(/\r?\n/).reverse()
+for (const line of lines) {
+  const start = line.indexOf('{')
+  if (start < 0) continue
+  try {
+    const candidate = JSON.parse(line.slice(start))
+    if (candidate?.schemaVersion === 1 && candidate?.kind === expectedKind) {
+      fs.writeFileSync(output, `${JSON.stringify(candidate)}\n`, 'utf8')
+      process.exit(0)
+    }
+  } catch { /* diagnostic/log lines are not evidence */ }
+}
+throw new Error(`Packaged smoke output did not contain ${expectedKind} evidence: ${input}`)
+NODE
+}
+
 write_dmg_mount_receipt() {
   node - "$dmg_mount_receipt" "$dmg" "$app" "$executable" "$secure_helper" "$dmg_sha256" "$mount_point" "$unmount_attempted" "$unmount_succeeded" "$target_arch" "$runner_machine_arch" <<'NODE'
 const fs = require('node:fs')
@@ -130,9 +153,9 @@ if [[ -z "$app" ]]; then
   echo 'Mounted DMG does not contain an application bundle.' >&2
   exit 1
 fi
-executable="$app/Contents/MacOS/InkWeaver"
+executable="$(find "$app/Contents/MacOS" -maxdepth 1 -type f -perm -111 -print -quit)"
 if [[ ! -x "$executable" ]]; then
-  echo "Missing executable in mounted application: $executable" >&2
+  echo "Missing executable in mounted application: $app/Contents/MacOS" >&2
   exit 1
 fi
 secure_helper="$app/Contents/Resources/security/darwin-safe-file-system"
@@ -312,35 +335,30 @@ skin_token="$(node -e "process.stdout.write(require('node:crypto').randomBytes(3
 vector_evidence="$qualification_directory/packaged-vector-smoke.json"
 homepage_evidence="$qualification_directory/packaged-official-homepage-smoke.json"
 skin_evidence="$qualification_directory/packaged-skin-smoke.json"
+vector_output="$smoke_root/packaged-vector-smoke.stdout"
+homepage_output="$smoke_root/packaged-official-homepage-smoke.stdout"
+skin_output="$smoke_root/packaged-skin-smoke.stdout"
 
 run_with_timeout 'packaged vector smoke' 120 env \
   ELECTRON_RUN_AS_NODE=1 HOME="$smoke_home" AI_NOVEL_RELEASE_SMOKE=1 AI_NOVEL_RELEASE_SMOKE_TOKEN="$token" \
-  "$executable" "$vector_runner" "--ai-novel-release-smoke=$token" > "$vector_evidence"
+  "$executable" "$vector_runner" "--ai-novel-release-smoke=$token" > "$vector_output"
 run_with_timeout 'packaged official homepage smoke' 300 env \
   HOME="$smoke_home" AI_NOVEL_RELEASE_HOMEPAGE_SMOKE=1 AI_NOVEL_RELEASE_HOMEPAGE_SMOKE_TOKEN="$token" \
-  "$executable" "--ai-novel-release-homepage-smoke=$token" > "$homepage_evidence"
+  "$executable" "--ai-novel-release-homepage-smoke=$token" > "$homepage_output"
 run_with_timeout 'packaged skin smoke' 120 env \
   HOME="$smoke_home" AI_NOVEL_VELA_HOME="$skin_home" AI_NOVEL_RELEASE_SKIN_SMOKE=1 AI_NOVEL_RELEASE_SKIN_SMOKE_TOKEN="$skin_token" \
-  "$executable" "--ai-novel-release-skin-smoke=$skin_token" > "$skin_evidence"
+  "$executable" "--ai-novel-release-skin-smoke=$skin_token" > "$skin_output"
+
+extractPackagedEvidence "$vector_output" "$vector_evidence" 'packaged-vector-smoke'
+extractPackagedEvidence "$homepage_output" "$homepage_evidence" 'packaged-official-homepage-smoke'
+extractPackagedEvidence "$skin_output" "$skin_evidence" 'packaged-skin-smoke'
 
 node - "$vector_evidence" "$homepage_evidence" "$skin_evidence" <<'NODE'
 const fs = require('node:fs')
 const [vectorFile, homepageFile, skinFile] = process.argv.slice(2)
-function readEvidence(file) {
-  const line = fs.readFileSync(file, 'utf8')
-    .split(/\r?\n/)
-    .map((value) => value.trim())
-    .reverse()
-    .find((value) => value.startsWith('{') && value.endsWith('}'))
-  if (!line) throw new Error('Missing JSON evidence line: ' + file)
-  return JSON.parse(line)
-}
-const vector = readEvidence(vectorFile)
-const homepage = readEvidence(homepageFile)
-const skin = readEvidence(skinFile)
-for (const [file, value] of [[vectorFile, vector], [homepageFile, homepage], [skinFile, skin]]) {
-  fs.writeFileSync(file, JSON.stringify(value) + '\n', 'utf8')
-}
+const vector = JSON.parse(fs.readFileSync(vectorFile, 'utf8'))
+const homepage = JSON.parse(fs.readFileSync(homepageFile, 'utf8'))
+const skin = JSON.parse(fs.readFileSync(skinFile, 'utf8'))
 if (vector?.schemaVersion !== 1 || vector?.kind !== 'packaged-vector-smoke') throw new Error('Invalid vector smoke evidence')
 if (homepage?.schemaVersion !== 1 || homepage?.kind !== 'packaged-official-homepage-smoke') throw new Error('Invalid homepage smoke evidence')
 if (skin?.schemaVersion !== 1 || skin?.kind !== 'packaged-skin-smoke') throw new Error('Invalid skin smoke evidence')

@@ -22,6 +22,6 @@ describe('novel asset browser wire parser', () => {
     { target: { kind: 'project' }, revision: 'not-a-revision', text: '{}\n', bytes: 3 },
     { target: { kind: 'project' }, revision: 'a'.repeat(64), text: '{}\n', bytes: 3, source: 'project.json' },
   ])('rejects an invalid or path-bearing response %#', value => {
-    expect(() => parseNovelAssetReadResult(value)).toThrow('InkWeaver context response is invalid')
+    expect(() => parseNovelAssetReadResult(value)).toThrow('AI novel context response is invalid')
   })
 })

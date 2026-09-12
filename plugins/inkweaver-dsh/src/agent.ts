@@ -5,7 +5,6 @@ import type {} from '@deepseek-ai/dsh-agent-presets'
 import type { Workspace } from '@deepseek-ai/dsh-workspace'
 import { defineTool, ToolArgsError } from '@deepseek-ai/dsh-tools'
 import type { PreToolDecision, ToolDefinition } from '@deepseek-ai/dsh-tools'
-import type { JsonValue } from '@deepseek-ai/dsh-session'
 import z from '@deepseek-ai/schemastery'
 import {
   canonicalNovelAssetText, canonicalNovelInitialization, novelAssetSource, openNovelProject,
@@ -18,21 +17,18 @@ import {
   type NovelStore,
 } from './novel-store.ts'
 import { projectNovelStateRead } from './command-rpc.ts'
-import {
-  INKWEAVER_PACKAGE_NAME,
-  INKWEAVER_PRESET_ID,
-  INKWEAVER_V2_PRESET_ID,
-} from './identity.ts'
 import type {
   AssetRef, CreativeStrategy, NovelApplyRequest, NovelProjectId, NovelReadRequest, Revision,
 } from './types.ts'
 
 const DEFAULT_ASSET_BYTES = 512 * 1024
 const DEFAULT_WORKING_SET_BYTES = 512 * 1024
+
+type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue }
 const DEFAULT_QUERY_MATCHES = 20
-const NOVEL_PRESET_ID = INKWEAVER_PRESET_ID
+const NOVEL_PRESET_ID = 'inkweaver'
 const NOVEL_TOOL_NAMES: ReadonlySet<string> = new Set(['novel_read', 'novel_apply_change'])
-const NOVEL_V2_PRESET_ID = INKWEAVER_V2_PRESET_ID
+const NOVEL_V2_PRESET_ID = 'inkweaver-v2'
 const NOVEL_V2_TOOL_NAMES: ReadonlySet<string> = new Set(['novel_read', 'novel_propose_change'])
 
 /**
@@ -43,7 +39,7 @@ const NOVEL_V2_TOOL_NAMES: ReadonlySet<string> = new Set(['novel_read', 'novel_p
  * symbol on the live Agent is shared by both entries without becoming a Host
  * service or persisted state.
  */
-const DEDICATED_SURFACE_INSTALLATION = Symbol.for(`${INKWEAVER_PACKAGE_NAME}/dedicated-surface-installation`)
+const DEDICATED_SURFACE_INSTALLATION = Symbol.for('@shuishuipingan/inkweaver-dsh/dedicated-surface-installation')
 type DedicatedSurfaceInstallation = { readonly presetId: string; readonly dispose: () => void }
 
 function dedicatedSurfaceInstallationFor(agent: Agent): DedicatedSurfaceInstallation | undefined {
@@ -59,13 +55,13 @@ function clearDedicatedSurfaceInstallation(agent: Agent, dispose: () => void): v
     Reflect.deleteProperty(agent, DEDICATED_SURFACE_INSTALLATION)
   }
 }
-const V2_PROPOSAL_PROTOCOL_SECTION = `${INKWEAVER_V2_PRESET_ID}:proposal-protocol`
+const V2_PROPOSAL_PROTOCOL_SECTION = 'inkweaver-v2:proposal-protocol'
 const V2_PROJECT_NEXT_VALUE_CONTRACT = '项目设置 aggregate.kind "project" 的 nextValue 必须且只能包含 title、language、genre、plannedChapters、targetWordsPerChapter、creativeStrategy、structureMode、narrativePov、globalGuidance、createdAt、updatedAt；不得包含 revision 或遗漏任何字段。createdAt 与 updatedAt 都必须从刚读取的 state 原样复制为 canonical ISO-8601 UTC 时间戳，即使本轮未修改时间也不可遗漏、改写或编造。'
-const V2_CHAPTER_BLUEPRINT_NEXT_VALUE_CONTRACT = '章节蓝图 aggregate.kind "chapter" 的 nextValue 必须且只能包含 chapter、title、purpose、plotBeats、characters、keyEvents、suspense、status；chapter 为正整数，且必须等于 aggregate.chapter 与作者请求的章节；title 和 purpose 为非空字符串；plotBeats、characters、keyEvents 都是字符串数组，characters 中的字符串必须唯一；suspense 为字符串；status 只能是 "planned"、"drafting"、"reviewing"、"revising" 或 "finalized"；不得遗漏字段、加入 revision 或其他字段，也不得用字符串代替任一列表。'
+const V2_CHAPTER_BLUEPRINT_NEXT_VALUE_CONTRACT = '章节蓝图 aggregate.kind "chapter" 的 nextValue 必须包含且只能包含基础字段 chapter、title、purpose、plotBeats、characters、keyEvents、suspense、status，并可选包含 handoff 与 knowledgeEvents；chapter 为正整数，且必须等于 aggregate.chapter 与作者请求的章节；title 和 purpose 为非空字符串；plotBeats、characters、keyEvents 都是字符串数组，characters 中的字符串必须唯一；suspense 为字符串；status 只能是 "planned"、"drafting"、"reviewing"、"revising" 或 "finalized"；handoff（若提供）必须绑定紧邻上一章并包含 sourceChapter、sourceRevision、transition、scene、emotionalState、openActions、unresolvedQuestions；knowledgeEvents（若提供）必须是带稳定 eventId、characterId、statement、kind、acquisition、sourceChapter、validFromChapter、evidence、status 的数组，只有 status=confirmed 的事件会进入下一章上下文；不得遗漏基础字段、加入 revision 或其他字段，也不得用字符串代替任一列表。'
 const V2_CHAPTER_BLUEPRINT_CHARACTER_IDS_CONTRACT = '章节蓝图的 nextValue.characters 是角色 ID 列表：只能从刚读取的 state.characters.items[].characterId 逐字复制已存在的值。不得写 display name、角色姓名、别名或 role；例如 state 中 name 为“阿澈”、characterId 为“ache”时，characters 必须写 "ache"，不能写 "阿澈"。'
 const V2_PROPOSAL_PROTOCOL = [
   '织墨 V2 使用宿主的原生函数调用：每个工具的完整输入就是直接传给工具的 JSON 对象；不得写标签式工具调用文本，也不得在顶层包一层 "arguments"。每次创作请求先调用 novel_read，novel_read 的完整输入必须严格为 {"kind":"state"}，不得附加字段。',
-  '只有在已读取状态且确实需要上一章定稿连续性时，才可额外调用 novel_read，其完整输入必须严格为 {"kind":"chapter-context","chapter":N}；同样不得包一层 "arguments"。',
+  '只有在已读取状态且确实需要上一章定稿连续性、章节交接或已确认知情事件时，才可额外调用 novel_read，其完整输入必须严格为 {"kind":"chapter-context","chapter":N}；返回的 handoff 与 knowledgeEvents 都是只读来源证据，候选事件不会进入上下文；同样不得包一层 "arguments"。',
   '随后至多调用一次 novel_propose_change。novel_propose_change 的直接输入必须严格为 {"changes":[...]}。只有刚由 Host 返回 regenerationTicket 时，直接输入必须为 {"changes":[...],"regenerationTicket":"<opaque ticket>"}；不得将输入整体字符串化，也不得在输入内嵌套名为 arguments 的属性；不要加入 sessionId、callId、argsHash、operation 或 provenance。',
   '发出常规 novel_propose_change 前，先做 JSON 括号配对检查：直接输入文本必须以 {"changes":[ 开始，并按顺序以 ]} 结束；唯一 changes 命令的 } 后必须紧跟 ] 关闭数组，再跟 } 关闭直接输入。',
   '每次 novel_propose_change 的 changes 必须恰好包含一个命令；同一 Proposal 禁止提交两个或更多 changes，也不得包含当前阶段以外的聚合或正文版本命令。',
@@ -375,7 +371,7 @@ function resolvedOptions(config: Config): NovelProjectOptions {
 
 function workspaceRoot(agent: Agent | undefined): string {
   const cwd = agent?.session.header.cwd
-  if (cwd === undefined) throw new Error('InkWeaver tools require a session with a workspace cwd')
+  if (cwd === undefined) throw new Error('AI novel tools require a session with a workspace cwd')
   return cwd
 }
 
@@ -414,8 +410,8 @@ export function presentNovelChange(request: NovelApplyRequest) {
   if (request.kind === 'initialize') {
     return {
       card: 'diff' as const, title: `创建小说项目：${request.title}`,
-      diffs: [{ path: '.inkweaver/project.json', oldText: null, newText: initializePreview(request) }],
-      locations: [{ path: '.inkweaver/project.json' }],
+      diffs: [{ path: '.ai-novel/project.json', oldText: null, newText: initializePreview(request) }],
+      locations: [{ path: '.ai-novel/project.json' }],
     }
   }
   const path = novelAssetSource(request.target)
@@ -523,7 +519,7 @@ export function createNovelV2ToolDefinitions(
   }
   const resolveWorkspace = async (exec: { readonly agent?: Agent }): Promise<Pick<Workspace, 'id' | 'path'>> => {
     const workspace = await workspaces.resolveByPath(workspaceRoot(exec.agent))
-    if (workspace === undefined) throw new ToolArgsError(['InkWeaver V2 tools require a registered Workspace'])
+    if (workspace === undefined) throw new ToolArgsError(['AI novel V2 tools require a registered Workspace'])
     return workspace
   }
   const read = defineTool({
@@ -569,7 +565,7 @@ export function createNovelV2ToolDefinitions(
     async execute(args, exec) {
       parseProposalArgs(args as Record<string, unknown>)
       const sessionId = exec.agent?.session.id
-      if (sessionId === undefined) throw new ToolArgsError(['InkWeaver V2 tools require a session identity'])
+      if (sessionId === undefined) throw new ToolArgsError(['AI novel V2 tools require a session identity'])
       const workspace = await resolveWorkspace(exec)
       const store: NovelStore = await openNovelStore(workspace.path, workspace.id, options)
       try {
@@ -594,7 +590,7 @@ export function createNovelV2ToolDefinitions(
 }
 
 /** Stable Cordis plugin name. */
-export const name = `${INKWEAVER_PRESET_ID}-agent`
+export const name = 'inkweaver-agent'
 
 /** Required host services for agent lookup, scoped tools, prompt projection, and policy. */
 export const inject = ['agents', 'systemPrompt', 'tools']

@@ -962,7 +962,7 @@ export function NovelV2WorkbenchBody({
       }
       const artifacts = (state.workspace.snapshot.artifacts ?? []).filter(item => item.chapter === chapter.chapter)
       const final = (state.workspace.snapshot.chapterFinals ?? []).find(item => item.chapter === chapter.chapter)
-      const context = state.chapters.context ?? { phase: 'idle' as const, chapter: undefined, previousFinal: undefined, message: undefined }
+      const context = state.chapters.context ?? { phase: 'idle' as const, chapter: undefined, previousFinal: undefined, handoff: undefined, knowledgeEvents: undefined, message: undefined }
       return <section className="aiNovelV2Panel" aria-labelledby="ai-novel-v2-chapter">
         <h3 id="ai-novel-v2-chapter">第 {chapter.chapter} 章蓝图</h3>
         <dl className="aiNovelV2Summary">
@@ -1011,13 +1011,27 @@ export function NovelV2WorkbenchBody({
           authoringBlocker={authoringBlocker}
           disabled={state.workspace.readOnly || v2AuthoringBusy(authoring?.phase)}
         />
-        <section className="aiNovelV2ChapterContext" aria-label={`第 ${chapter.chapter} 章的上一章定稿上下文`}>
-          <h4>第 {chapter.chapter} 章的上一章定稿上下文</h4>
+        <section className="aiNovelV2ChapterContext" aria-label={`第 ${chapter.chapter} 章的连续性上下文`}>
+          <h4>第 {chapter.chapter} 章的连续性上下文</h4>
           {context.chapter !== chapter.chapter || context.phase === 'idle' ? <p className="aiNovelContextMuted">尚未读取本章上下文。</p>
             : context.phase === 'loading' ? <p className="aiNovelContextMuted" aria-live="polite">正在读取上一章定稿上下文…</p>
               : context.phase === 'failed' ? <p role="alert">{authorFailureMessage('context')}</p>
-                : context.previousFinal === undefined ? <p className="aiNovelContextMuted">没有上一章已定稿内容可带入本章。</p>
-                  : <><p>第 {context.previousFinal.chapter} 章 · {context.previousFinal.summary}</p><pre>{context.previousFinal.content}</pre></>}
+                : <>
+                    {context.previousFinal === undefined
+                      ? <p className="aiNovelContextMuted">没有上一章已定稿内容可带入本章。</p>
+                      : <><p>第 {context.previousFinal.chapter} 章 · {context.previousFinal.summary}</p><pre>{context.previousFinal.content}</pre></>}
+                    {context.handoff === undefined ? undefined : <div className="aiNovelV2ContextEvidence">
+                      <h5>章节交接</h5>
+                      <p>{context.handoff.transition === 'immediate' ? '即时承接' : '刻意转场'} · 来源第 {context.handoff.sourceChapter} 章</p>
+                      <p>{context.handoff.scene} · {context.handoff.emotionalState || '未记录情绪状态'}</p>
+                      {context.handoff.openActions.length > 0 ? <TextList items={context.handoff.openActions} empty="暂无待行动作" /> : undefined}
+                      {context.handoff.unresolvedQuestions.length > 0 ? <TextList items={context.handoff.unresolvedQuestions} empty="暂无未解问题" /> : undefined}
+                    </div>}
+                    {context.knowledgeEvents === undefined ? undefined : <div className="aiNovelV2ContextEvidence">
+                      <h5>已确认知情范围</h5>
+                      <ul>{context.knowledgeEvents.map(event => <li key={event.eventId}><strong>{event.characterId}</strong> · {event.statement}<span>（{event.kind} · {event.acquisition}）</span></li>)}</ul>
+                    </div>}
+                  </>}
         </section>
       </section>
       })()}

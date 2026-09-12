@@ -23,8 +23,6 @@ import {
   Activity, CheckCircle2, XCircle, Zap, Database, Gauge, Clock, BarChart3, RefreshCw, Tag,
 } from 'lucide-react'
 
-const EMPTY_HISTORY: LLMCallRecord[] = []
-
 function formatTokens(n: number | null): string {
   if (n === null) return '—'
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(2) + 'M'
@@ -129,7 +127,7 @@ function DonutChart({ title, icon: Icon, rows }: {
       const pct = (v.tokens / total) * 100
       return { name, value: v, startAngle, endAngle, x1, y1, x2, y2, largeArc, pct, color: SEGMENT_COLORS[i % SEGMENT_COLORS.length] }
     })
-  }, [rows, total, CX, CY])
+  }, [rows, total])
 
   if (total <= 0 || segments.length === 0) {
     return (
@@ -221,7 +219,7 @@ export default function StatsView() {
 
   const visibleData = data && sameProjectSessionContext(data.projectSession, projectSession) ? data : null
   const stats = visibleData?.stats ?? null
-  const history = visibleData?.history ?? EMPTY_HISTORY
+  const history = visibleData?.history ?? []
 
   const load = useMemo(() => () => {
     if (!projectSession) { requestGate.invalidate(); return }
@@ -304,6 +302,10 @@ export default function StatsView() {
               <KpiCard icon={CheckCircle2} label={text('成功率', 'Success')} value={successRate === null ? '—' : successRate + '%'} sub={(stats?.successfulCalls ?? 0) + ' 成功'} tone="success" />
               <KpiCard icon={XCircle} label={text('失败', 'Failed')} value={String(stats?.failedCalls ?? 0)} tone="danger" />
               <KpiCard icon={Zap} label={text('总消耗', 'Tokens')} value={formatTokens(stats?.totalTokens ?? null)} sub={formatTokens(stats?.totalPromptTokens ?? null) + ' 输入 / ' + formatTokens(stats?.totalCompletionTokens ?? null) + ' 输出'} tone="accent" />
+            </div>
+            <div className="rounded-lg border px-3 py-2 text-[0.68rem]" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-hover)', color: 'var(--color-text-secondary)' }} data-cost-estimate-status="unavailable">
+              <div className="font-medium text-[var(--color-text)]">{text('费用估算', 'Cost estimate')}</div>
+              <div className="mt-0.5">{text('当前只显示服务商回报的 token 用量；未配置并核验的官方价格快照不会被换算成美元，也不会把缺失用量显示为 0。', 'Only provider-reported token usage is shown. Without a verified official price snapshot, InkWeaver does not invent a dollar estimate or turn missing usage into zero.')}</div>
             </div>
 {/* 缓存命中率 */}
             <CacheRateBar hit={stats?.totalCacheHitTokens ?? 0} miss={stats?.totalCacheMissTokens ?? 0} />

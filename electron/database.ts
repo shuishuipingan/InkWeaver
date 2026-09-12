@@ -98,6 +98,17 @@ function createTables(db: BetterSqlite3.Database, importSourceSecret?: Buffer) {
     );
 
     -- ============================================================
+    -- 1b. writing_style_history — AI 文风档案版本
+    -- ============================================================
+    CREATE TABLE IF NOT EXISTS writing_style_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      previous_style TEXT NOT NULL DEFAULT '',
+      next_style TEXT NOT NULL DEFAULT '',
+      source_fingerprint TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    -- ============================================================
     -- 2. blueprints — 章节蓝图
     -- ============================================================
     CREATE TABLE IF NOT EXISTS blueprints (
@@ -342,6 +353,51 @@ function createTables(db: BetterSqlite3.Database, importSourceSecret?: Buffer) {
       FOREIGN KEY (draft_id) REFERENCES drafts(id) ON DELETE CASCADE
     );
 
+    -- Chapter handoffs are source-bound continuity candidates. They describe
+    -- where a finalized chapter leaves the story so the next chapter can
+    -- continue the scene, emotion, constraints, and unanswered questions.
+    CREATE TABLE IF NOT EXISTS chapter_handoffs (
+      handoff_id TEXT PRIMARY KEY,
+      draft_id INTEGER NOT NULL,
+      chapter_number INTEGER NOT NULL CHECK(chapter_number > 0),
+      source_content_hash TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'candidate'
+        CHECK(status IN ('candidate', 'confirmed', 'superseded', 'stale')),
+      payload_json TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      confirmed_at TEXT DEFAULT NULL,
+      FOREIGN KEY (draft_id) REFERENCES drafts(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_chapter_handoffs_chapter_status
+      ON chapter_handoffs(chapter_number, status, updated_at);
+
+    -- AI character extraction remains a reviewable candidate projection until
+    -- an author-approved roster commit applies it to the characters table.
+    CREATE TABLE IF NOT EXISTS character_extraction_candidates (
+      candidate_id TEXT PRIMARY KEY,
+      source_id TEXT NOT NULL,
+      source_hash TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending'
+        CHECK(status IN ('pending', 'accepted', 'rejected', 'stale', 'applied')),
+      payload_json TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_character_extraction_candidates_source
+      ON character_extraction_candidates(source_id, source_hash, status, updated_at);
+
+    CREATE TABLE IF NOT EXISTS knowledge_events (
+      event_id TEXT PRIMARY KEY,
+      character_name TEXT NOT NULL,
+      source_chapter INTEGER NOT NULL CHECK(source_chapter > 0),
+      status TEXT NOT NULL CHECK(status IN ('candidate', 'confirmed', 'rejected', 'stale')),
+      payload_json TEXT NOT NULL,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_knowledge_events_character_chapter
+      ON knowledge_events(character_name, source_chapter, status);
+
     CREATE TABLE IF NOT EXISTS narrative_thread_plans (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       title TEXT NOT NULL,
@@ -367,6 +423,13 @@ function createTables(db: BetterSqlite3.Database, importSourceSecret?: Buffer) {
     );
     CREATE INDEX IF NOT EXISTS idx_narrative_thread_confirmations_plan
       ON narrative_thread_confirmations(plan_id, draft_id, id);
+
+    CREATE TABLE IF NOT EXISTS story_continuity_plans (
+      chapter_number INTEGER PRIMARY KEY CHECK(chapter_number > 0),
+      revision INTEGER NOT NULL DEFAULT 0 CHECK(revision >= 0),
+      payload_json TEXT NOT NULL,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
 
     -- 索引
     CREATE INDEX IF NOT EXISTS idx_llm_calls_time ON llm_calls(created_at);
@@ -554,6 +617,13 @@ function createTables(db: BetterSqlite3.Database, importSourceSecret?: Buffer) {
   }
   if (!llmColumns.has('cache_miss_tokens')) {
     db.exec('ALTER TABLE llm_calls ADD COLUMN cache_miss_tokens INTEGER DEFAULT 0')
+  }
+
+  const revisionColumns = new Set(
+    (db.prepare('PRAGMA table_info(revisions)').all() as Array<{ name: string }>).map(column => column.name),
+  )
+  if (!revisionColumns.has('base_content_hash')) {
+    db.exec("ALTER TABLE revisions ADD COLUMN base_content_hash TEXT NOT NULL DEFAULT ''")
   }
 
   // Durable continuity facts were added to the existing summary projection so

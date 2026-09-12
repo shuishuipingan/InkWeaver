@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { findBlueprintContinuityRisks, mergeConsistencyFindingsIntoReview } from '../consistency-preflight'
+import { findBlueprintContinuityRisks, findMissingCharacterStateFindings, mergeConsistencyFindingsIntoReview } from '../consistency-preflight'
 
 describe('findBlueprintContinuityRisks', () => {
   const projection = [{
@@ -103,6 +103,112 @@ describe('findBlueprintContinuityRisks', () => {
     expect(ignored).toEqual([])
   })
 
+  it('reports an explicit finalized location that conflicts with the current blueprint', () => {
+    const findings = findBlueprintContinuityRisks([{
+      ...projection[0]!,
+      facts: [{
+        category: 'character-state' as const,
+        entities: ['顾舟'],
+        statement: '顾舟位于旧码头，正在等待接头人。',
+        sourceChapter: 1,
+        evidence: '顾舟站在旧码头的雨棚下。',
+      }],
+    }], {
+      chapterNumber: 2,
+      title: '车站重逢',
+      role: '发展',
+      purpose: '顾舟等待接头',
+      keyEvents: '顾舟在中央车站等待接头人。',
+      characters: ['顾舟'],
+      suspenseHook: '',
+      userGuidance: '',
+      notes: '',
+    }, [])
+
+    expect(findings).toHaveLength(1)
+    expect(findings[0]?.issue.zhCN).toContain('地点')
+    expect(findings[0]?.evidence).toContain('旧码头')
+  })
+
+  it('reports an explicit item ownership conflict between finalized facts and a blueprint', () => {
+    const findings = findBlueprintContinuityRisks([{
+      ...projection[0]!,
+      facts: [{
+        category: 'character-state' as const,
+        entities: ['林舟'],
+        statement: '林舟持有红色钥匙。',
+        sourceChapter: 1,
+        evidence: '林舟把红色钥匙收进口袋。',
+      }],
+    }], {
+      chapterNumber: 2,
+      title: '钥匙易主',
+      role: '发展',
+      purpose: '沈月寻找钥匙',
+      keyEvents: '沈月拿着红色钥匙走进车站。',
+      characters: ['林舟', '沈月'],
+      suspenseHook: '',
+      userGuidance: '',
+      notes: '',
+    }, [])
+
+    expect(findings).toHaveLength(1)
+    expect(findings[0]?.issue.zhCN).toContain('红色钥匙')
+    expect(findings[0]?.issue.zhCN).toContain('归属')
+  })
+
+  it('reports an explicit story-day conflict when both sources name different days', () => {
+    const findings = findBlueprintContinuityRisks([{
+      ...projection[0]!,
+      facts: [{
+        category: 'timeline' as const,
+        entities: ['林舟'],
+        statement: '第3天，林舟抵达旧码头。',
+        sourceChapter: 1,
+        evidence: '第3天清晨，林舟抵达旧码头。',
+      }],
+    }], {
+      chapterNumber: 2,
+      title: '第四天',
+      role: '发展',
+      purpose: '林舟继续追查',
+      keyEvents: '第2天，林舟在旧码头等待接头。',
+      characters: ['林舟'],
+      suspenseHook: '',
+      userGuidance: '',
+      notes: '',
+    }, [])
+
+    expect(findings).toHaveLength(1)
+    expect(findings[0]?.issue.zhCN).toContain('时间线')
+  })
+
+  it('reports a knowledge leak when a blueprint gives a secret to an unproven character', () => {
+    const findings = findBlueprintContinuityRisks([{
+      ...projection[0]!,
+      facts: [{
+        category: 'character-state' as const,
+        entities: ['林舟'],
+        statement: '林舟得知红门在旧码头。',
+        sourceChapter: 1,
+        evidence: '林舟从密信中得知红门在旧码头。',
+      }],
+    }], {
+      chapterNumber: 2,
+      title: '秘密扩散',
+      role: '发展',
+      purpose: '沈月已经知道红门在旧码头',
+      keyEvents: '沈月得知红门在旧码头，并改变了行动路线。',
+      characters: ['林舟', '沈月'],
+      suspenseHook: '',
+      userGuidance: '',
+      notes: '',
+    }, [])
+
+    expect(findings).toHaveLength(1)
+    expect(findings[0]?.issue.zhCN).toContain('知情')
+  })
+
   it('maps deterministic findings into the existing review item shape', () => {
     const finding = findBlueprintContinuityRisks(projection, {
       chapterNumber: 2, title: '重逢', role: '发展', purpose: '顾舟归来', keyEvents: '顾舟敲门',
@@ -110,9 +216,29 @@ describe('findBlueprintContinuityRisks', () => {
     }, [])[0]!
     const review = mergeConsistencyFindingsIntoReview({ summary: 'AI summary', items: [] }, [finding], 'en-US')
     expect(review.items).toEqual([expect.objectContaining({
-      category: 'Deterministic continuity preflight', severity: 'warning',
+      category: 'Deterministic continuity preflight [conflict]',
+      certainty: 'conflict',
+      severity: 'warning',
       quote: '表盖内侧刻着一组陌生坐标。',
     })])
     expect(review.items[0]?.description).toContain('顾舟')
   })
+
+  it('reports information-insufficient state for a blueprint character without finalized facts', () => {
+    const findings = findMissingCharacterStateFindings(projection, {
+      chapterNumber: 2,
+      title: '新人登场',
+      role: '发展',
+      purpose: '苏遥首次出现在车站',
+      keyEvents: '苏遥走进车站。',
+      characters: ['林岚', '苏遥'],
+      suspenseHook: '',
+      userGuidance: '',
+      notes: '',
+    })
+    expect(findings).toHaveLength(2)
+    expect(findings.every(finding => finding.certainty === 'insufficient' && finding.severity === 'warning')).toBe(true)
+    expect(findings.some(finding => finding.issue.zhCN.includes('苏遥') && finding.issue.enUS.includes('苏遥'))).toBe(true)
+  })
+
 })

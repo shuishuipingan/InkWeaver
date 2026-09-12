@@ -16,6 +16,10 @@ import {
 import { promptLanguageText } from '../../prompt-language'
 import { readConsistencyPreflight } from '../../consistency-preflight'
 import { mergeConsistencyFindingsIntoReview, type ReviewLike } from '../../../shared/consistency-preflight'
+import {
+  adjacentFindingsAsReviewItems,
+  inspectAdjacentContinuity,
+} from '../../../shared/adjacent-continuity'
 
 
 export interface ReviewChapterParams {
@@ -142,6 +146,57 @@ export class ReviewChapterCommand extends BaseWorkflowCommand<string> {
       }
       if (!sameProjectSessionContext(projectSession, projectSessionContextFromProject(useProjectStore.getState().currentProject))) {
         throw new Error(text('当前项目已切换，审稿已停止', 'The project changed, so the review stopped.'))
+      }
+    }
+
+    if (this.params.chapterNumber > 1) {
+      try {
+        const previousHandoff = await ipc.invokeWithProjectSession(
+          projectSession,
+          'db:chapter-handoff-latest-before',
+          this.params.chapterNumber,
+          context.projectPath,
+        )
+        let previousEnding = ''
+        const previousMeta = await ipc.invokeWithProjectSession(
+          projectSession,
+          'db:draft-get-finalized',
+          this.params.chapterNumber - 1,
+          context.projectPath,
+        )
+        if (previousMeta) {
+          const previousFull = await ipc.invokeWithProjectSession(
+            projectSession,
+            'db:draft-get-full',
+            previousMeta.id,
+            context.projectPath,
+          )
+          previousEnding = previousFull?.content?.slice(-1200) ?? ''
+        }
+        const findings = inspectAdjacentContinuity({
+          chapterNumber: this.params.chapterNumber,
+          currentDraft: draft,
+          previousEnding,
+          previousHandoff: previousHandoff ?? undefined,
+        })
+        if (findings.length > 0) {
+          parsedResult = {
+            ...parsedResult,
+            items: [
+              ...(Array.isArray(parsedResult.items) ? parsedResult.items : []),
+              ...adjacentFindingsAsReviewItems(findings, context.uiLocale ?? 'zh-CN'),
+            ],
+          }
+          callbacks.log(text(
+            `相邻章节衔接检查发现 ${findings.length} 个可定位问题；仅提供建议，不会自动改正文。`,
+            `Adjacent continuity found ${findings.length} actionable issue(s); suggestions do not change the manuscript automatically.`,
+          ))
+        }
+      } catch {
+        callbacks.log(text(
+          '相邻章节证据暂时不可用；其余审稿仍会继续。',
+          'Adjacent-chapter evidence is unavailable; the rest of the review will continue.',
+        ))
       }
     }
 

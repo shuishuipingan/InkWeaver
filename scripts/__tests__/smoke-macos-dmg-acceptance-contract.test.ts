@@ -15,10 +15,7 @@ const repositoryRoot = path.resolve(import.meta.dirname, '..', '..')
 const smokeScriptPath = path.join(repositoryRoot, 'scripts', 'smoke-macos-dmg.sh')
 const evidenceScript = path.join(repositoryRoot, 'scripts', 'release-evidence-v2.mjs')
 const fixtures: string[] = []
-// The contract invokes the real evidence CLI several times. Under the full
-// release preflight, concurrent worker startup can make those child processes
-// exceed Vitest's default timeout even though the behavior remains bounded.
-const RECEIPT_FINALIZE_TIMEOUT_MS = 30_000
+const RECEIPT_FINALIZE_TIMEOUT_MS = 15_000
 
 function readRequired(file: string) {
   expect(existsSync(file), `Missing macOS DMG smoke contract: ${file}`).toBe(true)
@@ -130,6 +127,10 @@ describe('macOS DMG acceptance receipt contract', () => {
     expect(script).toContain('gatekeeper')
     expect(script).toContain('classifyMacosCodeSigning')
     expect(script).toContain('MACOS_FORMAL_DISTRIBUTION_POLICY')
+    expect(script).toContain('find "$app/Contents/MacOS"')
+    expect(script).not.toContain('Contents/MacOS/织墨')
+    expect(script).toContain('extractPackagedEvidence')
+    expect(script).toContain('packaged-vector-smoke.stdout')
     expect(script).toContain('fs.statSync(root, { bigint: true })')
     expect(script).toContain('JSON.stringify({ ...request, rootIdentity })')
     expect(script).toContain("relativePath: 'chapters/one.txt', maxBytes: 1024")
@@ -318,7 +319,7 @@ describe('macOS DMG acceptance receipt contract', () => {
         mount: { path: '/Volumes/AI Novel', attached: true },
         unmount: { attempted: true, succeeded: true },
       },
-  }, 30_000)
+    })
     writeJson(path.join(evidenceRoot, 'acceptance', 'packaged-smoke.json'), {
       schemaVersion: 2,
       kind: 'packaged-smoke',

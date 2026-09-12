@@ -1,10 +1,10 @@
-import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { NovelProjectId } from '../src/types.ts'
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../..')
-const testRoot = join(repositoryRoot, '.runtime', '.cache', 'inkweaver-dsh-tests')
+const testRoot = join(repositoryRoot, '.runtime', '.cache', 'dsh-ai-novel-tests')
 let prepared: Promise<void> | undefined
 
 /** Deterministic manifest identity used to compare approval cards with committed bytes. */
@@ -35,22 +35,4 @@ export async function makeTestWorkspace(prefix: string): Promise<string> {
   prepared ??= prepareTestRoot()
   await prepared
   return mkdtemp(join(testRoot, prefix))
-}
-
-/** Report whether this test host can create the requested real symbolic link. */
-export async function supportsSymbolicLink(type: 'dir' | 'file'): Promise<boolean> {
-  const root = await makeTestWorkspace(`symlink-capability-${type}-`)
-  const target = join(root, 'target')
-  const link = join(root, 'link')
-  try {
-    if (type === 'dir') await mkdir(target)
-    else await writeFile(target, 'capability probe\n', 'utf8')
-    await symlink(target, link, type)
-    return true
-  } catch (cause) {
-    if (typeof cause === 'object' && cause !== null && 'code' in cause && cause.code === 'EPERM') return false
-    throw cause
-  } finally {
-    await rm(root, { recursive: true, force: true })
-  }
 }

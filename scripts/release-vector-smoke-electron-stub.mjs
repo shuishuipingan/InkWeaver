@@ -4,9 +4,12 @@ export const app = Object.freeze({
   },
 })
 
-// The vector smoke bundle reaches the shared runtime logger through the
-// knowledge-base seam. Keep the Electron substitute linkable without exposing
-// a real IPC surface to the qualification process.
+// The vector smoke runner imports the same storage modules as the packaged
+// main process. Those modules lazily load runtime-logger through safeConsole;
+// esbuild therefore needs the small ipcMain surface even though the smoke
+// itself never registers an IPC handler. Keep it inert so this qualification
+// runner cannot accidentally depend on a live Electron process.
 export const ipcMain = Object.freeze({
   handle() {},
+  removeHandler() {},
 })

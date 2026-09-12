@@ -13,6 +13,11 @@
  * 否则无层样式会覆盖 Tailwind 工具类，导致 px-3/py-1 等全部失效。
  * ======================================================================== */
 
+/* ===== TailwindCSS v4 核心导入（必须位于所有规则之前） ===== */
+@import "tailwindcss";
+@plugin "tailwindcss-animate";
+@plugin "@tailwindcss/typography";
+
 /* ===== 本地内置字体（无需网络，所有字体文件均放置于 public/fonts/） ===== */
 
 /* Inter — 可变字体，支持 100-900 所有字重，现代 UI 首选 */
@@ -70,11 +75,6 @@
   font-style: normal;
   font-display: swap;
 }
-
-/* ===== TailwindCSS v4 核心导入 ===== */
-@import "tailwindcss";
-@plugin "tailwindcss-animate";
-@plugin "@tailwindcss/typography";
 
 /* dark 变体：匹配 .dark 或 .galaxy 类的子元素 */
 @custom-variant dark (&:is(.dark *, .galaxy *));

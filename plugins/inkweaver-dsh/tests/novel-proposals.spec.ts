@@ -587,7 +587,7 @@ describe('NovelStore proposal inbox', () => {
     await store.dispose()
     openStores.length = 0
 
-    const database = new DatabaseSync(join(root, '.inkweaver', 'novel.db'))
+    const database = new DatabaseSync(join(root, '.ai-novel', 'novel.db'))
     try {
       database.exec('DROP TABLE chapter_finals')
       database.exec('ALTER TABLE artifacts DROP COLUMN summary')
@@ -603,7 +603,7 @@ describe('NovelStore proposal inbox', () => {
     const migrated = await openNovelStore(root, WORKSPACE_ID)
     openStores.push(migrated)
     const proposal = (await migrated.listProposals(signal))[0]
-    expect((await migrated.read(signal)).storage.userVersion).toBe(4)
+    expect((await migrated.read(signal)).storage.userVersion).toBe(5)
     expect(proposal).toMatchObject({
       proposalId: submitted.proposal.proposalId,
       status: 'pending',
@@ -620,7 +620,7 @@ describe('NovelStore proposal inbox', () => {
     await store.dispose()
     openStores.length = 0
 
-    const database = new DatabaseSync(join(root, '.inkweaver', 'novel.db'))
+    const database = new DatabaseSync(join(root, '.ai-novel', 'novel.db'))
     try {
       database.prepare("UPDATE proposals SET payload = '{}'").run()
     } finally {

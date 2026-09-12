@@ -2,7 +2,6 @@
 
 import type { SessionId, WorkspaceId } from '@deepseek-ai/dsh-client-runtime/client'
 import type { NovelAssetReadWireResult, NovelContextReadResult, NovelContextReady } from '../context-types.ts'
-import { INKWEAVER_PRESET_ID } from '../identity.ts'
 import type { CreativeStrategy, NovelProjectId, Revision } from '../types.ts'
 import {
   assetProposalPrompt,
@@ -65,7 +64,7 @@ export type {
 } from './workbench-v2.ts'
 
 /** Dedicated Preset id expected on a Session that receives novel proposals. */
-export const AI_NOVEL_PRESET_ID = INKWEAVER_PRESET_ID
+export const AI_NOVEL_PRESET_ID = 'inkweaver'
 
 function assertNever(value: never): never {
   throw new Error(`Unexpected novel workbench value: ${String(value)}`)

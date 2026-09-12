@@ -92,16 +92,31 @@ describe('release qualification runner', () => {
     expect(overlay).not.toContain("'    roots:'")
   })
 
-  it('documents the V2 proposal model and uses an InkWeaver-owned qualification cache', async () => {
-    const readme = await readFile(join(packageRoot, 'README.md'), 'utf8')
-    const runnerSource = await readFile(runner, 'utf8')
+  it('reads the authenticated Web cookie through Node Headers getSetCookie when available', async () => {
+    const source = await readFile(runner, 'utf8')
+    expect(source).toContain('getSetCookie')
+  })
 
-    expect(readme).toContain('novel_read')
-    expect(readme).toContain('novel_propose_change')
-    expect(readme).toContain('.inkweaver')
-    expect(runnerSource).toContain('`inkweaver-dsh-qualification-${qualificationTicket}`')
-    expect(runnerSource).toContain('Browser qualification was skipped and is not qualified')
-    expect(runnerSource).not.toContain('dsh-ai-novel-qualification')
+  it('heals the official profile module fallback before the standalone preset tool probe', async () => {
+    const source = await readFile(runner, 'utf8')
+    expect(source).toContain('healProfilesModuleFallback')
+    expect(source).toContain('profile-module-fallback')
+    expect(source.indexOf('profile-module-fallback')).toBeLessThan(source.indexOf('qualifyPresetTools'))
+  })
+
+  it('documents the V2 installed keyless qualification snapshot and its native-model limit', async () => {
+    const readme = await readFile(join(packageRoot, 'README.md'), 'utf8')
+    const start = readme.indexOf('## Release qualification')
+    const section = readme.slice(start)
+
+    expect(section).toContain('novel_read')
+    expect(section).toContain('novel_propose_change')
+    expect(section).toContain('dsh-ai-novel-qualification-128')
+    expect(section).toContain('A browser skipped result is not qualified')
+    expect(section).toContain('gpt-5.6-terra manual qualification')
+    expect(section).not.toContain('novel_apply_change')
+    expect(section).not.toContain('story-blueprint')
+    expect(section).not.toContain('dsh-ai-novel-qualification-113')
   })
 
   it('rejects a browser skipped result so a skipped browser journey cannot qualify', async () => {
@@ -112,12 +127,26 @@ describe('release qualification runner', () => {
     })
   })
 
+  it('parses the current Harness globalThis boot graph syntax', async () => {
+    const root = await makeTestWorkspace('qualification-boot-graph-')
+    const html = join(root, 'index.html')
+    await writeFile(html, '<script>globalThis["__DSH_BOOT__"] = {"rev":"rev-1","entries":[{"id":"@shuishuipingan/inkweaver-dsh","url":"/plugins/inkweaver.js"}]}</script>\n', 'utf8')
+
+    await expect(execFileAsync(process.execPath, [runner, '--validate-boot-graph', html], {
+      cwd: packageRoot,
+      encoding: 'utf8',
+    })).resolves.toMatchObject({
+      stdout: expect.stringContaining('"rev":"rev-1"'),
+    })
+  })
+
   it('compares every required installed package artifact to the packed-content root after reinstall', async () => {
     const root = await makeTestWorkspace('qualification-installed-content-')
     const installedRoot = join(root, 'installed')
     await cp(packageRoot, installedRoot, {
       recursive: true,
-      filter: source => !source.includes(`${sep}node_modules`),
+      filter: source => !source.includes(`${sep}node_modules`)
+        && !source.includes(`${sep}.runtime-v2-recompose-`),
     })
 
     await expect(execFileAsync(process.execPath, [
@@ -227,7 +256,7 @@ describe('release qualification runner', () => {
     ])
   })
 
-  it('reads V2 schema 4, a partial proposal, and a user-selected final without V1 manifest assumptions', async () => {
+  it('reads V2 schema 5, a partial proposal, and a user-selected final without V1 manifest assumptions', async () => {
     const root = await makeTestWorkspace('qualification-v2-readback-')
     const workspaceId = WorkspaceId('qualification-v2-workspace')
     const signal = new AbortController().signal
@@ -282,7 +311,7 @@ describe('release qualification runner', () => {
       runner, '--readback', join(packageRoot, 'lib', 'index.js'), root,
     ], { cwd: packageRoot, encoding: 'utf8' })
     expect(JSON.parse(result.stdout)).toMatchObject({
-      schemaVersion: 4,
+      schemaVersion: 5,
       proposals: expect.arrayContaining([
         expect.objectContaining({ status: 'partial', itemCount: 5 }),
       ]),
@@ -372,13 +401,13 @@ describe('release qualification runner', () => {
       .rejects.toMatchObject({ stderr: expect.stringContaining('Qualification requires DeepSeek Harness commit') })
   })
 
-  it('rejects a disposable profile that omits the pinned dsh-web-ui-all bundle', async () => {
+  it('rejects a disposable profile that omits the pinned dsh-web-all bundle', async () => {
     const root = await makeTestWorkspace('qualification-profile-manifest-')
     const manifest = join(root, 'package.json')
     await writeFile(manifest, `${JSON.stringify({
       dependencies: {
         '@shuishuipingan/inkweaver-dsh': 'file:C:/owned/plugin.tgz',
-        '@linxin666/dsh-web-ui-all': '0.1.16',
+        '@linxin666/dsh-web-all': '0.3.20',
       },
       dsh: {
         profile: {
@@ -394,10 +423,10 @@ describe('release qualification runner', () => {
     await expect(execFileAsync(process.execPath, [
       runner, '--validate-profile', manifest, 'plugin.tgz',
     ], { cwd: packageRoot, encoding: 'utf8' }))
-      .rejects.toMatchObject({ stderr: expect.stringContaining('Profile bundle is missing: @linxin666/dsh-web-ui-all') })
+      .rejects.toMatchObject({ stderr: expect.stringContaining('Profile bundle is missing: @linxin666/dsh-web-all') })
   })
 
-  it('rejects a packed-profile request header that leaks a dsh-web-ui-all tool', async () => {
+  it('rejects a packed-profile request header that leaks a dsh-web-all tool', async () => {
     const root = await makeTestWorkspace('qualification-request-log-')
     const log = join(root, 'model-requests.jsonl')
     const schemas = join(root, 'installed-tool-schemas.json')

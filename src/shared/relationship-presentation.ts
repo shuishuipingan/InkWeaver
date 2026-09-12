@@ -3,6 +3,9 @@ import type { Locale } from '../i18n/types'
 export interface RelationshipEdge {
   target: string
   relation: string
+  direction?: 'outgoing' | 'incoming' | 'mutual'
+  sourceChapter?: number
+  evidence?: string
 }
 
 export interface RelationshipTextOptions {
@@ -33,7 +36,19 @@ function textValue(value: unknown): string | null {
 function relationshipEdgeFromRecord(value: UnknownRecord): RelationshipEdge | null {
   const target = textValue(value.target) ?? textValue(value.name)
   const relation = textValue(value.relation) ?? textValue(value.label)
-  return target && relation ? { target, relation } : null
+  const direction = value.direction
+  const sourceChapter = value.sourceChapter
+  const evidenceValue = textValue(value.evidence)
+  const evidence = evidenceValue === null ? undefined : evidenceValue
+  if (direction !== undefined && !['outgoing', 'incoming', 'mutual'].includes(String(direction))) return null
+  if (sourceChapter !== undefined && (!Number.isSafeInteger(sourceChapter) || Number(sourceChapter) < 1)) return null
+  return target && relation ? {
+    target,
+    relation,
+    ...(direction === undefined ? {} : { direction: direction as RelationshipEdge['direction'] }),
+    ...(sourceChapter === undefined ? {} : { sourceChapter: Number(sourceChapter) }),
+    ...(evidence === undefined ? {} : { evidence }),
+  } : null
 }
 
 /**
@@ -129,7 +144,7 @@ function isAllowedEdge(edge: RelationshipEdge, options: RelationshipTextOptions)
 function deduplicateEdges(edges: readonly RelationshipEdge[]): RelationshipEdge[] {
   const seen = new Set<string>()
   return edges.filter((edge) => {
-    const key = `${edge.target}\u0000${edge.relation}`
+    const key = `${edge.target}\u0000${edge.relation}\u0000${String(edge.direction ?? '')}\u0000${String(edge.sourceChapter ?? '')}\u0000${edge.evidence ?? ''}`
     if (seen.has(key)) return false
     seen.add(key)
     return true

@@ -11,9 +11,6 @@ import { startWorkflowTool } from '../start-workflow.tool'
 import { writeFileTool } from '../write-file.tool'
 
 const projectPath = 'C:\\novels\\issue-90'
-const WORKFLOW_CLEANUP_TIMEOUT_MS = 15_000
-const pendingIpcResolvers = new Set<() => void>()
-let releasePendingIpc = false
 const project = {
   id: 'issue-90',
   sessionLease: 'lease-issue-90',
@@ -59,10 +56,7 @@ function stubWorkflowIpc(overrides: Partial<Record<string, unknown>> = {}): Retu
       })
     }
     // Keep the real workflow registered while this launcher-seam test observes it.
-    if (releasePendingIpc) return Promise.resolve(undefined)
-    return new Promise<unknown>((resolve) => {
-      pendingIpcResolvers.add(() => resolve(undefined))
-    })
+    return new Promise(() => {})
   })
   vi.stubGlobal('window', {
     velaAPI: {
@@ -79,7 +73,6 @@ function stubWorkflowIpc(overrides: Partial<Record<string, unknown>> = {}): Retu
 }
 
 beforeEach(() => {
-  releasePendingIpc = false
   useProjectStore.setState({ currentProject: project as never })
   useWorkflowStore.setState({
     activeRuns: [],
@@ -92,12 +85,7 @@ beforeEach(() => {
   })
 })
 
-afterEach(async () => {
-  releasePendingIpc = true
-  const cancellation = useWorkflowStore.getState().cancelProjectWorkflowsAndWait(projectPath, WORKFLOW_CLEANUP_TIMEOUT_MS)
-  for (const resolve of pendingIpcResolvers) resolve()
-  pendingIpcResolvers.clear()
-  await cancellation
+afterEach(() => {
   toolRegistry.unregister('start_workflow')
   vi.unstubAllGlobals()
   useProjectStore.setState({ currentProject: null })

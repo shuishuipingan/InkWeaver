@@ -66,7 +66,6 @@ jobs:
             throw "Checked-out SHA mismatch: expected $env:EXPECTED_SHA, got $checkedOutSha"
           }
           if ($env:RELEASE_TAG -ne "v$env:RELEASE_VERSION") { throw 'release_tag must equal v<release_version>' }
-          if ($env:RELEASE_VERSION -ne '1.0.0') { throw 'release_version must be 1.0.0 for the v1 DSH artifact' }
           if ($env:PROFILE_PATH -ne '.release/release-profile.json') { throw 'profile_path must use the project release profile' }
           & git ls-files --error-unmatch -- $env:PROFILE_PATH | Out-Null
           if ($LASTEXITCODE -ne 0) { throw 'release profile must be committed at the qualified SHA' }
@@ -89,15 +88,24 @@ jobs:
         shell: pwsh
         run: node scripts/release-evidence-v2.mjs record --evidence-root "$env:AI_NOVEL_RELEASE_EVIDENCE_ROOT" --step renderer-browser-tests -- "$env:ComSpec" /d /s /c "pnpm run test:browser"
 
+      - name: Download verified v0.2.5 portable migration input
+        shell: pwsh
+        run: |
+          $portableUrl = 'https://github.com/shuishuipingan/InkWeaver/releases/download/v0.2.5/AI-Novel-Writer-0.2.5-windows-x64.zip'
+          $expectedSha256 = '22b38b7337a456882bf130ccb898f17616fffb85d6c8b8b3d0ee431409f18531'
+          $portableZip = Join-Path $env:RUNNER_TEMP 'AI-Novel-Writer-0.2.5-windows-x64.zip'
+          Invoke-WebRequest -Uri $portableUrl -OutFile $portableZip
+          $actualSha256 = (Get-FileHash -LiteralPath $portableZip -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actualSha256 -ne $expectedSha256) {
+            throw "v0.2.5 portable ZIP SHA-256 mismatch: expected $expectedSha256, got $actualSha256"
+          }
+          "AI_NOVEL_PREVIOUS_PORTABLE_ZIP=$portableZip" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
       - name: Run complete Windows release gate
         shell: pwsh
         env:
           AI_NOVEL_RELEASE_EVIDENCE_COMMAND_TIMEOUT_MS: '2700000'
         run: node scripts/release-evidence-v2.mjs record --evidence-root "$env:AI_NOVEL_RELEASE_EVIDENCE_ROOT" --step complete-windows-release-gate -- "$env:ComSpec" /d /s /c "pnpm run build:win"
-
-      - name: Build and qualify the DSH release tarball
-        shell: pwsh
-        run: node scripts/release-evidence-v2.mjs record --evidence-root "$env:AI_NOVEL_RELEASE_EVIDENCE_ROOT" --step build-and-qualify-dsh-release-tarball -- "$env:ComSpec" /d /s /c "pnpm -C plugins/inkweaver-dsh install --frozen-lockfile && pnpm -C plugins/inkweaver-dsh test && pnpm -C plugins/inkweaver-dsh run pack:release"
 
       - name: Finalize Windows release evidence
         if: ${{ success() }}
@@ -126,7 +134,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Continue'
-          $diagnosticsRoot = Join-Path $env:RUNNER_TEMP 'inkweaver-cloud-build-diagnostics'
+          $diagnosticsRoot = Join-Path $env:RUNNER_TEMP 'ai-novel-cloud-build-diagnostics'
           New-Item -ItemType Directory -Path $diagnosticsRoot -Force | Out-Null
           @(
             "commit=$env:GITHUB_SHA"
@@ -142,7 +150,7 @@ jobs:
               }
             }
             $acceptanceRoot = Join-Path $env:AI_NOVEL_RELEASE_EVIDENCE_ROOT 'acceptance'
-            foreach ($name in @('install.json', 'launch.json', 'quiet-window.json', 'error-dialogs.json', 'uninstall.json', 'native-abi.json', 'packaged-smoke.json', 'signing.json')) {
+            foreach ($name in @('install.json', 'launch.json', 'quiet-window.json', 'error-dialogs.json', 'uninstall.json', 'upgrade-data.json', 'native-abi.json', 'packaged-smoke.json', 'signing.json')) {
               $source = Join-Path $acceptanceRoot $name
               if (Test-Path -LiteralPath $source -PathType Leaf) {
                 Copy-Item -LiteralPath $source -Destination (Join-Path $diagnosticsRoot "acceptance-$name") -Force
@@ -165,4 +173,4 @@ jobs:
           name: windows-cloud-build-diagnostics
           retention-days: 7
           if-no-files-found: warn
-          path: ${{ runner.temp }}\inkweaver-cloud-build-diagnostics
+          path: ${{ runner.temp }}\ai-novel-cloud-build-diagnostics

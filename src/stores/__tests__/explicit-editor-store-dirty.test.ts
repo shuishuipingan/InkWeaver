@@ -202,7 +202,7 @@ describe('explicit editor dirty integration', () => {
         projectB().path,
         projectB().path,
       )
-    }, { timeout: 15_000 })
+    })
 
     expect(useProjectStore.getState().currentProject?.path).toBe(projectB().path)
     expect(useCharacterStore.getState()).toMatchObject({

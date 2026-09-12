@@ -21,7 +21,6 @@ import { pipeline } from "node:stream/promises";
 import { Readable } from "node:stream";
 import { pathToFileURL } from "node:url";
 import { parseStrictUtf8Json, readJsonFile, validateReleaseProfile } from "./validate-release-profile.mjs";
-import { DSH_RECEIPT_METADATA_PATH, dshTarballName, validateDshReleaseReceipt } from "../../scripts/dsh-release-receipt.mjs";
 
 const SHA256 = /^[0-9a-f]{64}$/;
 const COMMIT_SHA = /^[0-9a-f]{40}$/;
@@ -95,7 +94,7 @@ export function validatePromotionProfile(profile) {
   if (!Array.isArray(profile.releaseAssets) || profile.releaseAssets.length === 0) throw new Error("release profile has no assets");
   const names = new Set();
   for (const asset of profile.releaseAssets) {
-    if ((!platforms.includes(asset.platform) && asset.platform !== "dsh") || typeof asset.name !== "string" || asset.name.length === 0 || names.has(asset.name.toLowerCase())) throw new Error("release profile asset set is invalid");
+    if (!platforms.includes(asset.platform) || typeof asset.name !== "string" || asset.name.length === 0 || names.has(asset.name.toLowerCase())) throw new Error("release profile asset set is invalid");
     normalizeRelativePath(asset.name.replaceAll("{version}", "VERSION"));
     names.add(asset.name.toLowerCase());
   }
@@ -379,53 +378,6 @@ export function assertPromotionPlanIdentity(plan, expected) {
   }
 }
 
-export async function collectVerifiedPackageAssets({ packageRoot, planAssets, profile, version }) {
-  if (!Array.isArray(planAssets)) throw new Error("verified promotion plan assets must be an array");
-  const expectedProfileNames = profile.releaseAssets.map((asset) => asset.name.replaceAll("{version}", version)).sort();
-  const planNames = [];
-  const seen = new Set();
-  for (const record of planAssets) {
-    const name = normalizeRelativePath(record?.name);
-    if (name.includes("/")) throw new Error("release asset names must be flat");
-    const key = name.toLowerCase();
-    if (seen.has(key)) throw new Error(`verified package asset collision: ${name}`);
-    seen.add(key);
-    planNames.push(name);
-  }
-  if (JSON.stringify(expectedProfileNames) !== JSON.stringify([...planNames].sort())) {
-    throw new Error("verified package asset set/profile mismatch");
-  }
-
-  const localAssets = new Map();
-  for (const record of planAssets) {
-    const name = record.name;
-    const assetPath = join(packageRoot, name);
-    let details;
-    try { details = await stat(assetPath); }
-    catch (error) {
-      if (error?.code === "ENOENT") throw new Error(`verified package asset is missing: ${name}`);
-      throw error;
-    }
-    if (!details.isFile()) throw new Error(`verified package asset is not a file: ${name}`);
-    const sha256 = await sha256File(assetPath);
-    if (details.size !== record.size || sha256 !== record.sha256) throw new Error(`verified package bytes changed: ${name}`);
-    localAssets.set(name.toLowerCase(), { name, path: assetPath, size: details.size, sha256 });
-  }
-  return localAssets;
-}
-
-export function verifyDshQualificationReceipt({ root, version }) {
-  const tarballName = dshTarballName(version);
-  const receiptPath = join(root, ...DSH_RECEIPT_METADATA_PATH.split("/"));
-  const tarballPath = join(root, "release-bundle", tarballName);
-  return validateDshReleaseReceipt({
-    receiptPath,
-    tarballPath,
-    version,
-    expectedReceiptFileName: basename(DSH_RECEIPT_METADATA_PATH),
-  });
-}
-
 function validateIdentity({ repository, expectedSha, tag, version }) {
   validateRepository(repository, "repository");
   if (!COMMIT_SHA.test(expectedSha)) throw new Error("expected SHA must be a lowercase full commit SHA");
@@ -622,25 +574,7 @@ export async function verifyExtractedQualification({ root, platform, policy, rel
   assertAcceptanceReceipt(signingReceipt, platform, manifest.signing.evidencePath);
   assertSigningReceipt(signingReceipt, manifest.signing);
   assertLedgerSigning(ledger.signing, manifest.signing);
-  const expectedAssets = releaseAssetPolicy.filter((asset) => asset.platform === platform || (platform === "windows" && asset.platform === "dsh"));
-  const expectedNames = expectedAssets.map((asset) => asset.name.replaceAll("{version}", version));
-  let dshReceiptSummary = null;
-  if (platform === "windows") {
-    const dshAssets = expectedAssets.filter((asset) => asset.platform === "dsh");
-    if (dshAssets.length !== 1) throw new Error("windows qualification must declare exactly one DSH asset");
-    const receiptKey = DSH_RECEIPT_METADATA_PATH.toLowerCase();
-    const receiptRecord = manifestIndex.records.get(receiptKey);
-    if (!receiptRecord) throw new Error("windows DSH receipt is not hash-bound by the manifest");
-    const dshReceipt = verifyDshQualificationReceipt({ root, version });
-    if (receiptRecord.digest !== dshReceipt.receiptSha256) throw new Error("windows DSH receipt digest does not match the manifest");
-    dshReceiptSummary = {
-      path: DSH_RECEIPT_METADATA_PATH,
-      packageName: dshReceipt.receipt.packageName,
-      version: dshReceipt.receipt.version,
-      sha256: dshReceipt.receipt.sha256,
-      bytes: dshReceipt.receipt.bytes,
-    };
-  }
+  const expectedNames = releaseAssetPolicy.filter((asset) => asset.platform === platform).map((asset) => asset.name.replaceAll("{version}", version));
   const bundleFiles = files.filter((file) => file.startsWith("release-bundle/")).map((file) => file.slice("release-bundle/".length));
   if (JSON.stringify([...expectedNames].sort()) !== JSON.stringify([...bundleFiles].sort())) throw new Error(`${platform} release asset set mismatch`);
   const assets = [];
@@ -649,13 +583,12 @@ export async function verifyExtractedQualification({ root, platform, policy, rel
     const safeName = normalizeRelativePath(name);
     if (safeName.includes("/")) throw new Error("release asset names must be flat");
     const details = await stat(source);
-    const policy = expectedAssets.find((asset) => asset.name.replaceAll("{version}", version) === name);
-    assets.push({ name: safeName, platform: policy.platform, size: details.size, sha256: await sha256File(source), source });
+    assets.push({ name: safeName, platform, size: details.size, sha256: await sha256File(source), source });
   }
   return {
     bindings,
     assets,
-    qualification: { platform, runId: mapping.runId, attempt: mapping.attempt, artifactId: mapping.artifactId, artifactName: artifact.name, headSha: expectedSha, ...bindings, signing, ...(dshReceiptSummary ? { dshReleaseReceipt: dshReceiptSummary } : {}) },
+    qualification: { platform, runId: mapping.runId, attempt: mapping.attempt, artifactId: mapping.artifactId, artifactName: artifact.name, headSha: expectedSha, ...bindings, signing },
   };
 }
 
@@ -752,12 +685,21 @@ async function publishCommand(options) {
   if (qualificationBindings.size !== 1 || ![...qualificationBindings][0]?.endsWith(`:${profileRawBytesSha256}`)) {
     throw new Error("verified promotion plan/current profile raw-byte binding mismatch");
   }
-  const localAssets = await collectVerifiedPackageAssets({
-    packageRoot: planRoot,
-    planAssets: plan.assets,
-    profile,
-    version,
-  });
+  const localAssets = new Map();
+  for (const record of plan.assets || []) {
+    const name = normalizeRelativePath(record.name);
+    if (name.includes("/")) throw new Error("release asset names must be flat");
+    const assetPath = join(planRoot, name);
+    const details = await stat(assetPath);
+    const sha256 = await sha256File(assetPath);
+    if (details.size !== record.size || sha256 !== record.sha256) throw new Error(`verified package bytes changed: ${name}`);
+    const key = name.toLowerCase();
+    if (localAssets.has(key)) throw new Error(`verified package asset collision: ${name}`);
+    localAssets.set(key, { name, path: assetPath, size: details.size, sha256 });
+  }
+  const expectedProfileNames = profile.releaseAssets.map((asset) => asset.name.replaceAll("{version}", version)).sort();
+  const actualNames = [...localAssets.values()].map((asset) => asset.name).sort();
+  if (JSON.stringify(expectedProfileNames) !== JSON.stringify(actualNames)) throw new Error("verified package asset set/profile mismatch");
   const token = process.env.GITHUB_TOKEN;
   if (!token) throw new Error("GITHUB_TOKEN is required");
   const api = new GitHubApi(releaseRepository, token);

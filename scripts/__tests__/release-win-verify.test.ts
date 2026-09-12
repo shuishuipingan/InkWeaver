@@ -3,31 +3,11 @@ import { appendFileSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readF
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import {
-  MONITOR_STEP_COMPLETION_TIMEOUT_MS,
-  waitForMonitorState as waitForProductionMonitorState,
-} from '../release-win-monitor-state.mjs'
 
 const releaseScript = resolve('scripts/release-win-verify.mjs')
 const releaseMonitorScript = resolve('scripts/monitor-win-release-gate.ps1')
 const releaseLaunchGateScript = resolve('scripts/release-win-launch-gate.mjs')
 const windowsIt = process.platform === 'win32' ? it : it.skip
-// The fixture deliberately delays the monitor before its independently
-// published startup record. Under the full root suite, process scheduling can
-// consume the rest of the old 10-second setup budget before PowerShell begins.
-// This is only the fixture handshake budget; the production ready-state bound
-// remains the existing 10-second contract used by the causal regression.
-const MONITOR_STARTUP_HANDSHAKE_TIMEOUT_MS = 30_000
-// The monitor-owned ready state is published only after loading the smoke
-// library, compiling the Job Object/window hooks, and taking its baseline.
-// Under the full root suite those setup operations can exceed the production
-// bound because this fixture intentionally delays monitor startup. Keep this
-// fixture budget separate; the production ready-state timeout remains 10s.
-const MONITOR_FIXTURE_READY_TIMEOUT_MS = 30_000
-// This controlled monitor seam deliberately publishes its completion status
-// after eleven seconds so the old ten-second ACK budget is observably RED while
-// the explicit thirty-second production budget is GREEN.
-const CONTROLLED_STEP_ACK_DELAY_MS = 11_000
 
 function quotePowerShell(value: string): string {
   return `'${value.replaceAll("'", "''")}'`
@@ -115,63 +95,6 @@ async function waitForGateStatus(
     await new Promise(resolvePromise => setTimeout(resolvePromise, 20))
   }
   throw new Error(`Timed out waiting for release gate state ${expectedState}: ${JSON.stringify(readJsonWhenAvailable(statusPath))}`)
-}
-
-async function runControlledStepCompletionAck(timeoutMilliseconds: number): Promise<{
-  outcome: 'timed-out' | 'completed'
-  elapsedMilliseconds: number
-  status?: Record<string, unknown>
-}> {
-  const root = mkdtempSync(join(tmpdir(), 'ai-novel-release-gate-ack-budget-'))
-  const controlPath = join(root, 'control.jsonl')
-  const statusPath = join(root, 'status.json')
-  const step = 'controlled-step-completion'
-  writeFileSync(
-    controlPath,
-    `${JSON.stringify({ sequence: 1, state: 'step-complete', step })}\n`,
-    'utf8',
-  )
-  const monitorTimer = setTimeout(() => {
-    const control = JSON.parse(readFileSync(controlPath, 'utf8').trim()) as {
-      state?: string
-      step?: string
-    }
-    if (control.state === 'step-complete' && control.step === step) {
-      writeFileSync(
-        statusPath,
-        `${JSON.stringify({ state: 'step-completed', step })}\n`,
-        'utf8',
-      )
-    }
-  }, CONTROLLED_STEP_ACK_DELAY_MS)
-  const startedAt = Date.now()
-
-  try {
-    const status = await waitForProductionMonitorState(
-      ['step-completed'],
-      timeoutMilliseconds,
-      step,
-      {
-        readStatus: () => readJsonWhenAvailable(statusPath),
-      },
-    )
-    return {
-      outcome: 'completed',
-      elapsedMilliseconds: Date.now() - startedAt,
-      status,
-    }
-  } catch (error) {
-    if (error instanceof Error && error.message.startsWith('Timed out waiting for Windows release monitor state: step-completed')) {
-      return {
-        outcome: 'timed-out',
-        elapsedMilliseconds: Date.now() - startedAt,
-      }
-    }
-    throw error
-  } finally {
-    clearTimeout(monitorTimer)
-    rmSync(root, { recursive: true, force: true })
-  }
 }
 
 async function waitForFile(path: string, timeoutMilliseconds = 3_000): Promise<void> {
@@ -390,35 +313,26 @@ async function runShortLivedDescendantFaultScenario(): Promise<Record<string, un
   const statusPath = join(root, 'status.json')
   const evidencePath = join(root, 'evidence')
   const releasePath = join(root, 'release-child')
-  const startupPath = join(root, 'monitor-startup.json')
   const monitor = spawn(
     'powershell.exe',
     [
       '-NoProfile',
       '-ExecutionPolicy',
       'Bypass',
-      '-Command',
-      `Start-Sleep -Milliseconds 8500
-& ${quotePowerShell(releaseMonitorScript)} -ControlPath ${quotePowerShell(controlPath)} -StatusPath ${quotePowerShell(statusPath)} -EvidencePath ${quotePowerShell(evidencePath)} -StartupPath ${quotePowerShell(startupPath)}`,
+      '-File',
+      releaseMonitorScript,
+      '-ControlPath',
+      controlPath,
+      '-StatusPath',
+      statusPath,
+      '-EvidencePath',
+      evidencePath,
     ],
     { windowsHide: true, stdio: 'ignore' },
   )
 
   try {
-    if (!Number.isInteger(monitor.pid) || Number(monitor.pid) <= 0) {
-      throw new Error('The release monitor did not expose a PID')
-    }
-    await waitForFile(startupPath, MONITOR_STARTUP_HANDSHAKE_TIMEOUT_MS)
-    const startup = readJsonWhenAvailable(startupPath)
-    if (
-      startup?.state !== 'starting'
-      || startup.processId !== monitor.pid
-      || typeof startup.startedAt !== 'string'
-      || Number.isNaN(Date.parse(startup.startedAt))
-    ) {
-      throw new Error('The release monitor did not publish a valid startup record')
-    }
-    await waitForGateStatus(statusPath, 'ready', MONITOR_FIXTURE_READY_TIMEOUT_MS)
+    await waitForGateStatus(statusPath, 'ready', 10_000)
     const launcher = spawn(
       'powershell.exe',
       [
@@ -466,6 +380,29 @@ Start-Sleep -Milliseconds 180`,
 }
 
 describe('Windows release verification orchestration', () => {
+  it('shims pnpm for electron-builder child processes instead of inheriting a broken Corepack command', () => {
+    const source = readFileSync(releaseScript, 'utf8')
+
+    expect(source).toContain("join(monitorRoot, 'pnpm.cmd')")
+    expect(source).toContain('process.env.PATH = `${monitorRoot}${delimiter}')
+    expect(source).toContain('process.execPath')
+    expect(source).toContain('pnpmCli')
+  })
+
+  it('keeps the build monitor fail-closed except for the exact electron-builder pnpm dependency probes', () => {
+    const monitorSource = readFileSync(releaseMonitorScript, 'utf8')
+
+    expect(monitorSource).toContain('Test-AiNovelGateExpectedPackageManagerProbeExit')
+    expect(monitorSource).toContain('expected-package-manager-probe')
+    expect(monitorSource).toContain("$Step -ne 'build:win:artifacts'")
+    expect(monitorSource).toContain('Test-AiNovelGateExpectedElectronChildTerminationExit')
+    expect(monitorSource).toContain('expected-electron-child-termination')
+    expect(monitorSource).toContain('Test-AiNovelGateCapturedInstallerOldUninstallerProbeParent')
+    expect(monitorSource).toContain('Test-AiNovelGateExpectedInstallerOldUninstallerProbeExit')
+    expect(monitorSource).toContain('$trackedProcessIdentities[[int]$control.rootProcessId] = $armedRootIdentity')
+    expect(monitorSource).toContain('Test-AiNovelGateCapturedArmedRootParentIdentity')
+  })
+
   it('keeps monitoring through native restoration, validation, and the final quiet period', () => {
     const plan = JSON.parse(
       execFileSync(process.execPath, [releaseScript, '--print-plan'], {
@@ -655,6 +592,7 @@ describe('Windows release verification orchestration', () => {
         'const { appendFileSync } = require("node:fs")',
         'const marker = process.env.AI_NOVEL_RELEASE_ENTRYPOINT_MARKER',
         'if (marker) appendFileSync(marker, `${JSON.stringify(process.argv.slice(1))}\\n`, "utf8")',
+        'if (process.argv.some(argument => argument.includes("prepare-native-for-node.mjs"))) process.exit(97)',
       ].join('\n'),
       'utf8',
     )
@@ -720,12 +658,13 @@ describe('Windows release verification orchestration', () => {
       expect(existsSync(join(evidencePath, 'monitor-control-log.jsonl'))).toBe(false)
 
       const steps = readFileSync(stepMarker, 'utf8').trim().split(/\r?\n/).filter(Boolean)
-      expect(steps).toEqual(['run prepare:native-node', 'run test'])
+      expect(steps).toEqual(['run test'])
       expect(steps.join('\n')).not.toMatch(
-        /build:win:artifacts|restore:native-node|verify:native-node/,
+        /prepare:native-node|build:win:artifacts|restore:native-node|verify:native-node/,
       )
 
       const entrypoints = readFileSync(entrypointMarker, 'utf8')
+      expect(entrypoints).not.toContain('prepare-native-for-node.mjs')
       expect(entrypoints).not.toContain('node_modules/vitest/vitest.mjs')
       expect(entrypoints).not.toContain('release-win-launch-gate.mjs')
     } finally {
@@ -752,7 +691,7 @@ describe('Windows release verification orchestration', () => {
         'const { appendFileSync } = require("node:fs")',
         'const [command, step] = process.argv.slice(2)',
         'appendFileSync(process.env.AI_NOVEL_RELEASE_STEP_MARKER, `${command} ${step}\\n`, "utf8")',
-        'process.exitCode = ["prepare:native-node", "test"].includes(step) ? 0 : 98',
+        'process.exitCode = step === "test" ? 0 : 98',
       ].join('\n'),
       'utf8',
     )
@@ -777,6 +716,7 @@ describe('Windows release verification orchestration', () => {
         'syncBuiltinESMExports()',
         'const entrypointMarker = process.env.AI_NOVEL_RELEASE_ENTRYPOINT_MARKER',
         'if (entrypointMarker) fs.appendFileSync(entrypointMarker, `${JSON.stringify(process.argv.slice(1))}\\n`, "utf8")',
+        'if (process.argv.some(argument => argument.includes("prepare-native-for-node.mjs"))) process.exit(97)',
       ].join('\n'),
       'utf8',
     )
@@ -848,10 +788,10 @@ describe('Windows release verification orchestration', () => {
       })
 
       const steps = readFileSync(stepMarker, 'utf8').trim().split(/\r?\n/).filter(Boolean)
-      expect(steps).toEqual(['run prepare:native-node', 'run test'])
+      expect(steps).toEqual(['run test'])
       const entrypoints = readFileSync(entrypointMarker, 'utf8')
       expect(entrypoints).not.toMatch(
-        /node_modules[\\/]vitest[\\/]vitest\.mjs|release-win-launch-gate\.mjs/,
+        /prepare-native-for-node\.mjs|node_modules[\\/]vitest[\\/]vitest\.mjs|release-win-launch-gate\.mjs/,
       )
     } finally {
       if (monitorProcessId === undefined && existsSync(monitorCapture)) {
@@ -941,21 +881,6 @@ describe('Windows release verification orchestration', () => {
     expect(quietCompletion).toBeGreaterThan(errorWindowCheck)
     expect(monitor).toContain('including this final desktop snapshot')
   })
-
-  it('proves a delayed step-completed ACK is RED at 10s and GREEN at 30s', async () => {
-    const oldBudget = await runControlledStepCompletionAck(10_000)
-    expect(oldBudget.outcome).toBe('timed-out')
-    expect(oldBudget.elapsedMilliseconds).toBeGreaterThanOrEqual(9_900)
-
-    const explicitBudget = await runControlledStepCompletionAck(MONITOR_STEP_COMPLETION_TIMEOUT_MS)
-    expect(explicitBudget.outcome).toBe('completed')
-    expect(explicitBudget.elapsedMilliseconds)
-      .toBeGreaterThanOrEqual(CONTROLLED_STEP_ACK_DELAY_MS - 250)
-    expect(explicitBudget.status).toMatchObject({
-      state: 'step-completed',
-      step: 'controlled-step-completion',
-    })
-  }, 40_000)
 
   it('keeps each completed step historical identities through a five-second post-exit quiet period', () => {
     const monitor = readFileSync(releaseMonitorScript, 'utf8')
@@ -1229,7 +1154,7 @@ finally {
       await stopGateMonitor(controlPath, monitor)
       rmSync(root, { recursive: true, force: true })
     }
-  }, 60_000)
+  }, 45_000)
 
   windowsIt('accepts the exact electron-builder process-check chain from one captured installer instance', async () => {
     const root = mkdtempSync(join(tmpdir(), 'ai-novel-release-gate-nsis-probes-'))
@@ -1483,15 +1408,18 @@ internal static class ExactNsisProbeParent {
     }
   }, 60_000)
 
-  windowsIt('accepts the real 8.3-path NSIS uninstaller helper process-check chain only after its identity-bound TEMP host is observed', async (context) => {
+  windowsIt('accepts the canonical NSIS uninstaller helper process-check chain only after its identity-bound TEMP host is observed', async () => {
     const root = mkdtempSync(join(tmpdir(), 'ai-novel-release-gate-nsis-uninstaller-'))
     const controlPath = join(root, 'control.jsonl')
     const statusPath = join(root, 'status.json')
     const evidencePath = join(root, 'evidence')
     const tempRoot = tmpdir()
-    const helperDirectoryName = `~nsuA9${Date.now().toString(36)}${process.pid.toString(36)}.tmp`
+    // NSIS uses the canonical zero-suffix directory on the current installer
+    // path. Keep this fixture aligned with the real smoke trace so the monitor
+    // cannot regress to accepting only synthetic ~nsu<token>.tmp names.
+    const helperDirectoryName = '~nsu.tmp'
     const helperDirectory = join(tempRoot, helperDirectoryName)
-    const helperPath = join(helperDirectory, 'Un_A9.exe')
+    const helperPath = join(helperDirectory, 'Un_A.exe')
     const installRoot = join(root, 'installed-app')
     const uninstallerPath = join(installRoot, 'Uninstall InkWeaver.exe')
     const sourcePath = join(root, 'ExactNsisUninstallerHelper.cs')
@@ -1648,17 +1576,11 @@ internal static class ExactNsisUninstallerHelper {
     )
     copyFileSync(helperPath, uninstallerPath)
     const shortTempRoot = windowsShortPath(tempRoot)
-    if (
-      !shortTempRoot
-      || shortTempRoot.toLowerCase() === tempRoot.toLowerCase()
-      || !shortTempRoot.includes('~')
-    ) {
-      rmSync(helperDirectory, { recursive: true, force: true })
-      rmSync(root, { recursive: true, force: true })
-      context.skip('This TEMP root does not expose a distinct 8.3 ancestor path; the 8.3-specific chain test is not applicable.')
-      return
-    }
-    const helperLaunchPath = join(shortTempRoot, helperDirectoryName, 'Un_A9.exe')
+    const helperLaunchPath = shortTempRoot
+      && shortTempRoot.toLowerCase() !== tempRoot.toLowerCase()
+      && shortTempRoot.includes('~')
+      ? join(shortTempRoot, helperDirectoryName, 'Un_A.exe')
+      : helperPath
     const wrapperEncodedCommand = Buffer.from(
       [
         `& ${quotePowerShell(uninstallerPath)} '--host' ${quotePowerShell(helperLaunchPath)} ${quotePowerShell(systemPowerShell)} ${quotePowerShell(systemCmd)} ${quotePowerShell(probeResultPath)}`,
@@ -1705,7 +1627,7 @@ internal static class ExactNsisUninstallerHelper {
           step: 'smoke:win-installer',
           rootProcessId: gate.child.pid,
           rootProcessStartTimeTicks: windowsProcessStartTimeTicks(gate.child.pid),
-          relatedTargetNames: ['Uninstall 织墨', 'Un_A9', 'powershell'],
+          relatedTargetNames: ['Uninstall InkWeaver', 'Un_A', 'powershell'],
         })}\n`,
         'utf8',
       )
@@ -1730,11 +1652,11 @@ internal static class ExactNsisUninstallerHelper {
         && event.exitClassification === 'expected-nsis-find-no-match')
       const helperStart = events.find(event => {
         const identity = event.processIdentity as Record<string, unknown> | undefined
-        return event.kind === 'process-start' && identity?.processName === 'Un_A9'
+        return event.kind === 'process-start' && identity?.processName === 'Un_A'
       })
       const uninstallerStart = events.find(event => {
         const identity = event.processIdentity as Record<string, unknown> | undefined
-        return event.kind === 'process-start' && identity?.processName === 'Uninstall 织墨'
+        return event.kind === 'process-start' && identity?.processName === 'Uninstall InkWeaver'
       })
       const wrapperCmdStart = events.find(event => {
         const identity = event.processIdentity as Record<string, unknown> | undefined

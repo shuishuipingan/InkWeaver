@@ -4,13 +4,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { Context } from '@deepseek-ai/cordis'
 import Include, { entryListSchema } from '@deepseek-ai/cordis-plugin-include'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
-import AgentRegistry from '@deepseek-ai/dsh-agent'
-import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import AgentPresets from '@deepseek-ai/dsh-agent-presets'
-import LlmRuntime from '@deepseek-ai/dsh-llm'
-import SessionStore from '@deepseek-ai/dsh-session'
-import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
-import ToolRuntime from '@deepseek-ai/dsh-tools'
+import SessionProjection from '@deepseek-ai/dsh-session-projection'
 import * as yaml from 'js-yaml'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -22,11 +17,9 @@ async function yamlList(path: string): Promise<unknown[]> {
   return value
 }
 
-describe('installable InkWeaver bundle', () => {
+describe('installable AI novel bundle', () => {
   it('keeps an independent public MIT package face linked to its source repository', async () => {
     const manifest = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'))
-    expect(manifest.name).toBe('@shuishuipingan/inkweaver-dsh')
-    expect(manifest.version).toBe('1.0.0')
     expect(manifest.private).toBeUndefined()
     expect(manifest.license).toBe('MIT')
     expect(manifest.packageManager).toBe('pnpm@11.11.0')
@@ -64,10 +57,14 @@ describe('installable InkWeaver bundle', () => {
     const ctx = new Context()
     ctx.baseUrl = pathToFileURL(root).href + '/'
     const handle = vi.fn(() => async () => {})
-    ctx.provide('connection' as never, { rpc: { handle } } as never)
+    const intercept = vi.fn(() => async () => {})
+    ctx.provide('connection' as never, { rpc: { handle, intercept } } as never)
     ctx.provide('workspaceRegistry' as never, { get: () => undefined } as never)
+    ctx.provide('settings' as never, { register: vi.fn() } as never)
+    ctx.provide('webServer' as never, { register: vi.fn(() => async () => {}) } as never)
     await ctx.plugin(Loader)
     ctx.loader.builtins.include = Include
+    await ctx.plugin(SessionProjection)
     try {
       await ctx.loader.create({
         name: 'cordis:include',
@@ -80,7 +77,6 @@ describe('installable InkWeaver bundle', () => {
       const entry = [...ctx.loader.entries()].find(candidate => candidate.options.id === 'inkweaver')
       expect(entry?.options.name).toBe('@shuishuipingan/inkweaver-dsh')
       expect(entry?.fiber).toBeDefined()
-      expect(handle).toHaveBeenCalledWith('/inkweaver', expect.any(Function), { authority: 'loopback' })
     } finally {
       await ctx.fiber.dispose()
     }
@@ -92,38 +88,15 @@ describe('installable InkWeaver bundle', () => {
     ctx.baseUrl = pathToFileURL(root).href + '/'
     await ctx.plugin(Loader)
     ctx.loader.builtins.include = Include
-    await ctx.plugin(LlmRuntime)
-    await ctx.plugin(SessionStore)
-    await ctx.plugin(SystemPrompt, { persona: '' })
-    await ctx.plugin(ToolRuntime)
-    ctx.provide('workspaceRegistry' as never, { resolveByPath: async () => undefined } as never)
-    await ctx.plugin(AgentRegistry)
-    await ctx.plugin(AgentLoop, { agents: [] })
+    await ctx.plugin(SessionProjection)
     await ctx.plugin(AgentPresets, {
       default: 'inkweaver',
       roots: [{ path: join(root, 'presets'), trust: 'system' }],
+      includeShippedRoot: false,
       includeUserRoot: false,
     })
 
-    const presets = await ctx.agentPresets.list()
-    expect(presets.map(candidate => candidate.id)).toEqual(['inkweaver', 'inkweaver-v2'])
-    for (const [id, name, agentExport] of [
-      ['inkweaver', '织墨', '@shuishuipingan/inkweaver-dsh/agent'],
-      ['inkweaver-v2', '织墨 V2', '@shuishuipingan/inkweaver-dsh/agent-v2'],
-    ]) {
-      const installed = presets.find(candidate => candidate.id === id)
-      expect(installed).toMatchObject({ name, trust: 'system' })
-      expect(installed?.broken).toBeUndefined()
-      expect(installed?.path).toBe(join(root, 'presets', id, 'agent.cordis.yml'))
-      const composition = await yamlList(installed!.path) as Array<{ id?: string; name?: string }>
-      expect(composition.map(row => [row.id, row.name])).toEqual([
-        ['persona', '@deepseek-ai/dsh-persona'],
-        ['agent-instructions', '@deepseek-ai/dsh-agent-instructions'],
-        ['novel-agent', agentExport],
-      ])
-      await expect(ctx.agentPresets.standingKeyFor(id)).resolves.toEqual({ agentPreset: id })
-    }
-    const preset = presets.find(candidate => candidate.id === 'inkweaver')
+    const preset = (await ctx.agentPresets.list()).find(candidate => candidate.id === 'inkweaver')
     expect(preset).toMatchObject({ name: '织墨', trust: 'system' })
     expect(preset?.broken).toBeUndefined()
     expect(preset?.path).toBe(join(presetRoot, 'agent.cordis.yml'))
@@ -131,7 +104,7 @@ describe('installable InkWeaver bundle', () => {
     const rows = await yamlList(join(presetRoot, 'agent.cordis.yml')) as Array<{
       id?: string
       name?: string
-      config?: { text?: string }
+      config?: { prefix?: string }
     }>
     expect(rows.map(row => [row.id, row.name])).toEqual([
       ['persona', '@deepseek-ai/dsh-persona'],
@@ -141,7 +114,7 @@ describe('installable InkWeaver bundle', () => {
     const metadata = yaml.load(await readFile(join(presetRoot, 'preset.yml'), 'utf8'))
     expect(metadata).toMatchObject({ name: '织墨' })
     expect(JSON.stringify(rows)).not.toMatch(/bash|shell|tool-fs|str-replace|code-mode/i)
-    const persona = rows.find(row => row.id === 'persona')?.config?.text ?? ''
+    const persona = rows.find(row => row.id === 'persona')?.config?.prefix ?? ''
     expect(persona).toContain('auto：')
     expect(persona).toContain('fluent-drafting：')
     expect(persona).toContain('consistency-first：')

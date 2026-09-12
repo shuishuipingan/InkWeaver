@@ -18,6 +18,8 @@ import { Textarea } from '../ui/Textarea'
 import { Label } from '../ui/Label'
 import { NativeSelect } from '../ui/NativeSelect'
 import { useLocaleStore } from '../../stores/locale-store'
+import { ipc } from '../../services/ipc-client'
+import { openChapterFile } from '../panels/sidebar/sidebar-file-openers'
 import { CHARACTER_ROLES, getCharacterRoleLabels } from '../../shared/character-role'
 import {
   formatRelationshipsForEditor,
@@ -71,6 +73,18 @@ export default function CharacterEditor({ projectKey }: { projectKey: string }) 
   const relationshipEditorText = selectedCard
     ? formatRelationshipsForEditor(selectedCard.relationships, { locale })
     : ''
+
+  const openRelationshipEvidence = async (chapterNumber: number) => {
+    const projectSession = captureProjectSession(currentProject)
+    if (!projectSession || !isProjectSessionPath(projectSession, projectKey)) return
+    const finalized = await ipc.invokeWithProjectSession(projectSession, 'db:draft-get-finalized', chapterNumber, projectKey)
+    if (!isProjectSessionCurrent(projectSession)) return
+    if (finalized?.id) {
+      await openChapterFile(`vela://manuscript/${finalized.id}`, text(`第${chapterNumber}章`, `Chapter ${chapterNumber}`))
+      return
+    }
+    await openChapterFile(`${projectKey}\\manuscript\\chapter_${chapterNumber}.md`, text(`第${chapterNumber}章`, `Chapter ${chapterNumber}`))
+  }
 
   const handleDelete = async () => {
     const projectSession = captureProjectSession(currentProject)
@@ -232,7 +246,7 @@ export default function CharacterEditor({ projectKey }: { projectKey: string }) 
       {/* 主体区 */}
       <div className={cn('relative', viewMode === 'graph' ? 'flex-1 overflow-hidden' : 'flex-1 overflow-y-auto')}>
         {viewMode === 'graph' ? (
-          <RelationshipGraph characters={characters} />
+          <RelationshipGraph characters={characters} projectKey={projectKey} onOpenEvidence={openRelationshipEvidence} />
         ) : !selectedCard ? (
           <BaseEmptyState 
             icon={<Users size={36} />} 

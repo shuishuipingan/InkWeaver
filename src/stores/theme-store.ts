@@ -1,7 +1,6 @@
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 import { ipc } from '../services/ipc-client'
-import { isPreV1ThemePreference, migratePreV1PreferenceIfAvailable } from './pre-v1-preference-migration'
 
 export type Theme = 'light' | 'galaxy' | 'paper' | 'dark'
 
@@ -114,12 +113,6 @@ type PersistedThemeState = Pick<
   ThemeState,
   'theme' | 'zoom' | 'writingFont' | 'uiFont'
 >
-
-migratePreV1PreferenceIfAvailable({
-  targetKey: 'inkweaver-theme',
-  suffix: '-theme',
-  validate: isPreV1ThemePreference,
-})
 
 // ─── Store ───────────────────────────────────────────────────────────────
 

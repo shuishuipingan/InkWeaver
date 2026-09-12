@@ -4,19 +4,17 @@
 
 织墨 InkWeaver 是一款面向长篇小说创作的本地优先桌面工作台。它把项目设定、角色、世界观、章节蓝图、正文、审稿、修订与定稿组织成可追溯的创作链，让作者在保留最终决定权的前提下使用自己选择的 AI 模型。
 
-当前版本：**v1.0.0**
+当前版本：**v1.1.0（冻结候选，尚未发布）**
 
-[下载 Windows / macOS 桌面版](https://github.com/shuishuipingan/InkWeaver/releases/latest) · [查看源代码](https://github.com/shuishuipingan/InkWeaver)
+> 1.1.0 已完成创作功能内部验收并进入冻结候选，尚未创建正式 Release。GitHub tarball、Windows/macOS 安装包和最终 Release 回读仍在进行。
 
-## 可选 DSH 扩展
+接手开发时先看[项目文件指南](docs/PROJECT-FILE-GUIDE.md)，再看[完整功能图](docs/upgrade/INKWEAVER-1.1.0-FULL-FEATURE-MAP.md)和[交付追踪表](docs/upgrade/INKWEAVER-1.1.0-DELIVERY-TRACKER.md)。文件指南按事实源、主进程副作用、Renderer 投影、DSH 插件和发布生成物解释每个目录的职责。
 
-织墨同时提供一个可选的 InkWeaver DSH Extension，用于外部 DeepSeek Harness 主机。它把长篇小说的项目设定、角色、章节规划、正文与修订建议组织成作者可审核的创作链；它与桌面版使用独立的 \`.inkweaver\` 工作区，不会读取或替换桌面版项目。
+开发分支、GitHub topic 和待发布门禁的当前回读见[GitHub/分发核验收据](docs/upgrade/GITHUB-DISTRIBUTION-RECEIPT.md)。
 
-在 DSH Web profile 中安装 v1.0.0：
+逐项用户可见更新见[更新日志](CHANGELOG.md)；其中所有 `1.1.0 development` 条目都不代表正式 Release 已完成。
 
-运行 `dsh plugin --profile web add https://github.com/shuishuipingan/InkWeaver/releases/download/v1.0.0/shuishuipingan-inkweaver-dsh-1.0.0.tgz`。
-
-扩展说明、两个 preset（\`inkweaver\` / \`inkweaver-v2\`）和迁移边界见 [DSH 扩展说明](plugins/inkweaver-dsh/README.md)。
+[下载 Windows / macOS 桌面版](https://github.com/shuishuipingan/InkWeaver/releases/latest) · [查看源代码](https://github.com/shuishuipingan/InkWeaver) · [DSH 插件说明](plugins/inkweaver-dsh/README.md)
 
 ## 织墨解决什么问题
 
@@ -42,9 +40,25 @@
 - **人工审稿闭环**：AI 审稿不是自动改稿。作者先确认问题清单，再修稿、检查差异并决定最终文本。
 - **参考资料与知识库**：支持 TXT、Markdown 和 EPUB 导入；可使用向量检索，也可在未配置 Embedding 时使用全文检索。
 - **角色卡与关系图**：维护结构化人物事实，关系图支持缩放、平移和一键清空。
-- **可恢复任务**：长时间生成、批量章节、导入、定稿和后处理具有状态记录，失败时尽量从安全节点继续。
+- **可恢复任务**：长时间生成、批量章节、导入、单章写稿、人物提取、审稿、审稿驱动修稿、只读修稿、定稿、定稿后处理修复、架构生成、配置生成和章节蓝图生成具有不含正文的恢复收据；恢复时重新读取权威来源或安全启动参数并校验项目 lease，避免旧任务写入错误项目。
 - **中英文界面**：界面语言与小说写作语言相互独立。
 - **更准确的失败提示**：内容限制、模型调用失败、上下文预算不足和资源冲突不会被伪装成成功结果。
+
+## 1.1.0 开发中的创作体验
+
+1.1.0 的目标是让长篇小说读起来像一个持续发展的整体，而不是一章章互不相干的生成结果。当前已经落地的开发能力包括：
+
+- **章节连续性工作单**：为每章记录场景进入状态、目标、阻碍、选择、后果和离开状态，并区分作者计划、AI 候选、作者确认和正文实际；同一工作单还可以记录卷级主线/支线贡献、人物情绪余波、读者期待和多视角落点。
+- **证据化章节交接**：前章定稿的地点、视角、未完成动作、即时目标、情绪和待回应问题带有来源正文证据；来源定稿变化后，旧交接不会继续冒充最新事实。
+- **连读与重复提示**：连续阅读器按定稿权威顺序合并章节，显示章节边界、搜索、阅读位置和回到编辑器入口；重复开头、重复结尾或连续天气开场只作为建议，作者可以明确保留刻意复沓。
+- **分层写前上下文**：上下文按完整条目裁剪，不会把证据或否定词从中间截断；AI 输出面板会显示哪些条目纳入、哪些因不相关或预算省略，且收据不复制私人正文。
+- **知情范围与误信**：角色知道的事实、信念、传闻和误信分开保存，附获知方式、来源章节、有效范围和证据；只有作者确认且在当前章节生效的知识才会注入写稿。
+- **安全历史修订**：历史正文变化会列出受影响的连续性投影、章节交接和叙事线；修稿 Proposal 绑定基准正文指纹，正文变化后拒绝合并旧修稿。
+- **人物候选字段审核**：全文提取的角色候选保留字段证据、别名、关系和当前状态；作者可以逐字段勾选，未勾选内容不会写入权威角色卡。角色改名通过稳定 `characterId` 保留旧名和关系引用。
+- **关系图工作台**：支持姓名/别名搜索、一跳和二跳聚焦、关系类型过滤、键盘列表、节点固定/取消固定、项目级布局保存和重置；有向关系可以显示箭头、来源章节和正文证据。
+- **一致性快照与无蓝图导出**：SQLite 使用 backup API 创建一致性快照并记录文件哈希；即使没有章节蓝图，也能按 finalized authority 顺序导出定稿正文。
+
+这些能力仍在逐项验收，未通过路线图验收的部分不会提前写入 1.1.0 正式更新日志，也不会暗示已经提供跨平台安装包。
 
 ## 模型连接
 
@@ -104,7 +118,28 @@ inkweaver-mac-arm64-<版本号>-installer.dmg
 inkweaver-mac-x64-<版本号>-installer.dmg
 ```
 
-当前 macOS 安装包未使用 Developer ID 签名且未公证。请只从官方 Release 下载，并按系统安全提示确认首次打开。正式 Release 的八项资产同时校验 Windows 安装与更新文件、macOS Apple Silicon 与 macOS Intel 安装包及校验和，以及 InkWeaver DSH 扩展包。
+当前 macOS 安装包未使用 Developer ID 签名且未公证。请只从官方 Release 下载，并按系统安全提示确认首次打开。正式 Release 使用七项资产合同，分别覆盖 Windows 安装与更新文件、macOS Apple Silicon 安装包和 macOS Intel 安装包。
+const fs = require('fs')
+const p = 'D:/Game APP/AI-Novel-Writer/README.md'
+let s = fs.readFileSync(p, 'utf8')
+const content = fs.readFileSync(process.argv[1], 'utf8')
+const anchor = '\n## DeepSeek Harness 插件\n'
+if (!s.includes(anchor)) throw new Error('anchor missing')
+s = s.replace(anchor, content + anchor)
+fs.writeFileSync(p, s, 'utf8')
+console.log('zh quickstart added')
+## DeepSeek Harness 插件
+
+仓库中的 `@shuishuipingan/inkweaver-dsh` 是独立的开发中插件，不是桌面版的替代品。它提供精简的项目设置、故事架构、人物、全书纲要、章节蓝图和章节正文流程；模型修改先进入 Proposal，由用户审核应用后才改变权威项目状态。本轮 1.1.0 发布范围不包含 npm，插件通过 GitHub Release tarball 和本地安装说明交付。
+
+迁移提示：`@ethanyoq/dsh-ai-novel-writer` 是仓库迁移前的历史包名，不是 1.1.0 开发线的交付包；新安装请只使用 `@shuishuipingan/inkweaver-dsh`。DSH 宿主本身与 Web UI companion 由 DeepSeek Harness 生态维护，不属于本仓库的 npm 包。
+
+```sh
+dsh plugin --profile web add '<path-to-inkweaver-dsh-tarball.tgz>'
+dsh --profile web
+```
+
+插件使用独立的 `.ai-novel` 项目格式，不读取桌面版项目。完整说明见 [插件文档](plugins/inkweaver-dsh/README.md)。
 
 ## 本地开发
 
@@ -133,4 +168,4 @@ pnpm build
 
 ## 许可证
 
-本项目使用 [GPL-3.0](LICENSE) 许可证。
+桌面应用使用 [GPL-3.0](LICENSE)。内嵌 DeepSeek Harness 插件使用独立 MIT 许可。

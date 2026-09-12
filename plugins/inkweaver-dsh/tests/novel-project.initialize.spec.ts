@@ -25,7 +25,7 @@ describe('NovelProject initialization', () => {
     expect(receipt.oldRevision).toBe('absent')
     expect(receipt.newRevision).toMatch(/^[a-f0-9]{64}$/)
     expect(receipt.bytes).toBeGreaterThan(0)
-    await expect(access(join(root, '.inkweaver', 'characters.json'))).rejects.toThrow()
+    await expect(access(join(root, '.ai-novel', 'characters.json'))).rejects.toThrow()
 
     const first = await project.read({ kind: 'asset', target: { kind: 'project' } }, signal)
     const reopened = await openNovelProject(root).read(
@@ -55,7 +55,7 @@ describe('NovelProject initialization', () => {
       creativeStrategy: 'consistency-first' as const,
     }
     await project.apply(request, new AbortController().signal)
-    const filename = join(root, '.inkweaver', 'project.json')
+    const filename = join(root, '.ai-novel', 'project.json')
     const before = await readFile(filename, 'utf8')
 
     await expect(project.apply(request, new AbortController().signal)).rejects.toMatchObject({
@@ -73,7 +73,7 @@ describe('NovelProject initialization', () => {
       kind: 'initialize', title: '雾中灯塔', language: 'zh-CN', genre: '悬疑',
       plannedChapters: 12, targetWordsPerChapter: 3_000, creativeStrategy: 'auto',
     }, signal)
-    const filename = join(root, '.inkweaver', 'project.json')
+    const filename = join(root, '.ai-novel', 'project.json')
     const manifest = JSON.parse(await readFile(filename, 'utf8')) as Record<string, unknown>
     manifest.formatVersion = 2
     await writeFile(filename, `${JSON.stringify(manifest, null, 2)}\n`)
@@ -92,7 +92,7 @@ describe('NovelProject initialization', () => {
       kind: 'initialize', title: '潮'.repeat(200), language: 'zh-CN', genre: '奇幻',
       plannedChapters: 6, targetWordsPerChapter: 2_000, creativeStrategy: 'auto',
     }, new AbortController().signal)).rejects.toMatchObject({ code: 'SIZE_LIMIT_EXCEEDED' })
-    await expect(access(join(root, '.inkweaver', 'project.json'))).rejects.toThrow()
+    await expect(access(join(root, '.ai-novel', 'project.json'))).rejects.toThrow()
   })
 
   it.each([
@@ -107,6 +107,6 @@ describe('NovelProject initialization', () => {
       kind: 'initialize', title: '雾中灯塔', language: 'zh-CN', genre: '悬疑',
       plannedChapters: 12, targetWordsPerChapter: 3_000, creativeStrategy: 'auto',
     }, new AbortController().signal)).rejects.toMatchObject({ code: 'INVALID_CONTENT' })
-    await expect(access(join(root, '.inkweaver', 'project.json'))).rejects.toThrow()
+    await expect(access(join(root, '.ai-novel', 'project.json'))).rejects.toThrow()
   })
 })

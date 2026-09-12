@@ -138,6 +138,16 @@ export default function LeftToolWindowBar() {
           }}
         />
         <LeftNavButton
+          icon={BookOpen}
+          label={text('连读', 'Reader')}
+          active={activeRailItem === 'reader'}
+          title={text('连续阅读', 'Continuous reader')}
+          onClick={() => {
+            setSidebarView('project', 'reader')
+            openBuiltinEditor('continuous-reader', text('连续阅读', 'Continuous reader'), 'continuous-reader')
+          }}
+        />
+        <LeftNavButton
           icon={Globe2}
           label={text('世界', 'World')}
           active={activeRailItem === 'world'}

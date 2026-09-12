@@ -20,7 +20,7 @@ vi.mock('../commands/import-novel.command', () => ({
   },
 }))
 
-import { createImportWorkflow, loadAuthorImportChapterNumbers } from '../import-workflow'
+import { createImportWorkflow, loadAuthorImportChapterNumbers, resumeImportWorkflowFromCheckpoint } from '../import-workflow'
 import {
   IMPORT_RUN_EFFECT_RECEIPT_SCHEMA_VERSION,
   type ImportRunEffectReceipt,
@@ -28,6 +28,7 @@ import {
 } from '../../../shared/import-run'
 import type { StepCallbacks, WorkflowContext } from '../../../stores/workflow-store'
 import { useProjectStore } from '../../../stores/project-store'
+import type { WorkflowRecoveryCheckpoint } from '../../../shared/workflow-recovery'
 
 const session = { projectId: 'test-project', leaseId: 'lease-test-project', projectPath: 'C:\\test-project' }
 const executionOwner = 'test-import-executor'
@@ -68,6 +69,46 @@ beforeEach(() => {
 afterEach(() => useProjectStore.setState({ currentProject: null }))
 
 describe('createImportWorkflow', () => {
+  it('rebuilds a resumable import definition from the durable run and current lease', async () => {
+    const snapshot = run({ stage: 'blueprints' })
+    const checkpoint: WorkflowRecoveryCheckpoint = {
+      schemaVersion: 1,
+      runId: snapshot.id,
+      projectPath: session.projectPath,
+      projectSession: session,
+      type: 'novel_import',
+      title: '小说拆解与仿写（1 章）',
+      writingLanguage: 'zh-CN',
+      uiLocale: 'zh-CN',
+      boundary: 'failed',
+      currentStepIndex: 3,
+      steps: [],
+      createdAt: snapshot.createdAt,
+      updatedAt: snapshot.updatedAt,
+    }
+    ipcMocks.invoke.mockImplementation(async (_session, channel: string) => {
+      if (channel === 'db:import-run-get') return snapshot
+      throw new Error(`unexpected channel: ${channel}`)
+    })
+
+    const workflow = await resumeImportWorkflowFromCheckpoint(checkpoint, session)
+
+    expect(workflow).toMatchObject({
+      runId: snapshot.id,
+      type: 'novel_import',
+      projectPath: session.projectPath,
+      projectSession: session,
+      uiLocale: snapshot.locale,
+    })
+    expect(workflow.steps[3]?.name).toBe('AI 分批推演章节蓝图')
+    expect(ipcMocks.invoke).toHaveBeenCalledWith(
+      session,
+      'db:import-run-get',
+      snapshot.id,
+      session.projectPath,
+    )
+  })
+
   it('loads sparse frozen chapter numbers from a resumed author run manifest', async () => {
     const snapshot = run({
       purpose: 'author-manuscript',

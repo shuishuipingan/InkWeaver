@@ -2,7 +2,7 @@
 /** Tarball, disposable-profile, browser, persistence, and Electron regression qualification. */
 import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { access, mkdir, readFile, realpath, stat, writeFile } from 'node:fs/promises'
+import { access, copyFile, mkdir, readFile, realpath, stat, symlink, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:net'
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import process from 'node:process'
@@ -15,13 +15,18 @@ const execFileAsync = promisify(execFile)
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const repositoryRoot = resolve(packageRoot, '..', '..')
 const packageName = '@shuishuipingan/inkweaver-dsh'
-const webUiAllPackage = '@linxin666/dsh-web-ui-all'
-const webUiAllVersion = '0.1.16'
+const webUiAllPackage = '@linxin666/dsh-web-all'
+const webUiAllVersion = '0.3.20'
+const directoryPickerPackages = [
+  '@deepseek-ai/dsh-host-directory-picker-browse',
+  '@deepseek-ai/dsh-client-ui-directory-picker-browse',
+]
+const directoryPickerVersion = '0.1.5-rc.1'
 const profileName = 'web'
-const supportedHarnessCommit = '47f943859bef60e4160492346772ded9b24f765a'
+const supportedHarnessCommit = '183f08e9c6dde7e36cd2318eaee70b0da08fb35e'
 const qualificationTicket = 128
 const qualificationOwner = `codex-ticket-${qualificationTicket}`
-const qualificationCacheDirectory = `inkweaver-dsh-qualification-${qualificationTicket}`
+const qualificationCacheDirectory = `dsh-ai-novel-qualification-${qualificationTicket}`
 const qualificationPresetId = 'inkweaver-v2'
 const qualificationToolNames = ['novel_read', 'novel_propose_change']
 const qualificationProposal = {
@@ -144,8 +149,9 @@ function parsePreset(text) {
   }
   const persona = objectOf(rows[0], 'Persona row')
   const config = objectOf(persona.config, 'Persona config')
-  if (typeof config.text !== 'string') fail('Preset persona must describe the V2 tool surface')
-  const personaToolNames = [...new Set([...config.text.matchAll(/\bnovel_[a-z_]+\b/g)].map(match => match[0]))].sort()
+  const personaText = typeof config.prefix === 'string' ? config.prefix : config.text
+  if (typeof personaText !== 'string') fail('Preset persona must describe the V2 tool surface')
+  const personaToolNames = [...new Set([...personaText.matchAll(/\bnovel_[a-z_]+\b/g)].map(match => match[0]))].sort()
   if (JSON.stringify(personaToolNames) !== JSON.stringify([...qualificationToolNames].sort())) {
     fail('Preset persona must describe exactly novel_read and novel_propose_change')
   }
@@ -186,6 +192,28 @@ function canonicalQualificationToolSchemas(value, subject) {
   return schemas
 }
 
+/** Normalize the complete prompt across DSH 0.1.2's `request.system` and
+ * DSH 0.1.5's message-array transport, where the system text is carried by
+ * one or more `{ role: 'system', content: [{ type: 'text', text }] }` blocks. */
+function completeSystemPromptOf(request) {
+  if (typeof request.system === 'string' && request.system.trim() !== '') return request.system
+  if (!Array.isArray(request.messages)) return undefined
+  const blocks = []
+  for (const message of request.messages) {
+    if (typeof message !== 'object' || message === null || message.role !== 'system') continue
+    if (typeof message.content === 'string') blocks.push(message.content)
+    else if (Array.isArray(message.content)) {
+      for (const block of message.content) {
+        if (typeof block === 'object' && block !== null && block.type === 'text' && typeof block.text === 'string') {
+          blocks.push(block.text)
+        }
+      }
+    }
+  }
+  const prompt = blocks.join('\n')
+  return prompt.trim() === '' ? undefined : prompt
+}
+
 async function validateModelRequestLog(path, installedToolSchemas) {
   const expectedTools = canonicalQualificationToolSchemas(installedToolSchemas, 'Installed Preset')
   const rows = (await readFile(path, 'utf8')).trimEnd().split(/\r?\n/)
@@ -195,13 +223,15 @@ async function validateModelRequestLog(path, installedToolSchemas) {
     .filter(row => row.type === 'model-request')
     .map(row => objectOf(row.request, 'Model request'))
   if (requests.length === 0) fail('Model request log did not contain a request')
-  for (const request of requests) {
-    if (typeof request.system !== 'string' || request.system === '') fail('Model request must include the complete system prompt')
+  const normalizedRequests = requests.map(request => {
+    const system = completeSystemPromptOf(request)
+    if (system === undefined) fail('Model request must include the complete system prompt')
     const actualTools = canonicalQualificationToolSchemas(request.tools, 'Model request')
     if (JSON.stringify(actualTools) !== JSON.stringify(expectedTools)) {
       fail('Every model request must match the complete installed Preset schemas')
     }
-  }
+    return { request, system }
+  })
   const toolCalls = rows.filter(row => row.type === 'model-tool-call')
   if (toolCalls.length !== 2
     || toolCalls[0].name !== 'novel_read'
@@ -210,7 +240,7 @@ async function validateModelRequestLog(path, installedToolSchemas) {
     || JSON.stringify(canonicalJson(toolCalls[1].arguments)) !== JSON.stringify(canonicalJson(qualificationProposal))) {
     fail('Model tool calls must be exactly one novel_read followed by one novel_propose_change with the fixed V2 proposal')
   }
-  return { requests: requests.length, toolCalls: toolCalls.length, first: requests[0] }
+  return { requests: requests.length, toolCalls: toolCalls.length, first: { ...normalizedRequests[0].request, system: normalizedRequests[0].system } }
 }
 
 function assertBundlePatch(text) {
@@ -219,7 +249,7 @@ function assertBundlePatch(text) {
   const operation = objectOf(patches[0], 'Bundle patch operation')
   if (!Array.isArray(operation.insert) || operation.insert.length !== 1) fail('Bundle patch must insert one Host row')
   const row = objectOf(operation.insert[0], 'Bundle Host row')
-  if (row.id !== 'inkweaver' || row.name !== packageName) fail('Bundle patch must mount only the InkWeaver DSH Host entry')
+  if (row.id !== 'inkweaver' || row.name !== packageName) fail('Bundle patch must mount only the AI novel Host entry')
 }
 
 async function checkSource() {
@@ -320,10 +350,10 @@ function assertProfileRemoved(manifest) {
     : objectOf(manifest.dependencies, 'Profile dependencies')
   const profile = objectOf(objectOf(manifest.dsh, 'Profile dsh manifest').profile, 'Profile bundle manifest')
   if (packageName in dependencies || !Array.isArray(profile.bundles) || profile.bundles.includes(packageName)) {
-    fail('Profile uninstall retained the InkWeaver DSH dependency or bundle layer')
+    fail('Profile uninstall retained the AI novel dependency or bundle layer')
   }
   if (dependencies[webUiAllPackage] !== webUiAllVersion || !profile.bundles.includes(webUiAllPackage)) {
-    fail('Profile uninstall must retain the pinned dsh-web-ui-all dependency and bundle')
+    fail('Profile uninstall must retain the pinned dsh-web-all dependency and bundle')
   }
 }
 
@@ -362,7 +392,15 @@ function assertInside(parent, child) {
 
 async function pnpmLaunch(args) {
   if (process.platform !== 'win32') return { file: 'pnpm', args }
+  const explicitLauncher = process.env.INKWEAVER_PNPM_LAUNCHER
+  if (explicitLauncher && await exists(explicitLauncher)) {
+    return { file: process.execPath, args: [explicitLauncher, ...args] }
+  }
   for (const directory of (process.env.PATH ?? '').split(';').filter(Boolean)) {
+    for (const directName of ['pnpm.cjs', 'pnpm.mjs']) {
+      const direct = join(directory, directName)
+      if (await exists(direct)) return { file: process.execPath, args: [direct, ...args] }
+    }
     const entry = join(directory, 'node_modules', 'corepack', 'dist', 'pnpm.js')
     if (await exists(entry)) return { file: process.execPath, args: [entry, ...args] }
   }
@@ -470,6 +508,26 @@ async function runPnpm(logRoot, label, args, options) {
   return recordCommand(logRoot, label, launch.file, launch.args, options)
 }
 
+/** Reproduce the official CLI profile boot's flat dependency fallback. */
+async function healProfileModuleFallback(logRoot, harnessRoot, dshHome, env) {
+  const script = [
+    "import { healProfilesModuleFallback } from '@deepseek-ai/dsh-app-boot'",
+    "await healProfilesModuleFallback({ installAnchor: process.env.DSH_HEAL_INSTALL_ANCHOR, home: process.env.DSH_HEAL_HOME })",
+    "process.stdout.write('profile module fallback healed\\n')",
+  ].join(';')
+  return recordCommand(logRoot, 'profile-module-fallback', process.execPath, [
+    '--input-type=module', '-e', script,
+  ], {
+    cwd: join(harnessRoot, 'apps', 'cli'),
+    env: {
+      ...env,
+      DSH_HEAL_INSTALL_ANCHOR: join(harnessRoot, 'apps', 'cli', 'package.json'),
+      DSH_HEAL_HOME: dshHome,
+    },
+    timeout: 60_000,
+  })
+}
+
 function dshLaunch(harnessRoot, args) {
   return {
     file: process.execPath,
@@ -503,13 +561,27 @@ async function availablePort() {
   })
 }
 
-async function waitForWeb(url, exited) {
+async function waitForWeb(url, exited, resolveTargetUrl = () => url) {
   const deadline = Date.now() + 60_000
   while (Date.now() < deadline) {
     if (exited.value !== undefined) fail(`Web process exited before readiness: ${JSON.stringify(exited.value)}`)
+    const targetUrl = resolveTargetUrl()
     try {
-      const response = await fetch(url)
-      if (response.ok) return response.text()
+      const response = await fetch(targetUrl, { redirect: 'manual' })
+      if (response.status === 303) {
+        const setCookies = typeof response.headers.getSetCookie === 'function'
+          ? response.headers.getSetCookie()
+          : [response.headers.get('set-cookie')].filter(Boolean)
+        const cookie = setCookies[0]?.split(';', 1)[0]
+        const location = response.headers.get('location')
+        if (cookie !== undefined && location !== null) {
+          const authenticated = await fetch(new URL(location, targetUrl), {
+            headers: { cookie },
+          })
+          if (authenticated.ok) return { url: targetUrl, html: await authenticated.text() }
+        }
+      }
+      if (response.ok) return { url: targetUrl, html: await response.text() }
     } catch (error) {
       if (!(error instanceof TypeError)) throw error
     }
@@ -519,9 +591,9 @@ async function waitForWeb(url, exited) {
 }
 
 function bootGraphFromHtml(html) {
-  const match = /<script>window\.__DSH_BOOT__ = ([\s\S]*?)<\/script>/.exec(html)
+  const match = /<script[^>]*>(?:window\.__DSH_BOOT__|globalThis(?:\.__DSH_BOOT__|\["__DSH_BOOT__"\]))\s*=\s*([\s\S]*?)<\/script>/u.exec(html)
   if (match?.[1] === undefined) fail('Web index did not contain the client boot graph')
-  return objectOf(JSON.parse(match[1]), 'Web client boot graph')
+  return objectOf(JSON.parse(match[1].trim().replace(/;$/u, '').trim()), 'Web client boot graph')
 }
 
 async function waitForExit(exit, timeoutMs) {
@@ -554,7 +626,11 @@ async function terminateProcessTree(child, exit, exited, timeoutMs = 10_000) {
         encoding: 'utf8', timeout: 10_000, windowsHide: true,
       })
     } catch (error) {
-      if (exited.value === undefined) throw error
+      // Some Windows runners report "operation not supported" even after the
+      // process tree has already disappeared. Treat that as successful cleanup
+      // and preserve the qualification result; only fail when the root is
+      // demonstrably still alive.
+      if (exited.value === undefined && processIsAlive(pid)) throw error
     }
     await waitForExit(exit, timeoutMs)
     return
@@ -660,7 +736,9 @@ async function writeWebLogs(logRoot, label, stdout, stderr) {
 async function startWeb(logRoot, label, harnessRoot, env, patchPath) {
   const port = await availablePort()
   const url = `http://127.0.0.1:${port}`
-  const launch = dshLaunch(harnessRoot, ['--profile', profileName, '--patch', patchPath, '--port', String(port)])
+  const launch = dshLaunch(harnessRoot, [
+    '--profile', profileName, '--patch', patchPath, '--port', String(port), '--no-open',
+  ])
   const child = spawn(launch.file, launch.args, {
     cwd: harnessRoot,
     detached: process.platform !== 'win32',
@@ -683,10 +761,14 @@ async function startWeb(logRoot, label, harnessRoot, env, patchPath) {
     })
   })
   try {
-    const html = await waitForWeb(url, exited)
+    const resolveTargetUrl = () => {
+      const tokenUrl = /dsh web:\s+(https?:\/\/127\.0\.0\.1:\d+\/\?token=[A-Za-z0-9_-]+)/u.exec(stdout)?.[1]
+      return tokenUrl ?? url
+    }
+    const ready = await waitForWeb(url, exited, resolveTargetUrl)
     return {
-      url,
-      html,
+      url: ready.url,
+      html: ready.html,
       async stop() {
         let terminationError
         try {
@@ -803,13 +885,14 @@ async function qualifyPresetTools(logRoot, profileRoot, installedRoot, env) {
   await mkdir(configRoot, { recursive: true })
   await writeFile(configPath, [
     "- id: llm\n  name: '@deepseek-ai/dsh-llm'",
+    "- id: session-projections\n  name: '@deepseek-ai/dsh-session-projection'",
     "- id: sessions\n  name: '@deepseek-ai/dsh-session'",
-    "- id: system-prompt\n  name: '@deepseek-ai/dsh-system-prompt'\n  config:\n    persona: ''",
+    "- id: system-prompt\n  name: '@deepseek-ai/dsh-system-prompt'\n  config:\n    personaPrefix: ''",
     "- id: tools\n  name: '@deepseek-ai/dsh-tools'",
     "- id: approval\n  name: '@deepseek-ai/dsh-user-approval'\n  config:\n    policy: ask",
     "- id: agents\n  name: '@deepseek-ai/dsh-agent'",
     "- id: agent-loop\n  name: '@deepseek-ai/dsh-agent-loop'\n  config:\n    agents: []",
-    `- id: presets\n  name: '@deepseek-ai/dsh-agent-presets'\n  config:\n    default: ${qualificationPresetId}\n    roots:\n      - path: !!js process.env.DSH_NOVEL_PRESET_ROOT\n        trust: user\n    includeUserRoot: false`,
+    `- id: presets\n  name: '@deepseek-ai/dsh-agent-presets'\n  config:\n    default: ${qualificationPresetId}\n    roots:\n      - path: !!js process.env.DSH_NOVEL_PRESET_ROOT\n        trust: user\n    includeShippedRoot: false\n    includeUserRoot: false`,
     '',
   ].join('\n\n'), 'utf8')
   const result = await recordCommand(logRoot, 'installed-preset-tools', process.execPath, [
@@ -838,7 +921,7 @@ async function readback(installedEntry, workspaceRoot) {
   try {
     const state = await store.read(signal)
     const proposals = await store.listProposals(signal)
-    if (state.storage.userVersion !== 4) fail('Fresh-process readback requires V2 schema 4')
+    if (state.storage.userVersion !== 5) fail('Fresh-process readback requires V2 schema 5')
     const partials = proposals.filter(proposal => proposal.status === 'partial')
     const partial = partials[0]
     if (partials.length !== 1 || partial === undefined
@@ -886,8 +969,23 @@ async function readback(installedEntry, workspaceRoot) {
   }
 }
 
-async function writeQualificationOverlay(path) {
-  const backend = pathToFileURL(join(packageRoot, 'scripts', 'qualification-web-backend.mjs')).href
+async function prepareQualificationBackend(runRoot) {
+  const backendRoot = join(runRoot, 'qualification-backend')
+  await mkdir(backendRoot, { recursive: true })
+  await copyFile(
+    join(packageRoot, 'scripts', 'qualification-web-backend.mjs'),
+    join(backendRoot, 'index.mjs'),
+  )
+  await writeFile(join(backendRoot, 'package.json'), JSON.stringify({
+    name: '@inkweaver/qualification-backend',
+    private: true,
+    type: 'module',
+  }) + '\n', 'utf8')
+  await symlink(join(packageRoot, 'node_modules'), join(backendRoot, 'node_modules'), 'junction')
+  return pathToFileURL(join(backendRoot, 'index.mjs')).href
+}
+
+async function writeQualificationOverlay(path, backend) {
   await writeFile(path, [
     '- id: agent-default-model',
     '  config:',
@@ -897,16 +995,17 @@ async function writeQualificationOverlay(path) {
     '- id: agent-presets',
     '  config:',
     `    default: ${qualificationPresetId}`,
+    '    includeShippedRoot: true',
     '    includeUserRoot: true',
     '',
     '- id: directory-picker',
     '  disabled: true',
     '',
     '- insert:',
-    '    - id: qualification-directory-picker',
+    '    - id: directory-picker-browse',
     "      name: '@deepseek-ai/dsh-host-directory-picker-browse'",
     '',
-    '    - id: qualification-directory-picker-ui',
+    '    - id: ui-directory-picker-browse',
     "      name: '@deepseek-ai/dsh-client-ui-directory-picker-browse'",
     '',
     '    - id: ai-novel-qualification-model',
@@ -975,7 +1074,7 @@ async function qualify(options) {
   const qualificationRoot = await realpath(requestedQualificationRoot)
   assertInside(await realpath(join(canonicalRepository, '.runtime', '.cache')), qualificationRoot)
   const rootOwner = ownershipRecord(
-    qualificationRoot, canonicalRepository, 'InkWeaver DSH qualification evidence root', 7,
+    qualificationRoot, canonicalRepository, 'AI novel plugin qualification evidence root', 7,
     'Small receipts and the latest disposable run support review and rerun diagnostics.',
   )
   await writeJson(join(qualificationRoot, '.vibe-owner.json'), rootOwner)
@@ -1021,10 +1120,10 @@ async function qualify(options) {
     commands.push(await runPnpm(logRoot, 'electron-main-tests', ['exec', 'vitest', 'run', 'electron', '--maxWorkers=1'], { cwd: canonicalRepository, timeout: 300_000 }))
     commands.push(await runPnpm(logRoot, 'electron-release-tests', [
       'exec', 'vitest', 'run', 'scripts', '--maxWorkers=1',
-    ], { cwd: canonicalRepository, timeout: 300_000 }))
+    ], { cwd: canonicalRepository, timeout: 600_000 }))
     commands.push(await runPnpm(logRoot, 'harness-build', ['run', 'build'], { cwd: canonicalHarness, timeout: 300_000 }))
 
-    const tarball = join(artifactsRoot, 'shuishuipingan-inkweaver-dsh-1.0.0.tgz')
+    const tarball = join(artifactsRoot, `shuishuipingan-inkweaver-dsh-${sourceManifest.version}.tgz`)
     commands.push(await runPnpm(logRoot, 'plugin-pack', ['pack', '--out', tarball], { cwd: packageRoot, timeout: 180_000 }))
     if (!(await exists(tarball)) || (await stat(tarball)).size === 0) fail('pnpm pack did not produce the qualification tarball')
     const tarList = await recordCommand(logRoot, 'tarball-list', 'tar', ['-tf', tarball], { cwd: runRoot })
@@ -1039,9 +1138,14 @@ async function qualify(options) {
 
     await runDsh(logRoot, 'profile-initialize', canonicalHarness, ['--profile', profileName, '--dump-config'], env, 120_000)
     await runDsh(logRoot, 'profile-install', canonicalHarness, ['plugin', '--profile', profileName, 'add', tarballInstallSpec, '--ignore-scripts'], env, 240_000)
-    await runDsh(logRoot, 'profile-install-web-ui-all', canonicalHarness, [
+    await runDsh(logRoot, 'profile-install-web-all', canonicalHarness, [
       'plugin', '--profile', profileName, 'add', `${webUiAllPackage}@${webUiAllVersion}`, '--save-exact', '--ignore-scripts',
     ], env, 240_000)
+    for (const pickerPackage of directoryPickerPackages) {
+      await runDsh(logRoot, `profile-install-${pickerPackage.split('/').at(-1)}`, canonicalHarness, [
+        'plugin', '--profile', profileName, 'add', `${pickerPackage}@${directoryPickerVersion}`, '--save-exact', '--ignore-scripts',
+      ], env, 240_000)
+    }
     const profileRoot = join(dshHome, 'profiles', profileName)
     const profileManifestPath = join(profileRoot, 'package.json')
     const installedRoot = await realpath(join(profileRoot, 'node_modules', '@shuishuipingan', 'inkweaver-dsh'))
@@ -1055,9 +1159,10 @@ async function qualify(options) {
     if (!dump.stdout.includes(packageName) || dump.stdout.includes(canonicalRepository) || dump.stdout.includes('/src/index.ts')) {
       fail('Composed config did not resolve the installed bundle independently of development paths')
     }
+    commands.push(await healProfileModuleFallback(logRoot, canonicalHarness, dshHome, env))
     const preset = await qualifyPreset(installedRoot)
     const presetTools = await qualifyPresetTools(logRoot, profileRoot, installedRoot, env)
-    commands.push(await runPnpm(logRoot, 'web-ui-all-tool-isolation', [
+    commands.push(await runPnpm(logRoot, 'web-all-tool-isolation', [
       'exec', 'vitest', 'run', 'tests/web-ui-all-composition.spec.ts',
     ], {
       cwd: packageRoot,
@@ -1069,8 +1174,9 @@ async function qualify(options) {
       timeout: 90_000,
     }))
     const overlayPath = join(runRoot, 'qualification.overlay.yml')
+    const qualificationBackend = await prepareQualificationBackend(runRoot)
     const screenshotRoot = join(runRoot, 'design-qa', 'screenshots')
-    await writeQualificationOverlay(overlayPath)
+    await writeQualificationOverlay(overlayPath, qualificationBackend)
     const firstWeb = await probeWeb(
       logRoot, 'web-installed', canonicalHarness, env, overlayPath, workspaceRoot, screenshotRoot, 'first',
     )
@@ -1092,6 +1198,7 @@ async function qualify(options) {
     const reinstalledRoot = await realpath(join(profileRoot, 'node_modules', '@shuishuipingan', 'inkweaver-dsh'))
     assertProfileInstalled(JSON.parse(await readFile(profileManifestPath, 'utf8')), basename(tarball))
     const reinstalledContent = await assertInstalledTarballContent(packedPackageRoot, reinstalledRoot)
+    commands.push(await healProfileModuleFallback(logRoot, canonicalHarness, dshHome, env))
     const reinstalledPreset = await qualifyPreset(reinstalledRoot)
     const reinstalledPresetTools = await qualifyPresetTools(logRoot, profileRoot, reinstalledRoot, env)
     const finalDump = await runDsh(logRoot, 'profile-dump-reinstalled', canonicalHarness, ['--profile', profileName, '--dump-config'], env, 120_000)
@@ -1100,7 +1207,7 @@ async function qualify(options) {
       fileURLToPath(import.meta.url), '--readback', join(reinstalledRoot, 'lib', 'index.js'), workspaceRoot,
     ], { cwd: runRoot, env, timeout: 60_000 })
     const reinstalledReadbackData = JSON.parse(reinstalledReadbackResult.stdout.trim())
-    await writeQualificationOverlay(overlayPath, reinstalledRoot)
+    await writeQualificationOverlay(overlayPath, qualificationBackend)
     const secondWeb = await probeWeb(
       logRoot, 'web-reinstalled', canonicalHarness, env, overlayPath, workspaceRoot, screenshotRoot, 'reinstall',
     )
@@ -1217,6 +1324,12 @@ async function main() {
     if (serialized === undefined) fail('--validate-browser-result requires a browser result JSON object')
     assertBrowserQualificationResult(JSON.parse(serialized), phase)
     process.stdout.write('browser qualification result passed\n')
+    return
+  }
+  if (args[0] === '--validate-boot-graph') {
+    const path = args[1]
+    if (path === undefined) fail('--validate-boot-graph requires an HTML path')
+    process.stdout.write(`${JSON.stringify(bootGraphFromHtml(await readFile(resolve(path), 'utf8')))}\n`)
     return
   }
   if (args[0] === '--qualification-proposal') {

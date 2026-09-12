@@ -29,7 +29,7 @@ describe('renderer browser qualification contract', () => {
     const browserConfig = readFileSync(browserConfigPath, 'utf8')
 
     expect(existsSync(browserTestPath)).toBe(true)
-    expect(packageMetadata.scripts?.test).toBe('vitest run')
+    expect(packageMetadata.scripts?.test).toBe('vitest run --maxWorkers=2')
     expect(packageMetadata.scripts?.['test:browser']).toBe(
       'vitest run --config vitest.browser.config.ts',
     )

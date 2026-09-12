@@ -2,7 +2,7 @@ import { access } from 'node:fs/promises'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import AgentRegistry from '@deepseek-ai/dsh-agent'
-import { CallId } from '@deepseek-ai/dsh-llm'
+import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { defineTool } from '@deepseek-ai/dsh-tools'
 import { describe, expect, it, vi } from 'vitest'
@@ -11,7 +11,7 @@ import { createNovelToolDefinitions, novelApprovalGate, presentNovelChange } fro
 import { openNovelProject } from '../src/novel-project.ts'
 import { makeTestWorkspace, TEST_INITIALIZATION_IDENTITY } from './test-workspace.ts'
 
-describe('InkWeaver agent tools', () => {
+describe('AI novel agent tools', () => {
   it('publishes exactly two path-free tools and asks before every mutation', async () => {
     const [read, apply] = createNovelToolDefinitions()
     expect([read.name, apply.name]).toEqual(['novel_read', 'novel_apply_change'])
@@ -112,7 +112,7 @@ describe('InkWeaver agent tools', () => {
       signal: new AbortController().signal,
       agent: { session: { header: { cwd: root } } },
     } as never)).rejects.toMatchObject({ code: 'INVALID_ARGS' })
-    await expect(access(join(root, '.inkweaver', 'project.json'))).rejects.toMatchObject({ code: 'ENOENT' })
+    await expect(access(join(root, '.ai-novel', 'project.json'))).rejects.toMatchObject({ code: 'ENOENT' })
   })
 
   it('rejects replacement drift while the project is uninitialized', async () => {
@@ -126,7 +126,7 @@ describe('InkWeaver agent tools', () => {
       signal: new AbortController().signal,
       agent: { session: { header: { cwd: root } } },
     } as never)).rejects.toMatchObject({ code: 'NOT_INITIALIZED' })
-    await expect(access(join(root, '.inkweaver', 'project.json'))).rejects.toMatchObject({ code: 'ENOENT' })
+    await expect(access(join(root, '.ai-novel', 'project.json'))).rejects.toMatchObject({ code: 'ENOENT' })
   })
 
   it('shows exactly the canonical bytes that a structured replacement commits', async () => {
@@ -221,7 +221,7 @@ describe('InkWeaver agent tools', () => {
     }))
 
     await expect(ctx.tools.execute({
-      callId: CallId('after-unload'), name: 'novel_apply_change', arguments: {},
+      callId: ToolCallId('after-unload'), name: 'novel_apply_change', arguments: {},
       signal: new AbortController().signal,
     })).resolves.toMatchObject({ isError: false, value: 'unloaded' })
     await ctx.fiber.dispose()

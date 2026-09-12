@@ -3,10 +3,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 class MemoryStorage {
   private data = new Map<string, string>()
 
-  get length() {
-    return this.data.size
-  }
-
   getItem(key: string) {
     return this.data.get(key) ?? null
   }
@@ -21,10 +17,6 @@ class MemoryStorage {
 
   clear() {
     this.data.clear()
-  }
-
-  key(index: number) {
-    return [...this.data.keys()][index] ?? null
   }
 }
 
@@ -137,20 +129,6 @@ describe('theme store branding defaults', () => {
 
     expect(useThemeStore.getState().theme).toBe('dark')
     expect(useThemeStore.getState().resolvedTheme).toBe('dark')
-  })
-
-  it('hydrates one unambiguous valid pre-v1 theme preference into the current key', async () => {
-    const retiredKey = ['retired', 'desktop', 'theme'].join('-')
-    localStorage.setItem(retiredKey, JSON.stringify({
-      state: { theme: 'galaxy', zoom: 1.1, writingFont: 'lxgw-wenkai', uiFont: 'noto-sans-sc' },
-      version: 0,
-    }))
-
-    const { useThemeStore } = await import('../theme-store')
-
-    expect(useThemeStore.getState()).toMatchObject({ theme: 'galaxy', zoom: 1.1 })
-    expect(localStorage.getItem('inkweaver-theme')).not.toBeNull()
-    expect(localStorage.getItem(retiredKey)).toBeNull()
   })
 
   it.each(['paper', 'galaxy'] as const)(

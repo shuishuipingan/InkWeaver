@@ -1,4 +1,4 @@
-/** Optional real-DSH browser snapshot for the InkWeaver workbench tracer bullet. */
+/** Optional real-DSH browser snapshot for the AI novel workbench tracer bullet. */
 
 import { readFile, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
@@ -23,7 +23,7 @@ async function assertBrowserSnapshot(driverPath: string, expectedPath: string): 
   else expect(payload).toBe(await readFile(expectedPath, 'utf8'))
 }
 
-describe('InkWeaver real DSH Web snapshot', () => {
+describe('AI novel real DSH Web snapshot', () => {
   it('keeps independent V1 generation/reconciliation and V2 read-only fixture tool faces on their own Presets', async () => {
     const [v1Fixture, v2Fixture, v1Driver, v2Driver] = await Promise.all([
       readFile(v1FixturePath, 'utf8'), readFile(v2FixturePath, 'utf8'), readFile(v1DriverPath, 'utf8'), readFile(v2DriverPath, 'utf8'),

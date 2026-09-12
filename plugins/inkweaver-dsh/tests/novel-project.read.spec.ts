@@ -42,10 +42,10 @@ describe('NovelProject bounded reads', () => {
     expect(full.kind).toBe('working-set')
     if (full.kind !== 'working-set') throw new Error('expected a working set')
     expect(full.assets.map(asset => asset.source)).toEqual([
-      '.inkweaver/project.json',
-      '.inkweaver/characters.json',
-      '.inkweaver/blueprints/story.json',
-      '.inkweaver/blueprints/chapters/0001.json',
+      '.ai-novel/project.json',
+      '.ai-novel/characters.json',
+      '.ai-novel/blueprints/story.json',
+      '.ai-novel/blueprints/chapters/0001.json',
       'chapters/0001.md',
     ])
     expect(full.truncated).toBe(false)
@@ -56,7 +56,7 @@ describe('NovelProject bounded reads', () => {
     expect(bounded).toMatchObject({ kind: 'working-set', bytes: 120, truncated: true })
     if (bounded.kind !== 'working-set') throw new Error('expected a working set')
     expect(bounded.omittedSources.length).toBeGreaterThan(0)
-    expect(bounded.assets[0]).toMatchObject({ source: '.inkweaver/project.json', truncated: true })
+    expect(bounded.assets[0]).toMatchObject({ source: '.ai-novel/project.json', truncated: true })
   })
 
   it('queries only recognized core assets with a deterministic result cap', async () => {
@@ -117,7 +117,7 @@ describe('NovelProject bounded reads', () => {
   it('validates structured assets again when reading authoritative disk state', async () => {
     const root = await makeTestWorkspace('read-schema-')
     await initialize(root)
-    await writeFile(join(root, '.inkweaver', 'characters.json'), '{"characters":[{"name":"字段缺失"}]}\n')
+    await writeFile(join(root, '.ai-novel', 'characters.json'), '{"characters":[{"name":"字段缺失"}]}\n')
 
     await expect(openNovelProject(root).read(
       { kind: 'asset', target: { kind: 'characters' } }, signal,

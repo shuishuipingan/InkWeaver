@@ -1,5 +1,3 @@
-import { INKWEAVER_PACKAGE_NAME } from '../identity.ts'
-
 /** Token-based context-window styles embedded into the independently distributed client bundle. */
 export const novelContextCss = String.raw`
 .aiNovelContextTrigger{display:inline-flex;min-height:32px;align-items:center;gap:8px;border:0;border-radius:8px;padding:6px 10px;color:var(--dsw-alias-label-primary);background:transparent;cursor:pointer}
@@ -61,8 +59,8 @@ export const novelContextCss = String.raw`
  */
 export function installNovelContextStyle(target: Document): () => void {
   const style = target.createElement('style')
-  style.dataset.plugin = INKWEAVER_PACKAGE_NAME
-  style.dataset.pluginCss = `${INKWEAVER_PACKAGE_NAME}/context-window`
+  style.dataset.plugin = '@shuishuipingan/inkweaver-dsh'
+  style.dataset.pluginCss = '@shuishuipingan/inkweaver-dsh/context-window'
   style.textContent = novelContextCss
   target.head.appendChild(style)
   return () => { style.remove() }

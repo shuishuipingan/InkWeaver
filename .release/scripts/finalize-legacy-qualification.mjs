@@ -3,7 +3,6 @@ import { cpSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { normalizeLegacyReceipt } from './legacy-qualification-adapter.mjs'
-import { DSH_RECEIPT_METADATA_PATH, dshReceiptName, validateDshReleaseReceipt } from '../../scripts/dsh-release-receipt.mjs'
 
 const scriptPath = fileURLToPath(import.meta.url)
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex')
@@ -50,7 +49,7 @@ function main() {
   mkdirSync(bundleRoot, { recursive: true })
   mkdirSync(acceptanceRoot, { recursive: true })
 
-  const artifacts = profile.releaseAssets.filter(asset => asset.platform === platform || (platform === 'windows' && asset.platform === 'dsh')).map(asset => {
+  const artifacts = profile.releaseAssets.filter(asset => asset.platform === platform).map(asset => {
     const name = asset.name.replaceAll('{version}', input.version)
     assert(path.basename(name) === name, 'release asset name must be flat')
     const source = path.join(legacyRoot, name)
@@ -58,21 +57,6 @@ function main() {
     cpSync(source, destination)
     return record(destination, `release-bundle/${name}`, asset.role)
   })
-
-  const dshMetadata = []
-  if (platform === 'windows') {
-    const dshAsset = profile.releaseAssets.find(asset => asset.platform === 'dsh')
-    assert(dshAsset, 'Windows release profile is missing its DSH asset')
-    const dshName = dshAsset.name.replaceAll('{version}', input.version)
-    const dshReceiptPath = path.join(legacyRoot, dshReceiptName(input.version))
-    const dshTarballPath = path.join(legacyRoot, dshName)
-    validateDshReleaseReceipt({ receiptPath: dshReceiptPath, tarballPath: dshTarballPath, version: input.version })
-    const metadataPath = path.join(outputRoot, ...DSH_RECEIPT_METADATA_PATH.split('/'))
-    mkdirSync(path.dirname(metadataPath), { recursive: true })
-    cpSync(dshReceiptPath, metadataPath)
-    assert(sha256(readFileSync(metadataPath)) === sha256(readFileSync(dshReceiptPath)), 'DSH release receipt copy changed bytes')
-    dshMetadata.push(record(metadataPath, DSH_RECEIPT_METADATA_PATH, 'dsh-release-receipt'))
-  }
 
   let signing = null
   const acceptance = profile.platforms[platform].acceptanceReceipts.map(relativePath => {
@@ -108,7 +92,7 @@ function main() {
   )
   ledger.signing = signing
   writeFileSync(ledgerFile, `${JSON.stringify(ledger, null, 2)}\n`, 'utf8')
-  const evidence = [record(contractFile, 'release-contract.json', 'release-contract'), record(ledgerFile, 'run-ledger.json', 'run-ledger'), ...acceptance, ...dshMetadata]
+  const evidence = [record(contractFile, 'release-contract.json', 'release-contract'), record(ledgerFile, 'run-ledger.json', 'run-ledger'), ...acceptance]
   const manifest = { schemaVersion: 2, platform, architecture: profile.platforms[platform].architectures[0], gateLevel: 'RUNTIME_VERIFIED', releaseCreated: false, commit: input['expected-sha'], contractRawBytesSha256: contractHash, profileRawBytesSha256: profileHash, artifacts, evidence, signing }
   const manifestFile = path.join(outputRoot, 'manifest.json')
   writeFileSync(manifestFile, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8')

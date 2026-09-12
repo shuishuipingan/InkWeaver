@@ -20,11 +20,25 @@ import { ViewTransition } from '../ui/ViewTransition'
 import { LLMDataRequestGate } from './llm-data-request-gate'
 import StatsView from './StatsView'
 import { diagnosticWorkflowForCall, type LLMCallRecord } from '../../services/stats-service'
+import { resumeImportWorkflowFromCheckpoint } from '../../services/workflows/import-workflow'
+import { resumeBatchChapterWorkflowFromCheckpoint } from '../../services/workflows/batch-chapter-workflow'
+import { resumeChapterDraftWorkflowFromCheckpoint } from '../../services/workflows/chapter-workflow'
+import { resumeCharacterExtractionWorkflowFromCheckpoint } from '../../services/workflows/character-extraction-workflow'
+import { resumeArchitectureWorkflowFromCheckpoint, resumeConfigGenerationWorkflowFromCheckpoint } from '../../services/workflows/architecture-workflow'
+import { resumeDirectoryWorkflowFromCheckpoint } from '../../services/workflows/directory-workflow'
+import { resumeContinuityRebuildWorkflowFromCheckpoint } from '../../services/workflows/continuity-rebuild-workflow'
+import { resumeChapterFinalizeWorkflowFromCheckpoint, resumeChapterRefineWorkflowFromCheckpoint, resumeChapterRepairWorkflowFromCheckpoint, resumeChapterReviewFixWorkflowFromCheckpoint, resumeChapterReviewWorkflowFromCheckpoint } from '../../services/workflows/chapter-workflow'
 import {
   coarseRuntimePlatform,
   formatSafeCallDiagnostic,
   type SafeDiagnosticWorkflow,
 } from '../../services/safe-call-diagnostic'
+import {
+  canResumeWorkflowCheckpoint,
+  clearWorkflowRecoveryCheckpoint,
+  listWorkflowRecoveryCheckpoints,
+  type WorkflowRecoveryCheckpoint,
+} from '../../shared/workflow-recovery'
 
 /** 底部面板 Tab 名称映射 */
 const TAB_LABELS: Record<string, string> = {
@@ -161,15 +175,19 @@ function TaskRunView() {
 
   if (activeRuns.length === 0 && history.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-full gap-3" style={{ color: 'var(--color-text-muted)' }}>
-        <Zap size={24} style={{ opacity: 0.5 }} />
-        <span className="text-xs">暂无任务，AI 工作流启动后会在这里展示进度</span>
+      <div className="h-full overflow-y-auto pb-4">
+        <WorkflowRecoveryReceipts />
+        <div className="flex flex-col items-center justify-center h-full gap-3" style={{ color: 'var(--color-text-muted)' }}>
+          <Zap size={24} style={{ opacity: 0.5 }} />
+          <span className="text-xs">暂无任务，AI 工作流启动后会在这里展示进度</span>
+        </div>
       </div>
     )
   }
 
   return (
     <div className="h-full overflow-y-auto pb-4">
+      <WorkflowRecoveryReceipts />
       {/* 活跃任务列表（支持多个并行） */}
       {activeRuns.length > 0 && (
         <div className="flex-shrink-0" style={{ borderBottom: history.length > 0 ? '1px solid var(--color-border)' : undefined }}>
@@ -227,6 +245,185 @@ function TaskRunView() {
         </div>
       )}
     </div>
+  )
+}
+
+/**
+ * Shows durable workflow checkpoints after a reload without pretending that a
+ * generic checkpoint contains enough information to replay a workflow. The
+ * lease check deliberately fails closed; only the workflow that owns its
+ * inputs may offer a real continuation action.
+ */
+function WorkflowRecoveryReceipts() {
+  const text = useLocaleStore(s => s.text)
+  const currentProject = useProjectStore(s => s.currentProject)
+  const session = useMemo(
+    () => projectSessionContextFromProject(currentProject),
+    [currentProject],
+  )
+  const [checkpoints, setCheckpoints] = useState<WorkflowRecoveryCheckpoint[]>([])
+  const [resumingRunId, setResumingRunId] = useState<string | null>(null)
+
+  useEffect(() => {
+    setCheckpoints(session ? listWorkflowRecoveryCheckpoints(session.projectPath) : [])
+  }, [session?.projectPath, session?.leaseId])
+
+  if (checkpoints.length === 0) return null
+
+  const remove = (runId: string) => {
+    clearWorkflowRecoveryCheckpoint(runId)
+    setCheckpoints(current => current.filter(checkpoint => checkpoint.runId !== runId))
+  }
+
+  const resumeRecoverableWorkflow = async (checkpoint: WorkflowRecoveryCheckpoint) => {
+    const isChapterDraft = checkpoint.type === 'chapter_creation' && checkpoint.resumeMetadata?.kind === 'chapter-draft'
+    const isChapterReview = checkpoint.type === 'chapter_creation' && checkpoint.resumeMetadata?.kind === 'chapter-review'
+    const isChapterRefine = checkpoint.type === 'chapter_creation' && checkpoint.resumeMetadata?.kind === 'chapter-refine'
+    const isChapterFinalize = checkpoint.type === 'chapter_creation' && checkpoint.resumeMetadata?.kind === 'chapter-finalize'
+    const isChapterReviewFix = checkpoint.type === 'chapter_creation' && checkpoint.resumeMetadata?.kind === 'chapter-review-fix'
+    const isChapterRepair = checkpoint.type === 'chapter_creation' && checkpoint.resumeMetadata?.kind === 'chapter-repair'
+    const isCharacterExtraction = checkpoint.type === 'character_extraction' && checkpoint.resumeMetadata?.kind === 'character-extraction'
+    const isArchitecture = checkpoint.type === 'architecture_generation' && checkpoint.resumeMetadata?.kind === 'architecture'
+    const isConfigGeneration = checkpoint.type === 'config_generation' && checkpoint.resumeMetadata?.kind === 'config-generation'
+    const isDirectoryGeneration = checkpoint.type === 'directory' && checkpoint.resumeMetadata?.kind === 'directory-generation'
+    const isContinuityRebuild = checkpoint.type === 'post_process' && checkpoint.resumeMetadata?.kind === 'continuity-rebuild'
+    if (!session || (!['novel_import', 'batch_generate'].includes(checkpoint.type) && !isChapterDraft && !isChapterReview && !isChapterRefine && !isChapterFinalize && !isChapterReviewFix && !isChapterRepair && !isCharacterExtraction && !isArchitecture && !isConfigGeneration && !isDirectoryGeneration && !isContinuityRebuild)) return
+    setResumingRunId(checkpoint.runId)
+    try {
+      const workflow = isContinuityRebuild
+        ? resumeContinuityRebuildWorkflowFromCheckpoint(checkpoint, session)
+        : checkpoint.type === 'novel_import'
+          ? await resumeImportWorkflowFromCheckpoint(checkpoint, session)
+        : checkpoint.type === 'batch_generate'
+            ? resumeBatchChapterWorkflowFromCheckpoint(checkpoint, session)
+            : checkpoint.type === 'chapter_creation'
+              ? checkpoint.resumeMetadata?.kind === 'chapter-review'
+                ? await resumeChapterReviewWorkflowFromCheckpoint(checkpoint, session)
+                : checkpoint.resumeMetadata?.kind === 'chapter-refine'
+                  ? await resumeChapterRefineWorkflowFromCheckpoint(checkpoint, session)
+                : checkpoint.resumeMetadata?.kind === 'chapter-finalize'
+                  ? await resumeChapterFinalizeWorkflowFromCheckpoint(checkpoint, session)
+                  : checkpoint.resumeMetadata?.kind === 'chapter-review-fix'
+                    ? await resumeChapterReviewFixWorkflowFromCheckpoint(checkpoint, session)
+                    : checkpoint.resumeMetadata?.kind === 'chapter-repair'
+                      ? resumeChapterRepairWorkflowFromCheckpoint(checkpoint, session)
+                : resumeChapterDraftWorkflowFromCheckpoint(checkpoint, session)
+            : checkpoint.type === 'character_extraction'
+              ? await resumeCharacterExtractionWorkflowFromCheckpoint(checkpoint, session)
+              : checkpoint.type === 'architecture_generation'
+                ? resumeArchitectureWorkflowFromCheckpoint(checkpoint, session)
+                : checkpoint.type === 'config_generation'
+                  ? resumeConfigGenerationWorkflowFromCheckpoint(checkpoint, session)
+                  : await resumeDirectoryWorkflowFromCheckpoint(checkpoint, session)
+      void useWorkflowStore.getState().startWorkflow(workflow, false).catch(error => {
+        toast.error(text(`恢复任务失败：${String(error)}`, `Could not resume the workflow: ${String(error)}`))
+      })
+      toast.success(text('已恢复任务，正在从持久检查点继续', 'Workflow resumed from the durable checkpoint'))
+    } catch (error) {
+      toast.error(text(`恢复任务失败：${String(error)}`, `Could not resume the workflow: ${String(error)}`))
+    } finally {
+      setResumingRunId(null)
+    }
+  }
+
+  return (
+    <section
+      aria-label={text('工作流恢复收据', 'Workflow recovery receipts')}
+      className="mx-3 mt-2 rounded-md border px-3 py-2"
+      data-workflow-recovery-receipts="true"
+      style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-raised)' }}
+    >
+      <div className="mb-1 flex items-center gap-2">
+        <Clock size={12} style={{ color: 'var(--color-warning)' }} aria-hidden="true" />
+        <span className="text-xs font-semibold" style={{ color: 'var(--color-text)' }}>
+          {text('恢复收据', 'Recovery receipts')}
+        </span>
+        <span className="text-[0.68rem]" style={{ color: 'var(--color-text-muted)' }}>
+          {text('只记录安全边界，不包含正文', 'Safe-boundary metadata only; prose is never stored here')}
+        </span>
+      </div>
+      <div className="space-y-1.5">
+        {checkpoints.map(checkpoint => {
+          const resumable = session !== null && canResumeWorkflowCheckpoint(checkpoint, session)
+          const recoverable = resumable && (
+            checkpoint.type === 'novel_import'
+            || checkpoint.type === 'batch_generate'
+            || (checkpoint.type === 'chapter_creation' && checkpoint.resumeMetadata?.kind === 'chapter-draft')
+            || (checkpoint.type === 'chapter_creation' && checkpoint.resumeMetadata?.kind === 'chapter-review')
+            || (checkpoint.type === 'chapter_creation' && checkpoint.resumeMetadata?.kind === 'chapter-refine')
+            || (checkpoint.type === 'chapter_creation' && checkpoint.resumeMetadata?.kind === 'chapter-finalize')
+            || (checkpoint.type === 'chapter_creation' && checkpoint.resumeMetadata?.kind === 'chapter-review-fix')
+            || (checkpoint.type === 'chapter_creation' && checkpoint.resumeMetadata?.kind === 'chapter-repair')
+            || (checkpoint.type === 'character_extraction' && checkpoint.resumeMetadata?.kind === 'character-extraction')
+            || (checkpoint.type === 'architecture_generation' && checkpoint.resumeMetadata?.kind === 'architecture')
+            || (checkpoint.type === 'config_generation' && checkpoint.resumeMetadata?.kind === 'config-generation')
+            || (checkpoint.type === 'directory' && checkpoint.resumeMetadata?.kind === 'directory-generation')
+            || (checkpoint.type === 'post_process' && checkpoint.resumeMetadata?.kind === 'continuity-rebuild')
+          )
+          const completed = checkpoint.steps.filter(step => step.status === 'completed').length
+          return (
+            <div key={checkpoint.runId} className="flex items-start gap-2 rounded border px-2 py-1.5 text-xs" style={{ borderColor: 'var(--color-border)' }}>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                  <span className="font-medium" style={{ color: 'var(--color-text)' }}>{checkpoint.title}</span>
+                  <span style={{ color: resumable ? 'var(--color-success-text)' : 'var(--color-warning-text)' }}>
+                    {resumable ? text('当前会话可识别', 'Recognized by current session') : text('会话已变化，不能继续', 'Session changed; cannot resume')}
+                  </span>
+                </div>
+                <div className="mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
+                  {text(`边界：${checkpoint.boundary} · 步骤 ${completed}/${checkpoint.steps.length} · ${new Date(checkpoint.updatedAt).toLocaleString('zh-CN')}`, `Boundary: ${checkpoint.boundary} · ${completed}/${checkpoint.steps.length} steps · ${new Date(checkpoint.updatedAt).toLocaleString()}`)}
+                </div>
+                <div className="mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
+                  {recoverable
+                    ? text('可从 SQLite 持久化导入运行和当前租约重建完整输入后继续。', 'The import can rebuild its complete inputs from the durable SQLite run and current lease.')
+                    : resumable
+                      ? text('只有原工作流重新提供完整输入后才能继续；此收据本身不会重放任务。', 'Continuation requires the owning workflow to provide its complete inputs; this receipt never replays a task by itself.')
+                    : text('为避免旧租约写入当前项目，请重新启动同类任务；清理该收据不会影响正文。', 'Restart the task type to avoid writing through an old lease; clearing this receipt does not affect prose.')}
+                </div>
+              </div>
+              {recoverable && <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={resumingRunId !== null}
+                onClick={() => void resumeRecoverableWorkflow(checkpoint)}
+              >
+                {resumingRunId === checkpoint.runId
+                  ? text('恢复中…', 'Resuming…')
+                  : checkpoint.type === 'batch_generate'
+                    ? text('继续批量创作', 'Resume batch writing')
+                    : checkpoint.type === 'chapter_creation'
+                      ? checkpoint.resumeMetadata?.kind === 'chapter-review'
+                        ? text('继续审稿', 'Resume review')
+                        : checkpoint.resumeMetadata?.kind === 'chapter-refine'
+                          ? text('继续修稿', 'Resume revision')
+                          : checkpoint.resumeMetadata?.kind === 'chapter-finalize'
+                            ? text('继续定稿', 'Resume finalization')
+                            : checkpoint.resumeMetadata?.kind === 'chapter-review-fix'
+                              ? text('继续审稿修复', 'Resume review fix')
+                              : checkpoint.resumeMetadata?.kind === 'chapter-repair'
+                                ? text('继续修复后处理', 'Resume post-process repair')
+                        : text('继续写稿', 'Resume draft writing')
+                        : checkpoint.type === 'character_extraction'
+                        ? text('继续提取人物', 'Resume character extraction')
+                        : checkpoint.type === 'architecture_generation'
+                          ? text('继续生成架构', 'Resume architecture generation')
+                         : checkpoint.type === 'post_process'
+                           ? text('继续历史重建', 'Resume historical rebuild')
+                           : checkpoint.type === 'config_generation'
+                            ? text('继续生成配置', 'Resume configuration generation')
+                            : checkpoint.type === 'directory'
+                              ? text('继续生成蓝图', 'Resume blueprint generation')
+                        : text('继续导入', 'Resume import')}
+              </Button>}
+              <button type="button" className="flex-shrink-0 rounded border px-2 py-1 text-[0.68rem]" onClick={() => remove(checkpoint.runId)}>
+                {text('清除收据', 'Clear receipt')}
+              </button>
+            </div>
+          )
+        })}
+      </div>
+    </section>
   )
 }
 
@@ -591,7 +788,7 @@ function LogsView() {
     if (autoScroll && logScrollRef.current) {
       logScrollRef.current.scrollTop = logScrollRef.current.scrollHeight
     }
-  }, [globalLogs.length, autoScroll, logScrollRef])
+  }, [globalLogs.length, autoScroll])
 
   const levelColor = (level: string) => {
     switch (level) {

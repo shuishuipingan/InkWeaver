@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 /**
  * NotificationHost — 统一通知容器（挂载在 App.tsx 根部）。
  *

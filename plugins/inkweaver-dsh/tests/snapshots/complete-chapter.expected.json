@@ -6,7 +6,6 @@
         "provider": "novel-snapshot",
         "model": "keyless"
       },
-      "system": "You are an AI agent powered by DeepSeek Harness.\n\nYou are 织墨, a collaborative fiction-writing agent working in <workspace>.\n\nTreat the Harness novel project as the only writable story source. Pass every tool argument as a shallow JSON object: never nest arguments under request and never stringify an object. Before proposing a change, use novel_read to obtain the current asset text and revision. Use initialize only when that read reports NOT_INITIALIZED because the project manifest is missing. When the project manifest exists, never call initialize; change project settings with replace and targetKind project. A missing non-manifest asset still uses replace with the explicit string baseRevision absent; never omit it. Do not guess or mix fields from the two mutation branches. Initialize uses exactly kind, projectId, title, language, genre, plannedChapters, targetWordsPerChapter, creativeStrategy, createdAt, and updatedAt. Replace uses exactly kind, targetKind, baseRevision, replacement, and summary, plus chapter only for a chapter-blueprint or chapter-draft. When initializing, generate one UUID and one canonical UTC timestamp in YYYY-MM-DDTHH:mm:ss.sssZ form, including milliseconds; use that exact timestamp for both createdAt and updatedAt and include all fields so the approval diff is exact. When replacing, copy only baseRevision from the latest novel_read result and put the complete next asset text in replacement; never retype baseText into tool arguments. The SHA-256 revision is the concurrency check, and the approval card shows the complete final replacement. A project-settings replacement must change at least one user-visible setting; changing updatedAt alone is invalid. Discuss or draft the requested content, then call novel_apply_change for exactly one asset and wait for native user approval. If the conversation states that native approval is disabled or the session permission policy is never, explain that saving requires native approval and do not call novel_apply_change. If a tool rejects invalid arguments, explain the validation error once and stop that mutation instead of retrying the same invalid call. Never claim that content was saved until the tool returns a CommitReceipt. novel_apply_change returns only after native approval resolves: a CommitReceipt means approval is complete and the asset is saved, so after receiving it state completion and never say that approval is still pending. If the revision is stale, read again and reconcile the user's intent instead of repeating an unchanged proposal.\n\nAfter reading project settings, apply its creative strategy only to novel-writing workflow: auto：balance planning, drafting, and consistency checks for the current request; fluent-drafting：prefer continuous prose drafting with only the minimum plan needed; consistency-first：check established facts, character motives, and continuity before drafting; deep-planning：develop structure, causality, and chapter beats before prose. These choices change planning order and writing emphasis only; they never select an LLM provider or reasoning parameter.",
       "tools": [
         {
           "name": "novel_apply_change",
@@ -220,7 +219,7 @@
         "target": {
           "kind": "characters"
         },
-        "source": ".inkweaver/characters.json",
+        "source": ".ai-novel/characters.json",
         "revision": "absent",
         "bytes": 0,
         "truncated": false,
@@ -279,7 +278,7 @@
         "target": {
           "kind": "story-blueprint"
         },
-        "source": ".inkweaver/blueprints/story.json",
+        "source": ".ai-novel/blueprints/story.json",
         "revision": "absent",
         "bytes": 0,
         "truncated": false,
@@ -340,7 +339,7 @@
           "kind": "chapter-blueprint",
           "chapter": 1
         },
-        "source": ".inkweaver/blueprints/chapters/0001.json",
+        "source": ".ai-novel/blueprints/chapters/0001.json",
         "revision": "absent",
         "bytes": 0,
         "truncated": false,
@@ -403,7 +402,7 @@
             "target": {
               "kind": "project"
             },
-            "source": ".inkweaver/project.json",
+            "source": ".ai-novel/project.json",
             "revision": "dd798e6c379f7987937cd1f46edde2f1fcd34071ad8fb0c0d80b6e073f1bffce",
             "bytes": 378,
             "truncated": false,
@@ -414,7 +413,7 @@
             "target": {
               "kind": "characters"
             },
-            "source": ".inkweaver/characters.json",
+            "source": ".ai-novel/characters.json",
             "revision": "2edca42b09163bf9aa969f42e5326999602e3fe9af7d9aa57f7be74cd0fb3d9b",
             "bytes": 301,
             "truncated": false,
@@ -424,7 +423,7 @@
             "target": {
               "kind": "story-blueprint"
             },
-            "source": ".inkweaver/blueprints/story.json",
+            "source": ".ai-novel/blueprints/story.json",
             "revision": "8b670fba14a857e39ca8cbf9df9386b4dc9919785205303a7fb5562e95e6d7b0",
             "bytes": 299,
             "truncated": false,
@@ -435,7 +434,7 @@
               "kind": "chapter-blueprint",
               "chapter": 1
             },
-            "source": ".inkweaver/blueprints/chapters/0001.json",
+            "source": ".ai-novel/blueprints/chapters/0001.json",
             "revision": "66307496193de6e99a38cbe1de911b045485bdbda139c1c701d01cc50e3b5cf2",
             "bytes": 330,
             "truncated": false,
@@ -515,7 +514,7 @@
             "target": {
               "kind": "project"
             },
-            "source": ".inkweaver/project.json",
+            "source": ".ai-novel/project.json",
             "revision": "dd798e6c379f7987937cd1f46edde2f1fcd34071ad8fb0c0d80b6e073f1bffce",
             "bytes": 378,
             "truncated": false,
@@ -526,7 +525,7 @@
             "target": {
               "kind": "characters"
             },
-            "source": ".inkweaver/characters.json",
+            "source": ".ai-novel/characters.json",
             "revision": "2edca42b09163bf9aa969f42e5326999602e3fe9af7d9aa57f7be74cd0fb3d9b",
             "bytes": 301,
             "truncated": false,
@@ -536,7 +535,7 @@
             "target": {
               "kind": "story-blueprint"
             },
-            "source": ".inkweaver/blueprints/story.json",
+            "source": ".ai-novel/blueprints/story.json",
             "revision": "8b670fba14a857e39ca8cbf9df9386b4dc9919785205303a7fb5562e95e6d7b0",
             "bytes": 299,
             "truncated": false,
@@ -547,7 +546,7 @@
               "kind": "chapter-blueprint",
               "chapter": 1
             },
-            "source": ".inkweaver/blueprints/chapters/0001.json",
+            "source": ".ai-novel/blueprints/chapters/0001.json",
             "revision": "66307496193de6e99a38cbe1de911b045485bdbda139c1c701d01cc50e3b5cf2",
             "bytes": 330,
             "truncated": false,
@@ -624,7 +623,7 @@
             "target": {
               "kind": "project"
             },
-            "source": ".inkweaver/project.json",
+            "source": ".ai-novel/project.json",
             "revision": "dd798e6c379f7987937cd1f46edde2f1fcd34071ad8fb0c0d80b6e073f1bffce",
             "bytes": 378,
             "truncated": false,
@@ -635,7 +634,7 @@
             "target": {
               "kind": "characters"
             },
-            "source": ".inkweaver/characters.json",
+            "source": ".ai-novel/characters.json",
             "revision": "2edca42b09163bf9aa969f42e5326999602e3fe9af7d9aa57f7be74cd0fb3d9b",
             "bytes": 301,
             "truncated": false,
@@ -645,7 +644,7 @@
             "target": {
               "kind": "story-blueprint"
             },
-            "source": ".inkweaver/blueprints/story.json",
+            "source": ".ai-novel/blueprints/story.json",
             "revision": "8b670fba14a857e39ca8cbf9df9386b4dc9919785205303a7fb5562e95e6d7b0",
             "bytes": 299,
             "truncated": false,
@@ -656,7 +655,7 @@
               "kind": "chapter-blueprint",
               "chapter": 1
             },
-            "source": ".inkweaver/blueprints/chapters/0001.json",
+            "source": ".ai-novel/blueprints/chapters/0001.json",
             "revision": "66307496193de6e99a38cbe1de911b045485bdbda139c1c701d01cc50e3b5cf2",
             "bytes": 330,
             "truncated": false,

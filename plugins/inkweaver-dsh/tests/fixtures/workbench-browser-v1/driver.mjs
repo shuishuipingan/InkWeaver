@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/** Real DSH Web browser journey for the compact InkWeaver workbench. */
+/** Real DSH Web browser journey for the compact AI novel workbench. */
 
 import { createRequire } from 'node:module'
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
@@ -95,7 +95,7 @@ export async function runWorkbenchBrowserJourney(harnessRoot) {
   const drawer = page.getByRole('dialog', { name: '小说工作台' })
   await drawer.waitFor({ timeout: 15_000 })
   const projectRoot = join(scaffold.workspaceCwd, workspaceName)
-  const assetRoot = join(projectRoot, '.inkweaver')
+  const assetRoot = join(projectRoot, '.ai-novel')
   await page.evaluate(() => {
     const uuids = [
       '123e4567-e89b-42d3-a456-426614174000',

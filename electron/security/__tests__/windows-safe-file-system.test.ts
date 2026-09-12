@@ -13,7 +13,7 @@ const temporaryRoots: string[] = []
 const REAL_WINDOWS_MULTI_HELPER_TIMEOUT_MS = 15_000
 
 function fixtureRoot(): string {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'inkweaver-secure-fs-'))
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-novel-secure-fs-'))
   temporaryRoots.push(root)
   return root
 }
@@ -398,7 +398,7 @@ describe.runIf(process.platform === 'win32')('Windows handle-bound secure file s
     expect(reachedCommitGuard).toBe(false)
     expect(fs.existsSync(targetPath)).toBe(false)
     expect(fs.readdirSync(selectedRoot)).not.toEqual(expect.arrayContaining([
-      expect.stringMatching(/^\.inkweaver-.*\.tmp$/),
+      expect.stringMatching(/^\.ai-novel-.*\.tmp$/),
     ]))
   })
 

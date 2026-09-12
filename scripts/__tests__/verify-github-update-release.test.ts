@@ -89,16 +89,16 @@ describe('GitHub Windows update release verification', () => {
       assets: [
         ...releaseFor(artifacts).assets,
         {
-          name: 'inkweaver-mac-arm64-0.2.6-installer.dmg',
+          name: 'inkweaver-0.2.6-arm64.dmg',
           size: 7,
           digest: `sha256:${sha256('mac-dmg')}`,
-          browser_download_url: 'https://example.test/inkweaver-mac-arm64-0.2.6-installer.dmg',
+          browser_download_url: 'https://example.test/inkweaver-0.2.6-arm64.dmg',
         },
         {
-          name: 'inkweaver-mac-arm64-0.2.6-installer.dmg.sha256',
+          name: 'inkweaver-0.2.6-arm64.dmg.sha256',
           size: 64,
           digest: `sha256:${sha256('mac-checksum')}`,
-          browser_download_url: 'https://example.test/inkweaver-mac-arm64-0.2.6-installer.dmg.sha256',
+          browser_download_url: 'https://example.test/inkweaver-0.2.6-arm64.dmg.sha256',
         },
       ],
     }
@@ -132,7 +132,7 @@ describe('GitHub Windows update release verification', () => {
       prerelease: true,
       assets: [
         ...releaseFor(artifacts).assets,
-        { name: 'inkweaver-0.2.6-windows-x64.zip', size: 1 },
+        { name: 'AI-Novel-Writer-0.2.6-windows-x64.zip', size: 1 },
       ],
     }
     const fetcher = vi.fn(async () => new Response(JSON.stringify(invalidRelease)))

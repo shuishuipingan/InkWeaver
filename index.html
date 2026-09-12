@@ -13,7 +13,7 @@
         var bgMap = { light: '#F7F3E8', galaxy: '#0A1628', paper: '#F7F3E8', dark: '#1E1E1E' };
         var theme = 'paper';
         try {
-          var raw = localStorage.getItem('inkweaver-theme');
+          var raw = localStorage.getItem('ai-novel-writer-theme');
           if (raw) {
             var state = JSON.parse(raw).state || {};
             var candidate = state.resolvedTheme || state.theme;

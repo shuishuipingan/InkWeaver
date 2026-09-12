@@ -92,7 +92,7 @@ function recordOf(value: unknown, keys: readonly string[]): Record<string, unkno
 }
 
 function invalidResponse(): Error {
-  return new Error('InkWeaver context response is invalid')
+  return new Error('AI novel context response is invalid')
 }
 
 function stringOf(value: unknown): string {

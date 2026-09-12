@@ -185,7 +185,7 @@ function createIsolatedFixture() {
   mkdirSync(electronUserData, { recursive: true })
   writeFileSync(join(temporaryRoot, '.vibe-owner.json'), `${JSON.stringify({
     owner: 'codex/renderer-surface-e2e',
-    sourceProject: 'InkWeaver',
+    sourceProject: 'AI-Novel-Writer',
     task: 'github-issue-97-real-electron',
     createdAt: new Date().toISOString(),
     ttlHours: 1,
@@ -274,7 +274,7 @@ export function prepareVisualEvidenceDirectory(configuredOverride) {
   const expiresAt = new Date(createdAt.getTime() + (8 * 60 * 60 * 1000))
   writeFileSync(join(outputDirectory, '.vibe-owner.json'), `${JSON.stringify({
     owner: 'codex/paper-ink-visual-qa',
-    sourceProject: 'InkWeaver',
+    sourceProject: 'AI-Novel-Writer',
     task: 'github-issue-97',
     createdAt: createdAt.toISOString(),
     expiresAt: expiresAt.toISOString(),

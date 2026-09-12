@@ -66,7 +66,7 @@ describe('asset mutation native approval outcomes', () => {
       expect(block?.type === 'tool-result' ? block.content : []).toContainEqual({
         type: 'text', text: 'Error: the user rejected tool "novel_apply_change"',
       })
-      await expect(readFile(join(run.workspace, '.inkweaver', 'project.json'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
+      await expect(readFile(join(run.workspace, '.ai-novel', 'project.json'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
     } finally {
       await run.release()
     }
@@ -80,7 +80,7 @@ describe('asset mutation native approval outcomes', () => {
       const result = run.events.find(event =>
         event.type === 'tool/result' && event.data.message.source.callId === 'stale-replace-project')
       expect(result?.type === 'tool/result' ? result.data.error?.code : undefined).toBe('STALE_REVISION')
-      const manifest = JSON.parse(await readFile(join(run.workspace, '.inkweaver', 'project.json'), 'utf8')) as {
+      const manifest = JSON.parse(await readFile(join(run.workspace, '.ai-novel', 'project.json'), 'utf8')) as {
         readonly title: string
       }
       expect(manifest.title).toBe('外部并发标题')

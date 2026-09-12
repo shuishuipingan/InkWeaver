@@ -62,6 +62,7 @@ describe('desktop release profile contract', () => {
         'acceptance/quiet-window.json',
         'acceptance/error-dialogs.json',
         'acceptance/uninstall.json',
+        'acceptance/upgrade-data.json',
         'acceptance/native-abi.json',
         'acceptance/packaged-smoke.json',
         'acceptance/signing.json',
@@ -97,7 +98,6 @@ describe('desktop release profile contract', () => {
       { name: 'inkweaver-mac-arm64-{version}-installer.dmg.sha256', platform: 'macos-arm64', role: 'checksum' },
       { name: 'inkweaver-mac-x64-{version}-installer.dmg', platform: 'macos-x64', role: 'installer' },
       { name: 'inkweaver-mac-x64-{version}-installer.dmg.sha256', platform: 'macos-x64', role: 'checksum' },
-      { name: 'shuishuipingan-inkweaver-dsh-{version}.tgz', platform: 'dsh', role: 'extension' },
     ])
     expect(profile.promotion).toEqual({
       workflow: '.github/workflows/cross-platform-runtime-artifact-promotion.yml',

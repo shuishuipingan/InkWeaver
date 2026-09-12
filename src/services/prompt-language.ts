@@ -644,6 +644,7 @@ Use these only to understand later turning points. Do not reveal or advance them
 - Character states: {{character_states}}
 - Recent chapters: {{short_summary}}
 - Exact ending of the previous chapter — continue it seamlessly: {{previous_ending}}
+- Confirmed scene handoff from the previous chapter — preserve place, emotion, and unfinished actions: {{chapter_handoff}}
 
 [Chapter brief]
 {{chapter_info}}

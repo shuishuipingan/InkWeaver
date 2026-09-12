@@ -16,7 +16,7 @@ import { createNovelV2ToolDefinitions } from '../src/agent.ts'
 
 const WORKSPACE_ID = WorkspaceId('123e4567-e89b-42d3-a456-426614174205')
 
-describe('InkWeaver V2 model state privacy', () => {
+describe('AI novel V2 model state privacy', () => {
   it('projects a migrated state before novel_read returns it to the model', async () => {
     const root = 'C:\\HostOnly\\model-state-workspace'
     const snapshot = {

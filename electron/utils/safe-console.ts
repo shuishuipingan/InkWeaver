@@ -17,6 +17,7 @@ type ConsoleLevel = 'log' | 'info' | 'warn' | 'error'
 
 function safeWrite(level: ConsoleLevel, args: unknown[]): void {
   try {
+    // eslint-disable-next-line no-console
     const fn = console[level]
     fn.apply(console, args)
   } catch { /* 管道断开时静默忽略 */ }

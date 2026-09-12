@@ -5,8 +5,6 @@ import { writeFileAtomic } from '@deepseek-ai/dsh-atomic-write'
 import { HarnessError } from '@deepseek-ai/dsh-llm'
 import { WorkspaceId, type WorkspaceId as WorkspaceIdType } from '@deepseek-ai/dsh-workspace'
 import type { CreativeStrategy, NovelProjectId } from './types.ts'
-import { INKWEAVER_IMPORT_MARKER, INKWEAVER_PROJECT_DIRECTORY } from './identity.ts'
-import { InkWeaverOperationGateError, withInkWeaverOperationGate } from './operation-gate.ts'
 
 /**
  * Authoritative SQLite-backed project store for the InkWeaver DSH plugin.
@@ -15,7 +13,7 @@ import { InkWeaverOperationGateError, withInkWeaverOperationGate } from './opera
 /** Stable SQLite application identity for the InkWeaver V2 project artifact. */
 const APPLICATION_ID = 0x41_4e_4f_56
 /** Stable V2 domain schema version. */
-const USER_VERSION = 4
+const USER_VERSION = 5
 /** Exact ignore rules protecting SQLite sidecars and archived V1 sources from Git. */
 const GITIGNORE_TEXT = [
   'novel.db',
@@ -23,7 +21,7 @@ const GITIGNORE_TEXT = [
   'novel.db-wal',
   'novel.db-shm',
   'novel.db.lock',
-  'imports/',
+  'v1-archive/',
   '',
 ].join('\n')
 
@@ -113,6 +111,35 @@ export type NovelCharactersNextValue = Omit<NovelCharactersAggregate, 'revision'
 /** Lifecycle of one chapter in the authoritative chapter aggregate. */
 export type NovelChapterStatus = 'planned' | 'drafting' | 'reviewing' | 'revising' | 'finalized'
 
+export type NovelTransitionStrategy = 'immediate' | 'deliberate'
+export type NovelKnowledgeKind = 'fact' | 'belief' | 'rumor' | 'misbelief'
+export type NovelKnowledgeStatus = 'candidate' | 'confirmed'
+
+/** Source-bound handoff for the chapter that follows a finalized chapter. */
+export interface NovelChapterHandoff {
+  readonly sourceChapter: number
+  readonly sourceRevision: number
+  readonly transition: NovelTransitionStrategy
+  readonly scene: string
+  readonly emotionalState: string
+  readonly openActions: readonly string[]
+  readonly unresolvedQuestions: readonly string[]
+}
+
+/** A bounded, author-confirmed piece of character knowledge available to a chapter. */
+export interface NovelKnowledgeEvent {
+  readonly eventId: string
+  readonly characterId: string
+  readonly statement: string
+  readonly kind: NovelKnowledgeKind
+  readonly acquisition: string
+  readonly sourceChapter: number
+  readonly validFromChapter: number
+  readonly validUntilChapter?: number
+  readonly evidence: string
+  readonly status: NovelKnowledgeStatus
+}
+
 /** Authoritative chapter blueprint aggregate. */
 export interface NovelChapterAggregate {
   readonly revision: number
@@ -124,6 +151,8 @@ export interface NovelChapterAggregate {
   readonly keyEvents: readonly string[]
   readonly suspense: string
   readonly status: NovelChapterStatus
+  readonly handoff?: NovelChapterHandoff
+  readonly knowledgeEvents?: readonly NovelKnowledgeEvent[]
 }
 
 /** Complete replacement value for one chapter blueprint aggregate. */
@@ -307,6 +336,10 @@ export interface NovelChapterContext {
     readonly content: string
     readonly summary: string
   }
+  /** Handoff authored for this chapter, sourced from the previous chapter. */
+  readonly handoff?: NovelChapterHandoff
+  /** Confirmed knowledge valid for this chapter; candidates never enter context. */
+  readonly knowledgeEvents?: readonly NovelKnowledgeEvent[]
 }
 
 /** Complete initial V2 state imported from one fingerprinted V1 source set. */
@@ -610,6 +643,8 @@ interface ChapterRow {
   readonly key_events: string
   readonly suspense: string
   readonly status: string
+  readonly handoff_json: string
+  readonly knowledge_events_json: string
   readonly revision: number
 }
 
@@ -790,6 +825,8 @@ CREATE TABLE chapters (
   key_events TEXT NOT NULL,
   suspense TEXT NOT NULL,
   status TEXT NOT NULL,
+  handoff_json TEXT NOT NULL DEFAULT '',
+  knowledge_events_json TEXT NOT NULL DEFAULT '[]',
   revision INTEGER NOT NULL CHECK (revision >= 0)
 ) STRICT;
 
@@ -932,6 +969,21 @@ function requireExactKeys(value: object, keys: readonly string[], field: string)
   const actual = Object.keys(record).sort().join('\0')
   const expected = [...keys].sort().join('\0')
   if (actual !== expected) throw new NovelStoreError('INVALID_CONTENT', `${field} must contain exactly ${keys.join(', ')}`)
+  return record
+}
+
+function requireAllowedKeys(
+  value: object,
+  required: readonly string[],
+  optional: readonly string[],
+  field: string,
+): Record<string, unknown> {
+  const record = value as Record<string, unknown>
+  const allowed = new Set([...required, ...optional])
+  if (required.some(key => !Object.prototype.hasOwnProperty.call(record, key))
+    || Object.keys(record).some(key => !allowed.has(key))) {
+    throw new NovelStoreError('INVALID_CONTENT', `${field} contains missing or unknown fields`)
+  }
   return record
 }
 
@@ -1402,10 +1454,73 @@ function validateCharacters(value: NovelCharactersNextValue): NovelCharactersNex
   return { items, relationships }
 }
 
+function validateHandoff(value: unknown, chapter: number): NovelChapterHandoff {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new NovelStoreError('INVALID_CONTENT', 'chapter.handoff must be an object')
+  }
+  const row = requireExactKeys(value, [
+    'sourceChapter', 'sourceRevision', 'transition', 'scene', 'emotionalState', 'openActions', 'unresolvedQuestions',
+  ], 'chapter.handoff')
+  const sourceChapter = requirePositiveInteger(row.sourceChapter, 'chapter.handoff.sourceChapter')
+  if (chapter <= 1 || sourceChapter !== chapter - 1) {
+    throw new NovelStoreError('INVALID_CONTENT', 'chapter.handoff.sourceChapter must be the immediately preceding chapter')
+  }
+  return {
+    sourceChapter,
+    sourceRevision: requireNonNegativeInteger(row.sourceRevision, 'chapter.handoff.sourceRevision'),
+    transition: requireEnum(row.transition, ['immediate', 'deliberate'], 'chapter.handoff.transition'),
+    scene: requireNonEmptyString(row.scene, 'chapter.handoff.scene'),
+    emotionalState: requireString(row.emotionalState, 'chapter.handoff.emotionalState'),
+    openActions: requireStringArray(row.openActions, 'chapter.handoff.openActions'),
+    unresolvedQuestions: requireStringArray(row.unresolvedQuestions, 'chapter.handoff.unresolvedQuestions'),
+  }
+}
+
+function validateKnowledgeEvents(value: unknown, chapter: number): readonly NovelKnowledgeEvent[] {
+  if (!Array.isArray(value)) throw new NovelStoreError('INVALID_CONTENT', 'chapter.knowledgeEvents must be an array')
+  const ids = new Set<string>()
+  return value.map((candidate, index) => {
+    if (typeof candidate !== 'object' || candidate === null || Array.isArray(candidate)) {
+      throw new NovelStoreError('INVALID_CONTENT', `chapter.knowledgeEvents[${index}] must be an object`)
+    }
+    const row = requireAllowedKeys(candidate, [
+      'eventId', 'characterId', 'statement', 'kind', 'acquisition', 'sourceChapter',
+      'validFromChapter', 'evidence', 'status',
+    ], ['validUntilChapter'], `chapter.knowledgeEvents[${index}]`)
+    const eventId = requireNonEmptyString(row.eventId, `chapter.knowledgeEvents[${index}].eventId`)
+    if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(eventId) || ids.has(eventId)) {
+      throw new NovelStoreError('INVALID_CONTENT', `chapter.knowledgeEvents[${index}].eventId must be unique and safe`)
+    }
+    ids.add(eventId)
+    const sourceChapter = requirePositiveInteger(row.sourceChapter, `chapter.knowledgeEvents[${index}].sourceChapter`)
+    const validFromChapter = requirePositiveInteger(row.validFromChapter, `chapter.knowledgeEvents[${index}].validFromChapter`)
+    const rawUntil = row.validUntilChapter
+    const validUntilChapter = rawUntil === undefined
+      ? undefined
+      : requirePositiveInteger(rawUntil, `chapter.knowledgeEvents[${index}].validUntilChapter`)
+    if (sourceChapter > chapter || validFromChapter < sourceChapter || validFromChapter > chapter
+      || (validUntilChapter !== undefined && validUntilChapter < validFromChapter)) {
+      throw new NovelStoreError('INVALID_CONTENT', `chapter.knowledgeEvents[${index}] has an invalid chapter range`)
+    }
+    return {
+      eventId,
+      characterId: requireNonEmptyString(row.characterId, `chapter.knowledgeEvents[${index}].characterId`),
+      statement: requireNonEmptyString(row.statement, `chapter.knowledgeEvents[${index}].statement`),
+      kind: requireEnum(row.kind, ['fact', 'belief', 'rumor', 'misbelief'], `chapter.knowledgeEvents[${index}].kind`),
+      acquisition: requireNonEmptyString(row.acquisition, `chapter.knowledgeEvents[${index}].acquisition`),
+      sourceChapter,
+      validFromChapter,
+      ...(validUntilChapter === undefined ? {} : { validUntilChapter }),
+      evidence: requireNonEmptyString(row.evidence, `chapter.knowledgeEvents[${index}].evidence`),
+      status: requireEnum(row.status, ['candidate', 'confirmed'], `chapter.knowledgeEvents[${index}].status`),
+    }
+  })
+}
+
 function validateChapter(value: NovelChapterNextValue): NovelChapterNextValue {
-  const record = requireExactKeys(value, [
+  const record = requireAllowedKeys(value, [
     'chapter', 'title', 'purpose', 'plotBeats', 'characters', 'keyEvents', 'suspense', 'status',
-  ], 'chapter nextValue')
+  ], ['handoff', 'knowledgeEvents'], 'chapter nextValue')
   const validated = {
     chapter: requirePositiveInteger(record.chapter, 'chapter.chapter'),
     title: requireNonEmptyString(record.title, 'chapter.title'),
@@ -1419,7 +1534,15 @@ function validateChapter(value: NovelChapterNextValue): NovelChapterNextValue {
   if (new Set(validated.characters).size !== validated.characters.length) {
     throw new NovelStoreError('INVALID_CONTENT', 'chapter.characters must be unique')
   }
-  return validated
+  const handoff = record.handoff === undefined ? undefined : validateHandoff(record.handoff, validated.chapter)
+  const knowledgeEvents = record.knowledgeEvents === undefined
+    ? undefined
+    : validateKnowledgeEvents(record.knowledgeEvents, validated.chapter)
+  return {
+    ...validated,
+    ...(handoff === undefined ? {} : { handoff }),
+    ...(knowledgeEvents === undefined ? {} : { knowledgeEvents }),
+  }
 }
 
 interface ValidatedInitialization {
@@ -1663,6 +1786,15 @@ function parseCharacters(
 }
 
 function parseChapter(row: ChapterRow, characters: readonly string[]): NovelChapterAggregate {
+  const handoff = row.handoff_json
+    ? parseJson(row.handoff_json, 'chapter.handoff is invalid')
+    : undefined
+  const parsedKnowledgeEvents = row.knowledge_events_json
+    ? parseJson(row.knowledge_events_json, 'chapter.knowledgeEvents is invalid')
+    : undefined
+  const knowledgeEvents = Array.isArray(parsedKnowledgeEvents) && parsedKnowledgeEvents.length > 0
+    ? parsedKnowledgeEvents
+    : undefined
   const value = validateChapter({
     chapter: row.chapter,
     title: row.title,
@@ -1672,6 +1804,8 @@ function parseChapter(row: ChapterRow, characters: readonly string[]): NovelChap
     keyEvents: parseJson(row.key_events, 'chapter.keyEvents is invalid'),
     suspense: row.suspense,
     status: row.status,
+    ...(handoff === undefined ? {} : { handoff }),
+    ...(knowledgeEvents === undefined ? {} : { knowledgeEvents }),
   } as NovelChapterNextValue)
   return {
     revision: row.revision,
@@ -1784,7 +1918,7 @@ function validateMigrationReceipt(value: unknown): NovelMigrationReceipt {
     throw new NovelStoreError('UNSUPPORTED_FORMAT', 'migration receipt.fingerprint is invalid')
   }
   const archivePath = requireNonEmptyString(record.archivePath, 'migration receipt.archivePath')
-  if (archivePath !== `${INKWEAVER_PROJECT_DIRECTORY}/imports/${fingerprint}`) {
+  if (archivePath !== `.ai-novel/v1-archive/${fingerprint}`) {
     throw new NovelStoreError('UNSUPPORTED_FORMAT', 'migration receipt.archivePath is invalid')
   }
   return {
@@ -1809,7 +1943,7 @@ function requireStorage(db: Database, readOnly: boolean): NovelStorageDiagnostic
   const journalMode = pragma('journal_mode')
   const synchronousNumber = pragma('synchronous')
   const lockingMode = pragma('locking_mode')
-  if (applicationId !== APPLICATION_ID || (userVersion !== USER_VERSION && userVersion !== 3 && (!readOnly || userVersion !== 2)) || foreignKeys !== 1) {
+  if (applicationId !== APPLICATION_ID || (userVersion !== USER_VERSION && userVersion !== 4 && userVersion !== 3 && (!readOnly || userVersion !== 2)) || foreignKeys !== 1) {
     throw new NovelStoreError('UNSUPPORTED_FORMAT', 'novel.db is not an InkWeaver V2 database')
   }
   const expectedJournalMode = 'delete'
@@ -1828,37 +1962,37 @@ function requireStorage(db: Database, readOnly: boolean): NovelStorageDiagnostic
 }
 
 export async function ensureProjectDirectory(root: string, createArtifact: boolean): Promise<string> {
-  const projectDirectory = join(root, INKWEAVER_PROJECT_DIRECTORY)
+  const projectDirectory = join(root, '.ai-novel')
   try {
     const existing = await lstat(projectDirectory)
     if (!existing.isDirectory() || existing.isSymbolicLink()) {
-      throw new NovelStoreError('PATH_REJECTED', '.inkweaver must be a real directory inside the workspace')
+      throw new NovelStoreError('PATH_REJECTED', '.ai-novel must be a real directory inside the workspace')
     }
   } catch (error) {
     if (typeof error !== 'object' || error === null || !('code' in error) || error.code !== 'ENOENT') {
       throw error
     }
     if (!createArtifact) {
-      throw new NovelStoreError('PATH_REJECTED', '.inkweaver must already exist for an existing project database')
+      throw new NovelStoreError('PATH_REJECTED', '.ai-novel must already exist for an existing project database')
     }
     await mkdir(projectDirectory, { recursive: true, mode: 0o700 })
     const created = await lstat(projectDirectory)
     if (!created.isDirectory() || created.isSymbolicLink()) {
-      throw new NovelStoreError('PATH_REJECTED', '.inkweaver must be a real directory inside the workspace')
+      throw new NovelStoreError('PATH_REJECTED', '.ai-novel must be a real directory inside the workspace')
     }
   }
   const gitignore = join(projectDirectory, '.gitignore')
   try {
     const existingIgnore = await lstat(gitignore)
     if (!existingIgnore.isFile() || existingIgnore.isSymbolicLink()) {
-      throw new NovelStoreError('PATH_REJECTED', '.inkweaver/.gitignore must be a real file')
+      throw new NovelStoreError('PATH_REJECTED', '.ai-novel/.gitignore must be a real file')
     }
     const existing = await readFile(gitignore, 'utf8')
-    if (existing !== GITIGNORE_TEXT) throw new NovelStoreError('INVALID_CONTENT', '.inkweaver/.gitignore has unexpected content')
+    if (existing !== GITIGNORE_TEXT) throw new NovelStoreError('INVALID_CONTENT', '.ai-novel/.gitignore has unexpected content')
   } catch (error) {
     if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT') {
       if (!createArtifact) {
-        throw new NovelStoreError('INVALID_CONTENT', '.inkweaver/.gitignore is required for an existing project database')
+        throw new NovelStoreError('INVALID_CONTENT', '.ai-novel/.gitignore is required for an existing project database')
       }
       await writeFileAtomic(gitignore, GITIGNORE_TEXT, { mode: 0o600, dirMode: 0o700 })
     } else {
@@ -1878,7 +2012,7 @@ function validateMigrationSeed(seed: NovelMigrationSeed): NovelMigrationSeed {
   if (!/^[a-f0-9]{64}$/.test(record.fingerprint)) {
     throw new NovelStoreError('INVALID_CONTENT', 'migration seed.fingerprint must be a SHA-256 digest')
   }
-  if (record.archivePath !== `${INKWEAVER_PROJECT_DIRECTORY}/imports/${record.fingerprint}`) {
+  if (record.archivePath !== `.ai-novel/v1-archive/${record.fingerprint}`) {
     throw new NovelStoreError('INVALID_CONTENT', 'migration seed.archivePath is invalid')
   }
   requirePositiveInteger(record.sourceCount, 'migration seed.sourceCount')
@@ -1894,6 +2028,9 @@ function validateMigrationSeed(seed: NovelMigrationSeed): NovelMigrationSeed {
   const characterIds = new Set(characters.items.map(item => item.characterId))
   if (chapterValues.some(chapter => chapter.characters.some(id => !characterIds.has(id)))) {
     throw new NovelStoreError('INVALID_CONTENT', 'migration seed chapter references an unknown character')
+  }
+  if (chapterValues.some(chapter => chapter.knowledgeEvents?.some(event => !characterIds.has(event.characterId)))) {
+    throw new NovelStoreError('INVALID_CONTENT', 'migration seed knowledge event references an unknown character')
   }
   const artifactIds = new Set<string>()
   for (const value of record.artifacts) {
@@ -1969,7 +2106,7 @@ export async function createMigratedNovelStoreFile(
     createSchema(db)
     db.exec('BEGIN IMMEDIATE')
     try {
-      db.prepare("INSERT INTO meta (key, value) VALUES ('project_id', ?), ('workspace_id', ?), ('workspace_path', ?), ('schema_version', '4'), ('attached_at', ?), ('migration_source_fingerprint', ?), ('migration_receipt', ?)")
+      db.prepare("INSERT INTO meta (key, value) VALUES ('project_id', ?), ('workspace_id', ?), ('workspace_path', ?), ('schema_version', '5'), ('attached_at', ?), ('migration_source_fingerprint', ?), ('migration_receipt', ?)")
         .run(valid.projectId, valid.workspaceId, root, valid.project.createdAt, valid.fingerprint, stableJson(receipt))
       db.prepare(`INSERT INTO project (
         id, title, language, genre, planned_chapters, target_words_per_chapter, creative_strategy,
@@ -2008,13 +2145,15 @@ export async function createMigratedNovelStoreFile(
         )
       }
       const insertChapter = db.prepare(`INSERT INTO chapters (
-        chapter, title, purpose, plot_beats, key_events, suspense, status, revision
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, 0)`)
+        chapter, title, purpose, plot_beats, key_events, suspense, status, handoff_json, knowledge_events_json, revision
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`)
       const insertChapterCharacter = db.prepare('INSERT INTO chapter_characters (chapter, character_id) VALUES (?, ?)')
       for (const chapter of valid.chapters) {
         insertChapter.run(
           chapter.chapter, chapter.title, chapter.purpose, stableJson(chapter.plotBeats),
           stableJson(chapter.keyEvents), chapter.suspense, chapter.status,
+          chapter.handoff === undefined ? '' : stableJson(chapter.handoff),
+          chapter.knowledgeEvents === undefined ? '[]' : stableJson(chapter.knowledgeEvents),
         )
         for (const characterId of chapter.characters) insertChapterCharacter.run(chapter.chapter, characterId)
       }
@@ -2070,6 +2209,10 @@ function configureReadConnection(db: Database): void {
 
 function tableExists(db: Database, table: string): boolean {
   return db.prepare("SELECT 1 AS present FROM sqlite_schema WHERE type = 'table' AND name = ?").get(table) !== undefined
+}
+
+function columnExists(db: Database, table: string, column: string): boolean {
+  return (db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>).some(row => row.name === column)
 }
 
 function readMetaBinding(db: Database): MetaBinding | undefined {
@@ -2168,12 +2311,32 @@ function migrateSchemaV3ToV4(db: Database): void {
       selected_at TEXT NOT NULL
     ) STRICT`)
     db.prepare("UPDATE meta SET value = '4' WHERE key = 'schema_version'").run()
-    db.exec(`PRAGMA user_version = ${USER_VERSION}`)
+    db.exec('PRAGMA user_version = 4')
     db.exec('COMMIT')
   } catch (error) {
     if (db.isTransaction) db.exec('ROLLBACK')
     if (error instanceof NovelStoreError) throw error
     throw new NovelStoreError('WRITE_FAILED', 'novel.db V3 to V4 schema migration failed', { cause: error })
+  }
+}
+
+/** Add source-bound chapter handoff and confirmed knowledge projections. */
+function migrateSchemaV4ToV5(db: Database): void {
+  db.exec('BEGIN IMMEDIATE')
+  try {
+    if (!columnExists(db, 'chapters', 'handoff_json')) {
+      db.exec("ALTER TABLE chapters ADD COLUMN handoff_json TEXT NOT NULL DEFAULT ''")
+    }
+    if (!columnExists(db, 'chapters', 'knowledge_events_json')) {
+      db.exec("ALTER TABLE chapters ADD COLUMN knowledge_events_json TEXT NOT NULL DEFAULT '[]'")
+    }
+    db.prepare("UPDATE meta SET value = '5' WHERE key = 'schema_version'").run()
+    db.exec(`PRAGMA user_version = ${USER_VERSION}`)
+    db.exec('COMMIT')
+  } catch (error) {
+    if (db.isTransaction) db.exec('ROLLBACK')
+    if (error instanceof NovelStoreError) throw error
+    throw new NovelStoreError('WRITE_FAILED', 'novel.db V4 to V5 schema migration failed', { cause: error })
   }
 }
 
@@ -2187,6 +2350,10 @@ function migrateSchema(db: Database): void {
   }
   if (version === 3) {
     migrateSchemaV3ToV4(db)
+    version = 4
+  }
+  if (version === 4) {
+    migrateSchemaV4ToV5(db)
     return
   }
   throw new NovelStoreError('UNSUPPORTED_FORMAT', 'novel.db schema version is not supported')
@@ -2226,7 +2393,7 @@ class SqliteNovelStore implements NovelStore {
       if (this.#projectRow() !== undefined) throw new NovelStoreError('ALREADY_INITIALIZED', 'novel project is already initialized')
       this.#db.exec('BEGIN IMMEDIATE')
       try {
-        this.#db.prepare("INSERT INTO meta (key, value) VALUES ('project_id', ?), ('workspace_id', ?), ('workspace_path', ?), ('schema_version', '4'), ('attached_at', ?)")
+        this.#db.prepare("INSERT INTO meta (key, value) VALUES ('project_id', ?), ('workspace_id', ?), ('workspace_path', ?), ('schema_version', '5'), ('attached_at', ?)")
           .run(initialization.projectId, initialization.workspaceId, this.#root, initialization.project.createdAt)
         this.#db.prepare(`INSERT INTO project (
           id, title, language, genre, planned_chapters, target_words_per_chapter, creative_strategy,
@@ -2461,7 +2628,7 @@ class SqliteNovelStore implements NovelStore {
 
   #legacyReadOnlyArtifactSchema(): boolean {
     const version = Number((this.#db.prepare('PRAGMA user_version').get() as { user_version: unknown }).user_version)
-    return this.#readOnly && version < USER_VERSION
+    return this.#readOnly && version < 4
   }
 
   #legacyV2Proposals(): readonly NovelProposalSummary[] {
@@ -2677,9 +2844,17 @@ class SqliteNovelStore implements NovelStore {
     this.#db.exec('BEGIN')
     try {
       this.#requireWrittenBinding()
+      const continuity = this.#chapterContinuity(chapter)
+      const baseContext: NovelChapterContext = {
+        chapter,
+        ...(continuity?.handoff === undefined ? {} : { handoff: continuity.handoff }),
+        ...(continuity?.knowledgeEvents === undefined || continuity.knowledgeEvents.length === 0
+          ? {}
+          : { knowledgeEvents: continuity.knowledgeEvents }),
+      }
       if (chapter <= 1 || this.#legacyReadOnlyArtifactSchema()) {
         this.#db.exec('COMMIT')
-        return { chapter }
+        return baseContext
       }
       const row = this.#db.prepare(`SELECT a.artifact_id, a.chapter, a.kind, a.parent_artifact_id, a.content,
         a.report, a.summary, a.created_at, f.summary AS final_summary
@@ -2687,7 +2862,7 @@ class SqliteNovelStore implements NovelStore {
         .get(chapter - 1) as (ArtifactRow & { readonly final_summary: string }) | undefined
       if (row === undefined) {
         this.#db.exec('COMMIT')
-        return { chapter }
+        return baseContext
       }
       const artifact = parseArtifact(row)
       if (artifact.chapter !== chapter - 1 || (artifact.kind !== 'draft' && artifact.kind !== 'revision') || artifact.content === undefined) {
@@ -2696,12 +2871,36 @@ class SqliteNovelStore implements NovelStore {
       const summary = requireNonEmptyString(row.final_summary, 'chapter final summary')
       this.#db.exec('COMMIT')
       return {
-        chapter,
+        ...baseContext,
         previousFinal: { chapter: artifact.chapter, artifactId: artifact.artifactId, content: artifact.content, summary },
       }
     } catch (error) {
       this.#rollback()
       throw error
+    }
+  }
+
+  #chapterContinuity(chapter: number): {
+    readonly handoff?: NovelChapterHandoff
+    readonly knowledgeEvents?: readonly NovelKnowledgeEvent[]
+  } | undefined {
+    const version = Number((this.#db.prepare('PRAGMA user_version').get() as { user_version: unknown }).user_version)
+    if (version < USER_VERSION) return undefined
+    const row = this.#db.prepare('SELECT handoff_json, knowledge_events_json FROM chapters WHERE chapter = ?')
+      .get(chapter) as { handoff_json: string; knowledge_events_json: string } | undefined
+    if (row === undefined) return undefined
+    const handoff = row.handoff_json
+      ? validateHandoff(parseJson(row.handoff_json, 'chapter.handoff is invalid'), chapter)
+      : undefined
+    const parsed = row.knowledge_events_json
+      ? validateKnowledgeEvents(parseJson(row.knowledge_events_json, 'chapter.knowledgeEvents is invalid'), chapter)
+      : []
+    const knowledgeEvents = parsed.filter(event => event.status === 'confirmed'
+      && event.validFromChapter <= chapter
+      && (event.validUntilChapter === undefined || event.validUntilChapter >= chapter))
+    return {
+      ...(handoff === undefined ? {} : { handoff }),
+      ...(knowledgeEvents.length === 0 ? {} : { knowledgeEvents }),
     }
   }
 
@@ -2719,8 +2918,20 @@ class SqliteNovelStore implements NovelStore {
       FROM characters ORDER BY character_id`).all() as unknown as CharacterRecord[]
     const relationshipRows = this.#db.prepare(`SELECT from_character_id, to_character_id, relation, notes
       FROM character_relationships ORDER BY from_character_id, to_character_id, relation`).all() as unknown as CharacterRelationshipRecord[]
-    const chapterRows = this.#db.prepare(`SELECT chapter, title, purpose, plot_beats, key_events,
-      suspense, status, revision FROM chapters ORDER BY chapter`).all() as unknown as ChapterRow[]
+    const continuityColumnsAvailable = Number((this.#db.prepare('PRAGMA user_version').get() as { user_version: unknown }).user_version) >= USER_VERSION
+    const rawChapterRows = this.#db.prepare(continuityColumnsAvailable
+      ? `SELECT chapter, title, purpose, plot_beats, key_events, suspense, status,
+          handoff_json, knowledge_events_json, revision FROM chapters ORDER BY chapter`
+      : `SELECT chapter, title, purpose, plot_beats, key_events, suspense, status,
+          revision FROM chapters ORDER BY chapter`).all() as unknown as Array<ChapterRow & {
+            readonly handoff_json?: string
+            readonly knowledge_events_json?: string
+          }>
+    const chapterRows: ChapterRow[] = rawChapterRows.map(row => ({
+      ...row,
+      handoff_json: row.handoff_json ?? '',
+      knowledge_events_json: row.knowledge_events_json ?? '[]',
+    }))
     const chapterCharacterRows = this.#db.prepare(`SELECT chapter, character_id FROM chapter_characters
       ORDER BY chapter, character_id`).all() as unknown as Array<{ chapter: number; character_id: string }>
     const chapterCharacters = new Map<number, string[]>()
@@ -2902,19 +3113,29 @@ class SqliteNovelStore implements NovelStore {
           this.#db.prepare('UPDATE project SET global_revision = ? WHERE id = 1').run(nextGlobal)
       } else if (isChapterChange(change)) {
           const value = change.nextValue
-          this.#db.prepare(`INSERT INTO chapters (chapter, title, purpose, plot_beats, key_events, suspense, status, revision)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          this.#db.prepare(`INSERT INTO chapters (chapter, title, purpose, plot_beats, key_events, suspense, status, handoff_json, knowledge_events_json, revision)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(chapter) DO UPDATE SET title = excluded.title, purpose = excluded.purpose,
               plot_beats = excluded.plot_beats, key_events = excluded.key_events,
-              suspense = excluded.suspense, status = excluded.status, revision = excluded.revision`)
+              suspense = excluded.suspense, status = excluded.status,
+              handoff_json = excluded.handoff_json, knowledge_events_json = excluded.knowledge_events_json,
+              revision = excluded.revision`)
             .run(
               value.chapter, value.title, value.purpose, stableJson(value.plotBeats), stableJson(value.keyEvents),
-              value.suspense, value.status, nextRevision,
+              value.suspense, value.status,
+              value.handoff === undefined ? '' : stableJson(value.handoff),
+              value.knowledgeEvents === undefined ? '[]' : stableJson(value.knowledgeEvents),
+              nextRevision,
             )
           const exists = this.#db.prepare('SELECT 1 AS present FROM characters WHERE character_id = ?')
           for (const characterId of value.characters) {
             if (exists.get(characterId) === undefined) {
               throw new NovelStoreError('INVALID_CONTENT', 'chapter characters must already exist')
+            }
+          }
+          for (const event of value.knowledgeEvents ?? []) {
+            if (exists.get(event.characterId) === undefined) {
+              throw new NovelStoreError('INVALID_CONTENT', 'knowledge event references an unknown character')
             }
           }
           this.#db.prepare('DELETE FROM chapter_characters WHERE chapter = ?').run(value.chapter)
@@ -2977,20 +3198,6 @@ function requireRecoveryMode(mode: NovelStoreRecoveryMode): NovelStoreRecoveryMo
   return mode
 }
 
-async function rejectIncompleteImport(root: string): Promise<void> {
-  const importMarker = join(root, INKWEAVER_PROJECT_DIRECTORY, INKWEAVER_IMPORT_MARKER)
-  try {
-    const marker = await lstat(importMarker)
-    if (!marker.isFile() || marker.isSymbolicLink()) {
-      throw new NovelStoreError('PATH_REJECTED', 'InkWeaver import marker must be a real file')
-    }
-    throw new NovelStoreError('WRITE_LOCKED', 'InkWeaver project import is not committed')
-  } catch (cause) {
-    if (cause instanceof NovelStoreError) throw cause
-    if (typeof cause !== 'object' || cause === null || !('code' in cause) || cause.code !== 'ENOENT') throw cause
-  }
-}
-
 /**
  * Explicitly replace a moved database's workspace binding, or clone its project identity.
  *
@@ -3004,7 +3211,7 @@ async function rejectIncompleteImport(root: string): Promise<void> {
  * @param signal Cancellation signal checked before any recovery write.
  * @returns Path-free recovery evidence for the Host RPC projection.
  */
-async function recoverNovelStoreBindingUnlocked(
+export async function recoverNovelStoreBinding(
   root: string,
   workspaceId: WorkspaceIdType,
   mode: NovelStoreRecoveryMode,
@@ -3021,13 +3228,12 @@ async function recoverNovelStoreBindingUnlocked(
   } catch (cause) {
     throw new NovelStoreError('PATH_REJECTED', 'workspace root does not exist', { cause })
   }
-  await rejectIncompleteImport(canonicalRoot)
   await ensureProjectDirectory(canonicalRoot, false)
-  const databasePath = join(canonicalRoot, INKWEAVER_PROJECT_DIRECTORY, 'novel.db')
+  const databasePath = join(canonicalRoot, '.ai-novel', 'novel.db')
   try {
     const databaseFile = await lstat(databasePath)
     if (!databaseFile.isFile() || databaseFile.isSymbolicLink()) {
-      throw new NovelStoreError('PATH_REJECTED', '.inkweaver/novel.db must be a real file')
+      throw new NovelStoreError('PATH_REJECTED', '.ai-novel/novel.db must be a real file')
     }
   } catch (error) {
     if (error instanceof NovelStoreError) throw error
@@ -3093,7 +3299,7 @@ async function recoverNovelStoreBindingUnlocked(
 /** Options controlling whether opening a store may create its on-disk artifact. */
 export interface NovelStoreOpenOptions {
   /**
-   * When false, a missing `.inkweaver` or `novel.db` fails with `NOT_INITIALIZED` and creates
+   * When false, a missing `.ai-novel` or `novel.db` fails with `NOT_INITIALIZED` and creates
    * nothing on disk. Defaults to true, preserving the initialization path.
    */
   readonly create?: boolean
@@ -3106,14 +3312,14 @@ export interface NovelStoreOpenOptions {
 /**
  * Open the per-workspace authoritative NovelStore artifact.
  *
- * @param root Canonical workspace directory containing `.inkweaver`.
+ * @param root Canonical workspace directory containing `.ai-novel`.
  * @param workspaceId Opaque DSH Workspace identity to bind or verify.
  * @param options Pass `{ create: false }` for read paths that must not create V2 artifacts.
  * @returns A read-write store for a matching binding, or a read-only store after workspace/path drift.
  * @throws {@link NovelStoreError} when the format is unsupported, another writer holds the exclusive
  *   lock, or `{ create: false }` meets an uninitialized workspace.
  */
-async function openNovelStoreUnlocked(
+export async function openNovelStore(
   root: string,
   workspaceId: WorkspaceIdType,
   options: NovelStoreOpenOptions = {},
@@ -3133,14 +3339,13 @@ async function openNovelStoreUnlocked(
   } catch (cause) {
     throw new NovelStoreError('PATH_REJECTED', 'workspace root does not exist', { cause })
   }
-  await rejectIncompleteImport(canonicalRoot)
-  const candidateDatabasePath = join(canonicalRoot, INKWEAVER_PROJECT_DIRECTORY, 'novel.db')
+  const candidateDatabasePath = join(canonicalRoot, '.ai-novel', 'novel.db')
   const sqlite = await import('node:sqlite')
   let databaseExists = false
   try {
     const databaseFile = await lstat(candidateDatabasePath)
     if (!databaseFile.isFile() || databaseFile.isSymbolicLink()) {
-      throw new NovelStoreError('PATH_REJECTED', '.inkweaver/novel.db must be a real file')
+      throw new NovelStoreError('PATH_REJECTED', '.ai-novel/novel.db must be a real file')
     }
     databaseExists = true
   } catch (error) {
@@ -3255,55 +3460,5 @@ async function openNovelStoreUnlocked(
     if (diagnostic !== undefined && diagnostic.isOpen) diagnostic.close()
     if (error instanceof NovelStoreError) throw error
     throw new NovelStoreError('WRITE_LOCKED', 'novel.db is locked by another writer or cannot be opened', { cause: error })
-  }
-}
-
-/** Open a store while holding the workspace operation gate through path selection and SQLite open. */
-export async function openNovelStore(
-  root: string,
-  workspaceId: WorkspaceIdType,
-  options: NovelStoreOpenOptions = {},
-): Promise<NovelStore> {
-  if (!isAbsolute(root)) throw new NovelStoreError('PATH_REJECTED', 'workspace root must be absolute')
-  let canonicalRoot: string
-  try {
-    canonicalRoot = await realpath(root)
-  } catch (cause) {
-    throw new NovelStoreError('PATH_REJECTED', 'workspace root does not exist', { cause })
-  }
-  try {
-    return await withInkWeaverOperationGate(canonicalRoot, () => openNovelStoreUnlocked(canonicalRoot, workspaceId, options))
-  } catch (cause) {
-    if (cause instanceof InkWeaverOperationGateError) {
-      throw new NovelStoreError('WRITE_LOCKED', cause.message, { cause })
-    }
-    throw cause
-  }
-}
-
-/** Recover a store binding while holding the same gate used by import and normal opens. */
-export async function recoverNovelStoreBinding(
-  root: string,
-  workspaceId: WorkspaceIdType,
-  mode: NovelStoreRecoveryMode,
-  signal: AbortSignal,
-): Promise<NovelStoreRecoveryReceipt> {
-  if (!isAbsolute(root)) throw new NovelStoreError('PATH_REJECTED', 'workspace root must be absolute')
-  let canonicalRoot: string
-  try {
-    canonicalRoot = await realpath(root)
-  } catch (cause) {
-    throw new NovelStoreError('PATH_REJECTED', 'workspace root does not exist', { cause })
-  }
-  try {
-    return await withInkWeaverOperationGate(
-      canonicalRoot,
-      () => recoverNovelStoreBindingUnlocked(canonicalRoot, workspaceId, mode, signal),
-    )
-  } catch (cause) {
-    if (cause instanceof InkWeaverOperationGateError) {
-      throw new NovelStoreError('WRITE_LOCKED', cause.message, { cause })
-    }
-    throw cause
   }
 }

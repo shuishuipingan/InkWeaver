@@ -172,7 +172,23 @@ beforeEach(() => {
   authoritativeNextChapter = 1
   authorityInvalid = null
   creationHistoryChapter = null
-  continuityProjections = []
+  // Normal writing fixtures include a source-bound character state so the
+  // information-insufficient preflight does not stop an otherwise valid run.
+  // Individual tests replace this with an empty or conflicting projection
+  // when they specifically exercise that preflight branch.
+  continuityProjections = [{
+    draftId: 1,
+    chapterNumber: 1,
+    chapterTitle: '前章',
+    chapterNotes: '沈砺在雨夜继续调查。',
+    facts: [{
+      category: 'character-state',
+      entities: ['沈砺'],
+      statement: '沈砺在雨夜继续调查。',
+      sourceChapter: 1,
+      evidence: '沈砺继续调查的定稿证据。',
+    }],
+  }]
   consistencyExemptions = []
   continuityProjectionReadError = null
   startWorkflow = vi.fn(async () => 'writing-model-selector-run')

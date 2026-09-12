@@ -83,7 +83,7 @@ export function installDrawerKeyboardScope(
  */
 export function installWorkbenchLayoutReservation(shellSeat: HTMLElement, v2 = false): () => void {
   const frame = shellSeat.closest('[data-shell-overlay]')?.parentElement
-  if (frame === null || frame === undefined) throw new Error('InkWeaver workbench requires the Harness shell overlay')
+  if (frame === null || frame === undefined) throw new Error('AI novel workbench requires the Harness shell overlay')
   frame.classList.add('aiNovelWorkbenchFrameOpen')
   if (v2) frame.classList.add('aiNovelWorkbenchFrameOpenV2')
   return () => {
@@ -250,11 +250,11 @@ export function NovelWorkbenchOverlay({
         className={`aiNovelContextDrawer${v2Drawer ? ' aiNovelContextDrawerV2' : ''}`}
         role="dialog"
         aria-modal="false"
-        aria-labelledby="ai-novel-workbench-title"
+        aria-labelledby="inkweaver-workbench-title"
         tabIndex={-1}
       >
         <div className="aiNovelContextHeader">
-          <h2 id="ai-novel-workbench-title">小说工作台</h2>
+          <h2 id="inkweaver-workbench-title">小说工作台</h2>
           <button
             ref={closeButton}
             type="button"
@@ -263,7 +263,7 @@ export function NovelWorkbenchOverlay({
             onClick={close}
           >关闭</button>
         </div>
-        <div className="aiNovelContextBody" data-ai-novel-workbench>
+        <div className="aiNovelContextBody" data-inkweaver-workbench>
           {mode === 'none'
             ? <section className="aiNovelContextSetup" aria-labelledby="ai-novel-first-use-title">
                 <h3 id="ai-novel-first-use-title">首次使用小说工作台</h3>

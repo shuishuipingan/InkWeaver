@@ -1,4 +1,4 @@
-name: InkWeaver DSH Extension CI
+name: DeepSeek Harness plugin CI
 
 on:
   pull_request:
@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: inkweaver-dsh-ci-${{ github.workflow }}-${{ github.ref }}
+  group: dsh-plugin-ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:

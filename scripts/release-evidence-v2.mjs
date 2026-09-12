@@ -14,7 +14,6 @@ import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 import { TextDecoder } from 'node:util'
 import { canonicalPnpmLockfileSha256 } from './canonical-pnpm-lockfile-hash.mjs'
-import { dshReceiptName, validateDshReleaseReceipt } from './dsh-release-receipt.mjs'
 
 const scriptPath = fileURLToPath(import.meta.url)
 const repositoryRoot = path.resolve(path.dirname(scriptPath), '..')
@@ -58,6 +57,7 @@ export const ACCEPTANCE_PROFILES = {
     'qualification/acceptance/quiet-window.json',
     'qualification/acceptance/error-dialogs.json',
     'qualification/acceptance/uninstall.json',
+    'qualification/acceptance/upgrade-data.json',
     'qualification/acceptance/native-abi.json',
     'qualification/acceptance/packaged-smoke.json',
     'qualification/acceptance/signing.json',
@@ -87,7 +87,6 @@ export const COMMAND_PROFILES = {
     'install-playwright-chromium',
     'renderer-browser-tests',
     'complete-windows-release-gate',
-    'build-and-qualify-dsh-release-tarball',
   ],
   'macos-arm64': [
     'install-locked-dependencies',
@@ -211,7 +210,6 @@ function platformArtifactSet(platform, version) {
       { path: relativeArtifactPath(version, installer), role: 'installer' },
       { path: relativeArtifactPath(version, `${installer}.blockmap`), role: 'installer-blockmap' },
       { path: relativeArtifactPath(version, 'latest.yml'), role: 'updater-metadata' },
-      { path: relativeArtifactPath(version, `shuishuipingan-inkweaver-dsh-${version}.tgz`), role: 'dsh-extension' },
     ]
   }
 
@@ -784,18 +782,6 @@ function contractArtifactFile(contract, contractPath) {
   return contractPath.slice(prefix.length)
 }
 
-function dshQualificationMetadata(contract, releaseRoot) {
-  if (contract.frozen.platform !== 'windows') return []
-  const dshArtifact = contract.frozen.artifactSet.find(artifact => artifact.role === 'dsh-extension')
-  assert(dshArtifact, 'Windows DSH artifact is missing from the release contract')
-  const tarballName = contractArtifactFile(contract, dshArtifact.path)
-  const tarballPath = fileWithin(releaseRoot, tarballName, 'DSH release tarball')
-  const receiptName = dshReceiptName(contract.frozen.version)
-  const receiptPath = fileWithin(releaseRoot, receiptName, 'DSH release receipt')
-  validateDshReleaseReceipt({ receiptPath, tarballPath, version: contract.frozen.version })
-  return [fileRecord(releaseRoot, receiptName, 'dsh-release-receipt')]
-}
-
 function ensureMacChecksum(releaseRoot, contract) {
   if (!isMacosQualificationEntity(contract.frozen.platform)) return
   const dmgArtifact = contract.frozen.artifactSet.find(artifact => artifact.role === 'dmg')
@@ -838,7 +824,6 @@ export function finalizeReleaseEvidence({ platform, evidenceRoot, releaseRoot })
     const record = fileRecord(resolvedReleaseRoot, file, artifact.role)
     return { ...record, role: artifact.role }
   })
-  const qualificationMetadata = dshQualificationMetadata(contract, resolvedReleaseRoot)
 
   evidence.ledger.run.endedAt = now()
   validateCommandLedger(evidence.ledger, selectedPlatform, true)
@@ -880,7 +865,7 @@ export function finalizeReleaseEvidence({ platform, evidenceRoot, releaseRoot })
     ledgerSha256: ledgerRecord.sha256,
     acceptanceProfile: contract.frozen.acceptance.evidenceFiles,
     artifacts,
-    evidence: [...provenanceEvidence, ...acceptanceEvidence, ...packagedEvidence, ...qualificationMetadata],
+    evidence: [...provenanceEvidence, ...acceptanceEvidence, ...packagedEvidence],
     ...(isMacosQualificationEntity(selectedPlatform)
       ? { dmgChecksum: `inkweaver-mac-${macosQualificationEntity(selectedPlatform).architecture}-${contract.frozen.version}-installer.dmg.sha256` }
       : {}),
@@ -892,7 +877,6 @@ export function finalizeReleaseEvidence({ platform, evidenceRoot, releaseRoot })
     ...provenanceEvidence,
     ...acceptanceEvidence,
     ...packagedEvidence,
-    ...qualificationMetadata,
     fileRecord(resolvedReleaseRoot, 'manifest.json', 'runtime-verification-manifest'),
   ]
   writeFileSync(
@@ -1050,22 +1034,11 @@ export function verifyQualificationBundle({
   const artifactFiles = artifactFilesFromContract(contract)
   const acceptanceFiles = contract.frozen.acceptance.evidenceFiles
   const packagedSmokeFiles = PACKAGED_SMOKE_EVIDENCE[selectedPlatform].map(record => record.file)
-  const qualificationMetadataFiles = selectedPlatform === 'windows' ? [dshReceiptName(version)] : []
-  if (selectedPlatform === 'windows') {
-    const dshArtifact = contract.frozen.artifactSet.find(artifact => artifact.role === 'dsh-extension')
-    assert(dshArtifact, 'Windows DSH artifact is missing from the release contract')
-    validateDshReleaseReceipt({
-      receiptPath: fileWithin(resolvedBundleRoot, dshReceiptName(version), 'DSH release receipt'),
-      tarballPath: fileWithin(resolvedBundleRoot, contractArtifactFile(contract, dshArtifact.path), 'DSH release tarball'),
-      version,
-    })
-  }
   const expectedEvidenceFiles = [
     'qualification/release-contract.json',
     'qualification/run-ledger.json',
     ...acceptanceFiles,
     ...packagedSmokeFiles,
-    ...qualificationMetadataFiles,
   ]
   const expectedFiles = ['manifest.json', 'SHA256SUMS.txt', ...artifactFiles, ...expectedEvidenceFiles]
   const actualFiles = listRegularRelativeFiles(resolvedBundleRoot)

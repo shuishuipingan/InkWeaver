@@ -2,7 +2,6 @@ import { createHash } from 'node:crypto'
 import { lstat, mkdir, readFile, readdir, realpath } from 'node:fs/promises'
 import { isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { withFileLock, writeFileAtomic } from '@deepseek-ai/dsh-atomic-write'
-import { assertNever } from '@deepseek-ai/dsh-llm'
 import type {
   AssetRef,
   CommitReceipt,
@@ -16,12 +15,14 @@ import type {
   NovelReadResult,
   Revision,
 } from './types.ts'
-import { NovelProjectError } from './types.ts'
-import { INKWEAVER_PROJECT_DIRECTORY } from './identity.ts'
-import { InkWeaverOperationGateError, withInkWeaverOperationGate } from './operation-gate.ts'
 
-const PROJECT_DIR = INKWEAVER_PROJECT_DIRECTORY
-const MANIFEST_PATH = `${INKWEAVER_PROJECT_DIRECTORY}/project.json`
+function assertNever(value: never): never {
+  throw new Error(`Unexpected novel project value: ${String(value)}`)
+}
+import { NovelProjectError } from './types.ts'
+
+const PROJECT_DIR = '.ai-novel'
+const MANIFEST_PATH = '.ai-novel/project.json'
 const FORMAT_VERSION = 1
 const PROJECT_KIND = 'harness-novel-project'
 const DEFAULT_ASSET_LIMIT = 512 * 1024
@@ -371,9 +372,9 @@ function validateAssetText(target: AssetRef, text: string): void {
 export function novelAssetSource(target: AssetRef): string {
   switch (target.kind) {
     case 'project': return MANIFEST_PATH
-    case 'characters': return `${INKWEAVER_PROJECT_DIRECTORY}/characters.json`
-    case 'story-blueprint': return `${INKWEAVER_PROJECT_DIRECTORY}/blueprints/story.json`
-    case 'chapter-blueprint': return `${INKWEAVER_PROJECT_DIRECTORY}/blueprints/chapters/${chapterName(target.chapter)}.json`
+    case 'characters': return '.ai-novel/characters.json'
+    case 'story-blueprint': return '.ai-novel/blueprints/story.json'
+    case 'chapter-blueprint': return `.ai-novel/blueprints/chapters/${chapterName(target.chapter)}.json`
     case 'chapter-draft': return `chapters/${chapterName(target.chapter)}.md`
     default: return assertNever(target)
   }
@@ -402,10 +403,6 @@ class FileNovelProject implements NovelProject {
   }
 
   async read(request: NovelReadRequest, signal: AbortSignal): Promise<NovelReadResult> {
-    return this.#withOperationGate(() => this.#readUnlocked(request, signal))
-  }
-
-  async #readUnlocked(request: NovelReadRequest, signal: AbortSignal): Promise<NovelReadResult> {
     requireNotAborted(signal)
     await this.#requireCanonicalRoot()
     await this.#readManifest(signal)
@@ -418,10 +415,6 @@ class FileNovelProject implements NovelProject {
   }
 
   async apply(request: NovelApplyRequest, signal: AbortSignal): Promise<CommitReceipt> {
-    return this.#withOperationGate(() => this.#applyUnlocked(request, signal))
-  }
-
-  async #applyUnlocked(request: NovelApplyRequest, signal: AbortSignal): Promise<CommitReceipt> {
     requireNotAborted(signal)
     const root = await this.#requireCanonicalRoot()
     if (request.kind === 'replace') return this.#replace(root, request, signal)
@@ -456,18 +449,6 @@ class FileNovelProject implements NovelProject {
         bytes,
       }
     })
-  }
-
-  async #withOperationGate<T>(operation: () => Promise<T>): Promise<T> {
-    const root = await this.#requireCanonicalRoot()
-    try {
-      return await withInkWeaverOperationGate(root, operation)
-    } catch (cause) {
-      if (cause instanceof InkWeaverOperationGateError) {
-        throw new NovelProjectError('WRITE_FAILED', cause.message, { cause })
-      }
-      throw cause
-    }
   }
 
   async #replace(
@@ -627,7 +608,7 @@ class FileNovelProject implements NovelProject {
 
   async #queryTargets(): Promise<AssetRef[]> {
     const targets: AssetRef[] = [{ kind: 'project' }, { kind: 'characters' }, { kind: 'story-blueprint' }]
-    const blueprints = await this.#numberedAssets(join(this.#root, INKWEAVER_PROJECT_DIRECTORY, 'blueprints', 'chapters'), '.json')
+    const blueprints = await this.#numberedAssets(join(this.#root, '.ai-novel', 'blueprints', 'chapters'), '.json')
     const drafts = await this.#numberedAssets(join(this.#root, 'chapters'), '.md')
     for (const chapter of blueprints) targets.push({ kind: 'chapter-blueprint', chapter })
     for (const chapter of drafts) targets.push({ kind: 'chapter-draft', chapter })

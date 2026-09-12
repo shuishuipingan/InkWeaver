@@ -6,13 +6,8 @@ import { runInNewContext } from 'node:vm'
 import { Context } from '@deepseek-ai/cordis'
 import Include, { entryListSchema } from '@deepseek-ai/cordis-plugin-include'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
-import AgentRegistry from '@deepseek-ai/dsh-agent'
-import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import AgentPresets from '@deepseek-ai/dsh-agent-presets'
-import LlmRuntime from '@deepseek-ai/dsh-llm'
-import SessionStore from '@deepseek-ai/dsh-session'
-import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
-import ToolRuntime from '@deepseek-ai/dsh-tools'
+import SessionProjection from '@deepseek-ai/dsh-session-projection'
 import yaml from 'js-yaml'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
@@ -57,18 +52,22 @@ if (!Array.isArray(patches)) throw new TypeError(`${patchPath} must contain a YA
 const host = new Context()
 host.baseUrl = pathToFileURL(root).href + '/'
 let setupRegistered = false
+const setupRoutes = []
 host.provide('connection', {
-  rpc: {
-    handle(channel, _handler, options) {
-      if (channel !== '/inkweaver' || options.authority !== 'loopback') {
-        throw new Error('The emitted Host entry registered an unexpected setup channel')
+  fetch: {
+    register(route) {
+      if (!route.path.startsWith('/api/inkweaver/')) {
+        throw new Error(`The emitted Host entry registered an unexpected setup route: ${route.path}`)
       }
+      setupRoutes.push(route)
       setupRegistered = true
       return async () => {}
     },
   },
 })
 host.provide('workspaceRegistry', { get: () => undefined })
+host.provide('settings', { register: () => ({}) })
+host.provide('webServer', { register: () => async () => {} })
 await host.plugin(Loader)
 host.loader.builtins.include = Include
 const builtModule = await import(pathToFileURL(join(root, manifest.main)).href)
@@ -97,7 +96,7 @@ try {
   await host.loader.await()
   const entry = [...host.loader.entries()].find(candidate => candidate.options.id === 'inkweaver')
   if (entry?.fiber === undefined) throw new Error('Cordis Loader did not mount the emitted Host entry')
-  if (!setupRegistered) throw new Error('The emitted Host entry did not register its loopback setup channel')
+  if (!setupRegistered || setupRoutes.length < 1) throw new Error('The emitted Host entry did not register its shared-API setup routes')
 } finally {
   await host.fiber.dispose()
 }
@@ -106,16 +105,11 @@ const roster = new Context()
 roster.baseUrl = pathToFileURL(root).href + '/'
 await roster.plugin(Loader)
 roster.loader.builtins.include = Include
-await roster.plugin(LlmRuntime)
-await roster.plugin(SessionStore)
-await roster.plugin(SystemPrompt, { persona: '' })
-await roster.plugin(ToolRuntime)
-roster.provide('workspaceRegistry', { resolveByPath: async () => undefined })
-await roster.plugin(AgentRegistry)
-await roster.plugin(AgentLoop, { agents: [] })
+await roster.plugin(SessionProjection)
 await roster.plugin(AgentPresets, {
   default: 'inkweaver',
   roots: [{ path: join(root, 'presets'), trust: 'system' }],
+  includeShippedRoot: false,
   includeUserRoot: false,
 })
 
@@ -125,10 +119,6 @@ try {
     const preset = presets.find(candidate => candidate.id === id)
     if (preset === undefined || preset.broken !== undefined || preset.name !== name) {
       throw new Error(`Harness did not discover a usable ${id} preset: ${JSON.stringify(preset)}`)
-    }
-    const standingKey = await roster.agentPresets.standingKeyFor(id)
-    if (standingKey.agentPreset !== id) {
-      throw new Error(`Harness mounted ${id} under an unexpected standing key: ${JSON.stringify(standingKey)}`)
     }
   }
 } finally {

@@ -117,17 +117,38 @@ export class AnalyzeWritingStyleCommand extends BaseWorkflowCommand<string> {
 
     // 先持久化，成功后再更新内存态，避免 DB 保存失败时 UI 残留未落库的文风。
     this.assertNotCancelled(context)
-    if (this.persistWritingStyle) {
-      await this.persistWritingStyle(cleanResult)
-    } else {
-      const saveResult = await ipc.invokeWithProjectSession(
-        projectSession,
-        'db:project-core-update',
-        { writingStyle: cleanResult },
-        context.projectPath,
-      )
-      if (!saveResult.success) {
-        throw new Error(saveResult.error || text('文风特征保存失败', 'Failed to save the writing-style profile.'))
+    const previousStyle = project.novelConfig.writingStyle?.trim() ?? ''
+    const writingStyleChanged = previousStyle !== cleanResult
+    if (writingStyleChanged) {
+      if (this.persistWritingStyle) {
+        await this.persistWritingStyle(cleanResult)
+      } else {
+        const saveResult = await ipc.invokeWithProjectSession(
+          projectSession,
+          'db:project-core-update',
+          { writingStyle: cleanResult },
+          context.projectPath,
+        )
+        if (!saveResult.success) {
+          throw new Error(saveResult.error || text('文风特征保存失败', 'Failed to save the writing-style profile.'))
+        }
+      }
+      try {
+        await ipc.invokeWithProjectSession(
+          projectSession,
+          'db:writing-style-history-record',
+          {
+            previousStyle,
+            nextStyle: cleanResult,
+            sourceFingerprint: this.sampleFingerprint(sampleTexts),
+          },
+          context.projectPath,
+        )
+      } catch (error) {
+        callbacks.log(text(
+          '文风版本历史记录失败：' + String(error),
+          'Failed to record the writing-style version: ' + String(error),
+        ))
       }
     }
     if (!sameProjectSessionContext(
@@ -148,6 +169,18 @@ export class AnalyzeWritingStyleCommand extends BaseWorkflowCommand<string> {
     ))
 
     return cleanResult
+  }
+
+  private sampleFingerprint(samples: readonly string[]): string {
+    let hash = 0xcbf29ce484222325n
+    for (const sample of samples) {
+      for (const character of sample) {
+        hash ^= BigInt(character.codePointAt(0) ?? 0)
+        hash = BigInt.asUintN(64, hash * 0x100000001b3n)
+      }
+      hash = BigInt.asUintN(64, hash * 0x100000001b3n)
+    }
+    return hash.toString(16).padStart(16, '0')
   }
 
   private collectProvidedSamples(writingLanguage: WritingLanguage): string[] {

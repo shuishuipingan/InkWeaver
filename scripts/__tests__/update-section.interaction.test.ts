@@ -9,10 +9,21 @@ import react from '@vitejs/plugin-react'
 const repositoryRoot = path.resolve('.')
 const chromeExecutable = process.env.CHROME_PATH ?? 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'
 const describeWithChrome = existsSync(chromeExecutable) ? describe : describe.skip
-const VITE_SERVER_HOOK_TIMEOUT_MS = 120_000
-// The first harness navigation can trigger a cold Vite dependency transform on
-// Windows. Keep the interaction budget above that one-time compilation cost.
-const COLD_BROWSER_INTERACTION_TIMEOUT_MS = 60_000
+// Keep the Vite config hash stable so the isolated optimizer cache can be
+// reused across release-gate runs. Vite will select the next free port when
+// this preferred port is occupied by another local process.
+const UPDATE_SECTION_VITE_PORT = 41_730
+const UPDATE_SECTION_VITE_CACHE_DIR = path.join(repositoryRoot, '.runtime', '.cache', 'update-section-vite-v2')
+// The full desktop suite exercises native workers and PowerShell processes at
+// the same time. On a clean Windows checkout Vite may also rebuild its React
+// dependency cache before the first page can execute; allow that cold start
+// without hiding assertion failures in the interaction itself.
+// The first Vite transform of the full renderer graph can exceed three minutes
+// on a clean Windows release checkout. This is a cold-start budget, not an
+// assertion retry: once the page is ready every interaction remains bounded by
+// Playwright's normal locator/function timeouts.
+const COLD_BROWSER_INTERACTION_TIMEOUT_MS = 600_000
+const VITE_SERVER_HOOK_TIMEOUT_MS = 600_000
 
 describeWithChrome('UpdateSection browser interactions', () => {
   let server: ViteDevServer
@@ -24,7 +35,28 @@ describeWithChrome('UpdateSection browser interactions', () => {
       root: repositoryRoot,
       configFile: false,
       plugins: [react()],
-      server: { host: '127.0.0.1', port: 0, strictPort: false },
+      // Keep this fixture's optimizer metadata isolated from the other script
+      // browser suites. Discovery of the desktop index caused a clean run to
+      // rebuild hundreds of unrelated dependencies before the first button
+      // could render.
+      cacheDir: UPDATE_SECTION_VITE_CACHE_DIR,
+      optimizeDeps: {
+        noDiscovery: true,
+        holdUntilCrawlEnd: false,
+        include: [
+          'react',
+          'react-dom/client',
+          'react/jsx-dev-runtime',
+          'lucide-react',
+          '@radix-ui/react-dialog',
+          '@radix-ui/react-slot',
+          'class-variance-authority',
+          'clsx',
+          'tailwind-merge',
+          'zustand',
+        ],
+      },
+      server: { host: '127.0.0.1', port: UPDATE_SECTION_VITE_PORT, strictPort: false },
       appType: 'spa',
     })
     await server.listen()
@@ -32,23 +64,7 @@ describeWithChrome('UpdateSection browser interactions', () => {
     if (!address || typeof address === 'string') throw new Error('Unable to determine browser harness address')
     pageUrl = `http://127.0.0.1:${address.port}/scripts/browser-fixtures/update-section-harness.html`
     browser = await chromium.launch({ executablePath: chromeExecutable, headless: true })
-
-    // Compile the harness once before the test cases run. Under the full root
-    // suite, Vite's first transform competes with hundreds of workers and can
-    // otherwise consume an interaction case's entire timeout budget.
-    const warmupPage = await browser.newPage()
-    try {
-      await warmupPage.goto(pageUrl, {
-        waitUntil: 'domcontentloaded',
-        timeout: VITE_SERVER_HOOK_TIMEOUT_MS,
-      })
-      await warmupPage.getByRole('button', { name: '立即重启更新' }).waitFor({
-        timeout: VITE_SERVER_HOOK_TIMEOUT_MS,
-      })
-    } finally {
-      await warmupPage.close()
-    }
-  }, 180_000)
+  }, VITE_SERVER_HOOK_TIMEOUT_MS)
 
   afterAll(async () => {
     await browser?.close()
@@ -57,10 +73,7 @@ describeWithChrome('UpdateSection browser interactions', () => {
 
   async function openHarness(): Promise<Page> {
     const page = await browser.newPage()
-    await page.goto(pageUrl, {
-      waitUntil: 'domcontentloaded',
-      timeout: COLD_BROWSER_INTERACTION_TIMEOUT_MS,
-    })
+    await page.goto(pageUrl, { timeout: COLD_BROWSER_INTERACTION_TIMEOUT_MS })
     await page.getByRole('button', { name: '立即重启更新' }).waitFor()
     return page
   }

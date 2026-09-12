@@ -209,6 +209,10 @@ describe('CharacterRosterRepository public read/commit seam', () => {
         })],
       },
     })
+    expect(renamedAndTrimmed.snapshot.entries.find(entry => entry.name === '陆舟')?.characterId)
+      .toBe(initial.snapshot.entries.find(entry => entry.name === '林舟')?.characterId)
+    expect(renamedAndTrimmed.snapshot.entries.find(entry => entry.name === '陆舟')?.aliases)
+      .toContain('林舟')
     expect(renamedAndTrimmed.snapshot.factHash).not.toBe(initial.snapshot.factHash)
     expect(db.prepare('SELECT characters FROM blueprints WHERE chapter_number = 1').get())
       .toEqual({ characters: JSON.stringify(['陆舟']) })

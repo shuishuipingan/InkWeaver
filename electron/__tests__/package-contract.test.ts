@@ -85,8 +85,8 @@ describe('release dependency contract', () => {
     expect(pkg.scripts?.['verify:github-update-release']).toBe('node scripts/verify-github-update-release.mjs')
   })
 
-  it('restores the Node ABI before the full test suite and starts the outer monitor afterward', () => {
-    expect(pkg.scripts?.test).toBe('vitest run')
+  it('runs the full test suite before the outer monitor starts', () => {
+    expect(pkg.scripts?.test).toBe('vitest run --maxWorkers=2')
     expect(pkg.scripts?.['test:release-monitor-selftest']).toBeUndefined()
     expect(pkg.scripts?.['test:release-workload']).toBeUndefined()
 
@@ -99,7 +99,6 @@ describe('release dependency contract', () => {
 
     expect(plan.status, plan.stderr || plan.error?.message).toBe(0)
     expect(JSON.parse(plan.stdout)).toEqual([
-      'prepare:native-node',
       'test',
       'prepare:native-node',
       'clean:build',
@@ -108,14 +107,14 @@ describe('release dependency contract', () => {
       'verify:win-package',
       'smoke:win-app',
       'smoke:win-installer',
+      'smoke:win-v025-upgrade',
       'restore:native-node',
       'verify:native-node',
       'final:quiet',
     ])
     const releasePlan = JSON.parse(plan.stdout) as string[]
-    expect(releasePlan.slice(0, 2)).toEqual(['prepare:native-node', 'test'])
+    expect(releasePlan[0]).toBe('test')
     expect(releasePlan.filter(step => step === 'test')).toHaveLength(1)
-    expect(releasePlan.filter(step => step === 'prepare:native-node')).toHaveLength(2)
 
     const preMonitorStepsDefinition = releaseGate.indexOf('export const releasePreMonitorSteps = [')
     const releaseVerificationStepsDefinition = releaseGate.indexOf('export const releaseVerificationSteps = [')
@@ -155,7 +154,6 @@ describe('release dependency contract', () => {
     expect(preMonitorStepsDefinition).toBeGreaterThanOrEqual(0)
     expect(releaseVerificationStepsDefinition).toBeGreaterThan(preMonitorStepsDefinition)
     expect(releaseFinalizationStepsDefinition).toBeGreaterThan(releaseVerificationStepsDefinition)
-    expect(preMonitorSteps.match(/'prepare:native-node'/g) ?? []).toHaveLength(1)
     expect(preMonitorSteps.match(/'test'/g) ?? []).toHaveLength(1)
     expect(releaseVerificationSteps).not.toMatch(/'test(?:[^']*)?'/)
     expect(monitorStartDefinition).toBeGreaterThanOrEqual(0)
@@ -170,7 +168,7 @@ describe('release dependency contract', () => {
     expect(releaseGate.match(/monitor = spawn\(/g) ?? []).toHaveLength(1)
     expect(releaseGate.match(/await startReleaseMonitor\(\)/g) ?? []).toHaveLength(1)
     expect(monitorStartBody).toContain('observeChild(monitor)')
-    expect(monitorStartBody).toContain('catch (monitorStartError)')
+    expect(monitorStartBody).toContain('catch (markerPublicationError)')
     expect(monitorStartBody).toContain('monitor.kill()')
     expect(monitorStartBody).toContain(
       'await waitForObservedChildToSettleWithin(monitor, 5_000)',
@@ -193,7 +191,7 @@ describe('release dependency contract', () => {
 
     expect(
       createHash('sha256').update(releaseMonitor).digest('hex'),
-    ).toBe('fbfdf7907e9b63052c925cb4f5ba5efdcf399b0512f230853a38e026f6afd50c')
+    ).toBe('a5a21e37588af6d75e7f947da21d29e226d32d482ae3a40003b062d6858e0cc0')
   })
 
   it('blocks direct Windows artifact builds outside the release gate', () => {

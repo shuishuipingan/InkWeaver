@@ -38,8 +38,8 @@ try {
 
   $releaseDir = Join-Path $root "release\$version"
   $sourceDir = Join-Path $releaseDir "win-unpacked"
-  $packageDir = Join-Path $releaseDir "InkWeaver"
-  $zipPath = Join-Path $releaseDir "inkweaver-$version-windows-x64.zip"
+  $packageDir = Join-Path $releaseDir "AI-Novel-Writer"
+  $zipPath = Join-Path $releaseDir "AI-Novel-Writer-$version-windows-x64.zip"
   $hashPath = Join-Path $releaseDir "SHA256SUMS.txt"
   $exePath = Join-Path $sourceDir "InkWeaver.exe"
 
@@ -83,7 +83,7 @@ try {
   Write-Host "  $zipPath"
   Write-Host "  Size: $sizeMb MB"
   Write-Host "  SHA256: $zipHash"
-  Write-Host "  Launcher: InkWeaver\InkWeaver.exe"
+  Write-Host "  Launcher: AI-Novel-Writer\InkWeaver.exe"
   Write-Host "  Hash manifest: $hashPath"
 }
 finally {

@@ -675,7 +675,7 @@ namespace AiNovelSecureFs {
         if (mustAlreadyExist) {
           requiredTarget = OpenExistingTargetForWriteOnlyCommit(parent, segments[segments.Length - 1]);
         }
-        string temporaryName = ".inkweaver-" + Guid.NewGuid().ToString("N") + ".tmp";
+        string temporaryName = ".ai-novel-" + Guid.NewGuid().ToString("N") + ".tmp";
         temporaryFile = OpenFile(
           parent,
           temporaryName,

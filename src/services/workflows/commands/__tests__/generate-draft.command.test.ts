@@ -8,6 +8,7 @@ import type {
   ModelExecutionLeaseReceipt,
 } from '../../../../shared/ipc-channels'
 import type { NarrativeThreadView } from '../../../../shared/narrative-thread'
+import type { ChapterHandoffRecord } from '../../../../shared/chapter-handoff'
 import {
   createGenerationRuntime,
   type GenerationRuntime,
@@ -229,6 +230,7 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
       }>
     }>
     narrativeThreads?: NarrativeThreadView[]
+    chapterHandoff?: ChapterHandoffRecord | null
     previousFinalizedContent?: string
     knowledgeResults?: Array<{ text: string; score: number; fileName: string }>
   }) {
@@ -248,6 +250,7 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
         return options.blueprints?.find(blueprint => blueprint.chapterNumber === args[0]) ?? null
       }
       if (channel === 'db:continuity-list-before') return options.continuity ?? []
+      if (channel === 'db:chapter-handoff-latest-before') return options.chapterHandoff ?? null
       if (channel === 'db:narrative-thread-list-relevant') return options.narrativeThreads ?? []
       if (channel === 'db:draft-get-finalized') {
         return options.previousFinalizedContent ? { id: 77 } : null
@@ -465,6 +468,26 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
         }],
       }],
       previousFinalizedContent,
+      chapterHandoff: {
+        handoffId: 'handoff-1',
+        draftId: 41,
+        chapterNumber: 1,
+        sourceContentHash: 'a'.repeat(64),
+        sceneLocation: '旧码头的仓库',
+        viewpoint: '林岚',
+        presentCharacters: ['林岚'],
+        unfinishedActions: ['林岚尚未打开暗锁'],
+        immediateGoal: '确认门后是否有人',
+        emotionalState: '林岚因为听见自己的名字而警惕',
+        constraints: ['不能遗失红色钥匙'],
+        openQuestions: ['门后的人是谁？'],
+        transition: 'continue-scene',
+        evidence: ['林岚握着红色钥匙，听见门后有人叫出了她的名字。'],
+        status: 'confirmed',
+        createdAt: '2026-09-06T00:00:00.000Z',
+        updatedAt: '2026-09-06T00:00:00.000Z',
+        confirmedAt: '2026-09-06T00:00:00.000Z',
+      },
       knowledgeResults: [{ text: '项目知识哨兵', score: 0.9, fileName: '世界观' }],
     })
 
@@ -477,6 +500,9 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
     expect(prompt).toContain('林岚把红色钥匙收进口袋。')
     expect(callbacks.log).toHaveBeenCalledWith(expect.stringContaining('连续性事实（1 条）'))
     expect(prompt).toContain('上一章定稿结尾哨兵。')
+    expect(prompt).toContain('旧码头的仓库')
+    expect(prompt).toContain('林岚尚未打开暗锁')
+    expect(prompt).toContain('门后的人是谁？')
     expect(prompt).toContain('项目知识哨兵')
     expect(invoke).toHaveBeenCalledWith(
       'kb:search-writing-context',
@@ -528,6 +554,16 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
     expect(prompt).toContain('早期事实哨兵')
     expect(prompt).not.toContain('无关事实哨兵')
     expect(callbacks.log).toHaveBeenCalledWith(expect.stringContaining('连续性事实（1 条）'))
+    const receipt = context.data.contextReceipt as {
+      chapterNumber: number
+      budgetChars: number
+      entries: Array<{ id: string; included: boolean; reason?: string }>
+    }
+    expect(receipt).toMatchObject({ chapterNumber: 8, budgetChars: 3000 })
+    expect(receipt.entries).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'fact:1:1', included: false, reason: 'not-relevant' }),
+    ]))
+    expect(JSON.stringify(receipt)).not.toContain('早期事实哨兵')
   })
 
   it('keeps an older relevant fact when newer chapter notes exhaust the context budget', async () => {
