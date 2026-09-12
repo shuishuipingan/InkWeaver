@@ -23,9 +23,10 @@ dsh --profile web
 ```
 
 The development tree is not an npm installation target. The v1.1.0 tarball is
-`shuishuipingan-inkweaver-dsh-1.1.0.tgz` with SHA-256
-`35dd442171a426bcbea214b595f52ca7edcd20531567e3bdbc3b11e7bceb6dba`; its
-profile qualification receipt is bound to source `b40cd124525fd7805cdf1c35f07eeee187d394eb`.
+`shuishuipingan-inkweaver-dsh-1.1.0.tgz`; use the SHA-256 shown on the [v1.1.0
+GitHub Release](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.1.0)
+as the authoritative byte check. Its profile qualification receipt is bound to
+the frozen release source tree.
 
 `@ethanyoq/dsh-ai-novel-writer` is the pre-migration package name. It is kept only as a historical identifier in migration documentation; do not install it for the InkWeaver line.
 
