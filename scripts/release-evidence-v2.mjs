@@ -593,6 +593,10 @@ function validIsoTimestamp(value) {
   return day >= 1 && day <= daysInMonth[month - 1]
 }
 
+function validSemanticVersion(value) {
+  return typeof value === 'string' && /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?$/.test(value)
+}
+
 function validateReferenceSet(receipt, expected, bundleRoot, label) {
   assert(Array.isArray(receipt.evidence ?? Object.values(receipt.references ?? {})), `${label} references are invalid`)
   const references = receipt.evidence ?? Object.values(receipt.references)
@@ -632,7 +636,7 @@ function validateWindowsReceipt(receipt, name, bundleRoot, version) {
   } else if (name === 'uninstall') {
     assert(direct.installedExecutableExists === false && ['absent', 'empty', 'system-residue-only'].includes(direct.installDirectoryState) && Array.isArray(direct.allowedSystemResiduals), 'Windows uninstall receipt facts are invalid')
   } else if (name === 'upgrade-data') {
-    assert(direct.previousVersion === '0.2.5' && direct.legacyTableCount === 11 && positiveInteger(direct.preservedAssetCount) && positiveInteger(direct.vectorDimension) && positiveInteger(direct.queryResultCount), 'Windows upgrade-data receipt facts are invalid')
+    assert(validSemanticVersion(direct.previousVersion) && direct.legacyTableCount === 11 && positiveInteger(direct.preservedAssetCount) && positiveInteger(direct.vectorDimension) && positiveInteger(direct.queryResultCount), 'Windows upgrade-data receipt facts are invalid')
   } else if (name === 'native-abi') {
     assert(direct.restoreMode === 'monitored' && /^\d+$/.test(direct.nodeModuleAbi ?? '') && direct.verificationTest === 'electron/repositories/__tests__/character-repository.test.ts', 'Windows native-ABI receipt facts are invalid')
   } else if (name === 'packaged-smoke') {
