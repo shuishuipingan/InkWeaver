@@ -27,4 +27,4 @@ node --experimental-strip-types -e "import('./scripts/quality-fixtures.ts').then
 
 ## 尚未证明的范围
 
-两名评阅者的匿名前后盲评、新版偏好率 ≥70%、自然承接平均分提升 ≥0.5、刻意转场误报率 ≤10%、事实召回率 ≥95%、实际模型 token/延迟/失败样例和跨平台长篇运行仍未完成。因此 tracker 中 A01/A02/A06/A08/B01/B02/B03 等质量门保持“开发中”。
+发布负责人已豁免两名评阅者的匿名前后盲评和真实 provider 质量评测；新版偏好率、平均分提升、误报率和真实事实召回率不因此被宣称通过。工程发布证据改用 fixture、自动化回归、browser suite、provider dry-run、匿名 packet 和 strict 汇总器；A01/A02/A06/A08/B01/B02/B03 的功能状态仍按 tracker 逐项处理。

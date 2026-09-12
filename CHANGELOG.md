@@ -75,7 +75,7 @@
 
 - 38 项需求和 12 条端到端旅程尚未全部通过正式验收。
 - Windows、macOS ARM64、macOS x64 的 1.1.0 安装包尚未从冻结 SHA 生成并回读哈希。
-- 插件自身版本仍未冻结到 1.1.0，也未发布 npm/tarball 1.1.0。
+- 插件自身版本仍未冻结到 1.1.0；本轮发布范围不包含 npm，正式 tarball 会在冻结 SHA 后随 GitHub Release 生成。
 - GitHub `dsh-plugin` topic 元数据已设置，API 搜索已返回 `shuishuipingan/InkWeaver`；正式发布后仍需重新核验公开主题页首屏展示状态。
 
 ## 0.9.2

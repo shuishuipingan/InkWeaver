@@ -130,12 +130,12 @@ fs.writeFileSync(p, s, 'utf8')
 console.log('zh quickstart added')
 ## DeepSeek Harness 插件
 
-仓库中的 `@shuishuipingan/inkweaver-dsh` 是独立的开发中插件，不是桌面版的替代品。它提供精简的项目设置、故事架构、人物、全书纲要、章节蓝图和章节正文流程；模型修改先进入 Proposal，由用户审核应用后才改变权威项目状态。插件 npm 1.1.0 尚未发布，当前请阅读插件说明并使用开发线资格 tarball。
+仓库中的 `@shuishuipingan/inkweaver-dsh` 是独立的开发中插件，不是桌面版的替代品。它提供精简的项目设置、故事架构、人物、全书纲要、章节蓝图和章节正文流程；模型修改先进入 Proposal，由用户审核应用后才改变权威项目状态。本轮 1.1.0 发布范围不包含 npm，插件通过 GitHub Release tarball 和本地安装说明交付。
 
 迁移提示：`@ethanyoq/dsh-ai-novel-writer` 是仓库迁移前的历史包名，不是 1.1.0 开发线的交付包；新安装请只使用 `@shuishuipingan/inkweaver-dsh`。DSH 宿主本身与 Web UI companion 由 DeepSeek Harness 生态维护，不属于本仓库的 npm 包。
 
 ```sh
-dsh plugin --profile web add @shuishuipingan/inkweaver-dsh
+dsh plugin --profile web add '<path-to-inkweaver-dsh-tarball.tgz>'
 dsh --profile web
 ```
 

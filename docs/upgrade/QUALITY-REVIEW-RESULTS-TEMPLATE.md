@@ -1,6 +1,6 @@
 # 章节盲评结果模板
 
-这份模板只定义记录格式，不包含任何预填分数。评阅人必须使用同一份匿名 `public-packet.json`，不能看到 `evaluation-key.private.json`。
+这份模板只定义记录格式，不包含任何预填分数。发布负责人已决定本轮不要求外部评阅；如果后续补做人工研究，评阅人必须使用同一份匿名 `public-packet.json`，不能看到 `evaluation-key.private.json`。没有人工结果时不应伪造 `eligible`，但它不阻塞本轮已豁免的发布范围。
 
 ## 运行元数据
 
