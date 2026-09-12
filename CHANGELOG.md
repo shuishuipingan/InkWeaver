@@ -1,8 +1,13 @@
 # 更新日志
 
-本文件按用户可见行为记录变更。`1.1.0 development` 不是正式版本；只有交付追踪表中的需求、端到端旅程、跨平台安装包和 DSH 隔离资格全部通过后，才会改名为正式 `1.1.0`。
+本文件按用户可见行为记录变更。`1.1.0` 已于 2026-09-12 通过 GitHub Release 发布；本轮不发布 npm，外部文学质量评阅按发布范围豁免。
 
-## 1.1.0 freeze candidate — 尚未发布
+## 1.1.0 — 2026-09-12
+
+正式 Release：<https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.1.0>  
+冻结源码：`b40cd124525fd7805cdf1c35f07eeee187d394eb`  
+DSH 宿主：`@deepseek-ai/dsh@0.1.5-rc.1`  
+插件：`@shuishuipingan/inkweaver-dsh@1.1.0`，tarball SHA-256 `35dd442171a426bcbea214b595f52ca7edcd20531567e3bdbc3b11e7bceb6dba`
 
 ### 持续发展的小说体验
 
@@ -69,14 +74,14 @@
 ### 文档与开发交接
 
 - 新增完整功能图、需求追踪表、开发基线、GitHub/分发核验收据和逐目录项目文件指南。
-- 中英文主页明确 1.1.0 尚未发布、当前开发线已有内容、安装包/主题索引/签名和已知限制，不把未验收功能写成正式支持。
+- 中英文主页现在链接正式 v1.1.0 Release，说明 Windows/macOS 安装包、插件 tarball、未签名/未公证限制和不发布 npm 的范围。
 
-### 尚未宣称完成的事项
+### 发布范围与已知限制
 
-- 38 项需求和 12 条端到端旅程尚未全部通过正式验收。
-- Windows、macOS ARM64、macOS x64 的 1.1.0 安装包尚未从冻结 SHA 生成并回读哈希。
-- 插件自身版本仍未冻结到 1.1.0；本轮发布范围不包含 npm，正式 tarball 会在冻结 SHA 后随 GitHub Release 生成。
-- GitHub `dsh-plugin` topic 元数据已设置，API 搜索已返回 `shuishuipingan/InkWeaver`；正式发布后仍需重新核验公开主题页首屏展示状态。
+- npm 不属于本次发布范围；插件使用 GitHub Release tarball 和本地 `dsh plugin add` 安装。
+- Windows 安装器未代码签名；macOS DMG 未使用 Developer ID 签名且未公证，系统可能显示安全提示。
+- 外部真实模型文学质量评阅已按发布负责人决议豁免；工程回归、固定 fixture、browser、provider dry-run 和 DSH qualification 收据不等同于文学质量保证。
+- `@linxin666/dsh-web-all@0.3.20` 是外部宿主 companion，`@ethanyoq/dsh-ai-novel-writer` 是历史包名，二者都不是 InkWeaver 1.1.0 发布包。
 
 ## 0.9.2
 

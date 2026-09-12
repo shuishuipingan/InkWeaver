@@ -1,6 +1,6 @@
 # InkWeaver 1.1.0 开发执行与验收追踪表
 
-日期：2026-09-09。配套需求：[完整功能图与开发交接书](INKWEAVER-1.1.0-FULL-FEATURE-MAP.md)。本表不增加发布范围，不代表功能已开发。
+日期：2026-09-12。配套需求：[完整功能图与开发交接书](INKWEAVER-1.1.0-FULL-FEATURE-MAP.md)。本表记录 1.1.0 正式 Release 的逐项内部工程验收，不替代真实模型文学质量声明。
 
 ## 使用方式
 
@@ -8,7 +8,7 @@
 
 先阅读完整交接书，再把工单 00–13 分配给负责人。本表是发布范围的唯一逐项追踪入口；任务分支可以分别开发，但所有证据最终需要对应集成后的同一源码版本。
 
-状态使用：未开始、开发中、待验收、通过、阻塞。以下全部初始化为“未开始”，指本轮增量需求；已有基础功能不代表本轮需求已经通过。未开始不代表仓库完全没有相关代码。
+状态使用：未开始、开发中、待验收、通过、阻塞。本次 1.1.0 冻结/发布候选的需求已逐项填写工程证据；历史模板文字仅说明字段含义。
 
 每个需求通过时，填写负责人、实现 commit/PR、测试结果、操作证据及评阅人。阻塞时记录具体条件与下一步，不删除需求行。公开证据必须脱敏；作品样本保留本地编号、哈希和授权说明。
 
@@ -49,11 +49,11 @@
 | F02 | 插件接口与安装 | 11 | InkWeaver tarball 在隔离 profile 的 roster、mount 和浏览器链通过吗？ | 通过 | 插件身份已统一迁移到 `@shuishuipingan/inkweaver-dsh`、目录 `plugins/inkweaver-dsh`、Host/preset `inkweaver`；DSH 0.1.5 exact shared `/api` Fetch routes、persona `prefix`、SystemPrompt `personaPrefix`、Session `assistant/message` 边界和 peer graph 均已通过；源码 `0358584d`，Harness `183f08e`，tarball SHA-256 `140565e6089800dad7c6a46ba100ecf3f591e089eb8495694e969eb4f1eb3d27`；receipt 覆盖隔离 profile add/remove/reinstall、真实 Chrome 三次 journey 和 layout QA；外部 prerequisite `@linxin666/dsh-web-all@0.3.20` 仅作为宿主依赖，不属于 InkWeaver 包 |
 | F03 | 插件对应创作功能 | 12 | 交接/人物候选/事实上下文和 Proposal 审核形成闭环吗？ | 通过 | DSH V2 schema 5 的 `NovelChapterHandoff`、`NovelKnowledgeEvent`、`chapter/context` 有效/confirmed 过滤和 Proposal 审核闭环均在真实 Chrome 中通过；receipt 验证固定五项 Proposal 生命周期、schema-5 persistence、重启读回和重装读回；剩余长篇质量评阅仍属于 A–E 创作体验工单，不阻塞本 DSH 闭环门禁 |
 | F04 | 插件版本与分发 | 13 | 1.1.0 可实际安装且公开兼容与升级说明吗？ | 通过 | `ACCEPTANCE-F04-F05-RECEIPT.md`：源码 `0358584d` 的 `@shuishuipingan/inkweaver-dsh@1.1.0` tarball（41 entries，SHA-256 `140565e6089800dad7c6a46ba100ecf3f591e089eb8495694e969eb4f1eb3d27`）在官方 DSH Harness `183f08e` 隔离 profile 中 add/remove/reinstall、两个 preset、三次 Chrome journey 和 schema-5 持久化读回均通过；交付 GitHub Release tarball/本地安装，不发布 npm |
-| F05 | 主题发现 | 13 | dsh-plugin 元数据和实际索引结果分别有证据吗？ | 通过 | `ACCEPTANCE-F04-F05-RECEIPT.md`：GitHub API 回读 public 仓库 topics 含 `dsh-plugin`，并以 `topic:dsh-plugin user:shuishuipingan` 搜索返回 `shuishuipingan/InkWeaver`（total_count=1）；正式 Release 仍需回读资产链接，但主题发现本项已完成 |
-| G01 | 详细文档 | 13 | 主页、指南、截图和更新日志是否真实对应实现？ | 待验收 | 中英文主页已明确 1.1.0 未发布开发线、连续叙事/人物/关系/快照能力和限制；新增 `docs/PROJECT-FILE-GUIDE.md`、`CHANGELOG.md`、DSH 兼容收据、GitHub 分发收据、固定质量样本集、插件 1.1.0 分发清单和 tracker；`DOCUMENTATION-CONSISTENCY-RECEIPT.md` 记录 README/版本守卫/GitHub contract 15 tests passed，以及旧 Harness/测试数/npm/topic 文案修正；真实新版本截图和最终冻结 SHA 对照仍待人工评阅 |
-| G02 | 版本冻结 | 13 | 桌面、插件、tag、锁文件和构建源码是否一致？ | 待验收 | `release-version-sync.mjs --expected-version 1.1.0` 现在通过，桌面/插件版本和正式包名已同步到冻结候选；尚未创建 tag，仍需在最终资产构建和 GitHub Release 回读后完成 G02 |
-| G03 | 安装包与分发 | 13 | Windows 和两种 macOS 架构同 SHA 资格通过吗？ | 开发中 | 三条 1.1.0 qualification workflow 已针对同一冻结候选 SHA 启动；Windows 门禁包含 test、native ABI、完整构建、更新元数据、安装器/应用/升级 smoke、恢复与 quiet-window。旧数据升级输入改用仓库当前可公开回读的 `v1.0.0` 官方安装器（SHA-256 `3bb76f7e448ca6d0ad880268d774f4f409516f24f4889712ad5e0ecd4721395e`），并仍验证完整旧数据库 fixture、LanceDB 向量检索、数据库/设置/最近项目保留；macOS ARM64/x64 运行同一 SHA 的 runtime-verified manifest、DMG mount、packaged smoke 和 signing 收据。待三条新 run 成功后填入 run/attempt/artifact/hash，不能继续引用历史 `0.9.2` 基线作为 1.1.0 证据 |
-| G04 | 发布回读 | 13 | 远端源码、资产、哈希、更新元数据和安装链接核验了吗？ | 开发中 | 新增 `scripts/verify-github-release-assets.mjs` 与 3 项测试，冻结后可回读七项 Windows/macOS Release 资产、final tag、非 draft/prerelease 状态、GitHub SHA-256 digest 和 `dsh-plugin` topic；当前没有正式 Release，实际远端回读仍待发布后执行 |
+| F05 | 主题发现 | 13 | dsh-plugin 元数据和实际索引结果分别有证据吗？ | 通过 | `ACCEPTANCE-F04-F05-RECEIPT.md`：GitHub API 回读 public 仓库 topics 含 `dsh-plugin`，并以 `topic:dsh-plugin user:shuishuipingan` 搜索返回 `shuishuipingan/InkWeaver`（total_count=1）；正式 v1.1.0 Release 与资产也已回读 |
+| G01 | 详细文档 | 13 | 主页、指南、截图和更新日志是否真实对应实现？ | 通过 | `DOCUMENTATION-CONSISTENCY-RECEIPT.md`：中英文主页、项目文件指南、完整功能图、更新日志、DSH 兼容/分发收据均已同步到正式 v1.1.0、Release 链接、冻结 SHA 和已知签名限制；自动化 4 files/15 tests passed，外部文学评阅按发布范围豁免 |
+| G02 | 版本冻结 | 13 | 桌面、插件、tag、锁文件和构建源码是否一致？ | 通过 | `release-version-sync.mjs --expected-version 1.1.0` 通过；桌面/插件 package version、tag `v1.1.0`、Release 资产和三平台资格均绑定源码 `b40cd124525fd7805cdf1c35f07eeee187d394eb`；锁文件和 release profile 由三平台 workflow 回读 |
+| G03 | 安装包与分发 | 13 | Windows 和两种 macOS 架构同 SHA 资格通过吗？ | 通过 | Windows run `34670948171` / artifact `10290679866`、macOS ARM64 run `34670949545` / artifact `10291050076`、macOS x64 run `34670951472` / artifact `10291115154` 均 success、attempt 1、head SHA `b40cd124...`；Windows 包含 v1.0.0 旧安装器升级、完整旧 fixture、LanceDB/数据库/设置/最近项目保留、native ABI/quiet-window；macOS 两架构包含 DMG mount、packaged smoke、signing 收据 |
+| G04 | 发布回读 | 13 | 远端源码、资产、哈希、更新元数据和安装链接核验了吗？ | 通过 | GitHub Release `v1.1.0` 已创建并 authoritative readback 成功；`scripts/verify-github-release-assets.mjs --version 1.1.0` 返回 `ok: true`、七项桌面资产无缺失/无非法 digest；插件 1.1.0 tarball 已上传并回读，`dsh-plugin` topics/API 搜索均返回仓库 |
 
 ## 2. 工单创建模板
 
@@ -144,20 +144,20 @@
 
 | 字段 | 当前记录 |
 | --- | --- |
-| 功能需求通过数 | 34 / 38（A01–A08、B01–B05、C01–C03、D01–D04、E01–E09、F01–F05 已按发布范围完成内部工程验收；G01–G04 属于冻结后的文档、版本、平台资产和发布回读门禁） |
-| 端到端旅程通过数 | 11 / 12（J01 新建/蓝图/连读、J02 悬念/视角边界、J03 所有权历史、J04 人物提取、J05 关系图、J06 影响重建、J07 过期修稿、J08 导出/快照恢复、J09 项目隔离、J10 DSH、J11 DSH 旧作品升级已在开发基线通过；J12 依赖最终版本冻结，冻结后需用同一 SHA 重跑全部旅程） |
+| 功能需求通过数 | 38 / 38（A01–A08、B01–B05、C01–C03、D01–D04、E01–E09、F01–F05、G01–G04 均有内部工程收据；外部文学质量评阅按发布范围豁免） |
+| 端到端旅程通过数 | 12 / 12（J01–J11 的功能旅程与 DSH 旧作品 Proposal 并发安全已通过；J12 在三平台最终 qualification 中完成 Windows 旧安装器升级/导出恢复、macOS 双架构安装/DMG/打包数据 smoke 和同一迁移 fixture/manifest 回读） |
 | 阅读质量评测 | 外部评阅已按发布负责人决议豁免；保留 fixture、自动化回归、browser、provider dry-run、匿名 packet 和 strict 汇总器证据，不宣称真实模型质量通过 |
-| 开发基线对齐 | 本地开发线已推到 `origin/1.1.0-development`，并在每次同步后核对远端树与本地树一致；历史 macOS 资格 SHA `b9f713b5` 仍只代表 0.9.2 开发基线；`origin/main` 仍是官方 v1.0.0 基线 |
-| 桌面候选版本 / 源码 SHA | 当前冻结候选为桌面/插件 `1.1.0`，源码 `0358584da5333b1c6476062a0518d765800a4b2f`；尚未创建正式 tag/Release；平台资格工作流将以该 SHA 运行 |
+| 开发基线对齐 | `origin/1.1.0-development` 已回读为冻结 SHA `b40cd124`；`origin/main` 通过合并提交接入同一冻结树；历史 macOS SHA `b9f713b5` 仅保留为 0.9.2 基线对照 |
+| 桌面候选版本 / 源码 SHA | 正式桌面/插件 `1.1.0`，冻结源码 `b40cd124525fd7805cdf1c35f07eeee187d394eb`，tag `v1.1.0`、Release 和三平台资产已回读 |
 | 插件候选版本 / 宿主基线 | 插件 `@shuishuipingan/inkweaver-dsh@1.1.0`；宿主兼容基线 `@deepseek-ai/dsh@0.1.5-rc.1`，完整隔离 qualification ticket `128` 已通过 |
-| Windows 资格 run / attempt / artifact / hash | 本地完整门禁已通过；`release/0.9.2/qualification/acceptance/` 收据，安装器 SHA-256 `8acb574112ffe205439d5063767ccfa9cf90f3615b0c188d96b6918c1dc92022` |
-| macOS ARM64 资格 run / attempt / artifact / hash | run `34647639036` / artifact `10283130774` / DMG SHA-256 `aa736ab89e2fa33a2c4bb520aeb007320f3e92d5d20a0b8bc8693a6793ef2343`，runtime-verified 通过 |
-| macOS x64 资格 run / attempt / artifact / hash | run `34647642420` / artifact `10282422689` / DMG SHA-256 `89b0ff684ba8f2f32084e270b9f4f49752b5f9f861b280ba1d48cd39fa4993c0`，runtime-verified 通过 |
-| 插件 tarball / hash / 安装资格记录 | `shuishuipingan-inkweaver-dsh-1.1.0.tgz`，241334 bytes，SHA-256 `140565e6089800dad7c6a46ba100ecf3f591e089eb8495694e969eb4f1eb3d27`；隔离 qualification ticket `128` 通过，详见 `ACCEPTANCE-F04-F05-RECEIPT.md` |
+| Windows 资格 run / attempt / artifact / hash | run `34670948171` / attempt `1` / artifact `10290679866`，runtime-verified 通过；Release asset digest 由 GitHub 回读 |
+| macOS ARM64 资格 run / attempt / artifact / hash | run `34670949545` / attempt `1` / artifact `10291050076`，runtime-verified 通过；Release asset digest 由 GitHub 回读 |
+| macOS x64 资格 run / attempt / artifact / hash | run `34670951472` / attempt `1` / artifact `10291115154`，runtime-verified 通过；Release asset digest 由 GitHub 回读 |
+| 插件 tarball / hash / 安装资格记录 | `shuishuipingan-inkweaver-dsh-1.1.0.tgz`，241389 bytes，SHA-256 `35dd442171a426bcbea214b595f52ca7edcd20531567e3bdbc3b11e7bceb6dba`；最终源码 `b40cd124` 的 DSH ticket `128` 通过并已上传 Release |
 | npm 分发版本 / 发布结果 | 本轮明确不发布 npm；目标包保持未发布 |
-| 文档实现一致性评阅 | 自动化一致性检查和 1.1.0 插件/DSH/分发收据已更新；外部阅读评阅按发布负责人决议豁免，正式 G01 仍需最终主页、资产和安装链接回读 |
-| 正式 tag / Release / 发布 SHA | 未发布 |
-| topic 元数据 / 实际搜索结果 | 元数据此前已有 topic；实际可见性待发布验收 |
+| 文档实现一致性评阅 | 通过（自动化 4 files/15 tests；外部文学质量评阅按发布负责人决议豁免） |
+| 正式 tag / Release / 发布 SHA | `v1.1.0` / [GitHub Release](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.1.0) / `b40cd124525fd7805cdf1c35f07eeee187d394eb` |
+| topic 元数据 / 实际搜索结果 | topics 含 `dsh-plugin`；`topic:dsh-plugin user:shuishuipingan` 返回 `shuishuipingan/InkWeaver`（total_count=1） |
 | 回滚或恢复说明 | 待实现验证 |
 
 ## 7. 接手者第一天的工作

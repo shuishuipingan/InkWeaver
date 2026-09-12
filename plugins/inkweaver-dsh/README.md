@@ -22,8 +22,10 @@ dsh plugin --profile web add '<path-to-inkweaver-dsh-tarball.tgz>'
 dsh --profile web
 ```
 
-The development tree is not an npm installation target. The final tarball name,
-SHA-256 and profile qualification receipt are published with the GitHub Release.
+The development tree is not an npm installation target. The v1.1.0 tarball is
+`shuishuipingan-inkweaver-dsh-1.1.0.tgz` with SHA-256
+`35dd442171a426bcbea214b595f52ca7edcd20531567e3bdbc3b11e7bceb6dba`; its
+profile qualification receipt is bound to source `b40cd124525fd7805cdf1c35f07eeee187d394eb`.
 
 `@ethanyoq/dsh-ai-novel-writer` is the pre-migration package name. It is kept only as a historical identifier in migration documentation; do not install it for the InkWeaver line.
 
@@ -149,13 +151,14 @@ This maintainer-only command packs the plugin, installs those bytes into an isol
 
 The precise runtime gates, evidence order, and failure triage live in [V2 development gates](docs/v2-development-gates.md). Logs, screenshots, and the machine-readable receipt live under `.runtime/.cache/dsh-ai-novel-qualification-128` with `.vibe-owner.json` ownership and expiry. This keyless snapshot does not replace native gpt-5.6-terra manual qualification.
 
-The latest complete local receipt was produced on 2026-09-12 from source commit
-`50a7bb2d6aa48c9a6d66e32194e22459675ca6f4` against Harness commit
+The final complete receipt was produced on 2026-09-12 from source commit
+`b40cd124525fd7805cdf1c35f07eeee187d394eb` against Harness commit
 `183f08e9c6dde7e36cd2318eaee70b0da08fb35e`. It verified the packed tarball
-(`7bc070c2788a525aa5d1e877435a461d861fc019941379abd12188ba2caaaac0`), the
+(`35dd442171a426bcbea214b595f52ca7edcd20531567e3bdbc3b11e7bceb6dba`,
+241389 bytes), the
 isolated profile add/remove/reinstall cycle, the `inkweaver-v2` roster and
 Host/Client mount, three Chrome journeys, model-tool isolation, and schema-5
-persistence readback. This is development-line evidence for the DSH gate; it
-does not mean the desktop 1.1.0 release or npm publication has happened.
+persistence readback. The desktop v1.1.0 Release is now published; npm remains
+intentionally unpublished.
 
 The package does not modify DeepSeek Harness upstream or its agent loop.
