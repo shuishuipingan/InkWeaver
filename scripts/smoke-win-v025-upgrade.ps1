@@ -1,12 +1,16 @@
 param(
   [string]$PreviousInstallerPath = $env:AI_NOVEL_PREVIOUS_INSTALLER,
   [string]$PreviousPortableZipPath = $env:AI_NOVEL_PREVIOUS_PORTABLE_ZIP,
+  [string]$PreviousReleaseVersion = $env:AI_NOVEL_PREVIOUS_RELEASE_VERSION,
   [int]$ObservationSeconds = 30
 )
 
 $ErrorActionPreference = 'Stop'
-$expectedV025InstallerSha256 = 'AE9C88997A7DF3A48A8BEECCB0AB624BF947358CBBF702C19E70EC8460B9DFE7'
-$expectedV025PortableSha256 = '22B38B7337A456882BF130CCB898F17616FFFB85D6C8B8B3D0EE431409F18531'
+$expectedV025InstallerSha256 = if ([string]::IsNullOrWhiteSpace($env:AI_NOVEL_PREVIOUS_INSTALLER_SHA256)) { 'AE9C88997A7DF3A48A8BEECCB0AB624BF947358CBBF702C19E70EC8460B9DFE7' } else { $env:AI_NOVEL_PREVIOUS_INSTALLER_SHA256.ToUpperInvariant() }
+$expectedV025PortableSha256 = if ([string]::IsNullOrWhiteSpace($env:AI_NOVEL_PREVIOUS_PORTABLE_SHA256)) { '22B38B7337A456882BF130CCB898F17616FFFB85D6C8B8B3D0EE431409F18531' } else { $env:AI_NOVEL_PREVIOUS_PORTABLE_SHA256.ToUpperInvariant() }
+if ([string]::IsNullOrWhiteSpace($PreviousReleaseVersion)) {
+  $PreviousReleaseVersion = '0.2.5'
+}
 
 function Get-Sha256([string]$Path) {
   $hasher = [System.Security.Cryptography.SHA256]::Create()
@@ -24,24 +28,25 @@ if (
   [string]::IsNullOrWhiteSpace($PreviousInstallerPath) -and
   [string]::IsNullOrWhiteSpace($PreviousPortableZipPath)
 ) {
-  throw 'Set AI_NOVEL_PREVIOUS_PORTABLE_ZIP (preferred) or AI_NOVEL_PREVIOUS_INSTALLER to an official v0.2.5 asset.'
+  throw 'Set AI_NOVEL_PREVIOUS_PORTABLE_ZIP (preferred) or AI_NOVEL_PREVIOUS_INSTALLER to an official previous-version asset.'
 }
 
 $smokeParameters = @{
   ObservationSeconds = $ObservationSeconds
   RequireCompleteV025Fixture = $true
+  PreviousReleaseVersion = $PreviousReleaseVersion
 }
 if (-not [string]::IsNullOrWhiteSpace($PreviousPortableZipPath)) {
   $portableZip = (Resolve-Path -LiteralPath $PreviousPortableZipPath).Path
   if ((Get-Sha256 $portableZip) -ne $expectedV025PortableSha256) {
-    throw 'The previous portable ZIP is not the verified official v0.2.5 asset.'
+    throw 'The previous portable ZIP does not match the configured official previous-version asset.'
   }
   $smokeParameters.PreviousPortableZipPath = $portableZip
 }
 else {
   $installer = (Resolve-Path -LiteralPath $PreviousInstallerPath).Path
   if ((Get-Sha256 $installer) -ne $expectedV025InstallerSha256) {
-    throw 'The previous installer is not the verified official v0.2.5 installer asset.'
+    throw 'The previous installer does not match the configured official previous-version asset.'
   }
   $smokeParameters.PreviousInstallerPath = $installer
 }
