@@ -141,14 +141,14 @@ describe('Windows cloud build workflow contract', () => {
     expect(workflow).toContain('pnpm run build:win')
     expect(workflow).not.toContain('build:win-dir')
 
-    expect(workflow).toContain('AI-Novel-Writer-0.2.5-windows-x64.zip')
-    expect(workflow).toContain('22b38b7337a456882bf130ccb898f17616fffb85d6c8b8b3d0ee431409f18531')
-    expect(workflow).toContain('AI_NOVEL_PREVIOUS_PORTABLE_ZIP')
+    expect(workflow).toContain('inkweaver-setup-1.0.0.exe')
+    expect(workflow).toContain('3bb76f7e448ca6d0ad880268d774f4f409516f24f4889712ad5e0ecd4721395e')
+    expect(workflow).toContain('AI_NOVEL_PREVIOUS_INSTALLER')
     expect(workflow).toContain('release-evidence-v2.mjs finalize --platform windows')
 
-    const portableDownload = namedStep(workflow, 'Download verified v0.2.5 portable migration input')
-    expect(portableDownload).toContain("$portableZip = Join-Path $env:RUNNER_TEMP 'AI-Novel-Writer-0.2.5-windows-x64.zip'")
-    expect(portableDownload).toContain('"AI_NOVEL_PREVIOUS_PORTABLE_ZIP=$portableZip" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8')
+    const portableDownload = namedStep(workflow, 'Download verified v1.0.0 installer migration input')
+    expect(portableDownload).toContain("$installer = Join-Path $env:RUNNER_TEMP 'inkweaver-setup-1.0.0.exe'")
+    expect(portableDownload).toContain('"AI_NOVEL_PREVIOUS_INSTALLER=$installer" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8')
 
     expect(evidenceScript).toContain("gateLevel: 'RUNTIME_VERIFIED'")
     expect(evidenceScript).toContain('releaseCreated: false')

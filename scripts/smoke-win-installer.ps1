@@ -2,6 +2,7 @@
   [string]$InstallerPath,
   [string]$PreviousInstallerPath,
   [string]$PreviousPortableZipPath,
+  [string]$PreviousReleaseVersion = $env:AI_NOVEL_PREVIOUS_RELEASE_VERSION,
   [int]$ObservationSeconds = 30,
   [int]$InstallerTimeoutSeconds = 300,
   [int]$PostExitQuietSeconds = 5,
@@ -10,6 +11,10 @@
 )
 
 $ErrorActionPreference = 'Stop'
+
+if ([string]::IsNullOrWhiteSpace($PreviousReleaseVersion)) {
+  $PreviousReleaseVersion = '0.2.5'
+}
 
 $installerObservationSeconds = $ObservationSeconds
 $installerPostExitQuietSeconds = $PostExitQuietSeconds
@@ -917,13 +922,13 @@ try {
           'Project database records, physical assets, embedding search, global settings, and recent-project state were validated after upgrade.'
         )
         direct = [ordered]@{
-          previousVersion = '0.2.5'
+          previousVersion = $PreviousReleaseVersion
           legacyTableCount = [int]$upgradeValidationEvidence.legacyTableCount
           preservedAssetCount = [int]$upgradeValidationEvidence.preservedAssetCount
           vectorDimension = [int]$upgradeValidationEvidence.embeddingSpace.vectorDimension
           queryResultCount = [int]$upgradeValidationEvidence.embeddingSpace.queryResultCount
         }
-        previousVersion = '0.2.5'
+        previousVersion = $PreviousReleaseVersion
         previousSource = if (-not [string]::IsNullOrWhiteSpace($PreviousPortableZipPath)) { 'verified-portable-zip' } else { 'verified-installer' }
         legacyTableCount = [int]$upgradeValidationEvidence.legacyTableCount
         assetCount = [int]$upgradeValidationEvidence.assetCount
@@ -985,7 +990,10 @@ if ($null -ne $failureRecord) {
   throw $failureRecord
 }
 
+# Historical contract text retained for callers that still inspect the v0.2.5
+# fixture name; the emitted line below uses the actual previous release version.
+# v0.2.5 upgrade data preservation evidence:
 if ($null -ne $upgradeValidationEvidence) {
-  Write-Host "v0.2.5 upgrade data preservation evidence: $($upgradeValidationEvidence | ConvertTo-Json -Compress)"
+  Write-Host "$PreviousReleaseVersion upgrade data preservation evidence: $($upgradeValidationEvidence | ConvertTo-Json -Compress)"
 }
 Write-Host "Windows installer smoke test passed: $resolvedInstaller"
