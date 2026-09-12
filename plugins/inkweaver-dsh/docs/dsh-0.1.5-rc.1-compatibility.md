@@ -80,7 +80,6 @@ candidate and official Harness checkout:
 | plugin package | `@shuishuipingan/inkweaver-dsh@1.1.0` |
 | tarball SHA-256 | `35dd442171a426bcbea214b595f52ca7edcd20531567e3bdbc3b11e7bceb6dba` |
 | tarball bytes / entries | `241389` / `41` |
-| tarball bytes / entries | `241334` / `41` |
 | receipt | `.runtime/.cache/dsh-ai-novel-qualification-128/runs/2026-09-12T02-19-28-457Z-16964/qualification-receipt.json` |
 | browser | Google Chrome, first/restart/reinstall journeys passed |
 | persistence | schema 5 proposal lifecycle and chapter-context readback passed |
