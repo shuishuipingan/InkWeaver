@@ -1,6 +1,6 @@
-# J10 端到端旅程收据（开发基线）
+# J10 端到端旅程收据（1.1.0 冻结候选）
 
-状态：通过（开发基线）；正式 1.1.0 冻结后必须用最终 SHA 重跑。  
+状态：通过（1.1.0 冻结候选）；正式 GitHub Release 创建后仅需回读资产链接。  
 旅程：DSH tarball 安装 → preset → 提案 → 应用 → 同页变化 → 重启。  
 核验日期：2026-09-12（Asia/Hong_Kong）
 
@@ -10,11 +10,11 @@
 | --- | --- |
 | qualification status | `passed` |
 | qualification ticket | `128` |
-| clean source commit | `50a7bb2d6aa48c9a6d66e32194e22459675ca6f4` |
+| clean source commit | `0358584da5333b1c6476062a0518d765800a4b2f` |
 | Harness commit | `183f08e9c6dde7e36cd2318eaee70b0da08fb35e`（官方 DSH 0.1.5-rc.1） |
-| plugin package | `@shuishuipingan/inkweaver-dsh@0.1.0`（开发基线） |
-| tarball SHA-256 | `7bc070c2788a525aa5d1e877435a461d861fc019941379abd12188ba2caaaac0` |
-| tarball bytes / entries | `240740` / `41` |
+| plugin package | `@shuishuipingan/inkweaver-dsh@1.1.0` |
+| tarball SHA-256 | `140565e6089800dad7c6a46ba100ecf3f591e089eb8495694e969eb4f1eb3d27` |
+| tarball bytes / entries | `241334` / `41` |
 | Web companion | `@linxin666/dsh-web-all@0.3.20`（外部宿主依赖） |
 
 ## 旅程证据
@@ -25,5 +25,4 @@
 - Proposal 应用、章节定稿选择、`novel_read` 上下文读取和 `novel_propose_change` 的 exactly-two-tool 隔离均通过。
 - profile reinstall 后 preset descriptor、agent Cordis 文件和已安装包内容 SHA 保持一致。
 
-原始机器可读 receipt 位于 qualification run 的 `qualification-receipt.json`，并包含 `artifact`、`profile`、`presetTools`、`persistence`、`web`、`designQa` 和 `checks` 字段。该 receipt 仍属于 0.1.0 开发基线，不能替代 1.1.0 冻结后的再次 qualification。
-
+原始机器可读 receipt 位于 qualification run 的 `qualification-receipt.json`，并包含 `artifact`、`profile`、`presetTools`、`persistence`、`web`、`designQa` 和 `checks` 字段。它绑定上述 1.1.0 源码、tarball 和 Harness SHA；不执行 npm 发布。

@@ -2,7 +2,9 @@
 
 日期：2026-09-11（Asia/Hong_Kong）
 
-这是一份开发线子门禁收据，不是正式插件 1.1.0 发布收据。
+这是一份历史开发线子门禁收据，保留用于追踪早期 profile 调试；它已被
+`ACCEPTANCE-F04-F05-RECEIPT.md` 中绑定源码 `0358584d`、插件 `1.1.0` 的完整
+qualification 收据取代，不得作为当前版本哈希或测试数的来源。
 `@linxin666/dsh-web-all` 是 DSH 宿主侧的外部 UI companion，不属于 InkWeaver
 插件的源码、版本或发布资产；这里仅记录它作为 Web qualification 的环境前置依赖。
 
@@ -56,6 +58,6 @@
 
 ## 当前结论与剩余发布门禁
 
-最新完整 qualification 已通过：插件 40 个测试文件、432 tests passed、6 个 Windows symlink privilege tests skipped；Electron typecheck、renderer/main/release suites、Harness build、tarball content、profile add/remove/reinstall、V2 roster/mount、三次 Chrome Web journey、model-tool isolation 和 schema-5 persistence readback 均有 receipt 记录。DSH 0.1.5 的官方 `/api` interceptor 是 singleton，InkWeaver 通过 shared `/api` 下的 exact Fetch routes 注册自身 endpoint。
+该历史 qualification 曾通过插件 40 个测试文件、432 tests passed、6 个 Windows symlink privilege tests skipped；当前 1.1.0 冻结候选的最新完整 qualification（433 passed）见 `ACCEPTANCE-F04-F05-RECEIPT.md`。DSH 0.1.5 的官方 `/api` interceptor 是 singleton，InkWeaver 通过 shared `/api` 下的 exact Fetch routes 注册自身 endpoint。
 
 这份收据仍然不是桌面 1.1.0 发布收据。版本冻结、Windows/macOS 安装包、npm 发布、GitHub Release 资产和 `dsh-plugin` 主题索引回读仍属于后续发布门禁。

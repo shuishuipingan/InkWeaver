@@ -1,6 +1,6 @@
 # DSH 0.1.5-rc.1 compatibility receipt
 
-Verification date: 2026-09-11 (Asia/Hong_Kong)
+Verification date: 2026-09-12 (Asia/Hong_Kong)
 
 ## Official distribution anchor
 
@@ -70,22 +70,25 @@ The local 0.1.5 migration currently passes:
 - `pnpm test`: 40 test files, 433 passed, 6 skipped
 - source/preset checks in `scripts/qualify-release.mjs`
 
-The full isolated Harness qualification now passes against the frozen source
-and official Harness checkout:
+The full isolated Harness qualification now passes against the 1.1.0 freeze
+candidate and official Harness checkout:
 
 | Field | Passed evidence |
 | --- | --- |
-| source commit | `acc82f431802448a3d5e893c817423abd8d3a89f` |
+| source commit | `0358584da5333b1c6476062a0518d765800a4b2f` |
 | Harness commit | `183f08e9c6dde7e36cd2318eaee70b0da08fb35e` (`dsh-v0.1.5-rc.1`) |
-| tarball SHA-256 | `dd3ae2467422613e249e7be6b94fb46d8002d5aab4222a3d7f6394f8f250725e` |
-| receipt | `.runtime/.cache/dsh-ai-novel-qualification-128/runs/2026-09-10T23-02-50-025Z-4888/qualification-receipt.json` |
+| plugin package | `@shuishuipingan/inkweaver-dsh@1.1.0` |
+| tarball SHA-256 | `140565e6089800dad7c6a46ba100ecf3f591e089eb8495694e969eb4f1eb3d27` |
+| tarball bytes / entries | `241334` / `41` |
+| receipt | `.runtime/.cache/dsh-ai-novel-qualification-128/runs/2026-09-12T02-19-28-457Z-16964/qualification-receipt.json` |
 | browser | Google Chrome, first/restart/reinstall journeys passed |
 | persistence | schema 5 proposal lifecycle and chapter-context readback passed |
 
 The qualification uses DSH 0.1.5's exact shared `/api` Fetch routes for
 InkWeaver endpoints; it does not claim the singleton official API interceptor.
-Desktop 1.1.0 version freeze, Windows/macOS installers, npm publication,
-GitHub Release assets, and topic-index readback remain separate gates.
+Desktop 1.1.0 platform installers and GitHub Release asset back-read remain
+separate distribution gates. This project does not publish npm in this release
+scope.
 
 Official sources:
 
