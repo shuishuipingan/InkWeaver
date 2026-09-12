@@ -75,10 +75,11 @@ candidate and official Harness checkout:
 
 | Field | Passed evidence |
 | --- | --- |
-| source commit | `0358584da5333b1c6476062a0518d765800a4b2f` |
+| source commit | `b40cd124525fd7805cdf1c35f07eeee187d394eb` |
 | Harness commit | `183f08e9c6dde7e36cd2318eaee70b0da08fb35e` (`dsh-v0.1.5-rc.1`) |
 | plugin package | `@shuishuipingan/inkweaver-dsh@1.1.0` |
-| tarball SHA-256 | `140565e6089800dad7c6a46ba100ecf3f591e089eb8495694e969eb4f1eb3d27` |
+| tarball SHA-256 | `35dd442171a426bcbea214b595f52ca7edcd20531567e3bdbc3b11e7bceb6dba` |
+| tarball bytes / entries | `241389` / `41` |
 | tarball bytes / entries | `241334` / `41` |
 | receipt | `.runtime/.cache/dsh-ai-novel-qualification-128/runs/2026-09-12T02-19-28-457Z-16964/qualification-receipt.json` |
 | browser | Google Chrome, first/restart/reinstall journeys passed |

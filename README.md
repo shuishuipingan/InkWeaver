@@ -4,17 +4,17 @@
 
 织墨 InkWeaver 是一款面向长篇小说创作的本地优先桌面工作台。它把项目设定、角色、世界观、章节蓝图、正文、审稿、修订与定稿组织成可追溯的创作链，让作者在保留最终决定权的前提下使用自己选择的 AI 模型。
 
-当前版本：**v1.1.0（冻结候选，尚未发布）**
+当前版本：**v1.1.0（已发布）**
 
-> 1.1.0 已完成创作功能内部验收并进入冻结候选，尚未创建正式 Release。GitHub tarball、Windows/macOS 安装包和最终 Release 回读仍在进行。
+> 1.1.0 已完成路线图功能的内部工程验收，并已发布正式 GitHub Release。桌面安装包和 DSH 插件 tarball 均来自同一冻结源码 `b40cd124525fd7805cdf1c35f07eeee187d394eb`；本轮不发布 npm，外部文学质量评阅按发布范围豁免。
 
 接手开发时先看[项目文件指南](docs/PROJECT-FILE-GUIDE.md)，再看[完整功能图](docs/upgrade/INKWEAVER-1.1.0-FULL-FEATURE-MAP.md)和[交付追踪表](docs/upgrade/INKWEAVER-1.1.0-DELIVERY-TRACKER.md)。文件指南按事实源、主进程副作用、Renderer 投影、DSH 插件和发布生成物解释每个目录的职责。
 
 开发分支、GitHub topic 和待发布门禁的当前回读见[GitHub/分发核验收据](docs/upgrade/GITHUB-DISTRIBUTION-RECEIPT.md)。
 
-逐项用户可见更新见[更新日志](CHANGELOG.md)；其中所有 `1.1.0 development` 条目都不代表正式 Release 已完成。
+逐项用户可见更新见[更新日志](CHANGELOG.md)；工程收据和限制见[1.1.0 GitHub 分发收据](docs/upgrade/GITHUB-DISTRIBUTION-RECEIPT.md)。
 
-[下载 Windows / macOS 桌面版](https://github.com/shuishuipingan/InkWeaver/releases/latest) · [查看源代码](https://github.com/shuishuipingan/InkWeaver) · [DSH 插件说明](plugins/inkweaver-dsh/README.md)
+[下载 v1.1.0 Windows / macOS 桌面版](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.1.0) · [查看源代码](https://github.com/shuishuipingan/InkWeaver/tree/1.1.0-development) · [DSH 插件说明](plugins/inkweaver-dsh/README.md)
 
 ## 织墨解决什么问题
 
@@ -44,7 +44,7 @@
 - **中英文界面**：界面语言与小说写作语言相互独立。
 - **更准确的失败提示**：内容限制、模型调用失败、上下文预算不足和资源冲突不会被伪装成成功结果。
 
-## 1.1.0 开发中的创作体验
+## 1.1.0 创作体验
 
 1.1.0 的目标是让长篇小说读起来像一个持续发展的整体，而不是一章章互不相干的生成结果。当前已经落地的开发能力包括：
 
@@ -58,7 +58,7 @@
 - **关系图工作台**：支持姓名/别名搜索、一跳和二跳聚焦、关系类型过滤、键盘列表、节点固定/取消固定、项目级布局保存和重置；有向关系可以显示箭头、来源章节和正文证据。
 - **一致性快照与无蓝图导出**：SQLite 使用 backup API 创建一致性快照并记录文件哈希；即使没有章节蓝图，也能按 finalized authority 顺序导出定稿正文。
 
-这些能力仍在逐项验收，未通过路线图验收的部分不会提前写入 1.1.0 正式更新日志，也不会暗示已经提供跨平台安装包。
+这些能力已通过内部工程验收；真实模型文学质量不在本轮发布声明内，作者仍应对事实、风格、版权和最终定稿负责。
 
 ## 模型连接
 
@@ -118,19 +118,10 @@ inkweaver-mac-arm64-<版本号>-installer.dmg
 inkweaver-mac-x64-<版本号>-installer.dmg
 ```
 
-当前 macOS 安装包未使用 Developer ID 签名且未公证。请只从官方 Release 下载，并按系统安全提示确认首次打开。正式 Release 使用七项资产合同，分别覆盖 Windows 安装与更新文件、macOS Apple Silicon 安装包和 macOS Intel 安装包。
-const fs = require('fs')
-const p = 'D:/Game APP/AI-Novel-Writer/README.md'
-let s = fs.readFileSync(p, 'utf8')
-const content = fs.readFileSync(process.argv[1], 'utf8')
-const anchor = '\n## DeepSeek Harness 插件\n'
-if (!s.includes(anchor)) throw new Error('anchor missing')
-s = s.replace(anchor, content + anchor)
-fs.writeFileSync(p, s, 'utf8')
-console.log('zh quickstart added')
+当前 macOS 安装包未代码签名（未使用 Developer ID 签名）且未公证。请只从[正式 v1.1.0 Release](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.1.0)下载，并按系统安全提示确认首次打开。桌面 Release 使用七项资产合同，分别覆盖 macOS Apple Silicon 与 macOS Intel，另附 DSH 插件 tarball。
 ## DeepSeek Harness 插件
 
-仓库中的 `@shuishuipingan/inkweaver-dsh` 是独立的开发中插件，不是桌面版的替代品。它提供精简的项目设置、故事架构、人物、全书纲要、章节蓝图和章节正文流程；模型修改先进入 Proposal，由用户审核应用后才改变权威项目状态。本轮 1.1.0 发布范围不包含 npm，插件通过 GitHub Release tarball 和本地安装说明交付。
+仓库中的 `@shuishuipingan/inkweaver-dsh@1.1.0` 是独立的 DSH 插件，不是桌面版的替代品。它提供精简的项目设置、故事架构、人物、全书纲要、章节蓝图和章节正文流程；模型修改先进入 Proposal，由用户审核应用后才改变权威项目状态。本轮 1.1.0 不发布 npm，插件通过 GitHub Release tarball 和本地安装说明交付。
 
 迁移提示：`@ethanyoq/dsh-ai-novel-writer` 是仓库迁移前的历史包名，不是 1.1.0 开发线的交付包；新安装请只使用 `@shuishuipingan/inkweaver-dsh`。DSH 宿主本身与 Web UI companion 由 DeepSeek Harness 生态维护，不属于本仓库的 npm 包。
 
@@ -140,6 +131,8 @@ dsh --profile web
 ```
 
 插件使用独立的 `.ai-novel` 项目格式，不读取桌面版项目。完整说明见 [插件文档](plugins/inkweaver-dsh/README.md)。
+
+正式 tarball：`shuishuipingan-inkweaver-dsh-1.1.0.tgz`，SHA-256：`35dd442171a426bcbea214b595f52ca7edcd20531567e3bdbc3b11e7bceb6dba`。它兼容官方 `@deepseek-ai/dsh@0.1.5-rc.1`；外部 `@linxin666/dsh-web-all@0.3.20` 只是宿主 companion，不属于本项目交付物。
 
 ## 本地开发
 

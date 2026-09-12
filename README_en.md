@@ -4,17 +4,17 @@
 
 InkWeaver is a local-first desktop workspace for long-form fiction. It brings project settings, characters, worldbuilding, chapter blueprints, prose, review, revision, and finalization into a traceable writing chain while keeping the author in control of every durable change.
 
-Current version: **v1.1.0 (freeze candidate, not released)**
+Current version: **v1.1.0 (released)**
 
-> InkWeaver 1.1.0 has passed the internal engineering acceptance for its writing features and is now a freeze candidate, but no public Release has been created. GitHub tarball, Windows/macOS installers, and final Release backread are still in progress.
+> InkWeaver 1.1.0 has completed the roadmap's internal engineering acceptance and is published as a formal GitHub Release. Desktop installers and the DSH plugin tarball come from the same frozen source `b40cd124525fd7805cdf1c35f07eeee187d394eb`; npm publication and external literary review are intentionally out of scope.
 
 New contributors should start with the [project file guide](docs/PROJECT-FILE-GUIDE.md), then read the [full feature map](docs/upgrade/INKWEAVER-1.1.0-FULL-FEATURE-MAP.md) and [delivery tracker](docs/upgrade/INKWEAVER-1.1.0-DELIVERY-TRACKER.md). The guide explains source-of-truth ownership, main-process side effects, renderer projections, the DSH plugin, and generated release files.
 
-The current source branch, GitHub topic, and remaining release gates are recorded in the [GitHub/distribution receipt](docs/upgrade/GITHUB-DISTRIBUTION-RECEIPT.md).
+The frozen source, platform qualification runs, GitHub topic, and release back-read are recorded in the [GitHub/distribution receipt](docs/upgrade/GITHUB-DISTRIBUTION-RECEIPT.md).
 
-User-visible changes are listed in the [changelog](CHANGELOG.md); every `1.1.0 development` entry is explicitly not a formal Release claim.
+User-visible changes are listed in the [changelog](CHANGELOG.md); engineering evidence and limitations are summarized in the [1.1.0 GitHub distribution receipt](docs/upgrade/GITHUB-DISTRIBUTION-RECEIPT.md).
 
-[Download for Windows or macOS](https://github.com/shuishuipingan/InkWeaver/releases/latest) · [View source](https://github.com/shuishuipingan/InkWeaver) · [DSH plugin guide](plugins/inkweaver-dsh/README.md)
+[Download v1.1.0 for Windows or macOS](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.1.0) · [View source](https://github.com/shuishuipingan/InkWeaver/tree/1.1.0-development) · [DSH plugin guide](plugins/inkweaver-dsh/README.md)
 
 ## What InkWeaver is for
 
@@ -60,10 +60,9 @@ already implemented in the development line:
 - **Relationship graph workspace** supports name/alias search, one- and two-hop focus, relationship filtering, a keyboard-accessible list, pin/unpin/reset layout, and project-level layout persistence. Directed relationships can show arrows, source chapters, and manuscript evidence.
 - **Consistency snapshots and blueprint-free export** use SQLite's backup API with file hashes, and export finalized manuscript authority even when no chapter blueprint exists.
 
-These capabilities are still being verified one requirement at a time. Features
-that have not passed the roadmap gates are not presented as released 1.1.0
-functionality, and this section does not imply that cross-platform installers
-are available yet.
+These capabilities passed the internal engineering gates. Real-model literary
+quality is not claimed by this release; authors remain responsible for facts,
+style, copyright, and final approval.
 
 ## Model connections
 
@@ -123,19 +122,10 @@ inkweaver-mac-arm64-<version>-installer.dmg
 inkweaver-mac-x64-<version>-installer.dmg
 ```
 
-The current macOS installers do not have a Developer ID signature and are not notarized. Download only from the official Release and follow the operating system's first-launch confirmation. The formal Release uses a seven-asset contract covering Windows install/update assets, macOS Apple Silicon, and macOS Intel.
-const fs = require('fs')
-const p = 'D:/Game APP/AI-Novel-Writer/README_en.md'
-let s = fs.readFileSync(p, 'utf8')
-const content = fs.readFileSync(process.argv[1], 'utf8')
-const anchor = '\n## DeepSeek Harness plugin\n'
-if (!s.includes(anchor)) throw new Error('anchor missing')
-s = s.replace(anchor, content + anchor)
-fs.writeFileSync(p, s, 'utf8')
-console.log('en quickstart added')
+The current macOS installers do not have a Developer ID signature and are not notarized. Download only from the [formal v1.1.0 Release](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.1.0) and follow the operating system's first-launch confirmation. The desktop Release uses a seven-asset contract covering macOS Apple Silicon and macOS Intel, and also includes the DSH plugin tarball.
 ## DeepSeek Harness plugin
 
-The bundled `@shuishuipingan/inkweaver-dsh` package is an independent plugin under development, not a replacement for the desktop application. It provides a narrow reviewed chain for project settings, story architecture, characters, the whole-book outline, chapter blueprints, and chapter prose. Model changes enter a Proposal inbox and become authoritative only after the user applies them. This 1.1.0 release scope intentionally excludes npm; the plugin will be delivered as a GitHub Release tarball with local installation instructions.
+The bundled `@shuishuipingan/inkweaver-dsh@1.1.0` package is an independent DSH plugin, not a replacement for the desktop application. It provides a narrow reviewed chain for project settings, story architecture, characters, the whole-book outline, chapter blueprints, and chapter prose. Model changes enter a Proposal inbox and become authoritative only after the user applies them. This release intentionally excludes npm; the plugin is delivered as a GitHub Release tarball with local installation instructions.
 
 Migration note: `@ethanyoq/dsh-ai-novel-writer` was the historical package name before the repository move; it is not the 1.1.0 development-line delivery package. New installations should use only `@shuishuipingan/inkweaver-dsh`. The DSH host and its Web UI companion are maintained by the DeepSeek Harness ecosystem and are not packages from this repository.
 
@@ -145,6 +135,12 @@ dsh --profile web
 ```
 
 The plugin uses its own `.ai-novel` format and does not read desktop projects. See the [plugin documentation](plugins/inkweaver-dsh/README.md) for details.
+
+The final tarball is `shuishuipingan-inkweaver-dsh-1.1.0.tgz` with SHA-256
+`35dd442171a426bcbea214b595f52ca7edcd20531567e3bdbc3b11e7bceb6dba`. It targets
+the official `@deepseek-ai/dsh@0.1.5-rc.1`; external
+`@linxin666/dsh-web-all@0.3.20` is only the host companion and is not shipped by
+this repository.
 
 ## Local development
 
