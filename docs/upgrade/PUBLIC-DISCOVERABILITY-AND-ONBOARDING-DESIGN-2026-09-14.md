@@ -10,11 +10,13 @@
 
 把 InkWeaver 从“工程功能已经完成但新用户不容易理解和试用”的仓库，优化成一条清晰的公开用户路径：用户从搜索或 topic 进入仓库后，在十几秒内知道产品解决什么问题，在三分钟内完成首次启动，并能看到从设定、角色、蓝图、草稿、审稿到定稿的连续写作效果。
 
-## 当前证据基线
+## 改造前证据基线
 
 维护者通过 GitHub API 读取到的基线：仓库创建于 2026-09-02；最近可用的流量窗口为 47 次 views / 9 个独立访客；701 次 clones / 281 个独立 clone 来源，但热门路径主要是 Actions，不能将其当作真实用户数；仓库为 1 star、0 fork、0 subscriber、0 issue，Discussions 未开启；v1.2.0 Release 于 2026-09-13 发布，资产下载统计尚处于新发布和 GitHub 延迟窗口。
 
 当前公开树还包含 14 个 `_tmp_*` 临时文件、55 个 `.vitest-attachments` 文件和大量未被测试断言引用的 `__screenshots__` 输出；`README_zh.md` 仍为 v0.9.2。`README.md` 没有产品截图或 GIF，GitHub About 仅指向 README。
+
+以上数字和文件状态是本轮改造开始前的对照组，不代表当前公开状态。改造后的文件、链接、社区入口、Discussions 回读和增长快照见 `PUBLIC-DISCOVERABILITY-AND-ONBOARDING-ACCEPTANCE-2026-09-14.md`；后续复查应以新的快照文件为准。
 
 ## 不可改变的约束
 

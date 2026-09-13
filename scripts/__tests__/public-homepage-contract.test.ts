@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 
@@ -18,6 +18,8 @@ describe('public homepage contract', () => {
       expect(content).toContain('docs/quickstart/README.md')
       expect(content).toContain('docs/assets/inkweaver-writing-loop.svg')
       expect(content).toContain('@shuishuipingan/inkweaver-dsh')
+      expect(content).toContain('issues/new/choose')
+      expect(content).toContain('/discussions')
       expect(content).toMatch(/(?:不发布 npm|npm publication remains out of scope)/u)
       expect(content).toMatch(/(?:未(?:代码)?签名|unsigned|not code-signed)/iu)
     }
@@ -29,5 +31,17 @@ describe('public homepage contract', () => {
     expect(svg).toMatch(/<desc(?:\s|>)/u)
     expect(svg).toMatch(/viewBox="0 0 \d+ \d+"/u)
     expect(svg).not.toMatch(/(?:href|xlink:href|src)="https?:\/\//iu)
+  })
+
+  it('does not publish broken relative links in the three public README entry points', () => {
+    for (const relativeFile of ['README.md', 'README_en.md', 'README_zh.md']) {
+      const content = read(relativeFile)
+      const links = [...content.matchAll(/\]\(([^)]+)\)/gu)].map(match => match[1]!)
+      for (const link of links) {
+        if (/^(?:https?:|mailto:|#)/iu.test(link)) continue
+        const target = link.split('#', 1)[0]
+        expect(existsSync(path.resolve(repositoryRoot, path.dirname(relativeFile), target)), `${relativeFile} -> ${link}`).toBe(true)
+      }
+    }
   })
 })

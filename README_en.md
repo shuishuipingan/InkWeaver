@@ -35,6 +35,8 @@ Windows/macOS installers and the DSH plugin tarball have been built and read bac
 
 New contributors should next read the [project file guide](docs/PROJECT-FILE-GUIDE.md), the [1.2.0 feature and acceptance map](docs/upgrade/INKWEAVER-1.2.0-FEATURE-AND-ACCEPTANCE-MAP.md), the [global logging receipt](docs/upgrade/GLOBAL-LOGGING-ACCEPTANCE-RECEIPT-2026-09-13.md), and the [GitHub/distribution receipt](docs/upgrade/GITHUB-DISTRIBUTION-RECEIPT.md). User-visible changes are listed in the [changelog](CHANGELOG.md); contributors can read [CONTRIBUTING.md](CONTRIBUTING.md) and the [Roadmap](ROADMAP.md). The historical [1.1.0 feature map](docs/upgrade/INKWEAVER-1.1.0-FULL-FEATURE-MAP.md) remains available for context.
 
+If this workflow fits the way you write, try the sample project through one chapter first, then share a reproducible experience through [Issues](https://github.com/shuishuipingan/InkWeaver/issues/new/choose) or [Discussions](https://github.com/shuishuipingan/InkWeaver/discussions). If the direction is useful, a GitHub star helps other long-form authors find it.
+
 ## What InkWeaver is for
 
 Chat tools can generate a passage, but they rarely maintain character state, world rules, chapter plans, and causal continuity across a full novel. InkWeaver supplies that missing orchestration layer: project facts have clear ownership, generation runs carry explicit context and state, review findings require author confirmation, and finalized chapters become the factual foundation for later work.
@@ -159,6 +161,7 @@ inkweaver-mac-x64-<version>-installer.dmg
 ```
 
 The current macOS installers do not have a Developer ID signature and are not notarized. Download only from the [formal v1.2.0 Release](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.2.0) and follow the operating system's first-launch confirmation. The desktop Release uses a seven-asset contract covering macOS Apple Silicon and macOS Intel, and also includes the DSH plugin tarball.
+
 ## DeepSeek Harness plugin
 
 The bundled `@shuishuipingan/inkweaver-dsh@1.2.0` package is an independent DSH plugin, not a replacement for the desktop application. It provides a narrow reviewed chain for project settings, story architecture, characters, the whole-book outline, chapter blueprints, and chapter prose. Model changes enter a Proposal inbox and become authoritative only after the user applies them. This release intentionally excludes npm; the plugin is delivered as a GitHub Release tarball with local installation instructions.

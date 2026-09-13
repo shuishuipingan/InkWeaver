@@ -11,13 +11,19 @@
 - DSH 插件 `@shuishuipingan/inkweaver-dsh@1.2.0`，官方 Harness `0.1.5-rc.1` 兼容资格通过；
 - 不发布 npm；桌面和插件从 GitHub Release tarball 交付。
 
-## Next: public onboarding
+## Delivered after the v1.2.0 release: public onboarding
 
-- 公开样例项目和更短的第一章体验；
-- 更直观的连续性证据视图和“下一步该做什么”提示；
-- 安装器签名/公证评估，以及可选的 Windows portable 包；
-- DSH 精选插件列表和更多安装故障恢复案例；
-- 维护者每周 GitHub views、Release 下载和社区反馈快照。
+- 清理公开树中的测试附件、临时目录和未引用截图，并加入持续卫生检查；
+- 中英文产品首页、连续写作流程图、三分钟快速开始和无版权样例项目；
+- Issue forms、Discussions 模板、贡献指南、Roadmap 和 DSH 精选列表提交材料；
+- GitHub 公开增长基线与只读快照脚本，明确区分页面访问、CI clone 和真实安装转化。
+
+## Next: community discovery and trust
+
+- 跟进 DSH 精选插件列表收录，并补充安装故障恢复案例；
+- 评估 Windows portable 包、安装器签名和 macOS 公证，完成后再更新下载承诺；
+- 用小规模、脱敏的用户反馈持续改进“下一步该做什么”提示和连续性证据视图；
+- 维护者按明确问题复查 GitHub views、Release 下载和社区反馈，不用指标制造虚假活跃度。
 
 ## Later: opt-in diagnostics
 

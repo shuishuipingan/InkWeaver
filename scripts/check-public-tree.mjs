@@ -73,11 +73,12 @@ function parseArguments(argv) {
 if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url))) {
   try {
     const { json, repositoryRoot } = parseArguments(process.argv.slice(2))
-    const violations = collectPublicTreeViolations(trackedPaths(repositoryRoot))
+    const paths = trackedPaths(repositoryRoot)
+    const violations = collectPublicTreeViolations(paths)
     const report = {
       schemaVersion: 1,
       repositoryRoot,
-      trackedPathCount: trackedPaths(repositoryRoot).length,
+      trackedPathCount: paths.length,
       violations,
     }
     process.stdout.write(`${JSON.stringify(report, null, json ? 2 : 0)}\n`)

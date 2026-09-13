@@ -33,8 +33,9 @@ Windows/macOS 三架构安装包和 DSH 插件 tarball 已由同一源码提交�
 4. 让 AI 提交结构化审稿意见，由作者确认需要处理的项目；
 5. 对比修订并定稿，下一章只读取已经确认的连续性事实。
 
-接手开发或深入维护时，再阅读[项目文件指南](docs/PROJECT-FILE-GUIDE.md)、[1.2.0 完整功能与验收图](docs/upgrade/INKWEAVER-1.2.0-FEATURE-AND-ACCEPTANCE-MAP.md)、[全局日志验收收据](docs/upgrade/GLOBAL-LOGGING-ACCEPTANCE-RECEIPT-2026-09-13.md)和[GitHub/分发核验收据](docs/upgrade/GITHUB-DISTRIBUTION-RECEIPT.md)。逐项用户可见更新见[更新日志](CHANGELOG.md)。
 接手开发或深入维护时，再阅读[项目文件指南](docs/PROJECT-FILE-GUIDE.md)、[1.2.0 完整功能与验收图](docs/upgrade/INKWEAVER-1.2.0-FEATURE-AND-ACCEPTANCE-MAP.md)、[全局日志验收收据](docs/upgrade/GLOBAL-LOGGING-ACCEPTANCE-RECEIPT-2026-09-13.md)和[GitHub/分发核验收据](docs/upgrade/GITHUB-DISTRIBUTION-RECEIPT.md)。逐项用户可见更新见[更新日志](CHANGELOG.md)；参与开发请看[贡献指南](CONTRIBUTING.md)，规划请看[Roadmap](ROADMAP.md)。
+
+如果这个工作流正好解决你的长篇创作问题，欢迎先用样例项目走完一章，再通过 [Issue](https://github.com/shuishuipingan/InkWeaver/issues/new/choose) 或 [Discussions](https://github.com/shuishuipingan/InkWeaver/discussions) 分享可复现的体验；觉得方向有价值也可以在 GitHub 上点 Star，帮助更多作者找到它。
 
 ## 织墨解决什么问题
 
@@ -156,6 +157,7 @@ inkweaver-mac-x64-<版本号>-installer.dmg
 ```
 
 当前 macOS 安装包未代码签名（未使用 Developer ID 签名）且未公证。请只从[正式 v1.2.0 Release](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.2.0)下载，并按系统安全提示确认首次打开。桌面 Release 使用七项资产合同，分别覆盖 macOS Apple Silicon 与 macOS Intel，另附 DSH 插件 tarball。
+
 ## DeepSeek Harness 插件
 
 仓库中的 `@shuishuipingan/inkweaver-dsh@1.2.0` 是独立的 DSH 插件，不是桌面版的替代品。它提供精简的项目设置、故事架构、人物、全书纲要、章节蓝图和章节正文流程；模型修改先进入 Proposal，由用户审核应用后才改变权威项目状态。本轮 1.2.0 不发布 npm，插件通过 GitHub Release tarball 和本地安装说明交付。

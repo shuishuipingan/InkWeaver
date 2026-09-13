@@ -16,6 +16,9 @@
 | 8 | `docs/upgrade/INKWEAVER-1.1.0-BASELINE.md` | 历史开发基线、用户保留修改、DSH 版本查询与初始验证结果。 |
 | 9 | `plugins/inkweaver-dsh/docs/v2-development-gates.md` | DSH V2 的 tarball、roster、mount、Proposal 同页应用和重启回读门禁。 |
 | 10 | `package.json`、`electron-builder.json5`、`.release/release-profile.json` | 桌面版本、构建目标、资产合同和云端资格构建配置。 |
+| 11 | `CONTRIBUTING.md` / `ROADMAP.md` | 社区贡献规范、公共树卫生门禁和已发布/规划能力边界。 |
+| 12 | `docs/metrics/README.md` / `scripts/github-growth-snapshot.mjs` | 只读 GitHub 流量与 Release 下载快照；不采集应用内容。 |
+| 13 | `docs/upgrade/PUBLIC-DISCOVERABILITY-AND-ONBOARDING-DESIGN-2026-09-14.md` | 公共仓库、首页、首次体验和分发优化的设计约束。 |
 
 ## 根目录文件
 
@@ -151,6 +154,8 @@
 | `scripts/runtime-log-coverage.mjs` | 静态扫描裸输出和机器协议 allowlist；coverage 失败时不应发布。 |
 | `scripts/check-public-tree.mjs` | 检查 Git 索引中是否混入测试附件、临时文件或浏览器截图输出。 |
 | `docs/quickstart/example-project/` | 无版权公开示例的设定、角色、六章大纲和第一章，供新用户复制体验。 |
+| `.github/ISSUE_TEMPLATE/`、`.github/DISCUSSION_TEMPLATE/` | 社区问题、安装反馈、创作想法和使用提问的结构化入口。 |
+| `docs/distribution/DSH-LISTING-SUBMISSION.md` | 提交到 DSH 精选插件列表的短介绍、安装命令和安全边界。 |
 | `.runtime/.cache/`、`.vitest-attachments/` | 本机测试/资格日志和截图；不提交、不作为产品数据。 |
 | `.vela/`、`.ai-novel/`、`.dsh-upgrade-inspect/` | 用户项目、插件测试或临时检查数据；不进入源码提交。 |
 
