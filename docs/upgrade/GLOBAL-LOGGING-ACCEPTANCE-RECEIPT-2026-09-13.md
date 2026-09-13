@@ -1,6 +1,6 @@
 # InkWeaver 1.2.0 全局日志验收收据
 
-状态：持续验收中的冻结候选。此收据只记录已经在当前工作区运行过的日志边界证据；三平台安装包、GitHub Release 和最终版本 tag 仍须在同一冻结 commit 上重新回读。
+状态：已冻结并发布。日志边界证据、最终 SHA 根测试、三平台安装包、GitHub Release 和版本 tag 已完成回读；发布源码 SHA 为 `2bcff9b9eca7c5eb142aa5293acad5aac78c0728`。
 
 ## 目标和隐私边界
 
@@ -49,21 +49,35 @@ src/shared/runtime-log.test.ts             5/5
 runtime-logs.browser.tsx                   1/1
 workflow-launch-dialogs.browser.tsx        7/7
 batch-chapter-completion-mode.browser.tsx  8/8
-full unit (1.2.0 candidate)                 309 files; 2210 passed; 8 skipped
-full browser (1.2.0 candidate)             39 files; 228 passed
+full unit (1.2.0 final SHA)                 309 files; 2210 passed; 8 skipped
+full browser (1.2.0 final SHA)             39 files; 228 passed
 ```
 
-1.2.0 DSH qualification 已在官方 Harness commit
+1.2.0 DSH qualification 已在最终源码 SHA、官方 Harness commit
 `183f08e9c6dde7e36cd2318eaee70b0da08fb35e` 完整通过：插件 40 文件/433
 passed/6 skipped，tarball 241,776 bytes / 41 entries，SHA-256
 `0b67def78e2660ad2e29840efa158132ec00d6ec51bc81f0ed36b4067515ad66`；profile
 add/remove/reinstall、`inkweaver-v2` mount、工具隔离、Chrome 三次 journey
 和 schema-5 持久化读回均通过。旧 1.1.0 收据仅作为历史对照，不作为本版本
-资产证据。
+资产证据。最终资格机器收据的 `source.commit` 为
+`2bcff9b9eca7c5eb142aa5293acad5aac78c0728`，tarball SHA-256 为
+`0b67def78e2660ad2e29840efa158132ec00d6ec51bc81f0ed36b4067515ad66`。
 
-## 已知限制与剩余门禁
+## 已知限制与冻结说明
 
 - writer 默认保留最近 30 个 segment；这是明确的 retention 策略，不是静默丢弃。删除/降级应在状态和后续收据中可见。
 - 两级磁盘都不可写时，事件暂留内存并显示 `degraded`；进程被强制终止前无法凭空制造第三份介质，因此必须向用户显示不完整状态。
 - smoke/qualification 脚本的 stdout/stderr 仍保留机器可读协议，coverage 报告逐项列出理由。
-- 完成 1.2.0 冻结还需要：桌面 build、Windows/macOS 三架构真实资产、GitHub Release 资产回读、`dsh-plugin` topic 回读和提交 SHA 一致性检查；root 全量 unit/browser 与 DSH 资格已完成并记录在上方。
+- 1.2.0 冻结门禁已全部完成：桌面 build、Windows/macOS 三架构真实资产、GitHub Release 资产回读、`dsh-plugin` topic 回读、提交 SHA 一致性、root 全量 unit/browser 与 DSH 隔离资格均已记录。日志系统的 retention、双磁盘不可写和机器协议 allowlist 限制仍按上文披露。
+
+## 最终分发绑定
+
+| 项目 | 回读 |
+| --- | --- |
+| GitHub Release | [v1.2.0](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.2.0)，非 draft、非 prerelease、Latest |
+| 源码 | `2bcff9b9eca7c5eb142aa5293acad5aac78c0728` |
+| Windows | run `34756541922` / artifact `10317388925` |
+| macOS arm64 | run `34756544323` / artifact `10317223323` |
+| macOS x64 | run `34757014312` / artifact `10317123040` |
+| 插件 | `shuishuipingan-inkweaver-dsh-1.2.0.tgz`，241,776 bytes，SHA-256 `0b67def78e2660ad2e29840efa158132ec00d6ec51bc81f0ed36b4067515ad66` |
+| Topic | topics API 含 `dsh-plugin`；搜索 `topic:dsh-plugin user:shuishuipingan` 返回 `shuishuipingan/InkWeaver` |

@@ -6,9 +6,9 @@
 
 | 顺序 | 文件 | 用途 |
 | --- | --- | --- |
-| 1 | `README.md` / `README_en.md` | 产品定位、1.2.0 冻结/Release 状态、用户安装与限制；中英文内容必须保持实现一致。 |
+| 1 | `README.md` / `README_en.md` | 产品定位、1.2.0 已发布状态、用户安装与限制；中英文内容必须保持实现一致。 |
 | 2 | `docs/upgrade/INKWEAVER-1.2.0-FEATURE-AND-ACCEPTANCE-MAP.md` | 1.2.0 全路线功能、日志事件链、回归风险、验收顺序和发布门禁。 |
-| 3 | `docs/upgrade/INKWEAVER-1.2.0-ACCEPTANCE-RECEIPT.md` | 当前版本逐项证据、待重跑门禁、版本/分发约束；状态不能只用“代码已合并”代替验收。 |
+| 3 | `docs/upgrade/INKWEAVER-1.2.0-ACCEPTANCE-RECEIPT.md` | 当前版本逐项证据、最终 SHA、版本/分发回读和限制；状态不能只用“代码已合并”代替验收。 |
 | 4 | `docs/upgrade/INKWEAVER-1.1.0-FULL-FEATURE-MAP.md` / `INKWEAVER-1.1.0-DELIVERY-TRACKER.md` | 历史 1.1.0 功能和 Release 收据；只作基线，不冒充 1.2.0 证据。 |
 | 5 | `docs/upgrade/GLOBAL-LOGGING-ACCEPTANCE-RECEIPT-2026-09-13.md` | 结构化日志合同、覆盖边界、redaction、spool/轮转/导出和已运行命令。 |
 | 6 | `docs/upgrade/INKWEAVER-1.1.0-BASELINE.md` | 历史开发基线、用户保留修改、DSH 版本查询与初始验证结果。 |
@@ -19,7 +19,7 @@
 
 | 路径 | 作用 |
 | --- | --- |
-| `package.json` | Electron/Vite/TypeScript 依赖与桌面开发、测试、资格构建命令；1.2.0 冻结时与插件版本一致。 |
+| `package.json` | Electron/Vite/TypeScript 依赖与桌面开发、测试、资格构建命令；1.2.0 发布时与插件版本一致。 |
 | `pnpm-lock.yaml` | 根项目依赖锁文件；依赖升级必须和测试一起提交。 |
 | `vite.config.ts` | Renderer 的 Vite 入口、Electron 集成和资源处理。 |
 | `vitest.config.ts` | Node/主进程/共享模块测试环境。 |
@@ -155,5 +155,5 @@
 1. 修改事实结构：先改 `src/shared` 契约，再改 `electron/repositories`、SQLite migration、IPC、UI 和测试。
 2. 修改 UI：使用现有 store/IPC，不在组件里直接读取 SQLite、绝对路径或模型密钥。
 3. 修改插件：先更新 V2 gate 对应的 typed DTO，再 `typecheck → build → tarball → isolated profile → roster/mount → browser → restart`。
-4. 修改版本或发布：先按 1.2.0 功能/日志地图逐项换成真实证据；没有同 SHA 的 Windows/macOS 资格资产时，不把开发线写成正式 1.2.0。
+4. 修改版本或发布：先按 1.2.0 功能/日志地图逐项换成真实证据；平台资格、Release 资产和源码 SHA 必须可回读后才能更新正式状态。
 5. 看到 `.gitignore` 中的用户/构建文件时不要清理；它们可能是用户已有数据或当前资格证据。

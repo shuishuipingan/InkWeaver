@@ -4,9 +4,9 @@
 
 InkWeaver is a local-first desktop workspace for long-form fiction. It brings project settings, characters, worldbuilding, chapter blueprints, prose, review, revision, and finalization into a traceable writing chain while keeping the author in control of every durable change.
 
-Current version: **v1.2.0 (freeze candidate; GitHub Release pending)**
+Current version: **v1.2.0 (released)**
 
-> InkWeaver 1.2.0 extends the formal 1.1.0 line with durable global logging, continuous-writing context, planning-material import, stage-aware Skills, evidence-backed review, and concurrency/recovery guards. Before freezing, Windows/macOS installers and the DSH tarball must be built and verified from one source commit. npm publication remains out of scope, and external literary review is not an engineering gate.
+> InkWeaver 1.2.0 extends the formal 1.1.0 line with durable global logging, continuous-writing context, planning-material import, stage-aware Skills, evidence-backed review, and concurrency/recovery guards. Windows/macOS installers and the DSH tarball have been built and read back from one source commit. npm publication remains out of scope, and external literary review is not an engineering gate.
 
 New contributors should start with the [project file guide](docs/PROJECT-FILE-GUIDE.md), then read the [1.2.0 feature and acceptance map](docs/upgrade/INKWEAVER-1.2.0-FEATURE-AND-ACCEPTANCE-MAP.md), the [global logging receipt](docs/upgrade/GLOBAL-LOGGING-ACCEPTANCE-RECEIPT-2026-09-13.md), and the historical [1.1.0 feature map](docs/upgrade/INKWEAVER-1.1.0-FULL-FEATURE-MAP.md). The guide explains source-of-truth ownership, main-process side effects, renderer projections, the DSH plugin, and generated release files.
 
@@ -14,7 +14,7 @@ The frozen source, platform qualification runs, GitHub topic, and release back-r
 
 User-visible changes are listed in the [changelog](CHANGELOG.md); command-level evidence and limitations are summarized in the [1.2.0 acceptance receipt](docs/upgrade/INKWEAVER-1.2.0-ACCEPTANCE-RECEIPT.md).
 
-[Download v1.2.0 for Windows or macOS (after Release publication)](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.2.0) · [View source](https://github.com/shuishuipingan/InkWeaver/tree/main) · [DSH plugin guide](plugins/inkweaver-dsh/README.md)
+[Download v1.2.0 for Windows or macOS](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.2.0) · [View source](https://github.com/shuishuipingan/InkWeaver/tree/main) · [DSH plugin guide](plugins/inkweaver-dsh/README.md)
 
 ## What InkWeaver is for
 

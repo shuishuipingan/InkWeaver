@@ -1,8 +1,8 @@
 # 更新日志
 
-本文件按用户可见行为记录变更。`1.2.0` 的源码与工程验收正在冻结，正式 Release 资产必须由同一源码 commit 生成并回读；本轮不发布 npm，外部文学质量评阅不作为工程门槛。`1.1.0` 的历史 Release 收据保留在 `docs/upgrade/`，不与 1.2.0 混用。
+本文件按用户可见行为记录变更。`1.2.0` 已从同一源码 commit 完成工程验收、三平台资产回读和正式 Release；本轮不发布 npm，外部文学质量评阅不作为工程门槛。`1.1.0` 的历史 Release 收据保留在 `docs/upgrade/`，不与 1.2.0 混用。
 
-## 1.2.0 — 2026-09-13（冻结候选）
+## 1.2.0 — 2026-09-13（已发布）
 
 ### 全局日志与可诊断性
 
@@ -36,7 +36,7 @@
 
 - DSH 插件版本同步为 `@shuishuipingan/inkweaver-dsh@1.2.0`，目录、Host、preset 和 RPC 继续使用 `inkweaver` 命名；兼容当前官方默认渠道 `@deepseek-ai/dsh@0.1.5-rc.1`。
 - 插件仍通过 GitHub Release tarball 和本地 `dsh plugin add` 交付，不执行 npm publish；外部 `@linxin666/dsh-web-all` 仅为宿主 companion，历史 `@ethanyoq/dsh-ai-novel-writer` 不再是安装目标。
-- 1.2.0 Release 需要包含 Windows/macOS 三架构安装包、更新元数据和插件 tarball，并在 GitHub `dsh-plugin` topic 回读可发现；签名/公证状态会在 Release 说明中如实披露。
+- 1.2.0 Release 已包含 Windows/macOS 三架构安装包、更新元数据和插件 tarball，并在 GitHub `dsh-plugin` topic 回读可发现；签名/公证状态已在 Release 说明中如实披露。
 
 ## 1.1.0 — 2026-09-12
 

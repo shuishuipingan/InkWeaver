@@ -4,17 +4,17 @@
 
 织墨 InkWeaver 是一款面向长篇小说创作的本地优先桌面工作台。它把项目设定、角色、世界观、章节蓝图、正文、审稿、修订与定稿组织成可追溯的创作链，让作者在保留最终决定权的前提下使用自己选择的 AI 模型。
 
-当前版本：**v1.2.0（冻结候选，待 GitHub Release）**
+当前版本：**v1.2.0（已发布）**
 
-> 1.2.0 在 1.1.0 正式版本基础上补齐全局结构化日志、持续写作上下文、规划资料、阶段 Skill、证据化审稿和并发/恢复回归；冻结前必须由同一源码生成并核验 Windows/macOS 安装包与 DSH 插件 tarball。本轮不发布 npm，外部文学质量评阅不作为工程门槛。
+> 1.2.0 在 1.1.0 正式版本基础上补齐全局结构化日志、持续写作上下文、规划资料、阶段 Skill、证据化审稿和并发/恢复回归；Windows/macOS 三架构安装包与 DSH 插件 tarball 已由同一源码提交生成并完成回读。本轮不发布 npm，外部文学质量评阅不作为工程门槛。
 
 接手开发时先看[项目文件指南](docs/PROJECT-FILE-GUIDE.md)，再看[1.2.0 完整功能与验收图](docs/upgrade/INKWEAVER-1.2.0-FEATURE-AND-ACCEPTANCE-MAP.md)、[全局日志验收收据](docs/upgrade/GLOBAL-LOGGING-ACCEPTANCE-RECEIPT-2026-09-13.md)和历史 [1.1.0 功能图](docs/upgrade/INKWEAVER-1.1.0-FULL-FEATURE-MAP.md)。文件指南按事实源、主进程副作用、Renderer 投影、DSH 插件和发布生成物解释每个目录的职责。
 
-开发分支、GitHub topic 和待发布门禁的当前回读见[GitHub/分发核验收据](docs/upgrade/GITHUB-DISTRIBUTION-RECEIPT.md)。
+冻结源码、GitHub topic、平台资格和 Release 回读见[GitHub/分发核验收据](docs/upgrade/GITHUB-DISTRIBUTION-RECEIPT.md)。
 
 逐项用户可见更新见[更新日志](CHANGELOG.md)；工程收据、限制和每项命令证据见 [1.2.0 验收收据](docs/upgrade/INKWEAVER-1.2.0-ACCEPTANCE-RECEIPT.md)。
 
-[下载 v1.2.0 Windows / macOS 桌面版（Release 发布后可用）](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.2.0) · [查看源代码](https://github.com/shuishuipingan/InkWeaver/tree/main) · [DSH 插件说明](plugins/inkweaver-dsh/README.md)
+[下载 v1.2.0 Windows / macOS 桌面版](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.2.0) · [查看源代码](https://github.com/shuishuipingan/InkWeaver/tree/main) · [DSH 插件说明](plugins/inkweaver-dsh/README.md)
 
 ## 织墨解决什么问题
 
