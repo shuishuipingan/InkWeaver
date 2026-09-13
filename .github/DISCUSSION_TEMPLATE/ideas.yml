@@ -1,0 +1,29 @@
+name: 创作体验想法
+description: 分享能让长篇小说持续发展的新想法
+title: "[Idea] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        欢迎分享创作流程、上下文、角色状态和审稿体验方面的想法。请使用虚构例子，不要上传私人原稿。
+  - type: textarea
+    id: scenario
+    attributes:
+      label: 创作场景
+      description: 你在写什么类型的长篇？遇到了什么具体场景？
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: 想法
+      description: 你希望 InkWeaver 如何帮助你？
+    validations:
+      required: true
+  - type: textarea
+    id: example
+    attributes:
+      label: 脱敏示例
+      description: 可选。请使用原创短句或占位内容说明预期结果。
+    validations:
+      required: false

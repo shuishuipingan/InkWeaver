@@ -10,7 +10,7 @@
 
 Windows/macOS 三架构安装包和 DSH 插件 tarball 已由同一源码提交生成并完成回读。本轮不发布 npm，外部文学质量评阅不作为工程门槛。
 
-[立即下载 v1.2.0](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.2.0) · [三分钟开始第一章](docs/quickstart/README.md) · [安装 DSH 插件](plugins/inkweaver-dsh/README.md) · [提交问题或建议](https://github.com/shuishuipingan/InkWeaver/issues/new/choose)
+[立即下载 v1.2.0](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.2.0) · [三分钟开始第一章](docs/quickstart/README.md) · [安装 DSH 插件](plugins/inkweaver-dsh/README.md) · [提交问题或建议](https://github.com/shuishuipingan/InkWeaver/issues/new/choose) · [参与讨论](https://github.com/shuishuipingan/InkWeaver/discussions)
 
 ![InkWeaver continuous writing loop](docs/assets/inkweaver-writing-loop.svg)
 
@@ -34,6 +34,7 @@ Windows/macOS 三架构安装包和 DSH 插件 tarball 已由同一源码提交�
 5. 对比修订并定稿，下一章只读取已经确认的连续性事实。
 
 接手开发或深入维护时，再阅读[项目文件指南](docs/PROJECT-FILE-GUIDE.md)、[1.2.0 完整功能与验收图](docs/upgrade/INKWEAVER-1.2.0-FEATURE-AND-ACCEPTANCE-MAP.md)、[全局日志验收收据](docs/upgrade/GLOBAL-LOGGING-ACCEPTANCE-RECEIPT-2026-09-13.md)和[GitHub/分发核验收据](docs/upgrade/GITHUB-DISTRIBUTION-RECEIPT.md)。逐项用户可见更新见[更新日志](CHANGELOG.md)。
+接手开发或深入维护时，再阅读[项目文件指南](docs/PROJECT-FILE-GUIDE.md)、[1.2.0 完整功能与验收图](docs/upgrade/INKWEAVER-1.2.0-FEATURE-AND-ACCEPTANCE-MAP.md)、[全局日志验收收据](docs/upgrade/GLOBAL-LOGGING-ACCEPTANCE-RECEIPT-2026-09-13.md)和[GitHub/分发核验收据](docs/upgrade/GITHUB-DISTRIBUTION-RECEIPT.md)。逐项用户可见更新见[更新日志](CHANGELOG.md)；参与开发请看[贡献指南](CONTRIBUTING.md)，规划请看[Roadmap](ROADMAP.md)。
 
 ## 织墨解决什么问题
 

@@ -1,0 +1,76 @@
+name: Bug report
+description: 报告一个可以复现的桌面版或 DSH 插件问题
+title: "[Bug] "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈。请先确认问题发生在最新 Release，并删除日志中的敏感凭据、私人原稿和绝对路径。
+  - type: input
+    id: version
+    attributes:
+      label: InkWeaver 版本
+      description: 例如 1.2.0；如果是源码运行，请填写 commit。
+      placeholder: 1.2.0
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: 平台与架构
+      options:
+        - Windows x64
+        - macOS arm64 (Apple Silicon)
+        - macOS x64 (Intel)
+        - Other / 源码环境
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: 问题范围
+      options:
+        - Desktop application
+        - DSH plugin
+        - Documentation / distribution
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: 复现步骤
+      description: 请从干净项目开始，列出每一步和实际结果。
+      placeholder: |
+        1. 新建作品……
+        2. 打开……
+        3. 点击……
+        预期：
+        实际：
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: 脱敏日志或错误信息
+      description: 只粘贴必要的错误、事件 ID 和状态；不要粘贴私人原稿或凭据。
+      render: text
+    validations:
+      required: false
+  - type: textarea
+    id: context
+    attributes:
+      label: 其他上下文
+      description: 是否使用 Ollama、云端模型或 DSH？是否刚升级/恢复？
+    validations:
+      required: false
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: 提交确认
+      options:
+        - label: 我已删除日志中的敏感信息和私人内容。
+          required: true
+        - label: 我已搜索现有 Issue，并确认这不是重复问题。
+          required: true

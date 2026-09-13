@@ -1,0 +1,34 @@
+name: 使用问题
+description: 询问安装、模型连接、连续写作或 DSH 插件用法
+title: "[Question] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        提问前可以先看[三分钟快速开始](../../docs/quickstart/README.md)和 [DSH 插件说明](../../plugins/inkweaver-dsh/README.md)。请不要公开 API Key、私人原稿或完整日志。
+  - type: input
+    id: version
+    attributes:
+      label: 版本
+      placeholder: 1.2.0
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: 平台
+      options:
+        - Windows x64
+        - macOS arm64
+        - macOS x64
+        - DSH Web profile
+        - Source checkout
+    validations:
+      required: true
+  - type: textarea
+    id: question
+    attributes:
+      label: 问题
+      description: 请说明你已经尝试过什么，以及希望看到什么结果。
+    validations:
+      required: true

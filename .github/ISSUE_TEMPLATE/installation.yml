@@ -1,0 +1,62 @@
+name: Installation help
+description: 反馈 Windows/macOS 或 DSH 插件安装、启动和更新问题
+title: "[Install] "
+labels:
+  - installation
+body:
+  - type: markdown
+    attributes:
+      value: |
+        请从官方 v1.2.0 Release 下载，并在日志或截图中遮盖敏感信息。Windows 安装器未签名，macOS DMG 未公证，首次打开可能出现系统安全提示。
+  - type: input
+    id: version
+    attributes:
+      label: 下载版本
+      placeholder: 1.2.0
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: 系统与架构
+      options:
+        - Windows x64
+        - macOS arm64 (Apple Silicon)
+        - macOS x64 (Intel)
+        - DSH Web profile
+    validations:
+      required: true
+  - type: dropdown
+    id: stage
+    attributes:
+      label: 失败阶段
+      options:
+        - Download / checksum
+        - Installer launch
+        - First launch
+        - In-app update
+        - DSH plugin add
+        - DSH preset mount
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: 操作步骤和错误
+      description: 请包含命令、系统提示和预期/实际结果。
+    validations:
+      required: true
+  - type: input
+    id: checksum
+    attributes:
+      label: 可选的 SHA-256
+      description: 只填写校验值本身，不要填写包含凭据的命令输出。
+    validations:
+      required: false
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: 提交确认
+      options:
+        - label: 我已从公开内容中移除敏感信息和私人项目内容。
+          required: true

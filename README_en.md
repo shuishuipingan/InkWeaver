@@ -10,7 +10,7 @@ Current version: **v1.2.0 (released)**
 
 Windows/macOS installers and the DSH plugin tarball have been built and read back from one source commit. npm publication remains out of scope, and external literary review is not an engineering gate.
 
-[Download v1.2.0](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.2.0) · [Start your first chapter in three minutes](docs/quickstart/README.md) · [Install the DSH plugin](plugins/inkweaver-dsh/README.md) · [Ask a question or report a problem](https://github.com/shuishuipingan/InkWeaver/issues/new/choose)
+[Download v1.2.0](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.2.0) · [Start your first chapter in three minutes](docs/quickstart/README.md) · [Install the DSH plugin](plugins/inkweaver-dsh/README.md) · [Ask a question or report a problem](https://github.com/shuishuipingan/InkWeaver/issues/new/choose) · [Join the discussion](https://github.com/shuishuipingan/InkWeaver/discussions)
 
 ![InkWeaver continuous writing loop](docs/assets/inkweaver-writing-loop.svg)
 
@@ -33,7 +33,7 @@ Windows/macOS installers and the DSH plugin tarball have been built and read bac
 4. Ask AI for a structured review, then choose what you want to handle, defer, or verify.
 5. Inspect the diff and finalize the chapter; the next chapter reads only author-confirmed continuity facts.
 
-New contributors should next read the [project file guide](docs/PROJECT-FILE-GUIDE.md), the [1.2.0 feature and acceptance map](docs/upgrade/INKWEAVER-1.2.0-FEATURE-AND-ACCEPTANCE-MAP.md), the [global logging receipt](docs/upgrade/GLOBAL-LOGGING-ACCEPTANCE-RECEIPT-2026-09-13.md), and the [GitHub/distribution receipt](docs/upgrade/GITHUB-DISTRIBUTION-RECEIPT.md). User-visible changes are listed in the [changelog](CHANGELOG.md), and the historical [1.1.0 feature map](docs/upgrade/INKWEAVER-1.1.0-FULL-FEATURE-MAP.md) remains available for context.
+New contributors should next read the [project file guide](docs/PROJECT-FILE-GUIDE.md), the [1.2.0 feature and acceptance map](docs/upgrade/INKWEAVER-1.2.0-FEATURE-AND-ACCEPTANCE-MAP.md), the [global logging receipt](docs/upgrade/GLOBAL-LOGGING-ACCEPTANCE-RECEIPT-2026-09-13.md), and the [GitHub/distribution receipt](docs/upgrade/GITHUB-DISTRIBUTION-RECEIPT.md). User-visible changes are listed in the [changelog](CHANGELOG.md); contributors can read [CONTRIBUTING.md](CONTRIBUTING.md) and the [Roadmap](ROADMAP.md). The historical [1.1.0 feature map](docs/upgrade/INKWEAVER-1.1.0-FULL-FEATURE-MAP.md) remains available for context.
 
 ## What InkWeaver is for
 
