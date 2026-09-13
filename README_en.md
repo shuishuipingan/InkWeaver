@@ -6,15 +6,34 @@ InkWeaver is a local-first desktop workspace for long-form fiction. It brings pr
 
 Current version: **v1.2.0 (released)**
 
-> InkWeaver 1.2.0 extends the formal 1.1.0 line with durable global logging, continuous-writing context, planning-material import, stage-aware Skills, evidence-backed review, and concurrency/recovery guards. Windows/macOS installers and the DSH tarball have been built and read back from one source commit. npm publication remains out of scope, and external literary review is not an engineering gate.
+> **Turn a long novel into one continuously developing story.** InkWeaver is a local-first AI writing workspace that connects story premises, character state, chapter blueprints, candidate drafts, evidence-backed review, and author-approved finalization into one traceable writing loop.
 
-New contributors should start with the [project file guide](docs/PROJECT-FILE-GUIDE.md), then read the [1.2.0 feature and acceptance map](docs/upgrade/INKWEAVER-1.2.0-FEATURE-AND-ACCEPTANCE-MAP.md), the [global logging receipt](docs/upgrade/GLOBAL-LOGGING-ACCEPTANCE-RECEIPT-2026-09-13.md), and the historical [1.1.0 feature map](docs/upgrade/INKWEAVER-1.1.0-FULL-FEATURE-MAP.md). The guide explains source-of-truth ownership, main-process side effects, renderer projections, the DSH plugin, and generated release files.
+Windows/macOS installers and the DSH plugin tarball have been built and read back from one source commit. npm publication remains out of scope, and external literary review is not an engineering gate.
 
-The frozen source, platform qualification runs, GitHub topic, and release back-read are recorded in the [GitHub/distribution receipt](docs/upgrade/GITHUB-DISTRIBUTION-RECEIPT.md).
+[Download v1.2.0](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.2.0) · [Start your first chapter in three minutes](docs/quickstart/README.md) · [Install the DSH plugin](plugins/inkweaver-dsh/README.md) · [Ask a question or report a problem](https://github.com/shuishuipingan/InkWeaver/issues/new/choose)
 
-User-visible changes are listed in the [changelog](CHANGELOG.md); command-level evidence and limitations are summarized in the [1.2.0 acceptance receipt](docs/upgrade/INKWEAVER-1.2.0-ACCEPTANCE-RECEIPT.md).
+![InkWeaver continuous writing loop](docs/assets/inkweaver-writing-loop.svg)
 
-[Download v1.2.0 for Windows or macOS](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.2.0) · [View source](https://github.com/shuishuipingan/InkWeaver/tree/main) · [DSH plugin guide](plugins/inkweaver-dsh/README.md)
+### Who it is for
+
+- Authors planning a multi-chapter, serial, or multi-volume story who need characters, foreshadowing, and world rules to survive across chapters;
+- Writers who want AI to propose material while the author keeps the final decision;
+- People who want project files to remain local and every model call, review, recovery, and export to have traceable evidence.
+
+### Who it is not for
+
+- Anyone looking only for a disposable chat response without project structure or continuity;
+- Anyone expecting bundled model quota, an online reading community, or an automatic literary-quality guarantee.
+
+### Understand the workflow in three minutes
+
+1. Define the premise, genre, writing language, target chapter count, and creative strategy.
+2. Maintain characters, worldbuilding, story threads, and a chapter blueprint.
+3. Generate a candidate draft and inspect its context/source receipt.
+4. Ask AI for a structured review, then choose what you want to handle, defer, or verify.
+5. Inspect the diff and finalize the chapter; the next chapter reads only author-confirmed continuity facts.
+
+New contributors should next read the [project file guide](docs/PROJECT-FILE-GUIDE.md), the [1.2.0 feature and acceptance map](docs/upgrade/INKWEAVER-1.2.0-FEATURE-AND-ACCEPTANCE-MAP.md), the [global logging receipt](docs/upgrade/GLOBAL-LOGGING-ACCEPTANCE-RECEIPT-2026-09-13.md), and the [GitHub/distribution receipt](docs/upgrade/GITHUB-DISTRIBUTION-RECEIPT.md). User-visible changes are listed in the [changelog](CHANGELOG.md), and the historical [1.1.0 feature map](docs/upgrade/INKWEAVER-1.1.0-FULL-FEATURE-MAP.md) remains available for context.
 
 ## What InkWeaver is for
 

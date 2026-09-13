@@ -7,13 +7,15 @@
 | 顺序 | 文件 | 用途 |
 | --- | --- | --- |
 | 1 | `README.md` / `README_en.md` | 产品定位、1.2.0 已发布状态、用户安装与限制；中英文内容必须保持实现一致。 |
-| 2 | `docs/upgrade/INKWEAVER-1.2.0-FEATURE-AND-ACCEPTANCE-MAP.md` | 1.2.0 全路线功能、日志事件链、回归风险、验收顺序和发布门禁。 |
-| 3 | `docs/upgrade/INKWEAVER-1.2.0-ACCEPTANCE-RECEIPT.md` | 当前版本逐项证据、最终 SHA、版本/分发回读和限制；状态不能只用“代码已合并”代替验收。 |
-| 4 | `docs/upgrade/INKWEAVER-1.1.0-FULL-FEATURE-MAP.md` / `INKWEAVER-1.1.0-DELIVERY-TRACKER.md` | 历史 1.1.0 功能和 Release 收据；只作基线，不冒充 1.2.0 证据。 |
-| 5 | `docs/upgrade/GLOBAL-LOGGING-ACCEPTANCE-RECEIPT-2026-09-13.md` | 结构化日志合同、覆盖边界、redaction、spool/轮转/导出和已运行命令。 |
-| 6 | `docs/upgrade/INKWEAVER-1.1.0-BASELINE.md` | 历史开发基线、用户保留修改、DSH 版本查询与初始验证结果。 |
-| 7 | `plugins/inkweaver-dsh/docs/v2-development-gates.md` | DSH V2 的 tarball、roster、mount、Proposal 同页应用和重启回读门禁。 |
-| 8 | `package.json`、`electron-builder.json5`、`.release/release-profile.json` | 桌面版本、构建目标、资产合同和云端资格构建配置。 |
+| 2 | `docs/quickstart/README.md` | 面向新用户的三分钟安装、模型连接、第一章和下一章连续写作路径。 |
+| 3 | `docs/assets/inkweaver-writing-loop.svg` | README 使用的本地无版权连续写作流程图，不是运行时 UI 资源。 |
+| 4 | `docs/upgrade/INKWEAVER-1.2.0-FEATURE-AND-ACCEPTANCE-MAP.md` | 1.2.0 全路线功能、日志事件链、回归风险、验收顺序和发布门禁。 |
+| 5 | `docs/upgrade/INKWEAVER-1.2.0-ACCEPTANCE-RECEIPT.md` | 当前版本逐项证据、最终 SHA、版本/分发回读和限制；状态不能只用“代码已合并”代替验收。 |
+| 6 | `docs/upgrade/INKWEAVER-1.1.0-FULL-FEATURE-MAP.md` / `INKWEAVER-1.1.0-DELIVERY-TRACKER.md` | 历史 1.1.0 功能和 Release 收据；只作基线，不冒充 1.2.0 证据。 |
+| 7 | `docs/upgrade/GLOBAL-LOGGING-ACCEPTANCE-RECEIPT-2026-09-13.md` / `GLOBAL-LOGGING-AUDIT-2026-09-13.md` | 结构化日志合同、覆盖边界、redaction、spool/轮转/导出和完整审计结论。 |
+| 8 | `docs/upgrade/INKWEAVER-1.1.0-BASELINE.md` | 历史开发基线、用户保留修改、DSH 版本查询与初始验证结果。 |
+| 9 | `plugins/inkweaver-dsh/docs/v2-development-gates.md` | DSH V2 的 tarball、roster、mount、Proposal 同页应用和重启回读门禁。 |
+| 10 | `package.json`、`electron-builder.json5`、`.release/release-profile.json` | 桌面版本、构建目标、资产合同和云端资格构建配置。 |
 
 ## 根目录文件
 
@@ -147,6 +149,8 @@
 | `electron/services/runtime-log-writer.ts` | 主进程 append-only JSONL、轮转、manifest、spool、重启去重、分页和 bundle 导出。 |
 | `electron/services/runtime-logger.ts` / `runtime-log-capture.ts` | 主进程 console/IPC/子进程入口，向 writer 写入结构化事件；不让日志输出递归破坏业务。 |
 | `scripts/runtime-log-coverage.mjs` | 静态扫描裸输出和机器协议 allowlist；coverage 失败时不应发布。 |
+| `scripts/check-public-tree.mjs` | 检查 Git 索引中是否混入测试附件、临时文件或浏览器截图输出。 |
+| `docs/quickstart/example-project/` | 无版权公开示例的设定、角色、六章大纲和第一章，供新用户复制体验。 |
 | `.runtime/.cache/`、`.vitest-attachments/` | 本机测试/资格日志和截图；不提交、不作为产品数据。 |
 | `.vela/`、`.ai-novel/`、`.dsh-upgrade-inspect/` | 用户项目、插件测试或临时检查数据；不进入源码提交。 |
 

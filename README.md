@@ -6,15 +6,34 @@
 
 当前版本：**v1.2.0（已发布）**
 
-> 1.2.0 在 1.1.0 正式版本基础上补齐全局结构化日志、持续写作上下文、规划资料、阶段 Skill、证据化审稿和并发/恢复回归；Windows/macOS 三架构安装包与 DSH 插件 tarball 已由同一源码提交生成并完成回读。本轮不发布 npm，外部文学质量评阅不作为工程门槛。
+> **把一本长篇小说写成会持续发展的整体。** InkWeaver 是本地优先的 AI 小说创作工作台：它把故事设定、角色状态、章节蓝图、候选草稿、证据化审稿和作者定稿串成一条可追溯的连续写作链。
 
-接手开发时先看[项目文件指南](docs/PROJECT-FILE-GUIDE.md)，再看[1.2.0 完整功能与验收图](docs/upgrade/INKWEAVER-1.2.0-FEATURE-AND-ACCEPTANCE-MAP.md)、[全局日志验收收据](docs/upgrade/GLOBAL-LOGGING-ACCEPTANCE-RECEIPT-2026-09-13.md)和历史 [1.1.0 功能图](docs/upgrade/INKWEAVER-1.1.0-FULL-FEATURE-MAP.md)。文件指南按事实源、主进程副作用、Renderer 投影、DSH 插件和发布生成物解释每个目录的职责。
+Windows/macOS 三架构安装包和 DSH 插件 tarball 已由同一源码提交生成并完成回读。本轮不发布 npm，外部文学质量评阅不作为工程门槛。
 
-冻结源码、GitHub topic、平台资格和 Release 回读见[GitHub/分发核验收据](docs/upgrade/GITHUB-DISTRIBUTION-RECEIPT.md)。
+[立即下载 v1.2.0](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.2.0) · [三分钟开始第一章](docs/quickstart/README.md) · [安装 DSH 插件](plugins/inkweaver-dsh/README.md) · [提交问题或建议](https://github.com/shuishuipingan/InkWeaver/issues/new/choose)
 
-逐项用户可见更新见[更新日志](CHANGELOG.md)；工程收据、限制和每项命令证据见 [1.2.0 验收收据](docs/upgrade/INKWEAVER-1.2.0-ACCEPTANCE-RECEIPT.md)。
+![InkWeaver continuous writing loop](docs/assets/inkweaver-writing-loop.svg)
 
-[下载 v1.2.0 Windows / macOS 桌面版](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.2.0) · [查看源代码](https://github.com/shuishuipingan/InkWeaver/tree/main) · [DSH 插件说明](plugins/inkweaver-dsh/README.md)
+### 适合谁
+
+- 想写中长篇、连载或多卷小说，希望角色、伏笔和世界规则不会在章节之间丢失的作者；
+- 需要把 AI 当作可审核的创作助手，而不是一键替自己定稿的作者；
+- 希望项目资料留在本机，并且能在每次模型调用、审稿、恢复和导出后追溯依据的人。
+
+### 不适合谁
+
+- 只想在线聊天、临时生成一段文字，不需要项目结构或章节连续性的人；
+- 期待软件自带模型额度、在线阅读社区或自动保证文学质量的人。
+
+### 三分钟理解工作流
+
+1. 新建作品并填写题材、写作语言、目标章节数和创作策略；
+2. 维护角色、世界观、故事线和章节蓝图；
+3. 生成候选草稿，查看上下文和来源收据；
+4. 让 AI 提交结构化审稿意见，由作者确认需要处理的项目；
+5. 对比修订并定稿，下一章只读取已经确认的连续性事实。
+
+接手开发或深入维护时，再阅读[项目文件指南](docs/PROJECT-FILE-GUIDE.md)、[1.2.0 完整功能与验收图](docs/upgrade/INKWEAVER-1.2.0-FEATURE-AND-ACCEPTANCE-MAP.md)、[全局日志验收收据](docs/upgrade/GLOBAL-LOGGING-ACCEPTANCE-RECEIPT-2026-09-13.md)和[GitHub/分发核验收据](docs/upgrade/GITHUB-DISTRIBUTION-RECEIPT.md)。逐项用户可见更新见[更新日志](CHANGELOG.md)。
 
 ## 织墨解决什么问题
 

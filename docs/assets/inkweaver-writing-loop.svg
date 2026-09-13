@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 340" role="img" aria-labelledby="title desc">
+  <title id="title">InkWeaver continuous writing loop</title>
+  <desc id="desc">A reviewed long-form fiction workflow: premise, characters, blueprint, draft, review, finalize, and the next chapter.</desc>
+  <style>
+    .background { fill: #101827; }
+    .eyebrow { fill: #9fb4d0; font: 600 14px system-ui, -apple-system, sans-serif; letter-spacing: 2px; }
+    .node { fill: #18263b; stroke: #3c526e; stroke-width: 2; }
+    .node-accent { fill: #213b5c; stroke: #74b4ff; }
+    .label { fill: #f4f7fb; font: 700 18px system-ui, -apple-system, sans-serif; text-anchor: middle; }
+    .sub { fill: #a9bbd2; font: 500 13px system-ui, -apple-system, sans-serif; text-anchor: middle; }
+    .arrow { fill: none; stroke: #6f8cae; stroke-width: 3; stroke-linecap: round; }
+    .arrow-head { fill: #6f8cae; }
+    .loop { fill: none; stroke: #74b4ff; stroke-width: 2; stroke-dasharray: 7 9; opacity: .7; }
+  </style>
+  <rect class="background" width="1400" height="340" rx="24" />
+  <text class="eyebrow" x="54" y="48">INKWEAVER · CONTINUOUS WRITING</text>
+  <path class="loop" d="M1340 184c0 78-84 126-168 126H228c-90 0-168-48-168-126" />
+  <g aria-label="workflow steps">
+    <g transform="translate(48 100)">
+      <rect class="node" width="164" height="112" rx="18" />
+      <text class="label" x="82" y="48">故事前提</text>
+      <text class="sub" x="82" y="75">Premise</text>
+    </g>
+    <g transform="translate(238 100)">
+      <rect class="node" width="164" height="112" rx="18" />
+      <text class="label" x="82" y="48">角色与设定</text>
+      <text class="sub" x="82" y="75">Characters</text>
+    </g>
+    <g transform="translate(428 100)">
+      <rect class="node node-accent" width="164" height="112" rx="18" />
+      <text class="label" x="82" y="48">章节蓝图</text>
+      <text class="sub" x="82" y="75">Blueprint</text>
+    </g>
+    <g transform="translate(618 100)">
+      <rect class="node" width="164" height="112" rx="18" />
+      <text class="label" x="82" y="48">候选草稿</text>
+      <text class="sub" x="82" y="75">Draft</text>
+    </g>
+    <g transform="translate(808 100)">
+      <rect class="node node-accent" width="164" height="112" rx="18" />
+      <text class="label" x="82" y="48">证据化审稿</text>
+      <text class="sub" x="82" y="75">Review</text>
+    </g>
+    <g transform="translate(998 100)">
+      <rect class="node" width="164" height="112" rx="18" />
+      <text class="label" x="82" y="48">作者定稿</text>
+      <text class="sub" x="82" y="75">Finalize</text>
+    </g>
+    <g transform="translate(1188 100)">
+      <rect class="node node-accent" width="164" height="112" rx="18" />
+      <text class="label" x="82" y="48">下一章</text>
+      <text class="sub" x="82" y="75">Next chapter</text>
+    </g>
+  </g>
+  <g aria-hidden="true">
+    <path class="arrow" d="M214 156h18" /><path class="arrow-head" d="m230 148 12 8-12 8z" />
+    <path class="arrow" d="M404 156h18" /><path class="arrow-head" d="m420 148 12 8-12 8z" />
+    <path class="arrow" d="M594 156h18" /><path class="arrow-head" d="m610 148 12 8-12 8z" />
+    <path class="arrow" d="M784 156h18" /><path class="arrow-head" d="m800 148 12 8-12 8z" />
+    <path class="arrow" d="M974 156h18" /><path class="arrow-head" d="m990 148 12 8-12 8z" />
+    <path class="arrow" d="M1164 156h18" /><path class="arrow-head" d="m1180 148 12 8-12 8z" />
+  </g>
+  <text class="sub" x="700" y="292">定稿成为下一章的事实来源 · Finalized history becomes the next chapter's evidence</text>
+</svg>
