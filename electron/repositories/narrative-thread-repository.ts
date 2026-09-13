@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { getProjectDb } from '../database'
 import type {
   NarrativeThreadEvent,
@@ -7,6 +8,7 @@ import type {
   NarrativeThreadPlanRecord,
   NarrativeThreadStatus,
   NarrativeThreadView,
+  NarrativeThreadLane,
 } from '../../src/shared/narrative-thread'
 
 function requireDb() {
@@ -27,7 +29,13 @@ function validatePlan(input: NarrativeThreadPlanInput): NarrativeThreadPlanInput
     || !Number.isSafeInteger(input.targetEndChapter) || input.targetEndChapter < input.targetStartChapter) {
     throw new Error('叙事线索目标章节范围无效')
   }
-  return { ...input, title, type, authorIntent }
+  const lane: NarrativeThreadLane = input.lane ?? 'sub'
+  if (lane !== 'main' && lane !== 'sub') throw new Error('叙事线索主线/支线类型无效')
+  if (input.parentId !== undefined && (!Number.isSafeInteger(input.parentId) || input.parentId < 1)) {
+    throw new Error('叙事线索父线 ID 无效')
+  }
+  if (lane === 'main' && input.parentId !== undefined) throw new Error('主线不能设置父线')
+  return { ...input, title, type, authorIntent, lane, ...(input.parentId === undefined ? {} : { parentId: input.parentId }) }
 }
 
 function rowToPlan(row: Record<string, unknown>): NarrativeThreadPlanRecord {
@@ -38,6 +46,8 @@ function rowToPlan(row: Record<string, unknown>): NarrativeThreadPlanRecord {
     targetStartChapter: row.target_start_chapter as number,
     targetEndChapter: row.target_end_chapter as number,
     authorIntent: row.author_intent as string,
+    lane: row.lane === 'main' ? 'main' : 'sub',
+    ...(Number.isSafeInteger(row.parent_id) ? { parentId: row.parent_id as number } : {}),
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
   }
@@ -48,9 +58,9 @@ export class NarrativeThreadRepository {
     const value = validatePlan(input)
     const result = requireDb().prepare(`
       INSERT INTO narrative_thread_plans (
-        title, type, target_start_chapter, target_end_chapter, author_intent
-      ) VALUES (?, ?, ?, ?, ?)
-    `).run(value.title, value.type, value.targetStartChapter, value.targetEndChapter, value.authorIntent)
+        title, type, target_start_chapter, target_end_chapter, author_intent, lane, parent_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(value.title, value.type, value.targetStartChapter, value.targetEndChapter, value.authorIntent, value.lane, value.parentId ?? null)
     return this.getPlan(Number(result.lastInsertRowid))!
   }
 
@@ -59,9 +69,9 @@ export class NarrativeThreadRepository {
     const result = requireDb().prepare(`
       UPDATE narrative_thread_plans
       SET title = ?, type = ?, target_start_chapter = ?, target_end_chapter = ?,
-          author_intent = ?, updated_at = datetime('now')
+          author_intent = ?, lane = ?, parent_id = ?, updated_at = datetime('now')
       WHERE id = ?
-    `).run(value.title, value.type, value.targetStartChapter, value.targetEndChapter, value.authorIntent, id)
+    `).run(value.title, value.type, value.targetStartChapter, value.targetEndChapter, value.authorIntent, value.lane, value.parentId ?? null, id)
     if (result.changes !== 1) throw new Error('叙事线索计划不存在')
     return this.getPlan(id)!
   }
@@ -102,11 +112,19 @@ export class NarrativeThreadRepository {
     if (!this.getPlan(input.planId)) throw new Error('叙事线索计划不存在')
     const result = db.prepare(`
       INSERT INTO narrative_thread_confirmations (
-        plan_id, draft_id, event_type, evidence, reason
-      ) VALUES (?, ?, ?, ?, ?)
-    `).run(input.planId, input.draftId, input.type, evidence, reason)
+        plan_id, draft_id, event_type, evidence, reason, source_content_hash
+      ) VALUES (?, ?, ?, ?, ?, ?)
+    `).run(
+      input.planId,
+      input.draftId,
+      input.type,
+      evidence,
+      reason,
+      createHash('sha256').update(source.content_snapshot).digest('hex'),
+    )
     const created = db.prepare('SELECT created_at AS createdAt FROM narrative_thread_confirmations WHERE id = ?')
       .get(result.lastInsertRowid) as { createdAt: string }
+    const evidenceContentHash = createHash('sha256').update(source.content_snapshot).digest('hex')
     return {
       id: Number(result.lastInsertRowid),
       ...input,
@@ -114,6 +132,7 @@ export class NarrativeThreadRepository {
       reason,
       chapterNumber: source.chapter_number,
       chapterTitle: source.chapter_title,
+      evidenceContentHash,
       createdAt: created.createdAt,
     }
   }
@@ -131,7 +150,9 @@ export class NarrativeThreadRepository {
       const eventRows = db.prepare(`
         SELECT confirmations.id, confirmations.plan_id AS planId,
                confirmations.draft_id AS draftId, confirmations.event_type AS type,
-               confirmations.evidence, confirmations.reason, confirmations.created_at AS createdAt,
+               confirmations.evidence, confirmations.reason,
+               confirmations.source_content_hash AS evidenceContentHash,
+               confirmations.created_at AS createdAt,
                drafts.chapter_number AS chapterNumber,
                COALESCE(finalization_outbox.chapter_title, '') AS chapterTitle
         FROM narrative_thread_confirmations confirmations
@@ -143,12 +164,26 @@ export class NarrativeThreadRepository {
       const status = (eventRows.at(-1)?.type ?? 'planned') as NarrativeThreadStatus
       const terminal = status === 'resolved' || status === 'abandoned'
       const lastChapter = eventRows.at(-1)?.chapterNumber ?? plan.targetStartChapter
+      const percent = status === 'resolved' || status === 'abandoned'
+        ? 100
+        : status === 'progressing'
+          ? 60
+          : status === 'planted'
+            ? 25
+            : 0
       return {
         ...plan,
         status,
         dormantChapters: terminal ? 0 : Math.max(0, currentFinalizedChapter - lastChapter),
         overdue: !terminal && currentFinalizedChapter > plan.targetEndChapter,
         events: eventRows,
+        progress: {
+          percent,
+          eventCount: eventRows.length,
+          ...(terminal ? {} : { nextTargetChapter: eventRows.length > 0
+            ? Math.min(plan.targetEndChapter, Math.max(plan.targetStartChapter, lastChapter + 1))
+            : plan.targetStartChapter }),
+        },
       }
     })
   }

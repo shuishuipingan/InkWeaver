@@ -1,29 +1,31 @@
 # InkWeaver 项目文件指南
 
-这份文件是 InkWeaver 1.1.0 的项目入口和维护指南。它按“谁拥有事实、谁负责副作用、谁只负责展示”的原则解释仓库文件；生成目录、缓存、快照和用户作品不属于源码交付物。
+这份文件是 InkWeaver 1.2.0 的项目入口和维护指南。它按“谁拥有事实、谁负责副作用、谁只负责展示”的原则解释仓库文件；生成目录、缓存、快照和用户作品不属于源码交付物。
 
 ## 先看哪些文件
 
 | 顺序 | 文件 | 用途 |
 | --- | --- | --- |
-| 1 | `README.md` / `README_en.md` | 产品定位、1.1.0 Release 状态、用户安装与限制；中英文内容必须保持实现一致。 |
-| 2 | `docs/upgrade/INKWEAVER-1.1.0-FULL-FEATURE-MAP.md` | 全路线功能图、依赖关系、技术分层、验收旅程与发布门禁。 |
-| 3 | `docs/upgrade/INKWEAVER-1.1.0-DELIVERY-TRACKER.md` | 38 项需求的唯一逐项证据表；状态不能只用“代码已合并”代替验收。 |
-| 4 | `docs/upgrade/INKWEAVER-1.1.0-BASELINE.md` | 开发基线、用户保留修改、DSH 版本查询与初始验证结果。 |
-| 5 | `plugins/inkweaver-dsh/docs/v2-development-gates.md` | DSH V2 的 tarball、roster、mount、Proposal 同页应用和重启回读门禁。 |
-| 6 | `package.json`、`electron-builder.json5`、`.release/release-profile.json` | 桌面版本、构建目标、资产合同和云端资格构建配置。 |
+| 1 | `README.md` / `README_en.md` | 产品定位、1.2.0 冻结/Release 状态、用户安装与限制；中英文内容必须保持实现一致。 |
+| 2 | `docs/upgrade/INKWEAVER-1.2.0-FEATURE-AND-ACCEPTANCE-MAP.md` | 1.2.0 全路线功能、日志事件链、回归风险、验收顺序和发布门禁。 |
+| 3 | `docs/upgrade/INKWEAVER-1.2.0-ACCEPTANCE-RECEIPT.md` | 当前版本逐项证据、待重跑门禁、版本/分发约束；状态不能只用“代码已合并”代替验收。 |
+| 4 | `docs/upgrade/INKWEAVER-1.1.0-FULL-FEATURE-MAP.md` / `INKWEAVER-1.1.0-DELIVERY-TRACKER.md` | 历史 1.1.0 功能和 Release 收据；只作基线，不冒充 1.2.0 证据。 |
+| 5 | `docs/upgrade/GLOBAL-LOGGING-ACCEPTANCE-RECEIPT-2026-09-13.md` | 结构化日志合同、覆盖边界、redaction、spool/轮转/导出和已运行命令。 |
+| 6 | `docs/upgrade/INKWEAVER-1.1.0-BASELINE.md` | 历史开发基线、用户保留修改、DSH 版本查询与初始验证结果。 |
+| 7 | `plugins/inkweaver-dsh/docs/v2-development-gates.md` | DSH V2 的 tarball、roster、mount、Proposal 同页应用和重启回读门禁。 |
+| 8 | `package.json`、`electron-builder.json5`、`.release/release-profile.json` | 桌面版本、构建目标、资产合同和云端资格构建配置。 |
 
 ## 根目录文件
 
 | 路径 | 作用 |
 | --- | --- |
-| `package.json` | Electron/Vite/TypeScript 依赖与桌面开发、测试、资格构建命令；正式冻结前才改为 `1.1.0`。 |
+| `package.json` | Electron/Vite/TypeScript 依赖与桌面开发、测试、资格构建命令；1.2.0 冻结时与插件版本一致。 |
 | `pnpm-lock.yaml` | 根项目依赖锁文件；依赖升级必须和测试一起提交。 |
 | `vite.config.ts` | Renderer 的 Vite 入口、Electron 集成和资源处理。 |
 | `vitest.config.ts` | Node/主进程/共享模块测试环境。 |
 | `vitest.browser.config.ts` | Playwright 浏览器级 React 回归测试环境。 |
 | `tsconfig.json` | 根 TypeScript 编译边界；不改变事实源，只影响类型检查。 |
-| `electron-builder.json5` | Windows NSIS、macOS DMG、资源解包和安装包命名。 |
+| `electron-builder.json5` | Windows NSIS、macOS DMG、资源解包、GitHub 更新源和安装包命名。 |
 | `.release/release-profile.json` | Windows、macOS ARM64/x64 资格工作流、资产名称、哈希和签名披露合同。 |
 | `.github/workflows/` | 云端构建、安装/升级/启动资格和跨平台资产提升；工作流输出是发布证据，不是本地猜测。 |
 | `.gitignore` | 排除 `dist`、`release`、数据库、快照、浏览器截图和本地凭据。 |
@@ -140,6 +142,11 @@
 | `scripts/release-*.mjs` | Windows/macOS/更新元数据/原生 ABI/资产合同验证；不要绕过 gate。 |
 | `scripts/verify-built.mjs`（插件目录） | 检查 emitted DSH Host/Agent/Client、preset 和包清单。 |
 | `dist/`、`dist-electron/`、`release/`、插件 `lib/` | 构建输出；可删除、不可当作源码编辑，发布前必须从同一源码 SHA 重建。 |
+| `src/shared/runtime-log.ts` | 跨进程 RuntimeLogEvent、级别/进程/结果枚举和统一 redaction；不读取 Electron 或磁盘。 |
+| `src/services/runtime-log.ts` | Renderer 日志队列、重试、关闭 flush 和 console/error bridge；不直接访问文件系统。 |
+| `electron/services/runtime-log-writer.ts` | 主进程 append-only JSONL、轮转、manifest、spool、重启去重、分页和 bundle 导出。 |
+| `electron/services/runtime-logger.ts` / `runtime-log-capture.ts` | 主进程 console/IPC/子进程入口，向 writer 写入结构化事件；不让日志输出递归破坏业务。 |
+| `scripts/runtime-log-coverage.mjs` | 静态扫描裸输出和机器协议 allowlist；coverage 失败时不应发布。 |
 | `.runtime/.cache/`、`.vitest-attachments/` | 本机测试/资格日志和截图；不提交、不作为产品数据。 |
 | `.vela/`、`.ai-novel/`、`.dsh-upgrade-inspect/` | 用户项目、插件测试或临时检查数据；不进入源码提交。 |
 
@@ -148,5 +155,5 @@
 1. 修改事实结构：先改 `src/shared` 契约，再改 `electron/repositories`、SQLite migration、IPC、UI 和测试。
 2. 修改 UI：使用现有 store/IPC，不在组件里直接读取 SQLite、绝对路径或模型密钥。
 3. 修改插件：先更新 V2 gate 对应的 typed DTO，再 `typecheck → build → tarball → isolated profile → roster/mount → browser → restart`。
-4. 修改版本或发布：先把 tracker 38 项逐一换成真实证据；没有同 SHA 的 Windows/macOS 资格资产时，不把开发线写成正式 1.1.0。
+4. 修改版本或发布：先按 1.2.0 功能/日志地图逐项换成真实证据；没有同 SHA 的 Windows/macOS 资格资产时，不把开发线写成正式 1.2.0。
 5. 看到 `.gitignore` 中的用户/构建文件时不要清理；它们可能是用户已有数据或当前资格证据。

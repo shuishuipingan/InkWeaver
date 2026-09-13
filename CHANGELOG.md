@@ -1,6 +1,42 @@
 # 更新日志
 
-本文件按用户可见行为记录变更。`1.1.0` 已于 2026-09-12 通过 GitHub Release 发布；本轮不发布 npm，外部文学质量评阅按发布范围豁免。
+本文件按用户可见行为记录变更。`1.2.0` 的源码与工程验收正在冻结，正式 Release 资产必须由同一源码 commit 生成并回读；本轮不发布 npm，外部文学质量评阅不作为工程门槛。`1.1.0` 的历史 Release 收据保留在 `docs/upgrade/`，不与 1.2.0 混用。
+
+## 1.2.0 — 2026-09-13（冻结候选）
+
+### 全局日志与可诊断性
+
+- 主进程最早安装全局 console capture，统一记录 `log/info/warn/error/debug`，并监听未捕获异常、未处理 Promise 拒绝和 Node warning；Renderer 在 React 挂载前接入同样的五级桥接与关闭前 flush。
+- IPC handle 自动记录调用开始、完成/失败、耗时、请求 ID、关联 ID 和安全参数摘要；LLM 流式请求只记录字符数、finish reason、usage/cache 元数据，不逐 chunk 保存正文。
+- MCP 子进程记录 stdout/stderr 的 stream、字节数、行数、受限 stderr preview、PID、exit/close/error；JSON-RPC 响应内容不复制到默认日志。
+- 日志事件写入 append-only `app-YYYY-MM-DD.NNN.jsonl`，每段附 bytes、eventCount、first/last sequence 和 SHA-256 manifest；主磁盘失败进入 emergency spool，IPC 失败保留待重试队列，并显示 pending/emergency-spool/degraded 状态。
+- 重启会扫描历史事件 ID，避免 spool 回放或重复上报产生物理重复；即使主段和 spool 同时不可用，查询页也会显示尚在内存中的 pending 事件并明确 `complete=false`。
+- 新增完整日志 bundle 导出：主进程负责目录选择和唯一子目录，导出所有段、manifest、spool 和 `bundle-manifest.json`；保留轻量“当前筛选视图”文本导出。默认 message 限长、路径/URL 凭据/Token 脱敏，redaction 字段保留审计线索。
+- `pnpm run check:runtime-log-coverage` 扫描 `src`、`electron`、`scripts` 运行边界；只有机器可读 smoke/qualification 协议允许带理由的 allowlist，未解释缺口必须为零。
+
+### 持续发展的长篇创作体验
+
+- Writing Skill 支持独立安装、卸载、重新加载和 `planning/drafting/review/polish` 阶段筛选；非法 frontmatter、路径穿越、符号链接和超大文件被拒绝。
+- 故事线视图显示主线/支线、规划进度、下一目标和事件数；事件证据绑定定稿草稿 ID 与内容 hash，点击跳转前重新校验项目会话。
+- 大纲、世界观、人物表、时间线和风格说明可以导入项目；资料先是带 hash 的候选，作者确认后才进入蓝图和写作上下文，重复和拒绝均可回读。
+- 角色表只接收蓝图明确角色或作者确认候选；模型在定稿后发现的新角色留在候选队列。角色状态追加作者、模型或旧项目未知来源，以及对应定稿、hash 和证据。
+- 中文长篇链统一冻结项目会话、写作语言、界面语言、模型 lease 和来源指纹，贯通蓝图、候选草稿、审稿、修订与定稿；候选稿不会伪装为 finalized history。
+- 写前材料分为作者任务、未来计划、定稿历史、未定稿候选和相邻正文片段；预算/来源不足生成覆盖缺口，作者硬性要求不会静默消失。
+- 审稿逐项标记蓝图关键事件的 completed、prepared、deferred、not-found 或 needs-verification；证据不足只待核实，模型不能自动触发修稿，修订目标必须由作者明确选择。
+
+### 并发、恢复、导出和更新回归
+
+- 多标签保存增加 tab instance 和关闭 token；旧保存回调不再写入关闭后重开的同名页面。
+- 蓝图、草稿、审稿、修订和恢复路径增加 project session、request/run identity、CAS 和正文 hash；旧响应/过期来源不能覆盖新事实。
+- 拆分 Markdown 使用唯一临时目录；导出只枚举 finalized authority 并逐文件回读 hash；完成通知保留完整标题；Windows helper 正常退出不再升级为产品失败。
+- 蓝图范围按 contiguous range 分批，恢复从未完成范围继续并保留已有蓝图；多项规划输出损坏时在原 GenerationSession 预算内缩小批次重试；审稿输出只允许一次同预算重建，第二次失败不写入有效报告。
+- UpdateService 对 Windows x64、macOS arm64/x64 共享单飞队列和版本单调性；下载期间旧检查不能清掉已确认/已下载版本，应用内可查看并启动安装。
+
+### DSH 插件与分发
+
+- DSH 插件版本同步为 `@shuishuipingan/inkweaver-dsh@1.2.0`，目录、Host、preset 和 RPC 继续使用 `inkweaver` 命名；兼容当前官方默认渠道 `@deepseek-ai/dsh@0.1.5-rc.1`。
+- 插件仍通过 GitHub Release tarball 和本地 `dsh plugin add` 交付，不执行 npm publish；外部 `@linxin666/dsh-web-all` 仅为宿主 companion，历史 `@ethanyoq/dsh-ai-novel-writer` 不再是安装目标。
+- 1.2.0 Release 需要包含 Windows/macOS 三架构安装包、更新元数据和插件 tarball，并在 GitHub `dsh-plugin` topic 回读可发现；签名/公证状态会在 Release 说明中如实披露。
 
 ## 1.1.0 — 2026-09-12
 

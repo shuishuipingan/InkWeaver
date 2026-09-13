@@ -1,14 +1,16 @@
-import { Plus, MoreHorizontal, X, Server, Sparkles, ChevronRight, History } from 'lucide-react'
+import { Plus, MoreHorizontal, X, Server, Sparkles, ChevronRight, History, Upload, Trash2 } from 'lucide-react'
 import { useAgentStore } from '../../../stores/agent-store'
 import { useLayoutStore } from '../../../stores/layout-store'
 import { useMCPStore } from '../../../stores/mcp-store'
-import { skillRegistry, type LoadedSkill } from '../../../services/agent/skill-registry'
+import { skillRegistry, type LoadedSkill, type WritingSkillStage } from '../../../services/agent/skill-registry'
 import { useRef, useState } from 'react'
 import { confirm } from '../../ui/Confirm'
 import { IconBtn } from '../../ui/IconBtn'
 import { MenuItem } from '../../ui/MenuItem'
 import { PanelHeader } from '../../ui/PanelHeader'
 import { useOutsideClick } from '../../../hooks/useOutsideClick'
+import { toast } from '../../ui/Toast'
+import { useLocaleStore } from '../../../stores/locale-store'
 
 /**
  * Agent 面板顶部工具栏
@@ -16,8 +18,10 @@ import { useOutsideClick } from '../../../hooks/useOutsideClick'
 export default function AgentHeader() {
   const { createConversation, toggleHistory, showHistory, getActiveConversation } = useAgentStore()
   const toggleAIPanel = useLayoutStore(s => s.toggleAIPanel)
+  const text = useLocaleStore(s => s.text)
   const [showMore, setShowMore] = useState(false)
   const [subView, setSubView] = useState<'main' | 'mcp' | 'skills'>('main')
+  const [, refreshSkills] = useState(0)
   const moreRef = useRef<HTMLDivElement>(null)
 
   // 点击外部关闭更多菜单
@@ -29,6 +33,33 @@ export default function AgentHeader() {
 
   // Skill 列表（每次渲染重新读取，避免异步加载完成后仍展示旧列表）
   const skills = skillRegistry.listAll()
+
+  const installSkill = async (file: File) => {
+    try {
+      await skillRegistry.installUserSkill(await file.text())
+      refreshSkills(value => value + 1)
+      toast.success(text('Skill 已安装；请按创作阶段选择使用。', 'Skill installed; choose it for the appropriate writing stage.'))
+    } catch (error) {
+      toast.error(text(
+        `Skill 安装失败：${error instanceof Error ? error.message : String(error)}`,
+        `Skill installation failed: ${error instanceof Error ? error.message : String(error)}`,
+      ))
+    }
+  }
+
+  const removeSkill = async (name: string) => {
+    try {
+      const result = await skillRegistry.removeUserSkill(name)
+      if (!result.success) throw new Error(result.error ?? 'remove failed')
+      refreshSkills(value => value + 1)
+      toast.success(text('Skill 已移除。', 'Skill removed.'))
+    } catch (error) {
+      toast.error(text(
+        `Skill 移除失败：${error instanceof Error ? error.message : String(error)}`,
+        `Skill removal failed: ${error instanceof Error ? error.message : String(error)}`,
+      ))
+    }
+  }
 
   /** 新建会话 */
   const handleNew = () => {
@@ -137,9 +168,11 @@ export default function AgentHeader() {
 
               {/* ===== Skill 子视图 ===== */}
               {subView === 'skills' && (
-                <SkillSubView
+                  <SkillSubView
                   skills={skills}
                   onBack={() => setSubView('main')}
+                  onInstall={file => { void installSkill(file) }}
+                  onRemove={name => { void removeSkill(name) }}
                 />
               )}
             </div>
@@ -251,16 +284,25 @@ function MCPSubView({
 function SkillSubView({
   skills,
   onBack,
+  onInstall,
+  onRemove,
 }: {
   skills: LoadedSkill[]
   onBack: () => void
+  onInstall: (file: File) => void
+  onRemove: (name: string) => void
 }) {
+  const text = useLocaleStore(s => s.text)
+  const [stage, setStage] = useState<'all' | WritingSkillStage>('all')
+  const visibleSkills = stage === 'all'
+    ? skills
+    : skills.filter(skill => !skill.metadata.stages || skill.metadata.stages.includes(stage))
   /** 来源徽章颜色 */
   const sourceBadge = (source: string) => {
     switch (source) {
-      case 'builtin': return { bg: 'color-mix(in srgb, var(--color-info) 12%, transparent)', color: 'var(--color-info)', label: '内置' }
-      case 'user': return { bg: 'color-mix(in srgb, var(--color-accent) 12%, transparent)', color: 'var(--color-accent)', label: '用户' }
-      case 'project': return { bg: 'color-mix(in srgb, var(--color-success) 12%, transparent)', color: 'var(--color-success-text)', label: '项目' }
+      case 'builtin': return { bg: 'color-mix(in srgb, var(--color-info) 12%, transparent)', color: 'var(--color-info)', label: text('内置', 'Built-in') }
+      case 'user': return { bg: 'color-mix(in srgb, var(--color-accent) 12%, transparent)', color: 'var(--color-accent)', label: text('用户', 'User') }
+      case 'project': return { bg: 'color-mix(in srgb, var(--color-success) 12%, transparent)', color: 'var(--color-success-text)', label: text('项目', 'Project') }
       default: return { bg: 'var(--color-hover)', color: 'var(--color-text-muted)', label: source }
     }
   }
@@ -274,25 +316,37 @@ function SkillSubView({
         style={{ color: 'var(--color-text-secondary)' }}
       >
         <ChevronRight size={12} style={{ transform: 'rotate(180deg)' }} />
-        <span className="font-medium">技能列表</span>
+        <span className="font-medium">{text('技能列表', 'Writing Skills')}</span>
         <span className="ml-auto text-[0.68rem] opacity-50">
-          {skills.length} 个技能
+          {text(`${visibleSkills.length} 个技能`, `${visibleSkills.length} skill${visibleSkills.length === 1 ? '' : 's'}`)}
         </span>
       </button>
 
       <div style={{ height: 1, backgroundColor: 'var(--color-border)', margin: '2px 0' }} />
 
+      <div className="flex flex-wrap gap-1 px-3 py-1.5" role="group" aria-label={text('写作阶段筛选', 'Writing stage filter')}>
+        {([
+          ['all', text('全部', 'All')], ['planning', text('策划', 'Planning')], ['drafting', text('写作', 'Drafting')], ['review', text('审阅', 'Review')], ['polish', text('润色', 'Polish')],
+        ] as const).map(([value, label]) => <button key={value} type="button" className="rounded border px-1.5 py-0.5 text-[0.65rem]" aria-pressed={stage === value} onClick={() => setStage(value)} style={{ borderColor: stage === value ? 'var(--color-accent)' : 'var(--color-border)', color: stage === value ? 'var(--color-accent)' : 'var(--color-text-muted)' }}>{label}</button>)}
+        <label className="ml-auto inline-flex cursor-pointer items-center gap-1 rounded border px-1.5 py-0.5 text-[0.65rem]" style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-muted)' }} title={text('安装独立 SKILL.md', 'Install an independent SKILL.md')}>
+          <Upload size={10} />{text('安装', 'Install')}
+          <input type="file" accept=".md,.markdown,text/markdown" className="sr-only" onChange={event => { const file = event.target.files?.[0]; if (file) onInstall(file); event.currentTarget.value = '' }} />
+        </label>
+      </div>
+
       {/* Skill 列表 */}
-      {skills.length === 0 ? (
+      {visibleSkills.length === 0 ? (
         <div className="px-3 py-3 text-xs text-center" style={{ color: 'var(--color-text-muted)' }}>
-          <div className="mb-1">暂无可用技能</div>
+          <div className="mb-1">{text('暂无可用技能', 'No Skills available')}</div>
           <div className="text-[0.68rem] opacity-60">
-            在用户技能目录放入 SKILL.md 文件
+            {skills.length === 0
+              ? text('在用户技能目录放入 SKILL.md 文件', 'Add a SKILL.md file to the user Skills directory')
+              : text('当前阶段没有适用技能', 'No Skills apply to the current stage')}
           </div>
         </div>
       ) : (
         <div className="py-1 max-h-[240px] overflow-y-auto">
-          {skills.map(skill => {
+          {visibleSkills.map(skill => {
             const badge = sourceBadge(skill.source)
             return (
               <div
@@ -319,6 +373,7 @@ function SkillSubView({
                     {skill.metadata.description}
                   </div>
                 </div>
+                {skill.source === 'user' && <button type="button" className="shrink-0 rounded p-1 text-[var(--color-text-muted)] hover:text-[var(--color-error-text)]" title={text('移除用户 Skill', 'Remove user Skill')} onClick={() => onRemove(skill.metadata.name)}><Trash2 size={11} /></button>}
               </div>
             )
           })}
@@ -328,7 +383,7 @@ function SkillSubView({
       {/* 底部提示 */}
       <div style={{ height: 1, backgroundColor: 'var(--color-border)', margin: '2px 0' }} />
       <div className="px-3 py-1.5 text-[0.68rem]" style={{ color: 'var(--color-text-muted)' }}>
-        输入 <code className="px-0.5 rounded" style={{ backgroundColor: 'var(--color-hover)', color: 'var(--color-accent)' }}>/</code> 可快速调用技能
+        {text('输入', 'Type')} <code className="px-0.5 rounded" style={{ backgroundColor: 'var(--color-hover)', color: 'var(--color-accent)' }}>/</code> {text('可快速调用技能', 'to invoke a Skill')}
       </div>
     </>
   )

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { createHash } from 'node:crypto'
 import { createRequire } from 'node:module'
 import type BetterSqlite3 from 'better-sqlite3'
 
@@ -155,6 +156,53 @@ describe('CharacterRosterRepository public read/commit seam', () => {
 
     expect(receipt.snapshot.renderedMarkdown).toContain('## 龙套：苏绾')
     expect(receipt.snapshot.renderedMarkdown).not.toContain('## 次要角色：苏绾')
+  })
+
+  it('rejects a chapter-progress new character until an explicit candidate confirmation exists', () => {
+    const initial = CharacterRosterRepository.commit(commitRequest())
+    expect(() => CharacterRosterRepository.commit({
+      operationId: 'chapter-progress-unconfirmed-new-character',
+      expectedRevision: initial.revision,
+      schemaVersion: 1,
+      intent: 'chapter_progress',
+      entries: [{
+        name: '未确认角色', role: 'supporting', gender: '', age: '', appearance: '', personality: '',
+        background: '', abilities: '', motivation: '', relationships: [], arc: '', notes: '',
+      }],
+    })).toThrow('新角色必须先经过候选确认')
+  })
+
+  it('retains model state provenance only while the finalized source hash still matches', () => {
+    db.exec(`
+      CREATE TABLE contents (id INTEGER PRIMARY KEY AUTOINCREMENT, body TEXT NOT NULL);
+      CREATE TABLE drafts (id INTEGER PRIMARY KEY AUTOINCREMENT, chapter_number INTEGER, status TEXT, content_id INTEGER);
+      CREATE TABLE finalization_outbox (draft_id INTEGER PRIMARY KEY, content_hash TEXT NOT NULL, content_snapshot TEXT NOT NULL);
+    `)
+    const content = '林舟在北境握住旧剑。'
+    const contentId = Number(db.prepare('INSERT INTO contents (body) VALUES (?)').run(content).lastInsertRowid)
+    const draftId = Number(db.prepare("INSERT INTO drafts (chapter_number, status, content_id) VALUES (1, 'finalized', ?)").run(contentId).lastInsertRowid)
+    const sourceHash = createHash('sha256').update(content).digest('hex')
+    db.prepare('INSERT INTO finalization_outbox (draft_id, content_hash, content_snapshot) VALUES (?, ?, ?)').run(draftId, sourceHash, content)
+
+    const initial = CharacterRosterRepository.commit(commitRequest())
+    const entry = initial.snapshot.entries.find(candidate => candidate.name === '林舟')!
+    const model = CharacterRosterRepository.commit({
+      operationId: 'model-state-with-source',
+      expectedRevision: initial.revision,
+      schemaVersion: 1,
+      intent: 'chapter_progress',
+      entries: [{
+        ...entry,
+        currentState: {
+          location: '北境', powerLevel: '', physicalState: '', mentalState: '', keyItems: '旧剑', recentEvents: '握剑', updatedAtChapter: 1,
+          provenance: { source: 'model', sourceDraftId: draftId, sourceContentHash: sourceHash, evidence: '林舟在北境握住旧剑。' },
+        },
+      }],
+    })
+    expect(model.snapshot.entries.find(candidate => candidate.name === '林舟')?.currentState?.provenance).toMatchObject({ source: 'model', sourceDraftId: draftId })
+
+    db.prepare('UPDATE finalization_outbox SET content_hash = ? WHERE draft_id = ?').run('0'.repeat(64), draftId)
+    expect(CharacterRosterRepository.read().entries.find(candidate => candidate.name === '林舟')?.currentState).toBeUndefined()
   })
 
   it('uses one manual-edit receipt to rename, delete, preserve free-text relations, update blueprint references, and allow an empty roster', () => {

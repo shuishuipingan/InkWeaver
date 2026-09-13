@@ -153,6 +153,21 @@ function createTables(db: BetterSqlite3.Database, importSourceSecret?: Buffer) {
       updated_at TEXT DEFAULT (datetime('now'))
     );
 
+    CREATE TABLE IF NOT EXISTS character_state_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      character_id TEXT NOT NULL,
+      character_name TEXT NOT NULL,
+      chapter_number INTEGER NOT NULL,
+      state_json TEXT NOT NULL,
+      provenance_source TEXT NOT NULL CHECK(provenance_source IN ('author', 'model', 'legacy-unknown')),
+      source_draft_id INTEGER DEFAULT NULL,
+      source_content_hash TEXT NOT NULL DEFAULT '',
+      evidence TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_character_state_history_latest
+      ON character_state_history(character_id, chapter_number DESC, id DESC);
+
     -- ============================================================
     -- 4. contents — 文本内容池（正文与元数据分离）
     -- ============================================================
@@ -405,6 +420,8 @@ function createTables(db: BetterSqlite3.Database, importSourceSecret?: Buffer) {
       target_start_chapter INTEGER NOT NULL CHECK(target_start_chapter > 0),
       target_end_chapter INTEGER NOT NULL CHECK(target_end_chapter >= target_start_chapter),
       author_intent TEXT NOT NULL DEFAULT '',
+      lane TEXT NOT NULL DEFAULT 'sub' CHECK(lane IN ('main', 'sub')),
+      parent_id INTEGER DEFAULT NULL,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
@@ -416,6 +433,7 @@ function createTables(db: BetterSqlite3.Database, importSourceSecret?: Buffer) {
       event_type TEXT NOT NULL CHECK(event_type IN ('planted', 'progressing', 'resolved', 'abandoned')),
       evidence TEXT NOT NULL,
       reason TEXT NOT NULL DEFAULT '',
+      source_content_hash TEXT NOT NULL DEFAULT '',
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       FOREIGN KEY (plan_id) REFERENCES narrative_thread_plans(id) ON DELETE CASCADE,
       FOREIGN KEY (draft_id) REFERENCES drafts(id) ON DELETE CASCADE,
@@ -423,6 +441,24 @@ function createTables(db: BetterSqlite3.Database, importSourceSecret?: Buffer) {
     );
     CREATE INDEX IF NOT EXISTS idx_narrative_thread_confirmations_plan
       ON narrative_thread_confirmations(plan_id, draft_id, id);
+
+    -- Imported planning materials remain candidates until the author confirms
+    -- them; only confirmed rows are eligible for blueprint/writing context.
+    CREATE TABLE IF NOT EXISTS planning_materials (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      kind TEXT NOT NULL CHECK(kind IN ('premise', 'outline', 'world', 'character', 'timeline', 'style', 'other')),
+      content TEXT NOT NULL,
+      source_display_name TEXT NOT NULL DEFAULT '',
+      source_hash TEXT NOT NULL DEFAULT '',
+      content_hash TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'candidate' CHECK(status IN ('candidate', 'confirmed', 'rejected', 'stale')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      confirmed_at TEXT DEFAULT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_planning_materials_status
+      ON planning_materials(status, updated_at);
 
     CREATE TABLE IF NOT EXISTS story_continuity_plans (
       chapter_number INTEGER PRIMARY KEY CHECK(chapter_number > 0),
@@ -1012,6 +1048,24 @@ function createTables(db: BetterSqlite3.Database, importSourceSecret?: Buffer) {
   if (!projectCoreColumns.has('narrative_thread_dormant_threshold')) {
     db.exec('ALTER TABLE project_core ADD COLUMN narrative_thread_dormant_threshold INTEGER NOT NULL DEFAULT 3')
     projectCoreColumns.add('narrative_thread_dormant_threshold')
+  }
+
+  const narrativeConfirmationColumns = new Set(
+    (db.prepare('PRAGMA table_info(narrative_thread_confirmations)').all() as Array<{ name: string }>)
+      .map(column => column.name),
+  )
+  if (!narrativeConfirmationColumns.has('source_content_hash')) {
+    db.exec("ALTER TABLE narrative_thread_confirmations ADD COLUMN source_content_hash TEXT NOT NULL DEFAULT ''")
+  }
+
+  const narrativePlanColumns = new Set(
+    (db.prepare('PRAGMA table_info(narrative_thread_plans)').all() as Array<{ name: string }>).map(column => column.name),
+  )
+  if (!narrativePlanColumns.has('lane')) {
+    db.exec("ALTER TABLE narrative_thread_plans ADD COLUMN lane TEXT NOT NULL DEFAULT 'sub'")
+  }
+  if (!narrativePlanColumns.has('parent_id')) {
+    db.exec('ALTER TABLE narrative_thread_plans ADD COLUMN parent_id INTEGER DEFAULT NULL')
   }
 
   // 兼容旧库：将「无 currentState」的哨兵 0 迁移为 NULL（chapter 0 合法状态不受影响）

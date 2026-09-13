@@ -443,6 +443,31 @@ describe('StructuredBatchExecutor seam', () => {
     ])
   })
 
+  it('retries a malformed multi-item planning response with smaller batches on the same budgeted session', async () => {
+    const observed: number[][] = []
+    const executor = createStructuredBatchExecutor({
+      contract: { ...blueprintContract, retryInvalidOutputWithSmallerBatch: true },
+      session: createSession(async request => {
+        observed.push([...request.items])
+        return request.items.length > 1
+          ? { status: 'completed', content: '{"blueprints":[]}', requestedTokens: 100 }
+          : { status: 'completed', content: blueprintJson(request.items), requestedTokens: 100 }
+      }),
+    })
+
+    const result = await executor.execute({
+      items: [1, 2, 3, 4],
+      limits: { maxBatchItems: 4 },
+    })
+
+    expect(result).toMatchObject({
+      ok: true,
+      items: [{ chapterNumber: 1 }, { chapterNumber: 2 }, { chapterNumber: 3 }, { chapterNumber: 4 }],
+      receipt: { splitCount: 3, calls: 7 },
+    })
+    expect(observed).toEqual([[1, 2, 3, 4], [1, 2], [1], [2], [3, 4], [3], [4]])
+  })
+
   it('returns no publishable items when an earlier split batch succeeds and a later batch fails', async () => {
     const generate = vi.fn<AttemptHandler>(async request => {
       if (request.items.length === 5) {

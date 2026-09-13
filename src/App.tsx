@@ -149,7 +149,9 @@ export default function App() {
       const completedRun = activeRuns.find(r => r.id === runId)
         ?? history.find(r => r.id === runId)
       if (!completedRun) return
-      const shortTitle = completedRun.title.replace(/^[^\s]+\s/, '')
+      // Keep the complete workflow title; stripping the first whitespace token
+      // truncated Chinese titles and made completion notifications ambiguous.
+      const shortTitle = completedRun.title.trim()
       actionToast.workflowComplete(
         text(`「${shortTitle}」已完成`, `“${shortTitle}” completed`),
         () => useLayoutStore.getState().openRightPanel('ai-output')

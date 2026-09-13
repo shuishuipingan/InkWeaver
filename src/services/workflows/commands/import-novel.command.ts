@@ -720,6 +720,7 @@ export class InferBlueprintsPerChapterCommand extends BaseWorkflowCommand<void> 
 
     let activeChapterNumbers: number[] = []
     const contract: StructuredBatchContract<ImportedChapter, ChapterBlueprint> = {
+      retryInvalidOutputWithSmallerBatch: true,
       buildTask: ({ items, validatedPrefix }) => {
         activeChapterNumbers = items.map(item => item.number)
         const source = items.map(chapter => promptLanguageText(

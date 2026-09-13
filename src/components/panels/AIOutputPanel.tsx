@@ -292,6 +292,12 @@ function ContextReceiptSummary({ receipt, locale }: { receipt: ContextReceipt; l
 
   const layerLabel: Record<ContextReceipt['entries'][number]['layer'], string> = {
     'fixed-rules': locale === 'en-US' ? 'Fixed rules' : '固定规则',
+    'author-task': locale === 'en-US' ? 'Author task' : '作者任务',
+    'planning-material': locale === 'en-US' ? 'Planning material' : '规划资料',
+    'future-plan': locale === 'en-US' ? 'Future plan' : '后续计划',
+    'finalized-history': locale === 'en-US' ? 'Finalized history' : '定稿历史',
+    'unfinished-candidate': locale === 'en-US' ? 'Unfinished candidate' : '未完成候选稿',
+    'adjacent-prose': locale === 'en-US' ? 'Adjacent prose' : '相邻正文',
     'current-arc': locale === 'en-US' ? 'Current arc' : '当前剧情弧',
     'character-state': locale === 'en-US' ? 'Character state' : '角色状态',
     'historical-fact': locale === 'en-US' ? 'Historical facts' : '历史事实',

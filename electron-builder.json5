@@ -23,6 +23,17 @@
   ],
   "mac": {
     "target": ["dmg"],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "shuishuipingan",
+        "repo": "InkWeaver",
+        "channel": "latest",
+        "releaseType": "release",
+        "publishAutoUpdate": true,
+        "tagNamePrefix": "v"
+      }
+    ],
     "artifactName": "inkweaver-mac-${arch}-${version}-installer.${ext}",
     "category": "public.app-category.productivity",
     "extraResources": [

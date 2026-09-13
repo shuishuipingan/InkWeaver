@@ -53,6 +53,10 @@ function ProseEditorWrapper({
   const currentContentRef = useRef(tab.content ?? '')
   const text = useLocaleStore(s => s.text)
 
+  useEffect(() => {
+    currentContentRef.current = tab.content ?? ''
+  }, [tab.content])
+
   const handleSave = async (text: string) => {
     setSaving(true)
     try {

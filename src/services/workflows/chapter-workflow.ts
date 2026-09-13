@@ -10,6 +10,7 @@ import { FINALIZATION_SHARED_WRITE_RESOURCE_KINDS } from '../../shared/workflow-
 import { normalizeChapterWordsTarget } from './chapter-creation-parameters'
 import { canResumeWorkflowCheckpoint, type WorkflowRecoveryCheckpoint } from '../../shared/workflow-recovery'
 import { parseHumanConfirmedReviewSnapshot } from '../../shared/human-confirmed-review'
+import { textFingerprint } from '../../shared/character-extraction'
 
 // ==========================================
 // 1. 结构与类型导出 (保留对外的向后兼容)
@@ -113,6 +114,13 @@ function finalizeWriteResourceKeys(chapterNumber: number): readonly string[] {
     workflowResourceKey('chapter', chapterNumber),
     ...FINALIZE_SHARED_WRITE_RESOURCE_KEYS,
   ])
+}
+
+function assertRecoveredDraftContentMatches(metadata: Record<string, string | number | boolean>, content: string): void {
+  const expected = metadata.draftContentHash
+  if (typeof expected === 'string' && expected && textFingerprint(content) !== expected) {
+    throw new Error('来源正文已变化，已拒绝使用过期恢复收据')
+  }
 }
 
 function workflowProjectSession(
@@ -277,6 +285,7 @@ export async function resumeChapterReviewWorkflowFromCheckpoint(
     currentSession, 'db:draft-get-full', meta.id, currentSession.projectPath,
   ) as { content?: string } | null
   if (!full?.content) throw new Error('审稿来源正文不存在，不能恢复')
+  assertRecoveredDraftContentMatches(metadata, full.content)
   return createReviewOnlyWorkflow({
     projectPath: currentSession.projectPath,
     chapterNumber,
@@ -311,6 +320,7 @@ export async function resumeChapterRefineWorkflowFromCheckpoint(
     currentSession, 'db:draft-get-full', meta.id, currentSession.projectPath,
   ) as { content?: string } | null
   if (!full?.content) throw new Error('修稿来源正文不存在，不能恢复')
+  assertRecoveredDraftContentMatches(metadata, full.content)
   return createRefineOnlyWorkflow({
     projectPath: currentSession.projectPath,
     chapterNumber,
@@ -345,6 +355,7 @@ export async function resumeChapterFinalizeWorkflowFromCheckpoint(
     currentSession, 'db:draft-get-full', meta.id, currentSession.projectPath,
   ) as { content?: string } | null
   if (!full?.content) throw new Error('定稿来源正文不存在，不能恢复')
+  assertRecoveredDraftContentMatches(metadata, full.content)
   return createFinalizeWorkflow({
     projectPath: currentSession.projectPath,
     chapterNumber,
@@ -395,6 +406,7 @@ export async function resumeChapterReviewFixWorkflowFromCheckpoint(
     || typeof persistedReview.content !== 'string'
     || !parseHumanConfirmedReviewSnapshot(persistedReview.content)
   ) throw new Error('找不到有效的人工确认审稿快照，不能恢复审稿修复')
+  assertRecoveredDraftContentMatches(metadata, full.content)
 
   return createRefineFromReviewWorkflow({
     projectPath: currentSession.projectPath,
@@ -487,6 +499,7 @@ export function createRefineOnlyWorkflow(
       chapterNumber: params.chapterNumber,
       chapterTitle: params.chapterTitle,
       ...(params.userRefinePrompt === undefined ? {} : { userRefinePrompt: params.userRefinePrompt }),
+      draftContentHash: textFingerprint(params.draftContent),
     },
     resourceKeys: [workflowResourceKey('chapter', params.chapterNumber)],
     readResourceKeys: CHAPTER_CONTEXT_READ_RESOURCE_KEYS,
@@ -528,6 +541,7 @@ export function createRefineFromReviewWorkflow(
       chapterNumber: params.chapterNumber,
       chapterTitle: params.chapterTitle,
       ...(params.reviewSourceId === undefined ? {} : { reviewSourceId: params.reviewSourceId }),
+      draftContentHash: textFingerprint(params.draftContent),
       ...(generationModelId ? { generationModelId } : {}),
     },
     resourceKeys: [workflowResourceKey('chapter', params.chapterNumber)],
@@ -568,6 +582,7 @@ export function createReviewOnlyWorkflow(
       chapterNumber: params.chapterNumber,
       chapterTitle: params.chapterTitle,
       ...(params.reviewFocus === undefined ? {} : { reviewFocus: params.reviewFocus }),
+      draftContentHash: textFingerprint(params.draftContent),
     },
     resourceKeys: [workflowResourceKey('chapter', params.chapterNumber)],
     readResourceKeys: CHAPTER_CONTEXT_READ_RESOURCE_KEYS,
@@ -607,6 +622,7 @@ export function createFinalizeWorkflow(
       chapterNumber: params.chapterNumber,
       chapterTitle: params.chapterTitle,
       enableChapterHandoff: params.enableChapterHandoff !== false,
+      draftContentHash: textFingerprint(params.draftContent),
     },
     resourceKeys: finalizeWriteResourceKeys(params.chapterNumber),
     readResourceKeys: CHAPTER_CONTEXT_READ_RESOURCE_KEYS,

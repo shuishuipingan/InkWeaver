@@ -6,11 +6,8 @@
  * uncaughtException，Electron 会弹出"主进程 JavaScript 错误"对话框。
  * 所有主进程控制台输出都应经由这里；本模块不做任何 IO，无加载期副作用。
  *
- * 历史修复：仓库里曾有两个同名 safeConsole —— 本文件仅输出控制台，
- * runtime-logger.ts 里另有一个"控制台 + 镜像文件"版本（曾是死代码）。
- * 现在两者统一：这里用「懒加载」转发到 runtime-logger 的文件镜像，
- * 既保持零依赖（测试/无 Electron 环境下不会拉入 electron 模块），
- * 又保证任何 safeConsole 输出都会落盘（source=console）。
+ * runtime-logger 在主进程启动早期安装全局 console 捕获，因此这里仅负责
+ * EPIPE 安全输出；再做一次异步镜像会产生重复事件，且在退出时可能丢失。
  */
 
 type ConsoleLevel = 'log' | 'info' | 'warn' | 'error'
@@ -23,41 +20,17 @@ function safeWrite(level: ConsoleLevel, args: unknown[]): void {
   } catch { /* 管道断开时静默忽略 */ }
 }
 
-function argsToText(args: unknown[]): string {
-  return args
-    .map((a) => {
-      if (typeof a === 'string') return a
-      try {
-        return JSON.stringify(a)
-      } catch {
-        return String(a)
-      }
-    })
-    .join(' ')
-}
-
-/** 懒加载镜像到文件日志：避免模块加载期拉入 electron 依赖（测试环境安全）。 */
-function mirrorToFile(level: 'info' | 'warn' | 'error', text: string): void {
-  import('../services/runtime-logger')
-    .then(({ mirrorConsoleToFile }) => mirrorConsoleToFile(level, text))
-    .catch(() => { /* 测试环境或无 electron：仅控制台输出 */ })
-}
-
 export const safeConsole = {
   log: (...args: unknown[]) => {
     safeWrite('log', args)
-    mirrorToFile('info', argsToText(args))
   },
   info: (...args: unknown[]) => {
     safeWrite('info', args)
-    mirrorToFile('info', argsToText(args))
   },
   warn: (...args: unknown[]) => {
     safeWrite('warn', args)
-    mirrorToFile('warn', argsToText(args))
   },
   error: (...args: unknown[]) => {
     safeWrite('error', args)
-    mirrorToFile('error', argsToText(args))
   },
 }

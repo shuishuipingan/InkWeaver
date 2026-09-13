@@ -10,6 +10,7 @@ import {
   resumeChapterReviewFixWorkflowFromCheckpoint,
   resumeChapterReviewWorkflowFromCheckpoint,
 } from '../chapter-workflow'
+import { textFingerprint } from '../../../shared/character-extraction'
 
 const session = { projectId: 'review-project', leaseId: 'lease-a', projectPath: 'C:\\review-project' } as const
 
@@ -97,6 +98,28 @@ describe('chapter review workflow recovery', () => {
 
     expect(workflow).toMatchObject({ type: 'chapter_creation', projectSession: session })
     expect(workflow.steps).toHaveLength(1)
+  })
+
+  it('rejects a recovery source whose saved content fingerprint no longer matches the checkpoint', async () => {
+    await expect(resumeChapterRefineWorkflowFromCheckpoint({
+      schemaVersion: 1,
+      runId: 'stale-refine-run',
+      projectPath: session.projectPath,
+      projectSession: session,
+      type: 'chapter_creation',
+      title: '修稿 — 第3章 雾港',
+      writingLanguage: 'zh-CN',
+      uiLocale: 'zh-CN',
+      boundary: 'failed',
+      currentStepIndex: 0,
+      steps: [],
+      createdAt: '2026-01-01',
+      updatedAt: '2026-01-01',
+      resumeMetadata: {
+        kind: 'chapter-refine', draftPath: 'vela://draft/9', chapterNumber: 3,
+        chapterTitle: '雾港', draftContentHash: textFingerprint('old content'),
+      },
+    }, session)).rejects.toThrow('来源正文已变化')
   })
 
   it('reloads draft authority for a finalize-only recovery without persisting prose', async () => {

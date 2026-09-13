@@ -606,6 +606,38 @@ describe('workflow mutation failure boundaries', () => {
     expect(invoke.mock.calls.map(([channel]) => channel).filter(ch => ch !== 'runtime:log')).toEqual(['db:character-roster-read'])
   })
 
+  it('keeps model-discovered new characters out of the roster until blueprint confirmation', async () => {
+    const invoke = vi.fn(async (channel: string) => {
+      if (channel === 'db:character-roster-read') {
+        return { status: 'ready', revision: 4, entries: [{ name: '林岚', role: 'protagonist', currentState: {} }] }
+      }
+      if (channel === 'db:character-extraction-candidates-save') return { success: true, candidates: [] }
+      throw new Error(`unexpected IPC: ${channel}`)
+    })
+    stubVelaIpc(invoke)
+    useLLMStore.setState({
+      defaultModelId: 'model',
+      generateStream: vi.fn(async (_messages, streamCallbacks) => {
+        streamCallbacks.onDone?.(JSON.stringify({
+          updates: [],
+          newCharacters: [{ name: '陌生人', role: 'supporting', currentState: { recentEvents: '在门口出现' } }],
+        }), undefined, 'stop')
+        return 'request-1'
+      }),
+    })
+    const step = buildFinalizePostProcessSteps(
+      { path: PROJECT_PATH }, 1, '第一章', '林岚在门口看见陌生人。', testPostProcessGeneration(), 7,
+    ).find(candidate => candidate.key === 'character_cards')
+    const stepCallbacks = callbacks()
+
+    await expect(step!.executor(stepCallbacks, context())).resolves.toBeUndefined()
+    expect(invoke.mock.calls.map(([channel]) => channel).filter(ch => ch !== 'runtime:log')).toEqual([
+      'db:character-roster-read',
+      'db:character-extraction-candidates-save',
+    ])
+    expect(stepCallbacks.log).toHaveBeenCalledWith(expect.stringContaining('等待作者确认'))
+  })
+
   it('stops character-card post-processing when its one roster receipt reports failure', async () => {
     const allCharacters = [{ name: '林岚', role: 'protagonist', currentState: {} }]
     const llmResponse = JSON.stringify({
@@ -742,5 +774,29 @@ describe('workflow mutation failure boundaries', () => {
       callbacks: callbacks(),
     })).rejects.toThrow('review rejected')
     expect(useEditorStore.getState().tabs).toEqual([])
+  })
+
+  it('rebuilds one malformed review response within the same command budget and never saves a second invalid response', async () => {
+    const invoke = vi.fn(async (channel: string) => {
+      if (channel === 'kb:search') return []
+      if (channel === 'db:character-get-all') return []
+      if (channel === 'db:project-core-get') return {}
+      if (channel === 'db:draft-get-meta') return { id: 1, chapterNumber: 1, version: 1, status: 'draft', source: 'write' }
+      if (channel === 'db:review-next-index') return 1
+      if (channel === 'db:blueprint-get') return null
+      if (channel === 'db:review-create') return { success: true, id: 8 }
+      throw new Error(`unexpected IPC: ${channel}`)
+    })
+    stubVelaIpc(invoke)
+    const command = new ReviewChapterCommand({ draftPath: 'vela://draft/1', draftContent: '待审正文', chapterNumber: 1 })
+    const call = vi.spyOn(command as unknown as { callLLMWithBuilder: (...args: unknown[]) => Promise<string> }, 'callLLMWithBuilder')
+      .mockResolvedValueOnce('not-json')
+      .mockResolvedValueOnce('{"summary":"repaired","items":[]}')
+
+    await expect(command.execute({ step: {}, context: context(), callbacks: callbacks() })).resolves.toContain('repaired')
+    expect(call).toHaveBeenCalledTimes(2)
+    expect(invoke.mock.calls.filter(([channel]) => channel === 'db:review-create')).toHaveLength(1)
+    const reviewCreateCall = invoke.mock.calls.find(([channel]) => channel === 'db:review-create') as unknown as [string, { content: string }] | undefined
+    expect(reviewCreateCall?.[1].content).toContain('repaired')
   })
 })

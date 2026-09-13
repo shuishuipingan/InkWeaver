@@ -232,6 +232,8 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
     narrativeThreads?: NarrativeThreadView[]
     chapterHandoff?: ChapterHandoffRecord | null
     previousFinalizedContent?: string
+    previousDraftContent?: string
+    previousDraftVersion?: number
     knowledgeResults?: Array<{ text: string; score: number; fileName: string }>
   }) {
     const invoke = vi.fn(async (channel: string, ...args: unknown[]) => {
@@ -318,7 +320,11 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
       characters: options.characters ?? [],
       wordsTarget: options.wordsTarget,
       userGuidance: options.userGuidance,
-    }, { dependencies: { createRuntime: options.runtime.createRuntime } })
+    }, {
+      ...(options.previousDraftContent ? { previousDraftContent: options.previousDraftContent } : {}),
+      ...(options.previousDraftVersion === undefined ? {} : { previousDraftVersion: options.previousDraftVersion }),
+      dependencies: { createRuntime: options.runtime.createRuntime },
+    })
     return { invoke, context, callbacks, command }
   }
 
@@ -511,6 +517,28 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
       projectPath,
       expect.anything(),
     )
+  })
+
+  it('uses the complete saved candidate content and version marker for continuous draft context', async () => {
+    let observedTask: GenerationTask | undefined
+    const runtime = fakeRuntime((_attempt, task) => {
+      observedTask = task
+      return outcome('新章正文。'.repeat(500), 'stop')
+    })
+    const savedCandidate = '候选稿开头保留的线索。' + '中段事件。'.repeat(120) + '候选稿结尾哨兵。'
+    const prepared = setup({
+      runtime,
+      chapterNumber: 2,
+      wordsTarget: 500,
+      previousDraftContent: savedCandidate,
+      previousDraftVersion: 3,
+    })
+
+    await prepared.command.execute({ step: {}, context: prepared.context, callbacks: prepared.callbacks })
+    const prompt = observedTask?.messages.find(message => message.role === 'user')?.content ?? ''
+    expect(prompt).toContain('saved candidate draft v3')
+    expect(prompt).toContain('候选稿开头保留的线索。')
+    expect(prompt).toContain('候选稿结尾哨兵。')
   })
 
   it('keeps older facts only when they are relevant to the current chapter entities', async () => {

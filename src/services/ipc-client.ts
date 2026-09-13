@@ -68,6 +68,20 @@ function isProjectScopedChannel(channel: string): boolean {
     || channel === 'project:delete'
 }
 
+// Runtime-log transport calls are themselves the persistence boundary. They
+// must not emit another IPC trace event or the renderer would recursively
+// enqueue log calls while trying to flush the queue.
+function isRuntimeLogChannel(channel: string): boolean {
+  return channel === 'runtime:log'
+    || channel === 'runtime:log-batch'
+    || channel === 'runtime:log-status'
+    || channel === 'runtime:log-page'
+    || channel === 'runtime:log-flush'
+    || channel === 'runtime:log-export'
+    || channel === 'runtime:set-level'
+    || channel === 'runtime:get-level'
+}
+
 function invokeWithSession<C extends InvokeChannel>(
   channel: C,
   args: AllInvokeChannels[C]['args'],
@@ -97,18 +111,21 @@ export const ipc = {
   ): Promise<AllInvokeChannels[C]['return']> => {
     const startedAt = Date.now()
     const timing = perf.start('ipc-invoke', { channel })
-    runtimeLog.debug('ipc', `调用 ${channel}`, { argCount: args.length })
+    const trace = !isRuntimeLogChannel(channel)
+    if (trace) runtimeLog.debug('ipc', `调用 ${channel}`, { argCount: args.length })
     let result: unknown
     try {
       result = await invokeWithSession(channel, args)
-      runtimeLog.debug('ipc', `完成 ${channel}`, { elapsedMs: Date.now() - startedAt })
+      if (trace) runtimeLog.debug('ipc', `完成 ${channel}`, { elapsedMs: Date.now() - startedAt })
       timing.end({ elapsedMs: Date.now() - startedAt })
       return result as AllInvokeChannels[C]['return']
     } catch (error) {
-      runtimeLog.error('ipc', `失败 ${channel}`, {
-        error: String(error),
-        elapsedMs: Date.now() - startedAt,
-      })
+      if (trace) {
+        runtimeLog.error('ipc', `失败 ${channel}`, {
+          error: String(error),
+          elapsedMs: Date.now() - startedAt,
+        })
+      }
       timing.end({ elapsedMs: Date.now() - startedAt, failed: true })
       throw error
     }
@@ -124,19 +141,24 @@ export const ipc = {
       throw new Error(`通道不属于项目会话范围：${channel}`)
     }
     const startedAt = Date.now()
-    runtimeLog.debug('ipc', `调用(带会话) ${channel}`, {
-      projectId: context.projectId,
-      argCount: args.length,
-    })
+    const trace = !isRuntimeLogChannel(channel)
+    if (trace) {
+      runtimeLog.debug('ipc', `调用(带会话) ${channel}`, {
+        projectId: context.projectId,
+        argCount: args.length,
+      })
+    }
     try {
       const result = await invokeWithSession(channel, args, context)
-      runtimeLog.debug('ipc', `完成(带会话) ${channel}`, { elapsedMs: Date.now() - startedAt })
+      if (trace) runtimeLog.debug('ipc', `完成(带会话) ${channel}`, { elapsedMs: Date.now() - startedAt })
       return result
     } catch (error) {
-      runtimeLog.error('ipc', `失败(带会话) ${channel}`, {
-        error: String(error),
-        elapsedMs: Date.now() - startedAt,
-      })
+      if (trace) {
+        runtimeLog.error('ipc', `失败(带会话) ${channel}`, {
+          error: String(error),
+          elapsedMs: Date.now() - startedAt,
+        })
+      }
       throw error
     }
   },

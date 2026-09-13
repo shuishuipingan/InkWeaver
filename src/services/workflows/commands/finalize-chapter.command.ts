@@ -26,7 +26,10 @@ import type {
 import { readWorkflowDraftMeta } from '../workflow-draft-meta'
 import { requireWorkflowProjectSession, workflowWritingLanguage } from '../workflow-project-session'
 import type { CharacterRosterEntry, CharacterRosterRole } from '../../../shared/character-roster'
+import type { CharacterExtractionCandidate } from '../../../shared/character-extraction'
 import { writingLanguageText } from '../../../shared/writing-language'
+import { sha256Hex } from '../../../shared/sha256-hex'
+import { textFingerprint } from '../../../shared/character-extraction'
 import { buildCharacterExtractionContext } from '../character-extraction-context'
 import {
   buildChapterHandoffPrompt,
@@ -381,6 +384,7 @@ export function buildFinalizePostProcessSteps(
           updates?: Array<{ name: string; currentState: LLMUpdateState }>
           newCharacters?: Array<{ name: string; role: string; currentState: LLMUpdateState }>
         }>(cardsResult)
+        const finalizedSourceHash = options.sourceContentHash ?? await sha256Hex(draftContent)
 
         const updatesByName = new Map(
           Array.isArray(cardUpdates.updates)
@@ -408,11 +412,20 @@ export function buildFinalizePostProcessSteps(
               keyItems: patch.keyItems || currentState?.keyItems || '',
               recentEvents: patch.recentEvents || currentState?.recentEvents || '',
               updatedAtChapter: chapterNumber,
+              provenance: finalizedDraftId !== undefined
+                ? {
+                    source: 'model',
+                    sourceDraftId: finalizedDraftId,
+                    sourceContentHash: finalizedSourceHash,
+                    evidence: draftContent.slice(0, 240),
+                  }
+                : { source: 'legacy-unknown' },
             },
           })
         }
 
         let newCharCount = 0
+        const newCharacterCandidates: CharacterExtractionCandidate[] = []
         const existingNames = new Set(allChars.map(character => character.name))
         if (Array.isArray(cardUpdates.newCharacters)) {
           for (const newChar of cardUpdates.newCharacters) {
@@ -427,27 +440,57 @@ export function buildFinalizePostProcessSteps(
               || newChar.role === 'supporting'
               || newChar.role === 'minor'
             ) ? newChar.role : 'supporting'
-            changedEntries.push({
-              name,
-              role,
-              gender: '', age: '', appearance: '', personality: '', background: '',
-              abilities: '', motivation: '', relationships: [], arc: '', notes: '',
-              currentState: {
-                location: cs.location || '',
-                powerLevel: cs.powerLevel || '',
-                physicalState: cs.physicalState || '',
-                mentalState: cs.mentalState || '',
-                keyItems: cs.keyItems || '',
-                recentEvents: cs.recentEvents || '',
-                updatedAtChapter: chapterNumber,
+            const evidenceExcerpt = draftContent
+              .split(/(?<=[。！？.!?])|\n+/u)
+              .map(sentence => sentence.trim())
+              .find(sentence => sentence.includes(name))
+              ?? draftContent.slice(0, 240)
+            newCharacterCandidates.push({
+              candidateId: `post-process:${finalizedDraftId ?? chapterNumber}:${name}`,
+              source: {
+                sourceId: `chapter:${chapterNumber}:draft:${finalizedDraftId ?? chapterNumber}`,
+                sourceHash: textFingerprint(draftContent),
+                contentHash: finalizedSourceHash,
+                kind: 'chapter',
+                chapterNumbers: [chapterNumber],
               },
+              name,
+              aliases: [],
+              disposition: 'new',
+              status: 'pending',
+              role,
+              fields: {},
+              currentState: {
+                ...(cs.location ? { location: cs.location } : {}),
+                ...(cs.powerLevel ? { powerLevel: cs.powerLevel } : {}),
+                ...(cs.physicalState ? { physicalState: cs.physicalState } : {}),
+                ...(cs.mentalState ? { mentalState: cs.mentalState } : {}),
+                ...(cs.keyItems ? { keyItems: cs.keyItems } : {}),
+                ...(cs.recentEvents ? { recentEvents: cs.recentEvents } : {}),
+              },
+              fieldEvidence: [{ field: 'character', value: name, excerpt: evidenceExcerpt, sourceChapter: chapterNumber }],
             })
             existingNames.add(name)
             newCharCount += 1
           }
         }
 
-        if (updatedCount > 0 || newCharCount > 0) {
+        if (newCharacterCandidates.length > 0) {
+          const candidateResult = await ipc.invokeWithProjectSession(
+            projectSession,
+            'db:character-extraction-candidates-save',
+            newCharacterCandidates,
+            _project.path,
+          )
+          if (!candidateResult.success) throw new Error(candidateResult.error || '新角色候选保存失败')
+          callbacks.log(
+            workflowWritingLanguage(context) === 'en-US'
+              ? `${newCharCount} new character candidate(s) await author confirmation.`
+              : `发现 ${newCharCount} 名新角色候选，等待作者确认后才会进入角色表。`,
+          )
+        }
+
+        if (updatedCount > 0) {
           if (context?.cancelled) throw new Error('工作流已取消')
           const result = await ipc.invokeWithProjectSession(
             projectSession,
@@ -467,7 +510,6 @@ export function buildFinalizePostProcessSteps(
             throw new Error(result.error || '角色状态与新角色登记未能原子提交')
           }
           if (updatedCount > 0) callbacks.log(`更新角色动态状态: ${updatedCount} 名`)
-          if (newCharCount > 0) callbacks.log(`自动提取并登记 ${newCharCount} 名新出场角色`)
         }
       },
     })

@@ -13,6 +13,20 @@ function key(value: string): string {
 export type CharacterCandidateFieldSelection = Readonly<Record<string, readonly string[]>>
 export type CharacterCandidateMatchSelection = Readonly<Record<string, string>>
 
+function candidateStateProvenance(candidate: CharacterExtractionCandidate) {
+  const draftId = /^chapter:\d+:draft:(\d+)$/u.exec(candidate.source.sourceId)?.[1]
+  const evidence = candidate.fieldEvidence.find(item => item.field.startsWith('currentState.'))?.excerpt
+    ?? candidate.fieldEvidence.find(item => item.field === 'character')?.excerpt
+  return draftId && candidate.source.contentHash && evidence
+    ? {
+        source: 'model' as const,
+        sourceDraftId: Number(draftId),
+        sourceContentHash: candidate.source.contentHash,
+        evidence,
+      }
+    : { source: 'legacy-unknown' as const }
+}
+
 function emptyEntry(candidate: CharacterExtractionCandidate, selected: ReadonlySet<string>): CharacterRosterEntry {
   return {
     name: candidate.name.trim(),
@@ -37,6 +51,7 @@ function emptyEntry(candidate: CharacterExtractionCandidate, selected: ReadonlyS
         keyItems: candidate.currentState.keyItems ?? '',
         recentEvents: candidate.currentState.recentEvents ?? '',
         updatedAtChapter: 0,
+        provenance: candidateStateProvenance(candidate),
       },
     } : {}),
   }
@@ -97,6 +112,7 @@ export function mergeAcceptedCharacterCandidates(
           keyItems: '', recentEvents: '', updatedAtChapter: 0,
         }),
         ...candidate.currentState,
+        provenance: candidateStateProvenance(candidate),
       }
     }
     if (selected.has('relationships') && candidate.relationships?.length) merged.relationships = [...merged.relationships, ...candidate.relationships]

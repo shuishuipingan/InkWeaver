@@ -15,6 +15,7 @@ import {
 import { promptLanguageText } from '../../prompt-language'
 import { assertMateriallyCompleteRevision } from './refinement-completeness'
 import { countDraftUnits } from '../../../shared/draft-units'
+import { textFingerprint } from '../../../shared/character-extraction'
 
 import type { ChapterInfo } from '../chapter-workflow'
 
@@ -53,6 +54,7 @@ export class RefineDraftCommand extends BaseWorkflowCommand<string> {
 
     const draft = this.params.draftContent
     if (!draft) throw new Error(text('无草稿内容', 'There is no draft content to revise.'))
+    const baseContentHash = textFingerprint(draft)
 
     callbacks.log(text('正在进行大神级修稿...', 'Refining the chapter...'))
 
@@ -109,6 +111,7 @@ export class RefineDraftCommand extends BaseWorkflowCommand<string> {
       revisionType: 'refine',
       content: cleanRefined,
       wordCount: countDraftUnits(cleanRefined),
+      baseContentHash,
     }, context.projectPath)
     requireIpcSuccess(createRes, text('创建修订稿', 'Create the pending revision'))
     if (createRes.id === undefined) {

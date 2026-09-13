@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { CheckCircle2, Clock3, Loader2, Pencil, Plus, Sparkles, Trash2 } from 'lucide-react'
+import { CheckCircle2, Clock3, ExternalLink, Loader2, Pencil, Plus, Sparkles, Trash2 } from 'lucide-react'
 
 import type { DatabaseChannels, ModelProfile } from '../../shared/ipc-channels'
 import type { StoryContinuityDocument } from '../../shared/story-continuity'
 import {
   resolveNarrativeThreadDormantThreshold,
   type NarrativeThreadEventType,
+  type NarrativeThreadLane,
   type NarrativeThreadPlanInput,
   type NarrativeThreadView,
 } from '../../shared/narrative-thread'
@@ -30,9 +31,10 @@ import { Label } from '../ui/Label'
 import { NativeSelect } from '../ui/NativeSelect'
 import { Textarea } from '../ui/Textarea'
 import { toast } from '../ui/Toast'
+import { openChapterFile } from '../panels/sidebar/sidebar-file-openers'
 
 const EMPTY_PLAN: NarrativeThreadPlanInput = {
-  title: '', type: '', targetStartChapter: 1, targetEndChapter: 1, authorIntent: '',
+  title: '', type: '', targetStartChapter: 1, targetEndChapter: 1, authorIntent: '', lane: 'sub',
 }
 
 const STATUS_LABELS: Record<NarrativeThreadView['status'], [string, string]> = {
@@ -393,6 +395,28 @@ export default function NarrativeThreadEditor({
     }
   }
 
+  const openEventEvidence = async (event: NarrativeThreadView['events'][number]) => {
+    const session = captureProjectSession(useProjectStore.getState().currentProject)
+    if (!session || !isProjectSessionPath(session, projectKey)) return
+    // Prefer the already loaded finalized roster; re-querying by chapter is a
+    // fallback for a stale panel and still requires the current project lease.
+    let source = finalizedDrafts.find(draft => draft.id === event.draftId && draft.status === 'finalized')
+    if (!source) {
+      try {
+        const candidate = await ipc.invokeWithProjectSession(session, 'db:draft-get-finalized', event.chapterNumber, projectKey)
+        if (candidate?.id === event.draftId) source = candidate
+      } catch { /* the panel reports a controlled missing-source state below */ }
+    }
+    if (!source || !isProjectSessionCurrent(session)) {
+      if (isProjectSessionCurrent(session)) toast.error(text('证据来源已不再是当前定稿，请刷新后重试。', 'The evidence source is no longer the current finalized draft. Refresh and try again.'))
+      return
+    }
+    await openChapterFile(
+      `vela://manuscript/${source.id}`,
+      text(`第${source.chapterNumber}章 · ${source.chapterTitle ?? ''}`, `Chapter ${source.chapterNumber} · ${source.chapterTitle ?? ''}`),
+    )
+  }
+
   return (
     <div className="h-full overflow-y-auto p-5" style={{ color: 'var(--color-text)' }}>
       <div className="mx-auto max-w-5xl space-y-5">
@@ -437,6 +461,7 @@ export default function NarrativeThreadEditor({
             <label><Label>{text('类型', 'Type')}</Label><Input value={plan.type} onChange={event => setPlan({ ...plan, type: event.target.value })} /></label>
             <label><Label>{text('计划埋设 / 开始章', 'Setup / start chapter')}</Label><Input type="number" min={1} value={plan.targetStartChapter} onChange={event => setPlan({ ...plan, targetStartChapter: Number(event.target.value) })} /></label>
             <label><Label>{text('预计回收 / 结束章', 'Expected payoff / end chapter')}</Label><Input type="number" min={1} value={plan.targetEndChapter} onChange={event => setPlan({ ...plan, targetEndChapter: Number(event.target.value) })} /></label>
+            <label><Label>{text('叙事线类型', 'Thread lane')}</Label><NativeSelect value={plan.lane ?? 'sub'} onChange={event => setPlan({ ...plan, lane: event.target.value as NarrativeThreadLane, ...(event.target.value === 'main' ? { parentId: undefined } : {}) })}><option value="main">{text('主线', 'Main thread')}</option><option value="sub">{text('支线', 'Sub-thread')}</option></NativeSelect></label>
           </div>
           <label><Label>{text('作者意图 / 理由', 'Author intent / rationale')}</Label><Textarea value={plan.authorIntent} onChange={event => setPlan({ ...plan, authorIntent: event.target.value })} /></label>
           <Button onClick={() => void savePlan()} disabled={busy || !plan.title.trim() || !plan.type.trim() || !plan.authorIntent.trim() || plan.targetEndChapter < plan.targetStartChapter}>{text('保存计划', 'Save plan')}</Button>
@@ -448,7 +473,8 @@ export default function NarrativeThreadEditor({
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h3 className="font-semibold">{thread.title}</h3>
-                <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>{thread.type} · {text(`埋设/开始 ${thread.targetStartChapter} · 预计回收/结束 ${thread.targetEndChapter}`, `Setup/start ${thread.targetStartChapter} · expected payoff/end ${thread.targetEndChapter}`)}</p>
+                <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>{thread.lane === 'main' ? text('主线', 'Main') : text('支线', 'Sub-thread')} · {thread.type} · {text(`埋设/开始 ${thread.targetStartChapter} · 预计回收/结束 ${thread.targetEndChapter}`, `Setup/start ${thread.targetStartChapter} · expected payoff/end ${thread.targetEndChapter}`)}</p>
+                {thread.progress && <p className="mt-1 text-xs text-[var(--color-text-secondary)]">{text(`推进度 ${thread.progress.percent}% · 下一目标第${thread.progress.nextTargetChapter ?? '—'}章`, `Progress ${thread.progress.percent}% · next target Chapter ${thread.progress.nextTargetChapter ?? '—'}`)}</p>}
               </div>
               <span className="text-xs rounded px-2 py-1" style={{ background: 'var(--color-bg)' }}>{text(...STATUS_LABELS[thread.status])}</span>
             </div>
@@ -463,10 +489,10 @@ export default function NarrativeThreadEditor({
               </div>
             )}
             <div className="space-y-1">
-              {thread.events.map(event => <div key={event.id} className="text-xs flex gap-2"><CheckCircle2 size={13} /><span>{text(`第${event.chapterNumber}章`, `Chapter ${event.chapterNumber}`)} · {text(...STATUS_LABELS[event.type])} · {event.evidence}</span></div>)}
+              {thread.events.map(event => <div key={event.id} className="text-xs flex items-start gap-2"><CheckCircle2 size={13} /><span className="min-w-0 flex-1">{text(`第${event.chapterNumber}章`, `Chapter ${event.chapterNumber}`)} · {text(...STATUS_LABELS[event.type])} · {event.evidence}</span><button type="button" data-narrative-evidence-chapter={event.chapterNumber} className="inline-flex shrink-0 items-center gap-1 rounded border px-1.5 py-0.5 text-[0.68rem] text-[var(--color-accent)]" onClick={() => void openEventEvidence(event)} title={text('打开证据所在定稿章节', 'Open the finalized chapter containing this evidence')}><ExternalLink size={11} />{text('打开证据', 'Open evidence')}</button></div>)}
             </div>
             <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={() => { setEditingId(thread.id); setPlan({ title: thread.title, type: thread.type, targetStartChapter: thread.targetStartChapter, targetEndChapter: thread.targetEndChapter, authorIntent: thread.authorIntent }) }}><Pencil size={13} />{text('编辑', 'Edit')}</Button>
+              <Button variant="outline" size="sm" onClick={() => { setEditingId(thread.id); setPlan({ title: thread.title, type: thread.type, targetStartChapter: thread.targetStartChapter, targetEndChapter: thread.targetEndChapter, authorIntent: thread.authorIntent, lane: thread.lane, parentId: thread.parentId }) }}><Pencil size={13} />{text('编辑', 'Edit')}</Button>
               <Button variant="outline" size="sm" onClick={() => { setEventPlanId(thread.id); setEventError('') }} disabled={finalizedDrafts.length === 0}>{text('确认定稿事件', 'Confirm finalized event')}</Button>
               <Button variant="ghost" size="sm" onClick={() => void deletePlan(thread.id)}><Trash2 size={13} />{text('删除', 'Delete')}</Button>
             </div>

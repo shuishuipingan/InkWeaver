@@ -3,7 +3,7 @@ import { ipc } from '../ipc-client'
 import { guardChapterWriting } from '../workflow-guards'
 import type { ChapterInfo } from './chapter-workflow'
 import type { ChapterBlueprint } from './directory-workflow'
-import { GenerateDraftCommand, previousChapterEnding } from './commands/generate-draft.command'
+import { GenerateDraftCommand } from './commands/generate-draft.command'
 import { FinalizeChapterCommand } from './commands/finalize-chapter.command'
 import type { Locale } from '../../i18n/types'
 import type { ProjectSessionContext } from '../../shared/ipc-channels'
@@ -201,7 +201,7 @@ async function runOneBatchChapter(
   step: WorkflowStep,
   context: WorkflowContext,
   callbacks: StepCallbacks,
-  draftReviewContinuity: Map<number, string>,
+  draftReviewContinuity: Map<number, { content: string; draftId?: number; version?: number }>,
 ): Promise<string> {
   const projectSession = requireWorkflowProjectSession(context)
   // 草稿待审模式不会把本批次前一章变成定稿事实；首章仍遵守外部连续性门禁，
@@ -249,18 +249,50 @@ async function runOneBatchChapter(
     ))
   callbacks.setProgress(5)
 
-  const previousDraftEnding = completionMode === 'draft_review'
-    ? draftReviewContinuity.get(chapterNumber - 1)
-    : undefined
+  let previousDraftContent: string | undefined
+  let previousDraftVersion: number | undefined
+  if (completionMode === 'draft_review' && chapterNumber > batchStartChapterNumber) {
+    // The database is authoritative. The in-memory map is only a test/offline
+    // fallback for a just-saved candidate when a legacy host cannot read it.
+    try {
+      const previousMeta = await ipc.invokeWithProjectSession(
+        projectSession,
+        'db:draft-get-latest',
+        chapterNumber - 1,
+        projectPath,
+      )
+      if (previousMeta && previousMeta.status !== 'finalized') {
+        const previousFull = await ipc.invokeWithProjectSession(
+          projectSession,
+          'db:draft-get-full',
+          previousMeta.id,
+          projectPath,
+        )
+        if (previousFull?.content) {
+          previousDraftContent = previousFull.content
+          previousDraftVersion = previousMeta.version
+        }
+      }
+    } catch { /* fall back to the saved candidate ledger below */ }
+    if (!previousDraftContent) {
+      const saved = draftReviewContinuity.get(chapterNumber - 1)
+      previousDraftContent = saved?.content
+      previousDraftVersion = saved?.version
+    }
+  }
   const draftContent = await new GenerateDraftCommand(chapterInfo, {
-    ...(previousDraftEnding ? { previousDraftEnding } : {}),
+    ...(previousDraftContent ? { previousDraftContent, previousDraftVersion } : {}),
   }).execute({ step, context, callbacks })
   throwIfCancelled(context, uiLocale)
 
   if (completionMode === 'draft_review') {
     // This prompt-only context exists only inside this workflow definition. It
     // deliberately bypasses finalized/manuscript/fact projections.
-    draftReviewContinuity.set(chapterNumber, previousChapterEnding(draftContent))
+    const draftIdMatch = String(context.data.draftPath ?? '').match(/^vela:\/\/draft\/(\d+)$/u)
+    draftReviewContinuity.set(chapterNumber, {
+      content: draftContent,
+      ...(draftIdMatch ? { draftId: Number(draftIdMatch[1]) } : {}),
+    })
     callbacks.setProgress(100)
     return localeText(
       uiLocale,
@@ -334,7 +366,7 @@ export function createBatchChapterWorkflow(params: BatchChapterWorkflowParams): 
   const completionMode = normalizeCompletionMode(params.completionMode)
   const chapterWordsTarget = normalizeChapterWordsTarget(params.chapterWordsTarget)
   const endChapterNumber = startChapterNumber + chapterCount - 1
-  const draftReviewContinuity = new Map<number, string>()
+  const draftReviewContinuity = new Map<number, { content: string; draftId?: number; version?: number }>()
   const chapterResourceKeys = Array.from({ length: chapterCount }, (_, index) => (
     workflowResourceKey('chapter', startChapterNumber + index)
   ))

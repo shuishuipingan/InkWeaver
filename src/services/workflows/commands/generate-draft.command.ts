@@ -46,6 +46,7 @@ const MIN_TARGET_COMPLETION_RATIO = 0.82
 const MAX_AUTO_CONTINUE_ROUNDS = 7
 const MAX_TARGET_OVERAGE_RATIO = 0.12
 const PREVIOUS_ENDING_MAX_CHARS = 1000
+const PREVIOUS_DRAFT_CONTEXT_MAX_CHARS = 12_000
 const ACTIVE_THREAD_CONTEXT_MAX_CHARS = 1200
 const ACTIVE_THREAD_CONTEXT_MAX_ITEMS = 6
 export function sanitizeDraftText(text: string): string {
@@ -107,6 +108,9 @@ export interface GenerateDraftCommandOptions {
    * It is prompt-only context and must never be persisted as finalized state.
    */
   readonly previousDraftEnding?: string
+  /** The complete saved candidate content from the immediately preceding batch chapter. */
+  readonly previousDraftContent?: string
+  readonly previousDraftVersion?: number
   readonly dependencies?: Partial<GenerateDraftCommandDependencies>
 }
 
@@ -117,6 +121,16 @@ const DEFAULT_DEPENDENCIES: GenerateDraftCommandDependencies = {
 /** Use the same bounded previous-ending window for finalized and in-batch prose. */
 export function previousChapterEnding(content: string): string {
   return content.slice(-PREVIOUS_ENDING_MAX_CHARS)
+}
+
+/** Keep a saved candidate's identity and broad context, rather than treating its tail as history. */
+function previousDraftContext(content: string, version?: number): string {
+  const normalized = content.trim()
+  if (!normalized) return ''
+  const label = version === undefined ? 'saved candidate draft' : `saved candidate draft v${version}`
+  if (normalized.length <= PREVIOUS_DRAFT_CONTEXT_MAX_CHARS) return `【${label}】\n${normalized}`
+  const half = Math.floor(PREVIOUS_DRAFT_CONTEXT_MAX_CHARS / 2)
+  return `【${label}; middle omitted only for budget】\n${normalized.slice(0, half)}\n…\n${normalized.slice(-half)}`
 }
 
 function observeWorkflowCancellation(context: CommandExecuteParams['context']): {
@@ -161,6 +175,8 @@ function contextReceiptEntry(
   label: string,
   content: string,
   sourceChapter?: number,
+  required = false,
+  sourceSpan?: { start: number; end: number },
 ): ContextReceipt['entries'][number] {
   const charCount = content.trim().length
   return {
@@ -168,6 +184,8 @@ function contextReceiptEntry(
     layer,
     label,
     ...(sourceChapter === undefined ? {} : { sourceChapter }),
+    ...(required ? { required: true } : {}),
+    ...(sourceSpan ? { sourceSpan } : {}),
     included: charCount > 0,
     ...(charCount > 0 ? {} : { reason: 'unavailable' as const }),
     charCount,
@@ -243,6 +261,8 @@ function capDraftAtNaturalBoundary(text: string, maxChars: number): string {
 export class GenerateDraftCommand extends BaseWorkflowCommand {
   private readonly dependencies: GenerateDraftCommandDependencies
   private readonly previousDraftEnding: string | undefined
+  private readonly previousDraftContent: string | undefined
+  private readonly previousDraftVersion: number | undefined
 
   constructor(
     private chapterInfo: ChapterInfo,
@@ -253,6 +273,8 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
     this.previousDraftEnding = options.previousDraftEnding
       ? previousChapterEnding(options.previousDraftEnding)
       : undefined
+    this.previousDraftContent = options.previousDraftContent?.trim() || undefined
+    this.previousDraftVersion = options.previousDraftVersion
   }
 
   async execute({ context, callbacks }: CommandExecuteParams): Promise<string> {
@@ -276,7 +298,12 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
       projectSession,
       writingLanguage,
     )
-    const mergedGuidance = [novelConfig.globalGuidance || '', projectPrompts].filter(Boolean).join('\n\n')
+    const planningMaterials = await this.readPlanningMaterials(
+      expectedProjectPath,
+      projectSession,
+      writingLanguage,
+    )
+    const mergedGuidance = [novelConfig.globalGuidance || '', projectPrompts, planningMaterials.text].filter(Boolean).join('\n\n')
 
     const characterState = await this.readCharacterStates(
       expectedProjectPath,
@@ -338,6 +365,31 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
       entries: [],
     }
     context.data.contextReceipt = emptyContextReceipt
+    context.data.planningMaterialCount = planningMaterials.count
+    context.data.contextReceipt = extendContextReceipt(emptyContextReceipt, [
+      contextReceiptEntry(
+        'author-task:chapter',
+        'author-task',
+        '本章作者任务与硬性要求',
+        this.chapterInfo.userGuidance?.trim() || '',
+        this.chapterInfo.chapterNumber,
+        true,
+      ),
+      contextReceiptEntry(
+        'future-plan:blueprints',
+        'future-plan',
+        '后续章节计划',
+        futureBlueprintsStr,
+        undefined,
+        true,
+      ),
+      contextReceiptEntry(
+        'planning-material:confirmed',
+        'planning-material',
+        '作者已确认规划资料',
+        planningMaterials.text,
+      ),
+    ])
 
     if (!isFirstChapter) {
       // 从蓝图 JSON 的 notes 字段读取章节要点时间线（按序拼装，利于前缀缓存）
@@ -382,13 +434,24 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
       }
 
       let previousEnding = this.previousDraftEnding ?? ''
-      if (!previousEnding) {
+      const savedCandidateContext = previousDraftContext(this.previousDraftContent ?? '', this.previousDraftVersion)
+      let previousEndingSource: 'unfinished-candidate' | 'finalized-history' | 'none' = savedCandidateContext
+        ? 'unfinished-candidate'
+        : 'none'
+      // A saved candidate is the authoritative continuity source for a
+      // continuous draft. Do not fall back to finalized history when the
+      // candidate context is present: that would both issue an unnecessary
+      // finalized read and make an unfinished candidate look like history.
+      if (!previousEnding && !savedCandidateContext) {
         try {
           const prevNum = this.chapterInfo.chapterNumber - 1
           const meta = await ipc.invokeWithProjectSession(projectSession, 'db:draft-get-finalized', prevNum, expectedProjectPath)
           if (meta) {
             const full = await ipc.invokeWithProjectSession(projectSession, 'db:draft-get-full', meta.id, expectedProjectPath)
-            if (full?.content) previousEnding = previousChapterEnding(full.content)
+            if (full?.content) {
+              previousEnding = previousChapterEnding(full.content)
+              previousEndingSource = 'finalized-history'
+            }
           }
         } catch { /* 忽略 */ }
       }
@@ -439,6 +502,40 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
           '当前角色已确认知情范围',
           knowledgeEvents.text,
         ),
+        contextReceiptEntry(
+          'unfinished-candidate:previous',
+          'unfinished-candidate',
+          '上一章已保存候选稿',
+          savedCandidateContext,
+          this.chapterInfo.chapterNumber - 1,
+          false,
+          savedCandidateContext ? { start: 0, end: savedCandidateContext.length } : undefined,
+        ),
+        contextReceiptEntry(
+          'adjacent-prose:previous-finalized',
+          'adjacent-prose',
+          '上一章相邻正文片段',
+          previousEndingSource === 'finalized-history' ? previousEnding : '',
+          this.chapterInfo.chapterNumber - 1,
+          false,
+          previousEndingSource === 'finalized-history' ? { start: 0, end: previousEnding.length } : undefined,
+        ),
+        contextReceiptEntry(
+          'author-task:chapter',
+          'author-task',
+          '本章作者任务与硬性要求',
+          this.chapterInfo.userGuidance?.trim() || '',
+          this.chapterInfo.chapterNumber,
+          true,
+        ),
+        contextReceiptEntry(
+          'future-plan:blueprints',
+          'future-plan',
+          '后续章节计划',
+          futureBlueprintsStr,
+          undefined,
+          true,
+        ),
       ])
 
       promptBuilder
@@ -447,7 +544,7 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
         .withCharacterStates(characterState)
         .withChapterHandoff(formatChapterHandoff(chapterHandoff, writingLanguage))
         // ---- 缓存失效区（逐章变化）----
-        .withPreviousEnding(previousEnding || promptLanguageText(
+        .withPreviousEnding(savedCandidateContext || previousEnding || promptLanguageText(
           writingLanguage,
           '（无前文）',
           '(no previous manuscript)',
@@ -851,6 +948,32 @@ ${visibleTail}`,
     } catch { return '' }
   }
 
+  private async readPlanningMaterials(
+    projectPath: string,
+    projectSession: ProjectSessionContext,
+    writingLanguage: WritingLanguage,
+  ): Promise<{ text: string; count: number }> {
+    try {
+      const materials = await ipc.invokeWithProjectSession(
+        projectSession,
+        'db:planning-material-list',
+        'confirmed',
+        projectPath,
+      )
+      const selected = materials
+        .filter(material => material.status === 'confirmed' && material.content.trim())
+        .slice(0, 12)
+      const text = selected.map(material => promptLanguageText(
+        writingLanguage,
+        `【已确认规划资料：${material.name}】\n${material.content.slice(0, 4_000)}`,
+        `[Confirmed planning material: ${material.name}]\n${material.content.slice(0, 4_000)}`,
+      )).join('\n\n')
+      return { text, count: selected.length }
+    } catch {
+      return { text: '', count: 0 }
+    }
+  }
+
   private async readCharacterStates(
     projectPath: string,
     projectSession: ProjectSessionContext,
@@ -936,7 +1059,7 @@ ${visibleTail}`,
           if (!isRecent && !entityRelevant) {
             entries.push({
               id: `fact:${fact.sourceChapter}:${factIndex}`,
-              layer: 'historical-fact',
+              layer: projection ? 'finalized-history' : 'historical-fact',
               label: `第${fact.sourceChapter}章${fact.category}事实`,
               content: promptLanguageText(
                 writingLanguage,
@@ -952,7 +1075,7 @@ ${visibleTail}`,
           }
           entries.push({
             id: `fact:${fact.sourceChapter}:${factIndex}`,
-            layer: 'historical-fact',
+            layer: projection ? 'finalized-history' : 'historical-fact',
             label: `第${fact.sourceChapter}章${fact.category}事实`,
             content: promptLanguageText(
               writingLanguage,
@@ -969,7 +1092,7 @@ ${visibleTail}`,
           // 近 N 章：完整收录要点
           entries.push({
             id: `chapter-notes:${i}`,
-            layer: 'current-arc',
+            layer: projection ? 'finalized-history' : 'current-arc',
             label: `第${i}章章节要点`,
             content: promptLanguageText(
             writingLanguage,
@@ -984,7 +1107,7 @@ ${visibleTail}`,
           // 远期章节：仅保留标题行（节省 Token）
           entries.push({
             id: `chapter-title:${i}`,
-            layer: 'historical-fact',
+            layer: projection ? 'finalized-history' : 'historical-fact',
             label: `第${i}章标题`,
             content: promptLanguageText(
             writingLanguage,

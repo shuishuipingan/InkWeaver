@@ -7,7 +7,7 @@
  * 3. 路由用户消息到对应的处理逻辑
  */
 
-import { skillRegistry, type LoadedSkill } from './skill-registry'
+import { skillRegistry, type LoadedSkill, type WritingSkillStage } from './skill-registry'
 
 // ===== 类型定义 =====
 
@@ -76,11 +76,11 @@ const BUILTIN_COMMANDS: SlashCommand[] = [
 /**
  * 获取所有可用的 / 命令（内置 + Skill）
  */
-export function getAllSlashCommands(): SlashCommand[] {
+export function getAllSlashCommands(stage?: WritingSkillStage): SlashCommand[] {
   const commands: SlashCommand[] = [...BUILTIN_COMMANDS]
 
   // 把所有 Skill 也注册为 / 命令
-  for (const skill of skillRegistry.listAll()) {
+  for (const skill of stage ? skillRegistry.listForStage(stage) : skillRegistry.listAll()) {
     if (skill.metadata.userInvocable !== false) {
       commands.push({
         name: skill.metadata.name,
@@ -98,9 +98,9 @@ export function getAllSlashCommands(): SlashCommand[] {
 /**
  * 模糊搜索 / 命令
  */
-export function searchSlashCommands(query: string): SlashCommand[] {
+export function searchSlashCommands(query: string, stage?: WritingSkillStage): SlashCommand[] {
   const q = query.toLowerCase()
-  return getAllSlashCommands().filter(cmd =>
+  return getAllSlashCommands(stage).filter(cmd =>
     cmd.name.toLowerCase().includes(q) ||
     cmd.displayName.toLowerCase().includes(q) ||
     cmd.description.toLowerCase().includes(q)

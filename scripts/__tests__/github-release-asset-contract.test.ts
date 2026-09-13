@@ -10,7 +10,7 @@ import {
   verifyGithubReleaseAssetContract,
 } from '../verify-github-release-assets.mjs'
 
-const VERSION = '1.1.0'
+const VERSION = '1.2.0'
 
 function assets() {
   return expectedReleaseAssetNames(VERSION).map((name, index) => {
@@ -19,7 +19,7 @@ function assets() {
   })
 }
 
-describe('GitHub 1.1.0 release asset contract', () => {
+describe('GitHub 1.2.0 release asset contract', () => {
   it('accepts all seven final assets from a non-draft non-prerelease release', () => {
     const result = verifyGithubReleaseAssetContract({
       expectedVersion: VERSION,
@@ -27,7 +27,7 @@ describe('GitHub 1.1.0 release asset contract', () => {
     })
     expect(result).toEqual({
       ok: true,
-      tag: 'v1.1.0',
+      tag: 'v1.2.0',
       missing: [],
       invalid: [],
       assets: expectedReleaseAssetNames(VERSION),
@@ -38,7 +38,7 @@ describe('GitHub 1.1.0 release asset contract', () => {
     const releaseAssets = assets().slice(0, 3)
     const result = verifyGithubReleaseAssetContract({
       expectedVersion: VERSION,
-      release: { tag_name: 'v1.1.0', draft: true, prerelease: true, assets: releaseAssets },
+      release: { tag_name: 'v1.2.0', draft: true, prerelease: true, assets: releaseAssets },
     })
     expect(result.ok).toBe(false)
     expect(result.invalid).toEqual(expect.arrayContaining(['release is still a draft', 'release is a prerelease']))
@@ -53,8 +53,8 @@ describe('GitHub 1.1.0 release asset contract', () => {
       release: { tag_name: 'v1.0.0', draft: false, prerelease: false, assets: releaseAssets },
     })
     expect(result.ok).toBe(false)
-    expect(result.invalid).toEqual(expect.arrayContaining(['tag v1.0.0 does not match v1.1.0']))
-    expect(result.invalid.some(message => message.includes('inkweaver-setup-1.1.0.exe'))).toBe(true)
+    expect(result.invalid).toEqual(expect.arrayContaining(['tag v1.0.0 does not match v1.2.0']))
+    expect(result.invalid.some(message => message.includes('inkweaver-setup-1.2.0.exe'))).toBe(true)
   })
 
   it('requires dsh-plugin topic metadata when topic data is available', () => {

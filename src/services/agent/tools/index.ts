@@ -19,6 +19,7 @@ import { openEditorTool } from './open-editor.tool'
 import { startWorkflowTool } from './start-workflow.tool'
 import { proposeNovelConfigTool } from './propose-novel-config.tool'
 import { proposeChapterBlueprintTool } from './propose-chapter-blueprint.tool'
+import { readPlanningMaterialsTool } from './read-planning-materials.tool'
 
 /** 所有内置 Tool（供外部引用） */
 export const builtinTools = [
@@ -31,6 +32,7 @@ export const builtinTools = [
   readProjectStateTool,
   readDraftsTool,
   listChaptersTool,
+  readPlanningMaterialsTool,
   // 行动 Tool（需确认）
   writeFileTool,
   openEditorTool,

@@ -268,6 +268,13 @@ export default function CharacterEditor({ projectKey }: { projectKey: string }) 
                 )}
               </span>
             </div>
+            {selectedCard.currentState?.provenance && <div className="mb-3 rounded border px-2 py-1.5 text-xs text-[var(--color-text-secondary)]" data-character-state-provenance="true">
+              {selectedCard.currentState.provenance.source === 'author'
+                ? text('来源：作者手工记录', 'Source: author-entered')
+                : selectedCard.currentState.provenance.source === 'model'
+                  ? text(`来源：模型提取（定稿草稿 #${selectedCard.currentState.provenance.sourceDraftId}）`, `Source: model extraction (finalized draft #${selectedCard.currentState.provenance.sourceDraftId})`)
+                  : text('来源：旧项目未知', 'Source: legacy unknown')}
+            </div>}
             <div className="space-y-3">
               {([
                 ['location', text('当前位置/阵营', 'Location / faction')],

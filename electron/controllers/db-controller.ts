@@ -47,6 +47,7 @@ import { ChapterHandoffRepository } from '../repositories/chapter-handoff-reposi
 import { CharacterExtractionCandidateRepository } from '../repositories/character-extraction-candidate-repository'
 import { ConsistencyExemptionRepository } from '../repositories/consistency-exemption-repository'
 import { NarrativeThreadRepository } from '../repositories/narrative-thread-repository'
+import { PlanningMaterialRepository } from '../repositories/planning-material-repository'
 import { StoryContinuityRepository } from '../repositories/story-continuity-repository'
 import { StyleHistoryRepository } from '../repositories/style-history-repository'
 import { KnowledgeEventRepository } from '../repositories/knowledge-event-repository'
@@ -103,6 +104,9 @@ const MUTATING_DATABASE_CHANNELS = new Set([
   'db:narrative-thread-plan-update',
   'db:narrative-thread-plan-delete',
   'db:narrative-thread-event-confirm',
+  'db:planning-material-upsert',
+  'db:planning-material-confirm',
+  'db:planning-material-reject',
   'db:story-continuity-save',
   'db:knowledge-event-save-candidate',
   'db:knowledge-event-status',
@@ -859,6 +863,38 @@ export function registerDatabaseController() {
   ipcMain.handle('db:narrative-thread-event-confirm', async (_event, input, expectedProjectPath: string) => {
     assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
     return { success: true, event: NarrativeThreadRepository.confirmEvent(input) }
+  })
+
+  ipcMain.handle('db:planning-material-list', async (_event, status, expectedProjectPath: string) => {
+    assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+    return PlanningMaterialRepository.list(status)
+  })
+
+  ipcMain.handle('db:planning-material-upsert', async (_event, input, expectedProjectPath: string) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      return { success: true, material: PlanningMaterialRepository.upsertCandidate(input) }
+    } catch (error) {
+      return { success: false, error: String(error) }
+    }
+  })
+
+  ipcMain.handle('db:planning-material-confirm', async (_event, id: string, expectedContentHash: string | undefined, expectedProjectPath: string) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      return { success: true, material: PlanningMaterialRepository.confirm(id, expectedContentHash) }
+    } catch (error) {
+      return { success: false, error: String(error) }
+    }
+  })
+
+  ipcMain.handle('db:planning-material-reject', async (_event, id: string, expectedProjectPath: string) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      return { success: true, material: PlanningMaterialRepository.reject(id) }
+    } catch (error) {
+      return { success: false, error: String(error) }
+    }
   })
 
   ipcMain.handle('db:story-continuity-read', async (_event, chapterNumber: number, expectedProjectPath: string) => {

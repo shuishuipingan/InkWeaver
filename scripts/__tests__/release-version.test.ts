@@ -1,10 +1,10 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
-describe('v1.1.0 freeze-candidate release metadata', () => {
+describe('v1.2.0 freeze-candidate release metadata', () => {
   it('uses the release version in package metadata', () => {
     const pkg = JSON.parse(readFileSync('package.json', 'utf8')) as { version: string }
-    expect(pkg.version).toBe('1.1.0')
+    expect(pkg.version).toBe('1.2.0')
   })
 
   it('resolves the release tag and exact seven-asset contract from the package version', () => {
@@ -13,25 +13,25 @@ describe('v1.1.0 freeze-candidate release metadata', () => {
       releaseAssets: Array<{ name: string }>
     }
 
-    expect(`v${pkg.version}`).toBe('v1.1.0')
+    expect(`v${pkg.version}`).toBe('v1.2.0')
     expect(profile.releaseAssets.map(({ name }) => name.replaceAll('{version}', pkg.version))).toEqual([
-      'inkweaver-setup-1.1.0.exe',
-      'inkweaver-setup-1.1.0.exe.blockmap',
+      'inkweaver-setup-1.2.0.exe',
+      'inkweaver-setup-1.2.0.exe.blockmap',
       'latest.yml',
-      'inkweaver-mac-arm64-1.1.0-installer.dmg',
-      'inkweaver-mac-arm64-1.1.0-installer.dmg.sha256',
-      'inkweaver-mac-x64-1.1.0-installer.dmg',
-      'inkweaver-mac-x64-1.1.0-installer.dmg.sha256',
+      'inkweaver-mac-arm64-1.2.0-installer.dmg',
+      'inkweaver-mac-arm64-1.2.0-installer.dmg.sha256',
+      'inkweaver-mac-x64-1.2.0-installer.dmg',
+      'inkweaver-mac-x64-1.2.0-installer.dmg.sha256',
 
     ])
   })
 
-  it('documents the bilingual v1.1.0 feature set, platform coverage, and security disclosure', () => {
+  it('documents the bilingual v1.2.0 feature set, platform coverage, and security disclosure', () => {
     const chineseReadme = readFileSync('README.md', 'utf8')
     const englishReadme = readFileSync('README_en.md', 'utf8')
 
     for (const expected of [
-      'v1.1.0',
+      'v1.2.0',
       '长篇一致性上下文继承',
       '伏笔与叙事线索系统',
       'EPUB 导入',
@@ -53,7 +53,7 @@ describe('v1.1.0 freeze-candidate release metadata', () => {
     }
 
     for (const expected of [
-      'v1.1.0',
+      'v1.2.0',
       'Long-form continuity context',
       'Foreshadowing and narrative threads',
       'EPUB import',

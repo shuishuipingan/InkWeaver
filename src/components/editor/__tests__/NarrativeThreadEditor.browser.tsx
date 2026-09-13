@@ -11,6 +11,9 @@ import type { NarrativeThreadCandidateGenerator } from '../../../services/narrat
 import NarrativeThreadEditor from '../NarrativeThreadEditor'
 import { emptyStoryContinuityDocument } from '../../../shared/story-continuity'
 
+const openChapterFile = vi.hoisted(() => vi.fn(async () => undefined))
+vi.mock('../../panels/sidebar/sidebar-file-openers', () => ({ openChapterFile }))
+
 const PROJECT_PATH = 'C:\\novels\\narrative-thread'
 let root: Root | undefined
 let container: HTMLDivElement | undefined
@@ -156,6 +159,18 @@ describe('NarrativeThreadEditor', () => {
       expect(container?.textContent).toContain('Chapter 1')
       expect(container?.textContent).toContain('Confirm finalized event')
     })
+  })
+
+  it('offers a session-safe quick jump to the finalized chapter containing evidence', async () => {
+    plans = [{
+      id: 6, title: '门上的刻痕', type: '伏笔', targetStartChapter: 1, targetEndChapter: 3,
+      authorIntent: '第三章解释来源。', status: 'planted', dormantChapters: 0, overdue: false,
+      createdAt: '', updatedAt: '', events: [{ id: 6, planId: 6, draftId: 7, chapterNumber: 1, chapterTitle: '第一章', type: 'planted', evidence: '门上出现刻痕。', reason: '埋设', evidenceContentHash: 'a'.repeat(64), createdAt: '' }],
+    }]
+    openChapterFile.mockClear()
+    await act(async () => root?.render(<NarrativeThreadEditor projectKey={PROJECT_PATH} />))
+    await vi.waitFor(() => expect(container?.querySelector('[data-narrative-evidence-chapter="1"]')).not.toBeNull())
+    expect(container?.querySelector('[data-narrative-evidence-chapter="1"]')?.getAttribute('title')).toContain('打开证据')
   })
 
   it('summarizes narrative-thread events across saved volumes without changing their status', async () => {

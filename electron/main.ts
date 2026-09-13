@@ -1,4 +1,5 @@
 import { app, BrowserWindow, ipcMain, shell } from 'electron'
+import { runtimeLogger, registerRuntimeLoggerIPC } from './services/runtime-logger'
 import { registerIPCHandlers } from './ipc-handlers'
 import { registerMCPHandlers } from './mcp/mcp-ipc-bridge'
 import { mainT } from './i18n'
@@ -35,8 +36,6 @@ import { configureSingleInstanceRuntime } from './services/single-instance-runti
 
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
-import { runtimeLogger, registerRuntimeLoggerIPC } from './services/runtime-logger'
-
 // 主进程兜底：任何未捕获异常都先写入文件日志，再决定是否继续。
 // 重点是 EPIPE——主进程 stdout/stderr 是已断开的管道时（从资源管理器启动、
 // 终端关闭等），console.* 抛 EPIPE 会升级成 uncaughtException 并弹出
@@ -55,6 +54,15 @@ process.on('unhandledRejection', (reason) => {
   try {
     runtimeLogger.error('main', '未处理的 Promise 拒绝', { reason: String(reason) })
   } catch { /* 忽略 */ }
+})
+process.on('warning', (warning) => {
+  try {
+    runtimeLogger.warn('main', 'Node 运行时警告', {
+      name: warning.name,
+      message: warning.message,
+      stack: warning.stack,
+    }, { operation: 'process.warning', outcome: 'failed' })
+  } catch { /* logging must not turn a runtime warning into a crash */ }
 })
 
 // Electron 41 在部分 Windows 环境中无法启动受限 GPU 子进程（0xC0000135），
@@ -217,9 +225,15 @@ async function runPackagedOfficialHomepageSmoke(token: string) {
   })
 }
 
-// macOS: 关闭所有窗口不退出
-app.on('before-quit', () => {
-  runtimeLogger.info('main', '应用退出')
+// macOS: 关闭所有窗口不退出. On an actual quit, keep the process alive long
+// enough for the append-only writer to flush the final lifecycle events.
+let shutdownFlushStarted = false
+app.on('before-quit', (event) => {
+  if (shutdownFlushStarted) return
+  shutdownFlushStarted = true
+  event.preventDefault()
+  runtimeLogger.info('main', '应用退出', undefined, { operation: 'app.before-quit', outcome: 'started' })
+  void runtimeLogger.flush().finally(() => app.quit())
 })
 app.on('window-all-closed', () => {
   if (!applicationInstanceAccepted) return
@@ -281,7 +295,14 @@ app.whenReady().then(async () => {
   registerMCPHandlers()
   // 更新功能失败不能阻断作者进入应用；窗口先于更新运行时创建。
   createWindow()
-  const updateRuntimeEnabled = isWindowsUpdateRuntimeEnabled(app.isPackaged, VITE_DEV_SERVER_URL)
+  // The legacy helper keeps its Windows-only default for older callers; the
+  // explicit fourth flag enables the same updater on packaged macOS builds.
+  const updateRuntimeEnabled = isWindowsUpdateRuntimeEnabled(
+    app.isPackaged,
+    VITE_DEV_SERVER_URL,
+    process.platform,
+    true,
+  )
   const updateConfiguration = updateRuntimeEnabled && !hasWindowsUpdateConfiguration()
     ? 'missing'
     : 'available'

@@ -3,6 +3,7 @@ import type { BlueprintRangeCommitReceipt } from '../../../../electron/repositor
 import { resolvePromptTemplate } from '../../prompt-templates'
 import { DirectoryPromptBuilder } from '../../prompts/prompt-builder'
 import { createGenerationRuntime, type GenerationRuntime } from '../../generation/generation-runtime'
+import { ipc } from '../../ipc-client'
 import type { GenerationTask } from '../../generation/generation-harness'
 import {
   createStructuredBatchExecutor,
@@ -258,6 +259,22 @@ export class GenerateDirectoryCommand extends BaseWorkflowCommand<ChapterBluepri
       )
     }
 
+    let confirmedPlanningMaterials = ''
+    try {
+      const materials = await ipc.invokeWithProjectSession(
+        projectSession,
+        'db:planning-material-list',
+        'confirmed',
+        expectedProjectPath,
+      )
+      confirmedPlanningMaterials = materials
+        .filter(material => material.status === 'confirmed' && material.content.trim())
+        .slice(0, 12)
+        .map(material => `【已确认规划资料：${material.name}】\n${material.content.slice(0, 4_000)}`)
+        .join('\n\n')
+      context.data.planningMaterialCount = materials.length
+    } catch { /* old projects without planning-material migration remain usable */ }
+
     let startChapter = 1
     let endChapter = totalChapters
     if (this.params.mode === 'append') {
@@ -294,6 +311,7 @@ export class GenerateDirectoryCommand extends BaseWorkflowCommand<ChapterBluepri
 
     let activeRange = { startChapter, endChapter }
     const contract: StructuredBatchContract<number, ChapterBlueprint> = {
+      retryInvalidOutputWithSmallerBatch: true,
       buildTask: ({ items, validatedPrefix }) => {
         const batchStart = items[0]
         const batchEnd = items.at(-1)
@@ -325,6 +343,7 @@ export class GenerateDirectoryCommand extends BaseWorkflowCommand<ChapterBluepri
           .withPacingGuidance((context.data.pacingGuidance as string) || '')
           .build()
           + `\n\n${blueprintSemanticGenerationContract(writingLanguage)}`
+          + (confirmedPlanningMaterials ? `\n\n【作者已确认规划资料】\n${confirmedPlanningMaterials}` : '')
 
         return {
           purpose: 'chapter-blueprint-directory',

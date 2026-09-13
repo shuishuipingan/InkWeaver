@@ -7,6 +7,8 @@ export type CharacterExtractionCandidateStatus = 'pending' | 'accepted' | 'rejec
 export interface CharacterExtractionSource {
   sourceId: string
   sourceHash: string
+  /** Cryptographic hash of the finalized source when available. */
+  contentHash?: string
   kind: CharacterExtractionSourceKind
   chapterNumbers: number[]
 }

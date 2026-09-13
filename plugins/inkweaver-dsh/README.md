@@ -22,11 +22,12 @@ dsh plugin --profile web add '<path-to-inkweaver-dsh-tarball.tgz>'
 dsh --profile web
 ```
 
-The development tree is not an npm installation target. The v1.1.0 tarball is
-`shuishuipingan-inkweaver-dsh-1.1.0.tgz`; use the SHA-256 shown on the [v1.1.0
-GitHub Release](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.1.0)
-as the authoritative byte check. Its profile qualification receipt is bound to
-the frozen release source tree.
+The development tree is not an npm installation target. The v1.2.0 tarball is
+`shuishuipingan-inkweaver-dsh-1.2.0.tgz`. The exact byte count and SHA-256 are
+published outside the self-contained archive in the root 1.2.0 acceptance
+receipt and on the GitHub Release; the Release asset is the authoritative
+download and byte check after publication. The profile qualification receipt
+is retained at `.runtime/.cache/dsh-ai-novel-qualification-128/latest-receipt.json`.
 
 `@ethanyoq/dsh-ai-novel-writer` is the pre-migration package name. It is kept only as a historical identifier in migration documentation; do not install it for the InkWeaver line.
 
@@ -152,14 +153,14 @@ This maintainer-only command packs the plugin, installs those bytes into an isol
 
 The precise runtime gates, evidence order, and failure triage live in [V2 development gates](docs/v2-development-gates.md). Logs, screenshots, and the machine-readable receipt live under `.runtime/.cache/dsh-ai-novel-qualification-128` with `.vibe-owner.json` ownership and expiry. This keyless snapshot does not replace native gpt-5.6-terra manual qualification.
 
-The final complete receipt was produced on 2026-09-12 from source commit
-`b40cd124525fd7805cdf1c35f07eeee187d394eb` against Harness commit
-`183f08e9c6dde7e36cd2318eaee70b0da08fb35e`. It verified the packed tarball
-(`35dd442171a426bcbea214b595f52ca7edcd20531567e3bdbc3b11e7bceb6dba`,
-241389 bytes), the
+The 1.2.0 qualification receipt is produced from the release source tree
+against Harness commit
+`183f08e9c6dde7e36cd2318eaee70b0da08fb35e`. It verifies the packed tarball
+and records its digest in the root acceptance receipt, the
 isolated profile add/remove/reinstall cycle, the `inkweaver-v2` roster and
 Host/Client mount, three Chrome journeys, model-tool isolation, and schema-5
-persistence readback. The desktop v1.1.0 Release is now published; npm remains
+persistence readback. The desktop v1.2.0 Release is published only after the
+same-byte platform gates pass; npm remains
 intentionally unpublished.
 
 The package does not modify DeepSeek Harness upstream or its agent loop.

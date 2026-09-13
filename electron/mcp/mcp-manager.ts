@@ -14,7 +14,8 @@ import { spawn, type ChildProcess } from 'child_process'
 import { readFile } from 'fs/promises'
 import { join } from 'path'
 import { app } from 'electron'
-import { safeConsole } from '../utils/safe-console'
+import { ingestRuntimeLogEvent, runtimeLogger } from '../services/runtime-logger'
+import { installChildProcessCapture } from '../services/runtime-log-capture'
 
 // ===== 类型定义 =====
 
@@ -208,20 +209,28 @@ class MCPManagerImpl {
 
     runtime.process = proc
 
+    installChildProcessCapture(proc, ingestRuntimeLogEvent, {
+      sessionId: `mcp-${runtime.config.id}`,
+      process: 'mcp',
+      source: `mcp:${runtime.config.id}`,
+      childId: runtime.config.id,
+      nextSequence: (() => { let sequence = 0; return () => ++sequence })(),
+      pid: proc.pid,
+      protocol: true,
+      onSinkError: error => runtimeLogger.error('mcp', 'MCP 子进程日志捕获失败', {
+        serverId: runtime.config.id,
+        error: String(error),
+      }),
+    })
+
     // 监听 stdout（JSON-RPC 消息）
     proc.stdout?.on('data', (data: Buffer) => {
       runtime.buffer += data.toString()
       this.processBuffer(runtime)
     })
 
-    // 监听 stderr（调试日志）
-    proc.stderr?.on('data', (data: Buffer) => {
-      safeConsole.warn(`[MCP:${runtime.config.id}] stderr:`, data.toString())
-    })
-
     // 监听进程退出
-    proc.on('exit', (code) => {
-      safeConsole.log(`[MCP:${runtime.config.id}] 进程退出，code=${code}`)
+    proc.on('exit', () => {
       runtime.status = 'disconnected'
       this.notifyStatusChange(runtime.config.id, 'disconnected')
     })

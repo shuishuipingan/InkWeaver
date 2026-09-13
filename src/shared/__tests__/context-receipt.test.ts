@@ -61,4 +61,14 @@ describe('selectContextEntries', () => {
     expect(JSON.stringify(result.receipt)).not.toContain('门后传来')
     expect(JSON.stringify(result.receipt)).not.toContain('不应重复')
   })
+
+  it('records an unavailable required author task instead of silently dropping it', () => {
+    const result = selectContextEntries(2, [{
+      id: 'author-task:2', layer: 'author-task', label: 'Author task',
+      content: '', priority: 100, order: 0, required: true,
+    }], { maxChars: 10 })
+    expect(result.receipt.entries).toEqual([expect.objectContaining({
+      id: 'author-task:2', included: false, required: true, reason: 'unavailable', charCount: 0,
+    })])
+  })
 })

@@ -44,7 +44,14 @@ export interface CharacterRosterCharacterState {
   keyItems: string
   recentEvents: string
   updatedAtChapter: number
+  /** How this state was obtained and, for model output, which finalized source supports it. */
+  provenance?: CharacterStateProvenance
 }
+
+export type CharacterStateProvenance =
+  | { source: 'author'; recordedAt?: string }
+  | { source: 'model'; sourceDraftId: number; sourceContentHash: string; evidence: string; recordedAt?: string }
+  | { source: 'legacy-unknown'; recordedAt?: string }
 
 /**
  * 角色名单中的一个结构化事实条目。`characterId` 是跨改名保持不变的

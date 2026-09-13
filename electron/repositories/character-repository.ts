@@ -8,6 +8,7 @@ import {
     normalizeCharacterRole,
     type CharacterRole,
 } from '../../src/shared/character-role'
+import type { CharacterStateProvenance } from '../../src/shared/character-roster'
 import { rewriteRelationshipsAfterRename } from '../../src/shared/character-rename-references'
 
 /** 角色卡动态状态 */
@@ -19,6 +20,7 @@ export interface CharacterStateData {
     keyItems: string
     recentEvents: string
     updatedAtChapter: number
+    provenance?: CharacterStateProvenance
 }
 
 /** 角色卡完整数据（前端驼峰接口） */
@@ -43,7 +45,7 @@ export interface CharacterRenameData {
     newName: string
 }
 
-function rowToData(row: Record<string, unknown>): CharacterData {
+function rowToData(db: NonNullable<ReturnType<typeof getProjectDb>>, row: Record<string, unknown>): CharacterData {
     const data: CharacterData = {
         name: row.name as string,
         role: normalizeCharacterRole(row.role),
@@ -71,6 +73,44 @@ function rowToData(row: Record<string, unknown>): CharacterData {
             recentEvents: (row.cs_recent_events as string) || '',
             updatedAtChapter: updatedChapter,
         }
+        try {
+            const history = db.prepare(`
+              SELECT provenance_source, source_draft_id, source_content_hash, evidence
+              FROM character_state_history
+              WHERE character_name = ?
+              ORDER BY chapter_number DESC, id DESC
+              LIMIT 1
+            `).get(data.name) as {
+                provenance_source: 'author' | 'model' | 'legacy-unknown'
+                source_draft_id: number | null
+                source_content_hash: string
+                evidence: string
+            } | undefined
+            if (history?.provenance_source === 'model') {
+                const source = history.source_draft_id
+                    ? db.prepare(`
+                        SELECT finalization_outbox.content_hash AS content_hash
+                        FROM drafts
+                        JOIN finalization_outbox ON finalization_outbox.draft_id = drafts.id
+                        WHERE drafts.id = ? AND drafts.status = 'finalized'
+                    `).get(history.source_draft_id) as { content_hash?: string } | undefined
+                    : undefined
+                if (!source || source.content_hash !== history.source_content_hash || !history.evidence.trim()) {
+                    delete data.currentState
+                } else {
+                    data.currentState.provenance = {
+                        source: 'model',
+                        sourceDraftId: history.source_draft_id!,
+                        sourceContentHash: history.source_content_hash,
+                        evidence: history.evidence,
+                    }
+                }
+            } else if (history?.provenance_source === 'author' || history?.provenance_source === 'legacy-unknown') {
+                data.currentState.provenance = { source: history.provenance_source }
+            }
+        } catch {
+            // Older test fixtures/projects may not have the history table yet.
+        }
     }
 
     return data
@@ -94,7 +134,7 @@ export class CharacterRepository {
         END ASC
     `).all() as Record<string, unknown>[]
 
-        return rows.map(rowToData)
+        return rows.map(row => rowToData(db, row))
     }
 
     /** 获取单个角色 */
@@ -106,7 +146,7 @@ export class CharacterRepository {
             'SELECT * FROM characters WHERE name = ?'
         ).get(name) as Record<string, unknown> | undefined
 
-        return row ? rowToData(row) : null
+        return row ? rowToData(db, row) : null
     }
 
     /** 获取角色数量 */

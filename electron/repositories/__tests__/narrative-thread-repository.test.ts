@@ -1,4 +1,5 @@
 import fs from 'node:fs'
+import { createHash } from 'node:crypto'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -112,6 +113,7 @@ describe('NarrativeThreadRepository', () => {
       [1, 'planted', '旧码头'],
       [3, 'resolved', '仓库门'],
     ])
+    expect(view?.events[0]?.evidenceContentHash).toBe(createHash('sha256').update('林岚捡到钥匙。').digest('hex'))
     expect(NarrativeThreadRepository.getPlan(plan.id)?.authorIntent).toBe('第三章打开仓库。')
 
     DraftRepository.clearAll()
@@ -144,6 +146,30 @@ describe('NarrativeThreadRepository', () => {
       dormantChapters: 5,
       overdue: true,
     }))
+  })
+
+  it('projects main and sub-thread progress with a next target chapter', () => {
+    const main = NarrativeThreadRepository.createPlan({
+      title: '主线谜团', type: '主线', targetStartChapter: 1, targetEndChapter: 6,
+      authorIntent: '第六章揭示真相。', lane: 'main',
+    })
+    const sub = NarrativeThreadRepository.createPlan({
+      title: '支线回信', type: '支线', targetStartChapter: 2, targetEndChapter: 4,
+      authorIntent: '第四章收到回信。', lane: 'sub', parentId: main.id,
+    })
+    const first = FinalizedDraftImportRepository.commit(projectRoot, {
+      operationId: 'thread-progress',
+      chapters: [{ chapterNumber: 2, title: '第二章', content: '主线谜团推进。', wordCount: countDraftUnits('主线谜团推进。') }],
+    })
+    NarrativeThreadRepository.confirmEvent({
+      planId: main.id, draftId: first.drafts[0]!.draftId, type: 'progressing', evidence: '主线谜团推进', reason: '推进主线。',
+    })
+
+    const views = NarrativeThreadRepository.list()
+    expect(views.find(view => view.id === main.id)).toMatchObject({
+      lane: 'main', progress: expect.objectContaining({ percent: 60, nextTargetChapter: 3 }),
+    })
+    expect(views.find(view => view.id === sub.id)).toMatchObject({ lane: 'sub', parentId: main.id, progress: { percent: 0, nextTargetChapter: 2 } })
   })
 
   it('requires author rationale and evidence that exists in the finalized content', () => {

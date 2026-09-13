@@ -4,17 +4,17 @@
 
 织墨 InkWeaver 是一款面向长篇小说创作的本地优先桌面工作台。它把项目设定、角色、世界观、章节蓝图、正文、审稿、修订与定稿组织成可追溯的创作链，让作者在保留最终决定权的前提下使用自己选择的 AI 模型。
 
-当前版本：**v1.1.0（已发布）**
+当前版本：**v1.2.0（冻结候选，待 GitHub Release）**
 
-> 1.1.0 已完成路线图功能的内部工程验收，并已发布正式 GitHub Release。桌面安装包和 DSH 插件 tarball 均来自同一冻结源码 `b40cd124525fd7805cdf1c35f07eeee187d394eb`；本轮不发布 npm，外部文学质量评阅按发布范围豁免。
+> 1.2.0 在 1.1.0 正式版本基础上补齐全局结构化日志、持续写作上下文、规划资料、阶段 Skill、证据化审稿和并发/恢复回归；冻结前必须由同一源码生成并核验 Windows/macOS 安装包与 DSH 插件 tarball。本轮不发布 npm，外部文学质量评阅不作为工程门槛。
 
-接手开发时先看[项目文件指南](docs/PROJECT-FILE-GUIDE.md)，再看[完整功能图](docs/upgrade/INKWEAVER-1.1.0-FULL-FEATURE-MAP.md)和[交付追踪表](docs/upgrade/INKWEAVER-1.1.0-DELIVERY-TRACKER.md)。文件指南按事实源、主进程副作用、Renderer 投影、DSH 插件和发布生成物解释每个目录的职责。
+接手开发时先看[项目文件指南](docs/PROJECT-FILE-GUIDE.md)，再看[1.2.0 完整功能与验收图](docs/upgrade/INKWEAVER-1.2.0-FEATURE-AND-ACCEPTANCE-MAP.md)、[全局日志验收收据](docs/upgrade/GLOBAL-LOGGING-ACCEPTANCE-RECEIPT-2026-09-13.md)和历史 [1.1.0 功能图](docs/upgrade/INKWEAVER-1.1.0-FULL-FEATURE-MAP.md)。文件指南按事实源、主进程副作用、Renderer 投影、DSH 插件和发布生成物解释每个目录的职责。
 
 开发分支、GitHub topic 和待发布门禁的当前回读见[GitHub/分发核验收据](docs/upgrade/GITHUB-DISTRIBUTION-RECEIPT.md)。
 
-逐项用户可见更新见[更新日志](CHANGELOG.md)；工程收据和限制见[1.1.0 GitHub 分发收据](docs/upgrade/GITHUB-DISTRIBUTION-RECEIPT.md)。
+逐项用户可见更新见[更新日志](CHANGELOG.md)；工程收据、限制和每项命令证据见 [1.2.0 验收收据](docs/upgrade/INKWEAVER-1.2.0-ACCEPTANCE-RECEIPT.md)。
 
-[下载 v1.1.0 Windows / macOS 桌面版](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.1.0) · [查看源代码](https://github.com/shuishuipingan/InkWeaver/tree/1.1.0-development) · [DSH 插件说明](plugins/inkweaver-dsh/README.md)
+[下载 v1.2.0 Windows / macOS 桌面版（Release 发布后可用）](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.2.0) · [查看源代码](https://github.com/shuishuipingan/InkWeaver/tree/main) · [DSH 插件说明](plugins/inkweaver-dsh/README.md)
 
 ## 织墨解决什么问题
 
@@ -43,6 +43,23 @@
 - **可恢复任务**：长时间生成、批量章节、导入、单章写稿、人物提取、审稿、审稿驱动修稿、只读修稿、定稿、定稿后处理修复、架构生成、配置生成和章节蓝图生成具有不含正文的恢复收据；恢复时重新读取权威来源或安全启动参数并校验项目 lease，避免旧任务写入错误项目。
 - **中英文界面**：界面语言与小说写作语言相互独立。
 - **更准确的失败提示**：内容限制、模型调用失败、上下文预算不足和资源冲突不会被伪装成成功结果。
+
+## 1.2.0 创作与日志体验
+
+1.2.0 的验收目标是让一本长篇小说保持“持续发展”的阅读感，同时让每一次模型调用、作者决定和失败恢复都留下可追溯证据。新能力按作者实际工作顺序组织：
+
+- **阶段化 Writing Skill**：Skill 可以作为独立 `SKILL.md` 安装、卸载和重新加载，并标明 `planning`、`drafting`、`review`、`polish` 阶段；Agent 面板按当前阶段筛选，用户 Skill 与项目 Skill 仍受路径和项目会话隔离。
+- **主线/支线故事线视图**：每条叙事线显示 planned、planted、progressing、resolved 或 dormant/overdue 的投影进度、下一目标章节和事件数；事件行保留定稿草稿 ID、正文指纹和证据，点击“打开证据”前会重新验证当前项目会话。
+- **规划资料导入**：大纲、世界观、人物表、时间线和风格说明可导入当前项目。导入先形成带 SHA-256 的 candidate，只有作者显式确认后才进入蓝图和后续写作上下文；重复内容幂等，冲突和拒绝均可回读。
+- **角色权威边界**：蓝图明确列出的角色和作者确认的候选才可进入角色表；模型在定稿后发现的新角色只进入候选队列，不会自动写入 roster。每次状态变化追加 author/model/legacy-unknown 来源、定稿 ID、正文 hash 和证据区间。
+- **完整中文长篇链**：项目会话、写作语言、界面语言、模型 lease 和来源指纹从蓝图、草稿、审稿、修订到定稿保持一致；草稿待审、作者确认和自动定稿是可见的不同阶段，不会把候选稿伪装成定稿。
+- **四层章节材料**：写前上下文把作者任务、未来计划、定稿历史、未定稿候选稿和相邻正文片段分开显示；每层有 source span、纳入/省略原因和覆盖状态，预算不足或来源缺失不会静默吞掉作者硬性要求。
+- **证据化审稿**：蓝图关键事件逐项标记 completed、prepared、deferred、not-found 或 needs-verification，并附来源章节/正文证据；证据不足不会自动触发修稿，修订目标必须由作者明确勾选。
+- **连续草稿血缘**：批量续写优先读取实际保存的候选稿 ID、版本和完整正文，下一章不读取或污染 finalized history；关闭、重启或切换标签页后仍按保存版本继续。
+- **全局结构化日志**：主进程、Renderer、IPC handle、工作流 UI、模型调用、更新器、MCP 子进程、文件/数据库边界、窗口生命周期、未捕获异常和 Promise 拒绝统一写入 append-only JSONL。日志包含事件 ID、进程/PID、序号、时间、run/project session/correlation ID、操作结果、耗时和错误链。
+- **日志完整性与诊断**：日志按日期/大小轮转并生成 SHA-256 manifest，重试队列和 emergency spool 防止磁盘/IPC 短暂失败静默丢失；重启回放去重，页查询显示 pending/degraded 状态，主进程可导出包含段、manifest、bundle 清单和缺口状态的完整诊断包。默认只存元数据，长字符串、路径和凭据会限长/脱敏。
+- **并发、恢复与导出护栏**：多标签保存、旧请求、过期恢复、非定稿导出、拆分目录残留、标题截断、更新队列覆盖和 Windows 辅助进程退出均有来源指纹、CAS、唯一临时目录或精确进程分类保护。
+- **Windows/macOS 更新**：已打包 Windows x64、macOS arm64 和 macOS x64 使用同一 UpdateService 状态机；应用内检查、下载、安装、单飞排队和已下载版本单调性均有日志和失败分类。
 
 ## 1.1.0 创作体验
 
@@ -118,12 +135,12 @@ inkweaver-mac-arm64-<版本号>-installer.dmg
 inkweaver-mac-x64-<版本号>-installer.dmg
 ```
 
-当前 macOS 安装包未代码签名（未使用 Developer ID 签名）且未公证。请只从[正式 v1.1.0 Release](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.1.0)下载，并按系统安全提示确认首次打开。桌面 Release 使用七项资产合同，分别覆盖 macOS Apple Silicon 与 macOS Intel，另附 DSH 插件 tarball。
+当前 macOS 安装包未代码签名（未使用 Developer ID 签名）且未公证。请只从[正式 v1.2.0 Release](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.2.0)下载，并按系统安全提示确认首次打开。桌面 Release 使用七项资产合同，分别覆盖 macOS Apple Silicon 与 macOS Intel，另附 DSH 插件 tarball。
 ## DeepSeek Harness 插件
 
-仓库中的 `@shuishuipingan/inkweaver-dsh@1.1.0` 是独立的 DSH 插件，不是桌面版的替代品。它提供精简的项目设置、故事架构、人物、全书纲要、章节蓝图和章节正文流程；模型修改先进入 Proposal，由用户审核应用后才改变权威项目状态。本轮 1.1.0 不发布 npm，插件通过 GitHub Release tarball 和本地安装说明交付。
+仓库中的 `@shuishuipingan/inkweaver-dsh@1.2.0` 是独立的 DSH 插件，不是桌面版的替代品。它提供精简的项目设置、故事架构、人物、全书纲要、章节蓝图和章节正文流程；模型修改先进入 Proposal，由用户审核应用后才改变权威项目状态。本轮 1.2.0 不发布 npm，插件通过 GitHub Release tarball 和本地安装说明交付。
 
-迁移提示：`@ethanyoq/dsh-ai-novel-writer` 是仓库迁移前的历史包名，不是 1.1.0 开发线的交付包；新安装请只使用 `@shuishuipingan/inkweaver-dsh`。DSH 宿主本身与 Web UI companion 由 DeepSeek Harness 生态维护，不属于本仓库的 npm 包。
+迁移提示：`@ethanyoq/dsh-ai-novel-writer` 是仓库迁移前的历史包名，不是 1.2.0 开发线的交付包；新安装请只使用 `@shuishuipingan/inkweaver-dsh`。DSH 宿主本身与 Web UI companion 由 DeepSeek Harness 生态维护，不属于本仓库的 npm 包。
 
 ```sh
 dsh plugin --profile web add '<path-to-inkweaver-dsh-tarball.tgz>'
@@ -132,7 +149,7 @@ dsh --profile web
 
 插件使用独立的 `.ai-novel` 项目格式，不读取桌面版项目。完整说明见 [插件文档](plugins/inkweaver-dsh/README.md)。
 
-正式 tarball：`shuishuipingan-inkweaver-dsh-1.1.0.tgz`，SHA-256：`35dd442171a426bcbea214b595f52ca7edcd20531567e3bdbc3b11e7bceb6dba`。它兼容官方 `@deepseek-ai/dsh@0.1.5-rc.1`；外部 `@linxin666/dsh-web-all@0.3.20` 只是宿主 companion，不属于本项目交付物。
+正式 tarball：`shuishuipingan-inkweaver-dsh-1.2.0.tgz`，当前资格构建为 241,776 bytes、SHA-256 `0b67def78e2660ad2e29840efa158132ec00d6ec51bc81f0ed36b4067515ad66`；GitHub Release 资产必须逐字节复现该 digest。它兼容目前官方默认发布渠道的 `@deepseek-ai/dsh@0.1.5-rc.1`；外部 `@linxin666/dsh-web-all@0.3.20` 只是宿主 companion，不属于本项目交付物。
 
 ## 本地开发
 

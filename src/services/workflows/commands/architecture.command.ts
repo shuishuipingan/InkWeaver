@@ -765,6 +765,7 @@ export class GenerateCharactersCommand extends BaseWorkflowCommand<string> {
     assertArchitectureProjectSessionCurrent(projectSession, context)
     const manifestById = new Map(manifest.map(slot => [slot.slotId, slot]))
     const detailContract: StructuredBatchContract<CharacterIdentitySlot, CharacterDetailOutput> = {
+      retryInvalidOutputWithSmallerBatch: true,
       buildTask: ({ items, validatedPrefix }) => {
         this.assertNotCancelled(context)
         assertArchitectureProjectSessionCurrent(projectSession, context)

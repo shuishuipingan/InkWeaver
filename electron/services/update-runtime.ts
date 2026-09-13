@@ -6,8 +6,18 @@ export function isWindowsUpdateRuntimeEnabled(
   isPackaged: boolean,
   devServerUrl: string | undefined,
   platform = process.platform,
+  includeMac = false,
 ): boolean {
-  return platform === 'win32' && isPackaged && !devServerUrl
+  return (platform === 'win32' || (includeMac && platform === 'darwin')) && isPackaged && !devServerUrl
+}
+
+/** Packaged updater support shared by Windows and macOS (x64/arm64). */
+export function isUpdateRuntimeEnabled(
+  isPackaged: boolean,
+  devServerUrl: string | undefined,
+  platform = process.platform,
+): boolean {
+  return (platform === 'win32' || platform === 'darwin') && isPackaged && !devServerUrl
 }
 
 /**
@@ -15,6 +25,15 @@ export function isWindowsUpdateRuntimeEnabled(
  * 这个文件时，不能把本地配置缺失误导为网络故障，更不能启动更新器探测。
  */
 export function hasWindowsUpdateConfiguration(
+  resourcesPath: string | undefined = process.resourcesPath,
+  existsAt: (filePath: string) => boolean = existsSync,
+): boolean {
+  return typeof resourcesPath === 'string'
+    && existsAt(path.join(resourcesPath, 'app-update.yml'))
+}
+
+/** Electron Builder emits the same app-update.yml contract for Windows/macOS. */
+export function hasUpdateConfiguration(
   resourcesPath: string | undefined = process.resourcesPath,
   existsAt: (filePath: string) => boolean = existsSync,
 ): boolean {

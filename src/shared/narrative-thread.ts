@@ -1,5 +1,6 @@
 export type NarrativeThreadStatus = 'planned' | 'planted' | 'progressing' | 'resolved' | 'abandoned'
 export type NarrativeThreadEventType = Exclude<NarrativeThreadStatus, 'planned'>
+export type NarrativeThreadLane = 'main' | 'sub'
 
 export const DEFAULT_NARRATIVE_THREAD_DORMANT_THRESHOLD = 3
 export const MIN_NARRATIVE_THREAD_DORMANT_THRESHOLD = 1
@@ -21,6 +22,8 @@ export interface NarrativeThreadPlanInput {
   targetStartChapter: number
   targetEndChapter: number
   authorIntent: string
+  lane?: NarrativeThreadLane
+  parentId?: number
 }
 
 export interface NarrativeThreadEventInput {
@@ -35,6 +38,8 @@ export interface NarrativeThreadEvent extends NarrativeThreadEventInput {
   id: number
   chapterNumber: number
   chapterTitle: string
+  /** SHA-256 of the complete finalized source bound at confirmation time. */
+  evidenceContentHash?: string
   createdAt: string
 }
 
@@ -46,6 +51,11 @@ export interface NarrativeThreadView extends NarrativeThreadPlanInput {
   events: NarrativeThreadEvent[]
   createdAt: string
   updatedAt: string
+  progress?: {
+    percent: number
+    nextTargetChapter?: number
+    eventCount: number
+  }
 }
 
 export interface NarrativeThreadPlanRecord extends NarrativeThreadPlanInput {

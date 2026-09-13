@@ -249,6 +249,10 @@ function DraftEditorSession({ tabId, filePath, content, projectKey }: Props) {
   const finalizationConflict = editorTab?.finalizationConflict
   const currentBodyRef = useRef(content)
 
+  useEffect(() => {
+    currentBodyRef.current = content
+  }, [content])
+
   const confirmChapterHandoff = async (handoffId: string) => {
     const session = captureProjectSession(currentProject)
     if (!session || !meta || !isProjectSessionPath(session, projectKey)) return
@@ -382,6 +386,7 @@ function DraftEditorSession({ tabId, filePath, content, projectKey }: Props) {
     const saveSnapshot = {
       content: targetTab.content ?? draftContent,
       contentRevision: targetTab.contentRevision ?? 0,
+      ...(targetTab.instanceId ? { tabInstanceId: targetTab.instanceId } : {}),
     }
     setSaving(true)
     try {

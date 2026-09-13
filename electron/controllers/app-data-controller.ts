@@ -41,6 +41,36 @@ function isPromptTemplate(value: unknown): value is AppPromptTemplate {
     && typeof (value as AppPromptTemplate).key === 'string'
 }
 
+const SAFE_SKILL_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/u
+
+function skillDirectoryPath(name: string): string {
+  if (!SAFE_SKILL_NAME.test(name) || name === '.' || name === '..') {
+    throw new Error(text('技能标识无效', 'The Skill identifier is invalid'))
+  }
+  const skillsDirectory = path.resolve(VELA_HOME, 'skills')
+  const candidate = path.resolve(skillsDirectory, name)
+  if (!isContainedPath(skillsDirectory, candidate)) {
+    throw new Error(text('技能目标超出应用目录', 'The Skill target is outside the app directory'))
+  }
+  return candidate
+}
+
+function validateSkillDocument(name: string, content: unknown): asserts content is string {
+  if (typeof content !== 'string' || content.length === 0 || Buffer.byteLength(content, 'utf8') > 1_000_000) {
+    throw new Error(text('技能文件为空或过大', 'The Skill file is empty or too large'))
+  }
+  const match = content.match(/^---\s*\n([\s\S]*?)\n---\s*(?:\n|$)/u)
+  if (!match) throw new Error(text('技能缺少 frontmatter', 'The Skill is missing frontmatter'))
+  const fields = new Map<string, string>()
+  for (const line of match[1]!.split('\n')) {
+    const field = line.match(/^\s*([^:]+):\s*(.*?)\s*$/u)
+    if (field) fields.set(field[1]!.trim(), field[2]!.trim())
+  }
+  if (fields.get('name') !== name || !fields.get('description')) {
+    throw new Error(text('技能 name/description 与内容不一致', 'The Skill name/description is invalid'))
+  }
+}
+
 /**
  * ~/.vela 的提示词和用户 Skill 只能由此固定根目录控制器访问；渲染层不接收
  * 任意 app-data 路径，也不借用外部文件授权。
@@ -136,5 +166,38 @@ export function registerAppDataController(): void {
       }
     }
     return skills
+  })
+
+  ipcMain.handle('skills:install-user', async (_event, name: string, content: string) => {
+    try {
+      const directory = skillDirectoryPath(name)
+      validateSkillDocument(name, content)
+      if (fs.existsSync(directory) && fs.lstatSync(directory).isSymbolicLink()) {
+        throw new Error(text('技能目录不能是符号链接', 'A Skill directory cannot be a symbolic link'))
+      }
+      fs.mkdirSync(directory, { recursive: true })
+      const target = path.join(directory, 'SKILL.md')
+      const temporary = path.join(directory, `.SKILL.md.${process.pid}.${Date.now()}.tmp`)
+      fs.writeFileSync(temporary, content, 'utf8')
+      fs.renameSync(temporary, target)
+      return { success: true }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) }
+    }
+  })
+
+  ipcMain.handle('skills:remove-user', async (_event, name: string) => {
+    try {
+      const directory = skillDirectoryPath(name)
+      if (fs.existsSync(directory) && fs.lstatSync(directory).isSymbolicLink()) {
+        throw new Error(text('技能目录不能是符号链接', 'A Skill directory cannot be a symbolic link'))
+      }
+      const target = path.join(directory, 'SKILL.md')
+      if (fs.existsSync(target)) fs.unlinkSync(target)
+      try { fs.rmdirSync(directory) } catch { /* retain non-empty user directory */ }
+      return { success: true }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) }
+    }
   })
 }

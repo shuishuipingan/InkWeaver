@@ -34,12 +34,24 @@ import type { StoryContinuityDocument } from './story-continuity'
 import type { SaveStoryContinuityRequest } from '../../electron/repositories/story-continuity-repository'
 import type { KnowledgeEvent } from './knowledge-event'
 import type {
+  PlanningMaterialInput,
+  PlanningMaterialRecord,
+  PlanningMaterialStatus,
+} from './planning-material'
+import type {
   UpdateActionResponse,
   UpdateCheckResponse,
   UpdatePreferences,
   UpdateReminderDelay,
   UpdateState,
 } from './update-types'
+import type {
+  RuntimeLogBatchPayload,
+  RuntimeLogPageQuery,
+  RuntimeLogPage,
+  RuntimeLogStatus,
+  RuntimeLogTransportEntry,
+} from './runtime-log'
 import type {
   SkinCommand,
   SkinExecuteResponse,
@@ -267,8 +279,24 @@ export interface ProjectChannels {
     return: { success: boolean; error?: string }
   }
   'runtime:log': {
-    args: [payload: { level: 'debug' | 'info' | 'warn' | 'error'; source: string; message: string; details?: unknown }]
+    args: [payload: RuntimeLogTransportEntry | RuntimeLogBatchPayload]
     return: { success: boolean; error?: string }
+  }
+  'runtime:log-status': {
+    args: []
+    return: RuntimeLogStatus
+  }
+  'runtime:log-page': {
+    args: [query?: RuntimeLogPageQuery]
+    return: RuntimeLogPage
+  }
+  'runtime:log-flush': {
+    args: []
+    return: { success: boolean; status: RuntimeLogStatus }
+  }
+  'runtime:log-export': {
+    args: []
+    return: { success: boolean; cancelled?: boolean; displayName?: string; files?: string[]; error?: string }
   }
   'project:delete': {
     args: [projectPath: string, projectId: string, sessionLease: string]
@@ -545,6 +573,14 @@ export interface AppDataChannels {
   'skills:list-user': {
     args: []
     return: Array<{ name: string; content: string; baseDir: string; filePath: string }>
+  }
+  'skills:install-user': {
+    args: [name: string, content: string]
+    return: { success: boolean; error?: string }
+  }
+  'skills:remove-user': {
+    args: [name: string]
+    return: { success: boolean; error?: string }
   }
 }
 
@@ -921,6 +957,22 @@ export interface DatabaseChannels {
   'db:narrative-thread-event-confirm': {
     args: [input: NarrativeThreadEventInput, expectedProjectPath: string]
     return: { success: boolean; event?: NarrativeThreadEvent; error?: string }
+  }
+  'db:planning-material-list': {
+    args: [status: PlanningMaterialStatus | undefined, expectedProjectPath: string]
+    return: PlanningMaterialRecord[]
+  }
+  'db:planning-material-upsert': {
+    args: [input: PlanningMaterialInput, expectedProjectPath: string]
+    return: { success: boolean; material?: PlanningMaterialRecord; error?: string }
+  }
+  'db:planning-material-confirm': {
+    args: [id: string, expectedContentHash: string | undefined, expectedProjectPath: string]
+    return: { success: boolean; material?: PlanningMaterialRecord; error?: string }
+  }
+  'db:planning-material-reject': {
+    args: [id: string, expectedProjectPath: string]
+    return: { success: boolean; material?: PlanningMaterialRecord; error?: string }
   }
   'db:story-continuity-read': {
     args: [chapterNumber: number, expectedProjectPath: string]

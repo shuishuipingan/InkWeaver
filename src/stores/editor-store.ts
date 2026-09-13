@@ -1,10 +1,13 @@
 import { create } from 'zustand'
 
 import type { DraftStatus } from '../shared/draft-status'
+import { randomUUID } from '../utils/id'
 
 export interface EditorTabSaveSnapshot {
   content: string
   contentRevision: number
+  /** Tab incarnation; prevents a delayed save settling onto a close/reopen tab with the same id. */
+  tabInstanceId?: string
 }
 
 /** 编辑器 Tab 数据 */
@@ -33,6 +36,8 @@ export interface EditorTab {
   draftStatus?: DraftStatus
   /** 内容变更代次，用于阻止异步保存响应覆盖保存期间的新输入。 */
   contentRevision?: number
+  /** Stable for one open-tab incarnation and regenerated after close/reopen. */
+  instanceId?: string
   /** 伪协议资源所属项目；用于隔离同一路径在不同项目中的编辑草稿。 */
   projectKey?: string
   /** 打开/定稿时冻结的项目会话租约；同一路径重开不能复用旧 tab 的完成事件。 */
@@ -148,6 +153,10 @@ function hasBackgroundProjectDraft(
   }
 }
 
+function tabInstanceId(): string {
+  return `tab-${randomUUID()}`
+}
+
 export const useEditorStore = create<EditorState>()((set, get) => ({
   tabs: [],
   activeTabId: null,
@@ -157,6 +166,7 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
     const projectScopedTab = {
       ...tab,
       id: createProjectScopedEditorTabId(tab.id, tab.type, tab.projectKey),
+      instanceId: tab.instanceId ?? tabInstanceId(),
     }
     const tabWithDraftState = hasBackgroundProjectDraft(get().draftLedgers, projectScopedTab)
       ? { ...projectScopedTab, dirty: true }
@@ -291,6 +301,7 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
     set((state) => ({
       tabs: state.tabs.map(tab => {
         if (tab.id !== tabId) return tab
+        if (snapshot.tabInstanceId && tab.instanceId !== snapshot.tabInstanceId) return tab
         const snapshotStillCurrent = (
           (tab.contentRevision ?? 0) === snapshot.contentRevision
           && tab.content === snapshot.content

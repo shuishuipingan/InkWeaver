@@ -73,13 +73,13 @@ export function UpdateSection() {
     <div className="writer-panel-card flex items-center justify-between gap-4 px-4 py-3" style={{ borderColor: 'var(--color-border)' }}>
       <div className="min-w-0">
         <div className="flex items-center gap-2"><RefreshCw size={16} style={{ color: 'var(--color-accent)' }} /><span className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>{text('应用更新', 'App updates')}</span></div>
-        <p className="mt-1 text-xs" style={{ color: 'var(--color-text-muted)' }}>{presentation.kind === 'disabled' ? text('更新检查仅在已安装的 Windows 应用中可用。', 'Update checks are available in the installed Windows app only.') : text('检查 GitHub Release 中的新正式版。', 'Check GitHub Releases for new stable versions.')}</p>
+        <p className="mt-1 text-xs" style={{ color: 'var(--color-text-muted)' }}>{presentation.kind === 'disabled' ? text('更新检查仅在已安装的 Windows 或 macOS 应用中可用。', 'Update checks are available in the installed Windows or macOS app only.') : text('检查 GitHub Release 中的新正式版。', 'Check GitHub Releases for new stable versions.')}</p>
       </div>
       <div className="flex shrink-0 flex-wrap items-center justify-end gap-2" data-testid="update-entry-actions">
         <Button type="button" size="lg" variant="outline" onClick={() => void handleOfficialHomepageClick()} className="text-sm" title={text('在默认浏览器中打开官方主页', 'Open the official homepage in your default browser')}>
           <ExternalLink size={15} aria-hidden="true" />{text('官方主页', 'Official Website')}
         </Button>
-        <Button type="button" size="lg" onClick={() => void checkForUpdates()} disabled={!presentation.canCheck} className="text-sm" title={presentation.kind === 'disabled' ? text('请在已安装的 Windows 应用中检查更新', 'Check for updates in the installed Windows app') : text('立即检查正式版更新', 'Check for stable updates now')}>
+        <Button type="button" size="lg" onClick={() => void checkForUpdates()} disabled={!presentation.canCheck} className="text-sm" title={presentation.kind === 'disabled' ? text('请在已安装的 Windows 或 macOS 应用中检查更新', 'Check for updates in the installed Windows or macOS app') : text('立即检查正式版更新', 'Check for stable updates now')}>
           <RefreshCw size={15} className={presentation.kind === 'checking' ? 'animate-spin' : undefined} />{presentation.kind === 'checking' ? text('正在检查', 'Checking') : text('检查更新', 'Check for updates')}
         </Button>
       </div>

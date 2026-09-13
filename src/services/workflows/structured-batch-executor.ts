@@ -36,6 +36,8 @@ export interface StructuredBatchContract<TInput, TOutput> {
    * prose used to generate values.
    */
   syntaxRepairContract?(input: { items: readonly TInput[] }): string
+  /** Planning contracts may opt into same-budget retries for malformed batches. */
+  retryInvalidOutputWithSmallerBatch?: boolean
 }
 
 export type StructuredGenerationFailureReason =
@@ -408,10 +410,41 @@ export function createStructuredBatchExecutor<TInput, TOutput>(dependencies: {
         validated.push(...expectedKeys.map(key => outputByKey.get(key)!))
       }
 
+      // A completed response can still be malformed or omit part of a
+      // planning range. Retry that same evidence with smaller batches while
+      // keeping the one GenerationSession budget owner. Never retain a
+      // partially validated prefix from the failed larger batch.
+      const executeBatchResilient = async (items: readonly TInput[]): Promise<void> => {
+        const validatedBefore = validated.length
+        try {
+          await executeBatch(items)
+        } catch (error) {
+          const failure = error instanceof ExecutionFailure ? error.failure : undefined
+          const splittable = contract.retryInvalidOutputWithSmallerBatch === true
+            && items.length > 1
+            && failure?.code === 'invalid_output'
+            && ['malformed_output', 'missing_item', 'duplicate_item', 'unexpected_item', 'invalid_item'].includes(String(failure.reason))
+          if (!splittable) throw error
+          validated.splice(validatedBefore)
+          const midpoint = Math.floor(items.length / 2)
+          if (midpoint < 1 || midpoint >= items.length) throw error
+          receipt.splitCount += 1
+          try {
+            await executeBatchResilient(items.slice(0, midpoint))
+            await executeBatchResilient(items.slice(midpoint))
+          } catch {
+            // Preserve the original batch diagnostic when a bounded repair
+            // cannot establish complete coverage; child failures often report
+            // an incidental out-of-range key after the split.
+            throw error
+          }
+        }
+      }
+
       try {
         const maxBatchItems = input.limits.maxBatchItems
         for (let offset = 0; offset < input.items.length; offset += maxBatchItems) {
-          await executeBatch(input.items.slice(offset, offset + maxBatchItems))
+          await executeBatchResilient(input.items.slice(offset, offset + maxBatchItems))
         }
         return { ok: true, items: validated, receipt }
       } catch (error) {

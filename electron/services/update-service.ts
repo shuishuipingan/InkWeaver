@@ -336,6 +336,11 @@ export class UpdateService {
       return this.response({ success: true, checked: true })
     }
 
+    if (this.state.availableVersion && isHigherStableVersion(this.state.availableVersion, update.version)) {
+      this.setState({ ...this.state, status: 'available', error: undefined })
+      return this.response({ success: true, checked: true, updateAvailable: true })
+    }
+
     this.rememberAvailableUpdate(update)
     this.setState({
       ...this.state,

@@ -10,6 +10,7 @@ import type {
   CharacterData,
   CharacterStateData,
 } from '../../electron/repositories/character-repository'
+import type { CharacterStateProvenance } from '../shared/character-roster'
 import { normalizeCharacterRole } from '../shared/character-role'
 import {
   characterCardFromRosterEntry,
@@ -58,6 +59,22 @@ function textField(record: Record<string, unknown>, key: string): string {
 function normalizeCharacterState(value: unknown): CharacterCurrentState | undefined {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
   const state = value as Record<string, unknown>
+  const rawProvenance = state.provenance
+  const provenance: CharacterStateProvenance | undefined = rawProvenance && typeof rawProvenance === 'object' && !Array.isArray(rawProvenance)
+    ? (() => {
+        const candidate = rawProvenance as Record<string, unknown>
+        if (candidate.source === 'author' || candidate.source === 'legacy-unknown') return { source: candidate.source }
+        if (candidate.source === 'model' && Number.isSafeInteger(candidate.sourceDraftId) && typeof candidate.sourceContentHash === 'string' && typeof candidate.evidence === 'string') {
+          return {
+            source: 'model' as const,
+            sourceDraftId: Number(candidate.sourceDraftId),
+            sourceContentHash: candidate.sourceContentHash,
+            evidence: candidate.evidence,
+          }
+        }
+        return undefined
+      })()
+    : undefined
   return {
     location: textField(state, 'location'),
     powerLevel: textField(state, 'powerLevel'),
@@ -68,6 +85,7 @@ function normalizeCharacterState(value: unknown): CharacterCurrentState | undefi
     updatedAtChapter: Number.isInteger(state.updatedAtChapter) && Number(state.updatedAtChapter) >= 0
       ? Number(state.updatedAtChapter)
       : 0,
+    ...(provenance ? { provenance } : {}),
   }
 }
 

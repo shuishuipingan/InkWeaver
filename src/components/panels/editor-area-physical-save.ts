@@ -28,6 +28,7 @@ export async function savePhysicalChapterForSession(
   const snapshot = {
     content,
     contentRevision: tab.contentRevision ?? 0,
+    ...(tab.instanceId ? { tabInstanceId: tab.instanceId } : {}),
   }
 
   const result = await ipc.invokeWithProjectSession(

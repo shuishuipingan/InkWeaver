@@ -890,7 +890,11 @@ describe('ReviewChapterCommand reasoning stage', () => {
       step: {}, context: workflowContext(), callbacks: stepCallbacks,
     })).resolves.toContain('AI review')
 
-    expect(JSON.parse(createParams[0]!.content)).toEqual({ summary: 'AI review', items: [] })
+    expect(JSON.parse(createParams[0]!.content)).toEqual({
+      summary: 'AI review',
+      items: [],
+      blueprintEventCoverage: [{ event: '顾舟敲门', status: 'not-found' }],
+    })
     expect(stepCallbacks.log).toHaveBeenCalledWith('一致性证据暂时不可用；AI 审稿仍会继续。')
   })
 

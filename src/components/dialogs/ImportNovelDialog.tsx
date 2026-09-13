@@ -27,6 +27,10 @@ import { Label } from '../ui/Label'
 import { useLocaleStore } from '../../stores/locale-store'
 import { captureProjectSession, isProjectSessionCurrent } from '../project-session-gate'
 import { randomUUID } from '../../utils/id'
+import {
+  createPlanningMaterialInput,
+  type PlanningMaterialRecord,
+} from '../../shared/planning-material'
 
 interface ImportNovelDialogProps {
   open: boolean
@@ -47,6 +51,7 @@ export default function ImportNovelDialog({ open, onClose }: ImportNovelDialogPr
   const [savePath, setSavePath] = useState('')
   const [targetMode, setTargetMode] = useState<'new' | 'current'>('new')
   const [purpose, setPurpose] = useState<ImportPurpose>('reference')
+  const [planningMaterialsMode, setPlanningMaterialsMode] = useState(false)
 
   // 拆章结果
   const [inspection, setInspection] = useState<ImportInspectionSummary | null>(null)
@@ -515,6 +520,16 @@ export default function ImportNovelDialog({ open, onClose }: ImportNovelDialogPr
     ? estimateImportCost(inspection.totalWords, inspection.chapterCount)
     : null
 
+  if (planningMaterialsMode) {
+    return (
+      <PlanningMaterialImportPanel
+        open={open}
+        onClose={() => { setPlanningMaterialsMode(false); onClose() }}
+        onBack={() => setPlanningMaterialsMode(false)}
+      />
+    )
+  }
+
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="max-w-[560px]">
@@ -541,7 +556,7 @@ export default function ImportNovelDialog({ open, onClose }: ImportNovelDialogPr
         <div className="px-5 py-4 space-y-4 max-h-[60vh] overflow-y-auto">
           <div>
             <Label>{text('文本用途', 'Text purpose')}</Label>
-            <div className="grid grid-cols-2 gap-2" role="group" aria-label={text('文本用途', 'Text purpose')}>
+            <div className="grid grid-cols-3 gap-2" role="group" aria-label={text('文本用途', 'Text purpose')}>
               <Button
                 type="button"
                 variant={purpose === 'reference' ? 'default' : 'outline'}
@@ -561,6 +576,15 @@ export default function ImportNovelDialog({ open, onClose }: ImportNovelDialogPr
               >
                 <FileText size={14} />
                 {text('我的原稿', 'My manuscript')}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                data-testid="import-purpose-planning-material"
+                onClick={() => setPlanningMaterialsMode(true)}
+              >
+                <FileText size={14} />
+                {text('规划资料', 'Planning material')}
               </Button>
             </div>
             <div className="mt-2 text-xs" style={{ color: 'var(--color-text-secondary)' }} data-testid="import-purpose-explanation">
@@ -933,6 +957,138 @@ export default function ImportNovelDialog({ open, onClose }: ImportNovelDialogPr
                 : text(`开始拆解仿写（${inspection?.chapterCount ?? 0} 章）`, `Start analysis (${inspection?.chapterCount ?? 0} chapters)`)}
           </Button>
         </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function PlanningMaterialImportPanel({
+  open,
+  onClose,
+  onBack,
+}: {
+  open: boolean
+  onClose: () => void
+  onBack: () => void
+}) {
+  const currentProject = useProjectStore(s => s.currentProject)
+  const text = useLocaleStore(s => s.text)
+  const [materials, setMaterials] = useState<PlanningMaterialRecord[]>([])
+  const [candidate, setCandidate] = useState<PlanningMaterialRecord | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
+
+  const reload = useCallback(async () => {
+    const session = captureProjectSession(useProjectStore.getState().currentProject)
+    if (!session) return
+    try {
+      const rows = await ipc.invokeWithProjectSession(session, 'db:planning-material-list', undefined, session.projectPath)
+      if (isProjectSessionCurrent(session)) setMaterials(rows)
+    } catch {
+      if (isProjectSessionCurrent(session)) setError(text('无法读取规划资料。', 'Could not load planning materials.'))
+    }
+  }, [text])
+
+  useEffect(() => {
+    if (open) void reload()
+  }, [open, reload])
+
+  const importFile = async (file: File | undefined) => {
+    if (!file) return
+    const session = captureProjectSession(useProjectStore.getState().currentProject)
+    if (!session) {
+      setError(text('请先打开一个项目。', 'Open a project first.'))
+      return
+    }
+    setBusy(true)
+    setError('')
+    setNotice('')
+    try {
+      const input = await createPlanningMaterialInput({
+        name: file.name.replace(/\.[^.]+$/u, '') || file.name,
+        kind: 'outline',
+        content: await file.text(),
+        sourceDisplayName: file.name,
+      })
+      const result = await ipc.invokeWithProjectSession(session, 'db:planning-material-upsert', input, session.projectPath)
+      if (!result.success || !result.material) throw new Error(result.error ?? text('导入失败', 'Import failed'))
+      if (!isProjectSessionCurrent(session)) return
+      setCandidate(result.material)
+      setNotice(text('资料已导入为候选，确认后才会用于蓝图和写作。', 'The material is a candidate; confirm it before it can affect blueprints or writing.'))
+      await reload()
+    } catch (cause) {
+      if (isProjectSessionCurrent(session)) setError(cause instanceof Error ? cause.message : String(cause))
+    } finally {
+      if (isProjectSessionCurrent(session)) setBusy(false)
+    }
+  }
+
+  const confirm = async (material: PlanningMaterialRecord) => {
+    const session = captureProjectSession(useProjectStore.getState().currentProject)
+    if (!session) return
+    setBusy(true)
+    try {
+      const result = await ipc.invokeWithProjectSession(session, 'db:planning-material-confirm', material.id, material.contentHash, session.projectPath)
+      if (!result.success || !result.material) throw new Error(result.error ?? text('确认失败', 'Confirmation failed'))
+      if (!isProjectSessionCurrent(session)) return
+      setCandidate(result.material)
+      setMaterials(previous => previous.map(item => item.id === result.material!.id ? result.material! : item))
+      setNotice(text('已确认；后续蓝图和写作上下文可读取该资料。', 'Confirmed; future blueprint and writing context may use this material.'))
+    } catch (cause) {
+      if (isProjectSessionCurrent(session)) setError(cause instanceof Error ? cause.message : String(cause))
+    } finally {
+      if (isProjectSessionCurrent(session)) setBusy(false)
+    }
+  }
+
+  const reject = async (material: PlanningMaterialRecord) => {
+    const session = captureProjectSession(useProjectStore.getState().currentProject)
+    if (!session) return
+    setBusy(true)
+    try {
+      const result = await ipc.invokeWithProjectSession(session, 'db:planning-material-reject', material.id, session.projectPath)
+      if (!result.success) throw new Error(result.error ?? text('拒绝失败', 'Rejection failed'))
+      if (!isProjectSessionCurrent(session)) return
+      setCandidate(null)
+      await reload()
+    } catch (cause) {
+      if (isProjectSessionCurrent(session)) setError(cause instanceof Error ? cause.message : String(cause))
+    } finally {
+      if (isProjectSessionCurrent(session)) setBusy(false)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={value => !value && onClose()}>
+      <DialogContent className="max-w-[620px]">
+        <DialogHeader>
+          <DialogTitle>{text('导入规划资料', 'Import planning material')}</DialogTitle>
+          <DialogDescription>{text('导入大纲、世界观、人物表或时间线。资料先进入候选区，只有作者确认后才会进入蓝图和写作上下文。', 'Import an outline, world notes, character sheet, or timeline. Materials stay in a candidate queue until you confirm them.')}</DialogDescription>
+        </DialogHeader>
+        <div className="px-5 py-4 space-y-4 max-h-[60vh] overflow-y-auto">
+          <div className="flex items-center gap-2">
+            <label className="inline-flex cursor-pointer items-center gap-2 rounded border px-3 py-2 text-sm" style={{ borderColor: 'var(--color-border)' }}>
+              <FileUp size={14} />{text('选择 Markdown / TXT', 'Choose Markdown / TXT')}
+              <input type="file" accept=".md,.markdown,.txt,text/markdown,text/plain" className="sr-only" disabled={busy || !currentProject} onChange={event => { void importFile(event.target.files?.[0]); event.currentTarget.value = '' }} />
+            </label>
+            <span className="text-xs text-[var(--color-text-muted)]">{currentProject ? currentProject.name : text('未打开项目', 'No project open')}</span>
+          </div>
+          {error && <p role="alert" className="rounded border px-2 py-1 text-xs" style={{ borderColor: 'var(--color-error)', color: 'var(--color-error-text)' }}>{error}</p>}
+          {notice && <p role="status" className="rounded border px-2 py-1 text-xs" style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }}>{notice}</p>}
+          {candidate && (
+            <section className="rounded border p-3 space-y-2" style={{ borderColor: 'var(--color-accent)' }}>
+              <div className="flex items-center justify-between"><strong>{candidate.name}</strong><span className="text-xs">{candidate.status}</span></div>
+              <p className="max-h-32 overflow-y-auto whitespace-pre-wrap text-xs text-[var(--color-text-secondary)]">{candidate.content}</p>
+              <div className="flex gap-2"><Button size="sm" onClick={() => void confirm(candidate)} disabled={busy || candidate.status === 'confirmed'}>{text('确认资料', 'Confirm material')}</Button><Button size="sm" variant="ghost" onClick={() => void reject(candidate)} disabled={busy}>{text('拒绝', 'Reject')}</Button></div>
+            </section>
+          )}
+          <section className="space-y-2">
+            <h3 className="text-sm font-medium">{text('已导入资料', 'Imported materials')}</h3>
+            {materials.length === 0 ? <p className="text-xs text-[var(--color-text-muted)]">{text('暂无资料。', 'No materials yet.')}</p> : materials.map(material => <div key={material.id} className="flex items-center gap-2 rounded border px-2 py-1.5 text-xs" style={{ borderColor: 'var(--color-border)' }}><span className="min-w-0 flex-1 truncate">{material.name} · {material.kind}</span><span className="shrink-0">{material.status === 'confirmed' ? text('已确认', 'Confirmed') : material.status === 'rejected' ? text('已拒绝', 'Rejected') : text('候选', 'Candidate')}</span>{material.status === 'candidate' && <Button size="sm" variant="ghost" onClick={() => void confirm(material)} disabled={busy}>{text('确认', 'Confirm')}</Button>}</div>)}
+          </section>
+        </div>
+        <DialogFooter><Button variant="ghost" onClick={onBack}>{text('返回小说导入', 'Back to novel import')}</Button><Button variant="ghost" onClick={onClose}>{text('关闭', 'Close')}</Button></DialogFooter>
       </DialogContent>
     </Dialog>
   )

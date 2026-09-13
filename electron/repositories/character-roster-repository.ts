@@ -5,6 +5,7 @@ import {
   CHARACTER_ROSTER_ROLES,
   CHARACTER_ROSTER_SCHEMA_VERSION,
   type CharacterRosterCharacterState,
+  type CharacterStateProvenance,
   type CharacterRosterCommitReceipt,
   type CharacterRosterCommitIntent,
   type CharacterRosterCommitRequest,
@@ -100,6 +101,34 @@ function normalizeState(value: unknown): CharacterRosterCharacterState | undefin
   if (!Number.isSafeInteger(updatedAtChapter) || (updatedAtChapter as number) < 0) {
     throw new Error('角色动态状态章节号无效')
   }
+  const rawProvenance = value.provenance
+  let provenance: CharacterStateProvenance | undefined
+  if (rawProvenance !== undefined) {
+    if (!isObject(rawProvenance) || !['author', 'model', 'legacy-unknown'].includes(String(rawProvenance.source))) {
+      throw new Error('角色动态状态来源无效')
+    }
+    const source = String(rawProvenance.source) as CharacterStateProvenance['source']
+    if (source === 'model') {
+      if (!Number.isSafeInteger(rawProvenance.sourceDraftId) || (rawProvenance.sourceDraftId as number) < 1
+        || typeof rawProvenance.sourceContentHash !== 'string'
+        || !/^[0-9a-f]{64}$/u.test(rawProvenance.sourceContentHash)
+        || typeof rawProvenance.evidence !== 'string' || !rawProvenance.evidence.trim()) {
+        throw new Error('模型角色状态必须包含定稿来源 ID、正文指纹和证据')
+      }
+      provenance = {
+        source: 'model',
+        sourceDraftId: rawProvenance.sourceDraftId as number,
+        sourceContentHash: rawProvenance.sourceContentHash,
+        evidence: rawProvenance.evidence.trim().slice(0, 500),
+        ...(typeof rawProvenance.recordedAt === 'string' ? { recordedAt: rawProvenance.recordedAt } : {}),
+      }
+    } else {
+      provenance = {
+        source,
+        ...(typeof rawProvenance.recordedAt === 'string' ? { recordedAt: rawProvenance.recordedAt } : {}),
+      } as CharacterStateProvenance
+    }
+  }
   return {
     location: requiredText(value.location, '角色当前位置'),
     powerLevel: requiredText(value.powerLevel, '角色修为境界'),
@@ -108,6 +137,7 @@ function normalizeState(value: unknown): CharacterRosterCharacterState | undefin
     keyItems: requiredText(value.keyItems, '角色关键道具'),
     recentEvents: requiredText(value.recentEvents, '角色最近事件'),
     updatedAtChapter: updatedAtChapter as number,
+    ...(provenance ? { provenance } : {}),
   }
 }
 
@@ -363,6 +393,55 @@ function entryFromCharacter(db: BetterSqlite3.Database, character: CharacterData
     WHERE current_name = ?
   `).get(character.name) as Pick<CharacterIdentityRow, 'character_id' | 'aliases_json'> | undefined
   const aliases = identity ? parseIdentityAliases(identity.aliases_json) : []
+  let currentState = character.currentState
+  if (currentState) {
+    const history = db.prepare(`
+      SELECT provenance_source, source_draft_id, source_content_hash, evidence
+      FROM character_state_history
+      WHERE character_id = ? OR character_name = ?
+      ORDER BY chapter_number DESC, id DESC
+      LIMIT 1
+    `).get(identity?.character_id ?? '', character.name) as {
+      provenance_source: 'author' | 'model' | 'legacy-unknown'
+      source_draft_id: number | null
+      source_content_hash: string
+      evidence: string
+    } | undefined
+    const source = history?.provenance_source
+    if (source === 'model' && history) {
+      const sourceDraft = history.source_draft_id
+        ? db.prepare(`
+            SELECT finalization_outbox.content_hash AS content_hash
+            FROM drafts
+            JOIN finalization_outbox ON finalization_outbox.draft_id = drafts.id
+            WHERE drafts.id = ? AND drafts.status = 'finalized'
+        `).get(history.source_draft_id) as { content_hash?: string } | undefined
+        : undefined
+      // A model state is usable only while its exact finalized source remains
+      // present and unchanged. Otherwise omit it from the context projection.
+      if (!sourceDraft || sourceDraft.content_hash !== history.source_content_hash || !history.evidence.trim()) {
+        currentState = undefined
+      } else {
+        currentState = {
+          ...currentState,
+          provenance: {
+            source: 'model',
+            sourceDraftId: history.source_draft_id!,
+            sourceContentHash: history.source_content_hash,
+            evidence: history.evidence,
+          },
+        }
+      }
+    } else if (source) {
+      const legacyProvenance: CharacterStateProvenance = source === 'author'
+        ? { source: 'author' }
+        : { source: 'legacy-unknown' }
+      currentState = {
+        ...currentState,
+        provenance: legacyProvenance,
+      }
+    }
+  }
   return {
     ...(identity ? { characterId: identity.character_id } : {}),
     name: character.name,
@@ -380,7 +459,7 @@ function entryFromCharacter(db: BetterSqlite3.Database, character: CharacterData
     )),
     arc: character.arc,
     notes: character.notes,
-    currentState: character.currentState,
+    ...(currentState ? { currentState } : {}),
     ...(hasStructuredRelationships || !character.relationships
       ? {}
       : { legacyRelationshipNotes: character.relationships }),
@@ -454,6 +533,46 @@ function characterFromEntry(entry: CharacterRosterEntry): CharacterData {
     arc: entry.arc,
     notes: entry.notes,
     currentState: entry.currentState,
+  }
+}
+
+function recordStateHistory(
+  db: BetterSqlite3.Database,
+  entries: readonly CharacterRosterEntry[],
+  intent: CharacterRosterCommitIntent,
+): void {
+  const insert = db.prepare(`
+    INSERT INTO character_state_history (
+      character_id, character_name, chapter_number, state_json,
+      provenance_source, source_draft_id, source_content_hash, evidence
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `)
+  for (const entry of entries) {
+    const state = entry.currentState
+    if (!state || !entry.characterId) continue
+    const provenance = state.provenance
+      ?? (intent === 'manual_edit' ? { source: 'author' as const } : { source: 'legacy-unknown' as const })
+    if (provenance.source === 'model') {
+      const source = db.prepare(`
+        SELECT finalization_outbox.content_hash AS content_hash
+        FROM drafts
+        JOIN finalization_outbox ON finalization_outbox.draft_id = drafts.id
+        WHERE drafts.id = ? AND drafts.status = 'finalized'
+      `).get(provenance.sourceDraftId) as { content_hash?: string } | undefined
+      if (!source || source.content_hash !== provenance.sourceContentHash) {
+        throw new Error(`角色「${entry.name}」的模型状态缺少当前定稿来源`)
+      }
+    }
+    insert.run(
+      entry.characterId,
+      entry.name,
+      state.updatedAtChapter,
+      JSON.stringify(state),
+      provenance.source,
+      provenance.source === 'model' ? provenance.sourceDraftId : null,
+      provenance.source === 'model' ? provenance.sourceContentHash : '',
+      provenance.source === 'model' ? provenance.evidence : '',
+    )
   }
 }
 
@@ -855,6 +974,12 @@ export class CharacterRosterRepository {
       const isManualEdit = isManualEditIntent(intent)
       const isIncremental = intent === 'blueprint_sync' || intent === 'chapter_progress'
       const isNovelImport = intent === 'novel_import'
+      if (intent === 'chapter_progress') {
+        const existingNames = new Set(existingEntries.map(entry => entry.name))
+        if (request.entries.some(entry => !existingNames.has(entry.name))) {
+          throw new Error('新角色必须先经过候选确认')
+        }
+      }
       if (currentSnapshot.status === 'legacy_repair_required' && !isLegacyRepair) {
         throw new Error('检测到旧角色图谱且没有角色卡；只能通过显式旧角色图谱修复写入')
       }
@@ -915,9 +1040,21 @@ export class CharacterRosterRepository {
                 )
               : request.entries
       const hydratedEntries = hydrateIdentityEntries(db, committedEntries, renameByOriginal)
-      const projection = renderCharacterRosterMarkdown(hydratedEntries)
+      const entriesWithProvenance = hydratedEntries.map(entry => {
+        if (!entry.currentState || entry.currentState.provenance) return entry
+        return {
+          ...entry,
+          currentState: {
+            ...entry.currentState,
+            provenance: intent === 'manual_edit'
+              ? { source: 'author' as const }
+              : { source: 'legacy-unknown' as const },
+          },
+        }
+      })
+      const projection = renderCharacterRosterMarkdown(entriesWithProvenance)
       const projectionHash = hashText(projection)
-      const factHash = fullFactHash(hydratedEntries)
+      const factHash = fullFactHash(entriesWithProvenance)
       const nextRevision = meta.revision + 1
 
       // adoption 的唯一职责是以已有结构化卡片重建只读投影。它不能重写
@@ -926,17 +1063,18 @@ export class CharacterRosterRepository {
         // 手工保存提交的是完整名单快照。先清空再回填使删除、改名（包括交换）
         // 与资料变更受同一事务保护；transaction 回滚时不会留下半个名单。
         db.prepare('DELETE FROM characters').run()
-        for (const entry of hydratedEntries) {
+        for (const entry of entriesWithProvenance) {
           CharacterRepository.upsert(characterFromEntry(entry))
         }
         updateBlueprintReferencesForManualEdit(
           db,
           renameByOriginal,
-          new Set(hydratedEntries.map(entry => entry.name)),
+          new Set(entriesWithProvenance.map(entry => entry.name)),
         )
       } else if (!isLegacyCardsAdoption) {
-        for (const entry of hydratedEntries) CharacterRepository.upsert(characterFromEntry(entry))
+        for (const entry of entriesWithProvenance) CharacterRepository.upsert(characterFromEntry(entry))
       }
+      recordStateHistory(db, entriesWithProvenance, intent)
       const coreUpdate = db.prepare(`
         UPDATE project_core
         SET characters_arch = ?
@@ -958,7 +1096,7 @@ export class CharacterRosterRepository {
       const snapshot = assertReadBack(
         db,
         nextRevision,
-        hydratedEntries,
+        entriesWithProvenance,
         projection,
         projectionHash,
         factHash,

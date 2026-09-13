@@ -883,6 +883,24 @@ async function qualifyPresetTools(logRoot, profileRoot, installedRoot, env) {
   const configRoot = join(profileRoot, 'qualification')
   const configPath = join(configRoot, 'cordis.yml')
   await mkdir(configRoot, { recursive: true })
+  // Agent-preset mounts resolve bare package rows from the composition's
+  // config-tree anchor. A profile's pnpm graph can keep peer packages in the
+  // shared `profiles/node_modules` fallback, so expose only the three rows the
+  // installed preset actually names from this disposable qualification tree.
+  const qualificationModules = join(configRoot, 'node_modules')
+  const sharedModules = join(dirname(profileRoot), 'node_modules')
+  const moduleLinks = [
+    ['@deepseek-ai/dsh-persona', join(sharedModules, '@deepseek-ai', 'dsh-persona')],
+    ['@deepseek-ai/dsh-agent-instructions', join(sharedModules, '@deepseek-ai', 'dsh-agent-instructions')],
+    ['@shuishuipingan/inkweaver-dsh', installedRoot],
+  ]
+  for (const [packageName, target] of moduleLinks) {
+    const link = join(qualificationModules, packageName)
+    if (await exists(target) && !(await exists(link))) {
+      await mkdir(dirname(link), { recursive: true })
+      await symlink(target, link, 'junction')
+    }
+  }
   await writeFile(configPath, [
     "- id: llm\n  name: '@deepseek-ai/dsh-llm'",
     "- id: session-projections\n  name: '@deepseek-ai/dsh-session-projection'",

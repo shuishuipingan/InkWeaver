@@ -41,6 +41,21 @@ export function ensureCharacterRosterSchema(db: BetterSqlite3.Database): void {
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
+
+    CREATE TABLE IF NOT EXISTS character_state_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      character_id TEXT NOT NULL,
+      character_name TEXT NOT NULL,
+      chapter_number INTEGER NOT NULL,
+      state_json TEXT NOT NULL,
+      provenance_source TEXT NOT NULL CHECK(provenance_source IN ('author', 'model', 'legacy-unknown')),
+      source_draft_id INTEGER DEFAULT NULL,
+      source_content_hash TEXT NOT NULL DEFAULT '',
+      evidence TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_character_state_history_latest
+      ON character_state_history(character_id, chapter_number DESC, id DESC);
   `)
 
   // SQLite 旧项目已经有第一版 roster 元数据时，补上完整事实哈希。不能依赖

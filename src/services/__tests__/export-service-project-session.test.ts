@@ -221,6 +221,17 @@ describe('exportNovel project session ownership', () => {
     expect(manifest.chapters[0]?.contentHash).toMatch(/^[a-f0-9]{64}$/u)
   })
 
+  it('uses a fresh split export directory for every run instead of reusing residue', async () => {
+    const first = await exportNovel({ format: 'split-md', grantId: 'export-grant' }, projectSnapshot, projectSession)
+    const second = await exportNovel({ format: 'split-md', grantId: 'export-grant' }, projectSnapshot, projectSession)
+
+    expect(first.success).toBe(true)
+    expect(second.success).toBe(true)
+    expect(first.path).toMatch(/^Project A-\d+-[0-9a-f-]+$/u)
+    expect(second.path).toMatch(/^Project A-\d+-[0-9a-f-]+$/u)
+    expect(second.path).not.toBe(first.path)
+  })
+
   it('stops after the directory-selection export becomes stale on a same-path reopen', async () => {
     let resolveBlueprints: ((value: Array<{ chapterNumber: number }>) => void) | undefined
     vi.mocked(ipc.invokeWithProjectSession).mockImplementationOnce(() =>

@@ -24,6 +24,12 @@ import { toolRegistry, type AgentExecutionContext, type AgentTool } from './tool
 /** Skill 来源 */
 export type SkillSource = 'builtin' | 'user' | 'project'
 
+/** Workflow stage at which a writing Skill is offered. */
+export type WritingSkillStage = 'planning' | 'drafting' | 'review' | 'polish'
+export const WRITING_SKILL_STAGES: readonly WritingSkillStage[] = [
+  'planning', 'drafting', 'review', 'polish',
+]
+
 /** Skill 元数据（从 SKILL.md frontmatter 解析） */
 export interface SkillMetadata {
   /** Skill 唯一名称 */
@@ -42,6 +48,8 @@ export interface SkillMetadata {
   argumentHint?: string
   /** 是否可由模型自动调用 */
   userInvocable?: boolean
+  /** Stages in which the Skill is selectable; missing means all stages for legacy Skills. */
+  stages?: WritingSkillStage[]
 }
 
 /** 加载后的 Skill */
@@ -86,9 +94,35 @@ class SkillRegistryImpl {
     return this.listAll().filter(s => s.source === source)
   }
 
+  /** List only Skills explicitly applicable to a writing stage. */
+  listForStage(stage: WritingSkillStage): LoadedSkill[] {
+    return this.listAll().filter(skill => !skill.metadata.stages || skill.metadata.stages.includes(stage))
+  }
+
   /** Skill 数量 */
   get size(): number {
     return this.skills.size
+  }
+
+  /** Install a user Skill as an independent package through the fixed app-data IPC boundary. */
+  async installUserSkill(content: string): Promise<LoadedSkill> {
+    const parsed = parseSkillMarkdown(content, '', 'user', '', '')
+    const name = parsed?.metadata.name ?? ''
+    if (!parsed || !isSafeSkillName(name) || !hasExplicitSkillManifest(content)) {
+      throw new Error('Skill manifest is invalid: name, description, and a closed frontmatter block are required')
+    }
+    const result = await ipc.invoke('skills:install-user', name, content)
+    if (!result.success) throw new Error(result.error ?? 'Skill installation failed')
+    await this.loadAll()
+    return parsed
+  }
+
+  /** Remove a user Skill without exposing its filesystem path to the renderer. */
+  async removeUserSkill(name: string): Promise<{ success: boolean; error?: string }> {
+    if (!isSafeSkillName(name)) throw new Error('Skill name is invalid')
+    const result = await ipc.invoke('skills:remove-user', name)
+    if (result.success) await this.loadAll()
+    return result
   }
 
   /** 清空 */
@@ -312,7 +346,7 @@ export const skillRegistry = new SkillRegistryImpl()
  * ...
  * ```
  */
-function parseSkillMd(
+export function parseSkillMarkdown(
   raw: string,
   fallbackName: string,
   source: SkillSource,
@@ -348,6 +382,17 @@ function parseSkillMd(
     }
   }
 
+  const rawStages = frontmatter['stages'] ?? frontmatter['stage']
+  const stageValues = rawStages === undefined
+    ? undefined
+    : (Array.isArray(rawStages) ? rawStages : String(rawStages).split(/[\s,]+/u))
+      .map(value => String(value).trim().toLowerCase())
+      .filter(Boolean)
+  if (stageValues && (
+    stageValues.length === 0
+    || stageValues.some(value => !WRITING_SKILL_STAGES.includes(value as WritingSkillStage))
+  )) return null
+
   const metadata: SkillMetadata = {
     name: (frontmatter['name'] as string) || fallbackName,
     displayName: frontmatter['display_name'] as string,
@@ -357,6 +402,7 @@ function parseSkillMd(
     allowedTools: frontmatter['allowed-tools'] as string[],
     argumentHint: frontmatter['argument-hint'] as string,
     userInvocable: frontmatter['user-invocable'] !== false,
+    ...(stageValues ? { stages: stageValues as WritingSkillStage[] } : {}),
   }
 
   return {
@@ -369,6 +415,27 @@ function parseSkillMd(
   }
 }
 
+// Keep the old private name as a local alias for call sites in this module;
+// external consumers use the explicit parser export above.
+const parseSkillMd = parseSkillMarkdown
+
+const SAFE_SKILL_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/u
+
+function isSafeSkillName(name: string): boolean {
+  return SAFE_SKILL_NAME.test(name) && name !== '.' && name !== '..'
+}
+
+function hasExplicitSkillManifest(raw: string): boolean {
+  const match = raw.match(/^---\s*\n([\s\S]*?)\n---\s*(?:\n|$)/u)
+  if (!match) return false
+  const fields = new Map<string, string>()
+  for (const line of match[1]!.split('\n')) {
+    const field = line.match(/^\s*([^:]+):\s*(.*?)\s*$/u)
+    if (field) fields.set(field[1]!.trim(), field[2]!.trim())
+  }
+  return Boolean(fields.get('name') && fields.get('description'))
+}
+
 // ===== 内置 Skills =====
 
 function registerBuiltinSkills(registry: SkillRegistryImpl): void {
@@ -379,6 +446,7 @@ function registerBuiltinSkills(registry: SkillRegistryImpl): void {
         displayName: '章节审阅',
         description: '对指定章节进行全面的质量审阅，包括剧情逻辑、角色一致性、节奏感、伏笔呼应等多个维度。',
         whenToUse: '用户要求审阅、检查、评估某个章节时',
+        stages: ['review'],
       },
       content: `# 章节审阅
 
@@ -413,6 +481,7 @@ function registerBuiltinSkills(registry: SkillRegistryImpl): void {
         displayName: '脑暴创意',
         description: '针对指定话题进行创意脑暴，生成多个创意方向和灵感。',
         whenToUse: '用户要求头脑风暴、找灵感、想创意时',
+        stages: ['planning'],
       },
       content: `# 创意脑暴
 
@@ -434,6 +503,7 @@ function registerBuiltinSkills(registry: SkillRegistryImpl): void {
         displayName: '角色分析',
         description: '深入分析指定角色的性格、动机、角色弧、人物关系等。',
         whenToUse: '用户想深入了解或调整角色设定时',
+        stages: ['planning', 'review'],
       },
       content: `# 角色深度分析
 
@@ -455,6 +525,7 @@ function registerBuiltinSkills(registry: SkillRegistryImpl): void {
         displayName: '连续性检查',
         description: '检查小说中的设定一致性和连续性问题，发现矛盾和遗漏。',
         whenToUse: '用户想检查设定有没有矛盾、是否有不一致的地方时',
+        stages: ['review'],
       },
       content: `# 连续性与一致性检查
 
@@ -476,6 +547,7 @@ function registerBuiltinSkills(registry: SkillRegistryImpl): void {
         displayName: '写作教练',
         description: '提供专业的写作技巧指导和文笔改善建议。',
         whenToUse: '用户想提高写作水平、求教写作技巧时',
+        stages: ['drafting', 'polish'],
       },
       content: `# 写作教练
 

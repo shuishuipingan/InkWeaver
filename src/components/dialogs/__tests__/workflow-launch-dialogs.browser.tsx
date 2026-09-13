@@ -133,6 +133,22 @@ describe('workflow launch dialogs', () => {
     }))
   })
 
+  it('starts after existing blueprints when finalized authority has not advanced yet', async () => {
+    authoritativeNextChapter = 1
+    const onConfirm = vi.fn().mockResolvedValue(undefined)
+    await act(async () => root.render(
+      <DirectoryConfigDialog isOpen onClose={vi.fn()} existingCount={3} onConfirm={onConfirm} />,
+    ))
+
+    await expect.element(page.getByText(/从第 4 章起往后生成/)).toBeVisible()
+    await act(async () => page.getByRole('button', { name: '开始生成' }).click())
+    await vi.waitFor(() => expect(onConfirm).toHaveBeenCalledOnce())
+    expect(onConfirm).toHaveBeenCalledWith(expect.objectContaining({
+      mode: 'append',
+      startChapter: 4,
+    }))
+  })
+
   it('blocks blueprint generation when finalized authority has a gap', async () => {
     authorityGap = 4
     const onConfirm = vi.fn()

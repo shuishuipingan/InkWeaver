@@ -26,7 +26,7 @@ export function getUpdateErrorMessage(error: UpdateError | undefined, text: Upda
 
   switch (error?.code) {
     case 'UPDATES_DISABLED':
-      return text('更新检查仅在已安装的 Windows 应用中可用。', 'Update checks are available in the installed Windows app only.')
+      return text('更新检查仅在已安装的 Windows 或 macOS 应用中可用。', 'Update checks are available in the installed Windows or macOS app only.')
     case 'DOWNLOAD_FAILED':
       return text('更新包暂时无法下载。请稍后重试。', 'The update could not be downloaded right now. Please try again later.')
     case 'INSTALL_NOT_READY':

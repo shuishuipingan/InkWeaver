@@ -469,6 +469,23 @@ describe('UpdateService', () => {
     expect(updater.quitCalls).toBe(1)
   })
 
+  it('does not let a stale queued check erase a newer confirmed available version', async () => {
+    const preferences = createPreferencesStore()
+    preferences.write({ availableUpdate: { version: '0.2.8' }, lastCheckedAt: '2026-07-25T09:00:00.000Z' })
+    const updater = new FakeUpdater({ updateInfo: { version: '0.2.6' } })
+    const service = new UpdateService({
+      updater,
+      currentVersion: '0.2.5',
+      isPackaged: true,
+      preferences,
+      now: () => new Date('2026-07-25T09:00:00+08:00'),
+    })
+
+    await service.checkManually()
+
+    expect(service.getState()).toMatchObject({ status: 'available', availableVersion: '0.2.8' })
+  })
+
   it('re-checks downloaded state inside the queue so overlapping checks download only once', async () => {
     const firstCheck = deferred<UpdateCheckResult | null>()
     let checkCalls = 0

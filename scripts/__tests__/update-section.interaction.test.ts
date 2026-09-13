@@ -14,6 +14,8 @@ const describeWithChrome = existsSync(chromeExecutable) ? describe : describe.sk
 // this preferred port is occupied by another local process.
 const UPDATE_SECTION_VITE_PORT = 41_730
 const UPDATE_SECTION_VITE_CACHE_DIR = path.join(repositoryRoot, '.runtime', '.cache', 'update-section-vite-v2')
+const UPDATE_SECTION_WORKFLOW_FIXTURE = path.join(repositoryRoot, 'scripts', 'browser-fixtures', 'update-workflow-store.ts')
+const UPDATE_SECTION_ICON_FIXTURE = path.join(repositoryRoot, 'scripts', 'browser-fixtures', 'update-icons.tsx')
 // The full desktop suite exercises native workers and PowerShell processes at
 // the same time. On a clean Windows checkout Vite may also rebuild its React
 // dependency cache before the first page can execute; allow that cold start
@@ -34,12 +36,20 @@ describeWithChrome('UpdateSection browser interactions', () => {
     server = await createServer({
       root: repositoryRoot,
       configFile: false,
-      plugins: [react()],
-      // Keep this fixture's optimizer metadata isolated from the other script
-      // browser suites. Discovery of the desktop index caused a clean run to
-      // rebuild hundreds of unrelated dependencies before the first button
-      // could render.
-      cacheDir: UPDATE_SECTION_VITE_CACHE_DIR,
+      plugins: [
+        {
+          name: 'update-section-workflow-store-fixture',
+          enforce: 'pre',
+          resolveId(source) {
+            const normalized = source.replaceAll('\\\\', '/').split('?')[0]
+            if (source === 'lucide-react') return UPDATE_SECTION_ICON_FIXTURE
+            return /[\\/]stores[\\/]workflow-store(?:\.ts)?$/u.test(normalized)
+              ? UPDATE_SECTION_WORKFLOW_FIXTURE
+              : undefined
+          },
+        },
+        react(),
+      ],
       optimizeDeps: {
         noDiscovery: true,
         holdUntilCrawlEnd: false,
@@ -47,15 +57,13 @@ describeWithChrome('UpdateSection browser interactions', () => {
           'react',
           'react-dom/client',
           'react/jsx-dev-runtime',
-          'lucide-react',
-          '@radix-ui/react-dialog',
-          '@radix-ui/react-slot',
-          'class-variance-authority',
-          'clsx',
-          'tailwind-merge',
-          'zustand',
         ],
       },
+      // Keep this fixture's optimizer metadata isolated from the other script
+      // browser suites. Discovery of the desktop index caused a clean run to
+      // rebuild hundreds of unrelated dependencies before the first button
+      // could render.
+      cacheDir: UPDATE_SECTION_VITE_CACHE_DIR,
       server: { host: '127.0.0.1', port: UPDATE_SECTION_VITE_PORT, strictPort: false },
       appType: 'spa',
     })
@@ -64,6 +72,17 @@ describeWithChrome('UpdateSection browser interactions', () => {
     if (!address || typeof address === 'string') throw new Error('Unable to determine browser harness address')
     pageUrl = `http://127.0.0.1:${address.port}/scripts/browser-fixtures/update-section-harness.html`
     browser = await chromium.launch({ executablePath: chromeExecutable, headless: true })
+    // Prime the full browser module graph before the first assertion. On a
+    // Windows cold cache the first Vite transform can take several minutes;
+    // doing it in the suite hook keeps that bounded cost out of one locator
+    // timeout and makes parallel root runs deterministic.
+    const warmup = await browser.newPage()
+    try {
+      await warmup.goto(pageUrl, { timeout: COLD_BROWSER_INTERACTION_TIMEOUT_MS })
+      await warmup.getByRole('button', { name: '立即重启更新' }).waitFor({ timeout: COLD_BROWSER_INTERACTION_TIMEOUT_MS })
+    } finally {
+      await warmup.close()
+    }
   }, VITE_SERVER_HOOK_TIMEOUT_MS)
 
   afterAll(async () => {

@@ -9,6 +9,7 @@ import { useLocaleStore } from '../../stores/locale-store'
 import { useProjectStore } from '../../stores/project-store'
 import { useScrollShadow } from '../../hooks/useScrollShadow'
 import type { ProjectSessionContext } from '../../shared/ipc-channels'
+import type { RuntimeLogEvent, RuntimeLogStatus } from '../../shared/runtime-log'
 import {
   projectSessionContextFromProject,
   sameProjectSessionContext,
@@ -39,6 +40,7 @@ import {
   listWorkflowRecoveryCheckpoints,
   type WorkflowRecoveryCheckpoint,
 } from '../../shared/workflow-recovery'
+import { ipc } from '../../services/ipc-client'
 
 /** 底部面板 Tab 名称映射 */
 const TAB_LABELS: Record<string, string> = {
@@ -768,27 +770,103 @@ function StepStatusIcon({ status }: { status: WorkflowStep['status'] }) {
 
 // ===== 日志视图 =====
 
-type LogLevelFilter = 'all' | 'info' | 'warn' | 'error'
+type LogLevelFilter = 'all' | 'debug' | 'info' | 'warn' | 'error' | 'fatal'
 
 const LOG_FILTER_OPTIONS: Array<{ id: LogLevelFilter; label: string }> = [
   { id: 'all', label: '全部' },
+  { id: 'debug', label: '调试' },
   { id: 'info', label: '信息' },
   { id: 'warn', label: '警告' },
   { id: 'error', label: '错误' },
+  { id: 'fatal', label: '致命' },
 ]
 
-function LogsView() {
+interface DisplayLog {
+  id: string
+  time: string
+  level: LogLevelFilter
+  message: string
+  process?: string
+  source?: string
+  runId?: string
+  projectSessionId?: string
+  correlationId?: string
+}
+
+function displayLogFromRuntime(event: RuntimeLogEvent): DisplayLog {
+  return {
+    id: event.eventId,
+    time: event.occurredAt,
+    level: event.level,
+    message: event.message,
+    process: event.process,
+    source: event.source,
+    runId: event.runId,
+    projectSessionId: event.projectSessionId,
+    correlationId: event.correlationId,
+  }
+}
+
+export function LogsView() {
   const globalLogs = useWorkflowStore(s => s.globalLogs)
   const clearLogs = useWorkflowStore(s => s.clearLogs)
+  const locale = useLocaleStore(s => s.locale)
+  const text = useLocaleStore(s => s.text)
   const { ref: logScrollRef, topShadow, bottomShadow } = useScrollShadow<HTMLDivElement>()
   const [autoScroll, setAutoScroll] = useState(true)
   const [levelFilter, setLevelFilter] = useState<LogLevelFilter>('all')
+  const [persistedLogs, setPersistedLogs] = useState<RuntimeLogEvent[]>([])
+  const [logStatus, setLogStatus] = useState<RuntimeLogStatus | null>(null)
+  const [sourceFilter, setSourceFilter] = useState('')
+  const [processFilter, setProcessFilter] = useState('')
+  const [correlationFilter, setCorrelationFilter] = useState('')
+  const filterOptions = locale === 'en-US'
+    ? [
+        { id: 'all' as const, label: 'All' },
+        { id: 'debug' as const, label: 'Debug' },
+        { id: 'info' as const, label: 'Info' },
+        { id: 'warn' as const, label: 'Warn' },
+        { id: 'error' as const, label: 'Error' },
+        { id: 'fatal' as const, label: 'Fatal' },
+      ]
+    : LOG_FILTER_OPTIONS
+
+  useEffect(() => {
+    let disposed = false
+    const load = async () => {
+      try {
+        const page = await ipc.invoke('runtime:log-page', { limit: 500 })
+        if (disposed) return
+        setPersistedLogs(page.events)
+        setLogStatus(page.status)
+      } catch {
+        // Browser mode and pre-ready Electron windows have no log query seam.
+      }
+    }
+    void load()
+    const timer = window.setInterval(() => { void load() }, 2_000)
+    return () => { disposed = true; window.clearInterval(timer) }
+  }, [])
+
+  const displayLogs = useMemo<DisplayLog[]>(() => [
+    ...persistedLogs.map(displayLogFromRuntime),
+    ...globalLogs
+      .filter(log => !log.eventId || !persistedLogs.some(event => event.eventId === log.eventId))
+      .map((log, index) => ({
+        id: log.eventId ?? `workflow-memory:${index}:${log.time}:${log.message}`,
+        time: log.time,
+        level: log.level,
+        message: log.message,
+        source: 'workflow-ui',
+        process: 'renderer',
+      })),
+  ], [globalLogs, persistedLogs])
 
   useEffect(() => {
     if (autoScroll && logScrollRef.current) {
       logScrollRef.current.scrollTop = logScrollRef.current.scrollHeight
     }
-  }, [globalLogs.length, autoScroll])
+  }, [displayLogs.length, autoScroll])
 
   const levelColor = (level: string) => {
     switch (level) {
@@ -799,10 +877,12 @@ function LogsView() {
   }
 
   /** 级别筛选：默认全部；选中具体级别时只显示该级别 */
-  const filteredLogs = useMemo(() => {
-    if (levelFilter === 'all') return globalLogs
-    return globalLogs.filter((log) => log.level === levelFilter)
-  }, [globalLogs, levelFilter])
+  const filteredLogs = useMemo(() => displayLogs.filter(log => (
+    (levelFilter === 'all' || log.level === levelFilter)
+      && (!sourceFilter.trim() || log.source?.toLowerCase().includes(sourceFilter.trim().toLowerCase()))
+      && (!processFilter.trim() || log.process?.toLowerCase().includes(processFilter.trim().toLowerCase()))
+      && (!correlationFilter.trim() || log.correlationId?.includes(correlationFilter.trim()))
+  )), [correlationFilter, displayLogs, levelFilter, processFilter, sourceFilter])
 
   /** 导出当前筛选后的日志为文本文件（.log） */
   const exportLogs = () => {
@@ -817,13 +897,29 @@ function LogsView() {
     URL.revokeObjectURL(url)
   }
 
+  const exportPersistentLogs = async () => {
+    try {
+      const result = await ipc.invoke('runtime:log-export')
+      if (result.success) {
+        toast.success(text(
+          `完整日志包已导出（${result.files?.length ?? 0} 个文件）`,
+          `Complete log bundle exported (${result.files?.length ?? 0} files).`,
+        ))
+      } else if (!result.cancelled) {
+        toast.error(result.error ?? text('日志导出失败。', 'Could not export the log bundle.'))
+      }
+    } catch (error) {
+      toast.error(text(`日志导出失败：${String(error)}`, `Could not export logs: ${String(error)}`))
+    }
+  }
+
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-end gap-1 px-2 py-1 flex-shrink-0">
         {/* 级别筛选 */}
-        <div className="flex items-center gap-0.5 mr-auto" role="group" aria-label="日志级别筛选">
+        <div className="flex items-center gap-0.5 mr-auto" role="group" aria-label={text('日志级别筛选', 'Log level filter')}>
           <Filter size={11} style={{ color: 'var(--color-text-muted)' }} className="mr-0.5" />
-          {LOG_FILTER_OPTIONS.map((opt) => (
+          {filterOptions.map((opt) => (
             <button
               key={opt.id}
               onClick={() => setLevelFilter(opt.id)}
@@ -832,16 +928,26 @@ function LogsView() {
                 backgroundColor: levelFilter === opt.id ? 'var(--color-hover)' : 'transparent',
                 color: levelFilter === opt.id ? 'var(--color-text)' : 'var(--color-text-muted)',
               }}
-              title={`筛选：${opt.label}日志`}
+              title={text(`筛选：${opt.label}日志`, `Filter ${opt.label} logs`)}
             >
               {opt.label}
             </button>
           ))}
         </div>
+        <input className="w-20 rounded border bg-transparent px-1 py-0.5 text-[10px]" aria-label={text('日志来源筛选', 'Log source filter')} placeholder={text('来源', 'Source')} value={sourceFilter} onChange={event => setSourceFilter(event.target.value)} />
+        <input className="w-20 rounded border bg-transparent px-1 py-0.5 text-[10px]" aria-label={text('日志进程筛选', 'Log process filter')} placeholder={text('进程', 'Process')} value={processFilter} onChange={event => setProcessFilter(event.target.value)} />
+        <input className="w-24 rounded border bg-transparent px-1 py-0.5 text-[10px]" aria-label={text('日志关联 ID 筛选', 'Log correlation ID filter')} placeholder={text('关联 ID', 'Correlation ID')} value={correlationFilter} onChange={event => setCorrelationFilter(event.target.value)} />
+        <Button
+          variant="ghost" size="icon"
+          onClick={() => { void exportPersistentLogs() }}
+          title={text('导出完整日志包', 'Export complete log bundle')}
+        >
+          <Download size={13} />
+        </Button>
         <Button
           variant="ghost" size="icon"
           onClick={exportLogs}
-          title="导出日志"
+          title={text('导出当前筛选视图', 'Export filtered view')}
           disabled={filteredLogs.length === 0}
         >
           <Download size={13} />
@@ -849,27 +955,39 @@ function LogsView() {
         <Button
           variant="ghost" size="icon"
           onClick={() => setAutoScroll(!autoScroll)}
-          title={autoScroll ? '自动滚动: 开' : '自动滚动: 关'}
+          title={autoScroll ? text('自动滚动：开', 'Auto-scroll: on') : text('自动滚动：关', 'Auto-scroll: off')}
           className={autoScroll ? 'text-[var(--color-accent)]' : 'text-[var(--color-text-muted)]'}
         >
           <ChevronsDown size={13} />
         </Button>
-        <Button variant="ghost" size="icon" onClick={clearLogs} title="清空日志">
+        <Button variant="ghost" size="icon" onClick={clearLogs} title={text('清空当前视图（不删除持久化证据）', 'Clear this view (persistent evidence is kept)')}>
           <Trash2 size={13} />
         </Button>
       </div>
+
+      {logStatus && (
+        <div className="px-3 pb-1 text-[10px] text-[var(--color-text-muted)]" role="status">
+           {logStatus.persistenceState === 'healthy'
+             ? text('日志已持久化', 'Logs are persisted')
+             : text(`日志状态：${logStatus.persistenceState} · 待写 ${logStatus.pendingCount}`, `Log state: ${logStatus.persistenceState} · pending ${logStatus.pendingCount}`)}
+           {logStatus.totalFailed > 0 ? text(` · 失败 ${logStatus.totalFailed}`, ` · failures ${logStatus.totalFailed}`) : ''}
+           {text(' · 清空只隐藏当前视图，不删除磁盘证据', ' · Clearing only hides this view; disk evidence is kept')}
+        </div>
+      )}
 
       <div className="relative flex-1 min-h-0">
         <div ref={logScrollRef} className="absolute inset-0 overflow-y-auto px-3 pb-2 font-mono text-xs leading-5">
           {filteredLogs.length === 0 && (
             <div className="text-center py-8 opacity-30">
-              {globalLogs.length === 0 ? '暂无日志' : '当前筛选条件下无日志'}
+               {globalLogs.length === 0 ? text('暂无日志', 'No logs yet') : text('当前筛选条件下无日志', 'No logs match the current filters')}
             </div>
           )}
-          {filteredLogs.map((log, i) => (
-            <div key={i} className="flex gap-2">
+          {filteredLogs.map((log) => (
+            <div key={log.id} data-runtime-log-event={log.id} className="flex gap-2">
               <span style={{ color: 'var(--color-text-muted)' }}>{log.time}</span>
-              <span style={{ color: levelColor(log.level) }}>{log.message}</span>
+              <span className="shrink-0" style={{ color: levelColor(log.level) }}>[{log.level}]</span>
+              <span className="min-w-0" style={{ color: levelColor(log.level) }}>{log.message}</span>
+              {(log.source || log.process) && <span className="shrink-0 text-[10px] text-[var(--color-text-muted)]">{log.source ?? ''}{log.process ? ` · ${log.process}` : ''}</span>}
             </div>
           ))}
         </div>

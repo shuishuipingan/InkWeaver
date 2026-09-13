@@ -94,3 +94,28 @@ Official sources:
 
 - <https://www.npmjs.com/package/@deepseek-ai/dsh>
 - <https://github.com/deepseek-ai/deepseek-harness/releases>
+
+## 1.2.0 qualification
+
+The desktop and plugin package versions for this freeze candidate are
+`1.2.0`. The official Harness compatibility baseline remains
+`@deepseek-ai/dsh@0.1.5-rc.1`; no stable `0.1.5` tag is implied. The complete
+qualification regenerated the tarball and repeated the isolated profile,
+preset mount, tool-set, browser, and persistence checks. The 1.1.0 table above
+is historical evidence and must not be copied as the 1.2.0 artifact hash.
+
+| Field | 1.2.0 qualified evidence |
+| --- | --- |
+| plugin package | `@shuishuipingan/inkweaver-dsh@1.2.0` |
+| tarball | `shuishuipingan-inkweaver-dsh-1.2.0.tgz` |
+| tarball SHA-256 | See the root 1.2.0 acceptance receipt and GitHub Release asset; the archive does not self-embed its own digest. |
+| tarball bytes / entries | Recorded in the machine-readable qualification receipt and root acceptance receipt. |
+| Harness commit | `183f08e9c6dde7e36cd2318eaee70b0da08fb35e` |
+| plugin tests | `40` files / `433` passed / `6` skipped |
+| qualification receipt | `.runtime/.cache/dsh-ai-novel-qualification-128/latest-receipt.json` |
+| retained run | The current run path is recorded by `latest-receipt.json`; use that receipt's `artifact.path` for the immutable run directory. |
+| browser/persistence | Chrome first/restart/reinstall journeys, V2 tool isolation, schema-5 readback passed |
+
+The receipt also records the exact source tree and staged-diff hash used for
+the run. The desktop 1.2.0 platform installers, GitHub Release asset
+back-read, and `dsh-plugin` topic check remain separate distribution gates.

@@ -41,6 +41,7 @@ import {
   type HumanConfirmedReviewItem,
   type HumanConfirmedReviewSnapshot,
 } from '../../shared/human-confirmed-review'
+import type { BlueprintEventCoverage, BlueprintEventCoverageStatus } from '../../shared/review-event-coverage'
 
 /** 审稿问题条目（JSON 格式） */
 interface ReviewIssue {
@@ -70,6 +71,7 @@ interface ReviewJSON {
     suggestedScope?: 'opening' | 'transition' | 'ending'
   }>
   summary: string
+  blueprintEventCoverage?: BlueprintEventCoverage[]
 }
 
 interface ReviewReportProps {
@@ -93,6 +95,16 @@ interface EditableReviewItem extends HumanConfirmedReviewItem {
   previousEvidence?: string
   currentEvidence?: string
   suggestedScope?: 'opening' | 'transition' | 'ending'
+}
+
+function blueprintCoverageLabel(status: BlueprintEventCoverageStatus, text: (zh: string, en: string) => string): string {
+  switch (status) {
+    case 'completed': return text('已完成', 'Completed')
+    case 'prepared': return text('已准备', 'Prepared')
+    case 'deferred': return text('已延期', 'Deferred')
+    case 'needs-verification': return text('需核验', 'Needs verification')
+    default: return text('未找到', 'Not found')
+  }
 }
 
 interface ConfirmedChecklist {
@@ -133,7 +145,7 @@ function extractJSON(text: string): string | null {
 }
 
 /** 解析审稿报告（优先 JSON，回退到旧版文本解析） */
-function parseReport(text: string, fallbackCategory: string): { issues: ReviewIssue[]; summary: string } {
+function parseReport(text: string, fallbackCategory: string): { issues: ReviewIssue[]; summary: string; coverage: BlueprintEventCoverage[] } {
   const jsonStr = extractJSON(text)
   if (jsonStr) {
     try {
@@ -154,7 +166,10 @@ function parseReport(text: string, fallbackCategory: string): { issues: ReviewIs
             ? item.suggestedScope
             : undefined,
         }))
-        return { issues, summary: data.summary || '' }
+        const coverage = Array.isArray(data.blueprintEventCoverage)
+          ? data.blueprintEventCoverage.filter(item => item && typeof item.event === 'string' && typeof item.status === 'string')
+          : []
+        return { issues, summary: data.summary || '', coverage }
       }
     } catch {
       // JSON 解析失败，回退到文本解析
@@ -166,7 +181,7 @@ function parseReport(text: string, fallbackCategory: string): { issues: ReviewIs
 }
 
 /** 旧版文本解析器（兼容历史审稿报告） */
-function parseLegacyReport(text: string, fallbackCategory: string): { issues: ReviewIssue[]; summary: string } {
+function parseLegacyReport(text: string, fallbackCategory: string): { issues: ReviewIssue[]; summary: string; coverage: BlueprintEventCoverage[] } {
   const issues: ReviewIssue[] = []
   const lines = text.split('\n')
   let currentCategory = fallbackCategory
@@ -213,7 +228,7 @@ function parseLegacyReport(text: string, fallbackCategory: string): { issues: Re
     }
   }
 
-  return { issues, summary: summaryLines.join(' ') }
+  return { issues, summary: summaryLines.join(' '), coverage: [] }
 }
 
 // ===== 视觉配置 =====
@@ -380,6 +395,7 @@ function ReviewReportSession({
   const [confirming, setConfirming] = useState(false)
   const [showRevisionDialog, setShowRevisionDialog] = useState(false)
   const [processing, setProcessing] = useState(false)
+  const coverage: BlueprintEventCoverage[] = parsedReport.coverage
 
   const openReviewSource = async (sourceChapter: number) => {
     const projectSession = captureProjectSession(useProjectStore.getState().currentProject)
@@ -783,6 +799,22 @@ function ReviewReportSession({
             <span className="font-medium">{text('总体评价：', 'Overall assessment:')}</span>
             <span style={{ color: 'var(--color-text-secondary)' }}>{summary}</span>
           </div>
+        )}
+
+        {coverage.length > 0 && (
+          <section className="mb-4 rounded-lg border px-4 py-3" style={{ borderColor: 'var(--color-border)' }} data-blueprint-event-coverage="true">
+            <h3 className="mb-2 text-sm font-medium">{text('蓝图关键事件覆盖', 'Blueprint key-event coverage')}</h3>
+            <div className="space-y-1.5 text-xs">
+              {coverage.map((entry, index) => {
+                const statusColor = entry.status === 'completed'
+                  ? 'var(--color-success-text)'
+                  : entry.status === 'needs-verification' || entry.status === 'not-found'
+                    ? 'var(--color-warning-text)'
+                    : 'var(--color-text-secondary)'
+                return <div key={`${entry.event}:${index}`} className="flex items-start gap-2 rounded border px-2 py-1.5" style={{ borderColor: 'var(--color-border)' }}><span className="min-w-0 flex-1">{entry.event}{entry.evidence && <span className="ml-1 text-[var(--color-text-muted)]">“{entry.evidence}”</span>}</span><span className="shrink-0 font-medium" style={{ color: statusColor }}>{blueprintCoverageLabel(entry.status, text)}</span></div>
+              })}
+            </div>
+          </section>
         )}
 
         {/* 分类展示 */}

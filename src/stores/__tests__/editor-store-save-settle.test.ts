@@ -66,6 +66,25 @@ describe('editor tab save settlement', () => {
     })
   })
 
+  it('does not settle an old save onto a tab reopened with the same id after close', () => {
+    useEditorStore.setState(state => ({
+      tabs: state.tabs.map(tab => ({ ...tab, instanceId: 'old-instance' })),
+    }))
+    useEditorStore.getState().closeTab('draft-a')
+    useEditorStore.getState().openFile({
+      id: 'draft-a', name: '第一章 v1', type: 'chapter', filePath: 'vela://draft/1',
+      projectKey: 'C:\\novels\\A', content: 'new tab content', savedContent: 'new tab saved', dirty: true,
+    })
+
+    useEditorStore.getState().settleTabSave('draft-a', {
+      content: '保存开始时的正文', contentRevision: 3, tabInstanceId: 'old-instance',
+    })
+
+    expect(useEditorStore.getState().tabs[0]).toMatchObject({
+      content: 'new tab content', savedContent: 'new tab saved', dirty: true,
+    })
+  })
+
   it('refreshes database draft identity metadata when an existing tab is reopened', () => {
     useEditorStore.getState().openFile({
       id: 'draft-a',

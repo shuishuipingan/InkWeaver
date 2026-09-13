@@ -5,6 +5,12 @@
  */
 export type ContextLayer =
   | 'fixed-rules'
+  | 'author-task'
+  | 'planning-material'
+  | 'future-plan'
+  | 'finalized-history'
+  | 'unfinished-candidate'
+  | 'adjacent-prose'
   | 'current-arc'
   | 'character-state'
   | 'historical-fact'
@@ -18,6 +24,9 @@ export type ContextOmissionReason =
   | 'unavailable'
   | 'expired'
   | 'duplicate'
+  | 'missing-source'
+  | 'not-authorized'
+  | 'needs-verification'
 
 export interface ContextSelectionEntry {
   /** Stable, non-content identifier such as `fact:12:3`. */
@@ -30,6 +39,8 @@ export interface ContextSelectionEntry {
   /** Stable presentation order after selection. */
   order: number
   sourceChapter?: number
+  /** Character offsets in the frozen source material when a contiguous span is used. */
+  sourceSpan?: { start: number; end: number }
   required?: boolean
   /** The caller deliberately excluded this complete item before budgeting. */
   excludedReason?: ContextOmissionReason
@@ -40,7 +51,9 @@ export interface ContextReceiptEntry {
   layer: ContextLayer
   label: string
   sourceChapter?: number
+  sourceSpan?: { start: number; end: number }
   included: boolean
+  required?: boolean
   reason?: ContextOmissionReason
   charCount: number
 }
@@ -103,13 +116,29 @@ export function selectContextEntries(
         layer: input.layer,
         label,
         sourceChapter: input.sourceChapter,
+        ...(input.sourceSpan ? { sourceSpan: input.sourceSpan } : {}),
         included: false,
         reason: input.excludedReason,
         charCount: content.length,
       })
       continue
     }
-    if (!content) continue
+    if (!content) {
+      if (input.required) {
+        receiptEntries.push({
+          id,
+          layer: input.layer,
+          label,
+          sourceChapter: input.sourceChapter,
+          ...(input.sourceSpan ? { sourceSpan: input.sourceSpan } : {}),
+          included: false,
+          required: true,
+          reason: input.excludedReason ?? 'unavailable',
+          charCount: 0,
+        })
+      }
+      continue
+    }
     const normalized: ContextSelectionEntry = {
       ...input,
       id,
@@ -124,6 +153,7 @@ export function selectContextEntries(
         layer: normalized.layer,
         label,
         sourceChapter: normalized.sourceChapter,
+        ...(normalized.sourceSpan ? { sourceSpan: normalized.sourceSpan } : {}),
         included: false,
         reason: 'duplicate',
         charCount: content.length,
@@ -147,7 +177,9 @@ export function selectContextEntries(
         layer: entry.layer,
         label: entry.label,
         sourceChapter: entry.sourceChapter,
+        ...(entry.sourceSpan ? { sourceSpan: entry.sourceSpan } : {}),
         included: true,
+        ...(entry.required ? { required: true } : {}),
         charCount: entry.content.length,
       })
       continue
@@ -157,7 +189,9 @@ export function selectContextEntries(
       layer: entry.layer,
       label: entry.label,
       sourceChapter: entry.sourceChapter,
+      ...(entry.sourceSpan ? { sourceSpan: entry.sourceSpan } : {}),
       included: false,
+      ...(entry.required ? { required: true } : {}),
       reason: 'budget-exceeded',
       charCount: entry.content.length,
     })

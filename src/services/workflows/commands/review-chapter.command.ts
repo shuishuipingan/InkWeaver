@@ -20,6 +20,25 @@ import {
   adjacentFindingsAsReviewItems,
   inspectAdjacentContinuity,
 } from '../../../shared/adjacent-continuity'
+import { buildBlueprintEventCoverage } from '../../../shared/review-event-coverage'
+import { textFingerprint } from '../../../shared/character-extraction'
+
+export function parseReviewOutput(text: string): ReviewLike | null {
+  try {
+    const clean = text.replace(/```json?\s*/giu, '').replace(/```/gu, '').trim()
+    const start = clean.indexOf('{')
+    const end = clean.lastIndexOf('}')
+    if (start < 0 || end <= start) return null
+    const parsed: unknown = JSON.parse(clean.slice(start, end + 1))
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null
+    const candidate = parsed as Record<string, unknown>
+    if (typeof candidate.summary !== 'string' || !Array.isArray(candidate.items)) return null
+    if (!candidate.items.every(item => item && typeof item === 'object' && !Array.isArray(item))) return null
+    return candidate as ReviewLike
+  } catch {
+    return null
+  }
+}
 
 
 export interface ReviewChapterParams {
@@ -112,29 +131,80 @@ export class ReviewChapterCommand extends BaseWorkflowCommand<string> {
     )
     this.assertNotCancelled(context)
 
-    const reviewResultClean = this.stripThinkingTags(reviewResultRaw)
+    let reviewResultClean = this.stripThinkingTags(reviewResultRaw)
+    let parsedResult = parseReviewOutput(reviewResultClean)
+    if (!parsedResult) {
+      callbacks.log(text(
+        '审稿结果格式无效；将在同一预算内重建一次，不会保存无效报告。',
+        'The review response was invalid; rebuilding it once within the same budget. No invalid report will be saved.',
+      ))
+      const repairBuilder = new ReviewPromptBuilder(template, writingLanguage)
+        .withChapterContent(draft)
+        .withCharacterStates(characterState)
+        .withGlobalSummary(contextSummary)
+        .withWorldBuilding(worldBuilding)
+        .withReviewFocus([
+          this.params.reviewFocus || '',
+          promptLanguageText(
+            writingLanguage,
+            '上一次审稿响应不是有效 JSON。请只返回包含 summary 字符串和 items 数组的完整 JSON 对象；不要解释、Markdown 或代码块。',
+            'The previous review response was not valid JSON. Return only one complete JSON object with a summary string and an items array; no explanation, Markdown, or code fence.',
+          ),
+          `上一次无效响应（仅作格式证据）：${reviewResultClean.slice(0, 8_000)}`,
+        ].filter(Boolean).join('\n\n'))
+      reviewResultClean = this.stripThinkingTags(await this.callLLMWithBuilder(
+        repairBuilder,
+        callbacks,
+        {
+          responseFormat: { type: 'json_object' },
+          purpose: 'review-chapter-repair',
+          reasoningStage: 'review',
+        },
+        context,
+      ))
+      parsedResult = parseReviewOutput(reviewResultClean)
+    }
+    if (!parsedResult) {
+      throw new Error(text(
+        '审稿结果在一次重建后仍无效，未保存审稿报告。请重试或切换模型。',
+        'The review remained invalid after one rebuild, so no report was saved. Retry or switch models.',
+      ))
+    }
 
     const baseDraft = await readWorkflowDraftMeta(this.params.draftPath, context.projectPath, projectSession)
     if (!baseDraft) throw new Error(text('找不到基准草稿版本', 'The source draft version could not be found.'))
     const baseVersion = baseDraft.version
 
-    const revIndex = await ipc.invokeWithProjectSession(projectSession, 'db:review-next-index', baseDraft.id, context.projectPath)
-
-    let parsedResult: ReviewLike
+    // The review request may outlive an editor save. Re-read the authoritative
+    // draft before persistence when the host provides the full-content seam;
+    // an old result must never be attached to newer text.
     try {
-      const parsed = this.parseJSON(reviewResultClean)
-      parsedResult = parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-        ? parsed as ReviewLike
-        : { summary: text('解析失败', 'Parsing failed'), items: [] }
-    } catch {
-      callbacks.log(text('审稿结果解析失败，返回原始文本', 'The review result could not be parsed; preserving the raw response.'))
-      parsedResult = { summary: text('解析失败', 'Parsing failed'), items: [] }
+      const currentFull = await ipc.invokeWithProjectSession(
+        projectSession,
+        'db:draft-get-full',
+        baseDraft.id,
+        context.projectPath,
+      )
+      if (currentFull?.content && textFingerprint(currentFull.content) !== textFingerprint(draft)) {
+        throw new Error(text('审稿基准正文已变化，已拒绝保存旧审稿结果。', 'The review source changed, so the stale review was not saved.'))
+      }
+    } catch (error) {
+      if (error instanceof Error && /审稿基准正文已变化|review source changed/iu.test(error.message)) throw error
+      // Compatibility with older test/host seams that cannot read full drafts.
     }
+
+    const revIndex = await ipc.invokeWithProjectSession(projectSession, 'db:review-next-index', baseDraft.id, context.projectPath)
 
     const blueprint = await ipc.invokeWithProjectSession(
       projectSession, 'db:blueprint-get', this.params.chapterNumber, context.projectPath,
     )
     if (blueprint) {
+      const eventCoverage = buildBlueprintEventCoverage(
+        blueprint.keyEvents,
+        draft,
+        Array.isArray(parsedResult.items) ? parsedResult.items : [],
+      )
+      parsedResult = { ...parsedResult, blueprintEventCoverage: eventCoverage }
       try {
         const preflight = await readConsistencyPreflight(projectSession, [blueprint])
         parsedResult = mergeConsistencyFindingsIntoReview(parsedResult, preflight.findings, context.uiLocale ?? 'zh-CN')

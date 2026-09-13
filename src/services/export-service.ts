@@ -13,6 +13,7 @@ import type { ProjectSessionContext } from '../shared/ipc-channels'
 import type { AuthoritativeChapterSequence } from '../shared/author-manuscript-import'
 import { countDraftUnits } from '../shared/draft-units'
 import { textFingerprint } from '../shared/character-extraction'
+import { randomUUID } from '../utils/id'
 import {
   getActiveProjectSessionContext,
   sameProjectPathKey,
@@ -264,8 +265,9 @@ export async function exportNovel(
       }
 
       case 'split-md': {
-        // 每章一个 Markdown
-        const splitDir = projectFileStem
+        // 每章一个 Markdown。每次导出使用新的带 run-id 目录，避免旧目录中
+        // 多余章节/残留文件污染本次结果；manifest 同时记录该目录身份。
+        const splitDir = `${projectFileStem}-${Date.now()}-${randomUUID().slice(0, 8)}`
         const mkdirResult = await ipc.invoke('fs:grant-mkdir', options.grantId, splitDir)
         if (!isProjectSessionCurrent(projectSession)) return staleExportResult()
         requireIpcSuccess(mkdirResult, '创建导出目录')
@@ -320,20 +322,26 @@ export async function exportNovel(
         chapterNumber: chapter.chapterNumber,
         title: chapter.title,
         wordCount: chapter.wordCount,
-        outputFile: options.format === 'split-md' ? `${projectFileStem}/${chapter.name}` : outputPath,
+        outputFile: options.format === 'split-md'
+          ? `${outputPath}/${chapter.name}`
+          : outputPath,
         contentHash: chapter.contentHash,
       })),
     }
     const manifestResult = await ipc.invoke(
       'fs:grant-write-file',
       options.grantId,
-      `${projectFileStem}.manifest.json`,
+      `${options.format === 'split-md' ? outputPath : projectFileStem}.manifest.json`,
       JSON.stringify(manifest, null, 2),
     )
     if (!isProjectSessionCurrent(projectSession)) return staleExportResult()
     requireIpcSuccess(manifestResult, '写入导出清单')
     if (!isProjectSessionCurrent(projectSession)) return staleExportResult()
-    await verifyWrittenFile(options.grantId, `${projectFileStem}.manifest.json`, JSON.stringify(manifest, null, 2))
+    await verifyWrittenFile(
+      options.grantId,
+      `${options.format === 'split-md' ? outputPath : projectFileStem}.manifest.json`,
+      JSON.stringify(manifest, null, 2),
+    )
     addLog('info', `导出完成: ${outputPath}`)
     return { success: true, path: outputPath }
   } catch (error) {
