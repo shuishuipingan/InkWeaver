@@ -1,6 +1,7 @@
 # DSH 精选列表提交材料
 
-目标列表：[awesome-dsh-plugin](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin)  
+目标列表：[awesome-dsh-plugin](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin)
+
 目标 topic：[dsh-plugin](https://github.com/topics/dsh-plugin)
 
 ## 建议条目
