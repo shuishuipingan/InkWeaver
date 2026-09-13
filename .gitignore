@@ -65,3 +65,11 @@ tailwind.config.js.bak
 /public/logos/
 *.tsbuildinfo
 .mimosa/
+
+# Browser/test artifacts (never part of the public source tree)
+/.vitest-attachments/
+/.snapshot-test-*/
+/.playwright-cli/
+/.dsh-upgrade-inspect/
+/_tmp_*
+/**/__screenshots__/
