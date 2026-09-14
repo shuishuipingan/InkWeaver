@@ -17,6 +17,7 @@ describe('public homepage contract', () => {
       expect(content).toContain('releases/tag/v1.2.0')
       expect(content).toContain('docs/quickstart/README.md')
       expect(content).toContain('docs/assets/inkweaver-writing-loop.svg')
+      expect(content).toContain('docs/assets/inkweaver-welcome.png')
       expect(content).toContain('@shuishuipingan/inkweaver-dsh')
       expect(content).toContain('issues/new/choose')
       expect(content).toContain('/discussions')
@@ -31,6 +32,7 @@ describe('public homepage contract', () => {
     expect(svg).toMatch(/<desc(?:\s|>)/u)
     expect(svg).toMatch(/viewBox="0 0 \d+ \d+"/u)
     expect(svg).not.toMatch(/(?:href|xlink:href|src)="https?:\/\//iu)
+    expect(existsSync(path.join(repositoryRoot, 'docs/assets/inkweaver-welcome.png'))).toBe(true)
   })
 
   it('does not publish broken relative links in the three public README entry points', () => {

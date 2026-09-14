@@ -12,7 +12,7 @@
 | 公共树检查器 | 已完成 | `scripts/check-public-tree.mjs`；纯路径分类器和 CLI，禁止路径 `violations=[]`。 |
 | 中文兼容入口 | 已完成 | `README_zh.md` 已同步 v1.2.0、Release、快速开始和 DSH 安装链接。 |
 | 产品首页 | 已完成 | README/README_en 首屏新增定位、目标用户、下载、三分钟入口、连续写作 SVG 和社区链接。 |
-| 产品视觉入口 | 已完成 | `docs/assets/inkweaver-writing-loop.svg`，本地无外部资源，含 `<title>`/`<desc>`。 |
+| 产品视觉入口 | 已完成 | `docs/assets/inkweaver-welcome.png` 是干净欢迎页截图（不含正文、密钥或用户项目），`inkweaver-writing-loop.svg` 为本地无外部资源的连续写作流程图，含 `<title>`/`<desc>`。 |
 | 快速开始 | 已完成 | `docs/quickstart/README.md` 和“灯塔来信”无版权样例，覆盖第一章到下一章连续性。 |
 | 社区入口 | 已完成 | Issue forms、Discussion templates、`CONTRIBUTING.md`、`ROADMAP.md` 和 DSH 精选列表提交材料。 |
 | Discussions | 已完成 | GitHub API 回读 `has_discussions=true`。 |

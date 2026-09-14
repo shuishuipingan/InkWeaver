@@ -12,6 +12,8 @@ Windows/macOS 三架构安装包和 DSH 插件 tarball 已由同一源码提交�
 
 [立即下载 v1.2.0](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.2.0) · [三分钟开始第一章](docs/quickstart/README.md) · [安装 DSH 插件](plugins/inkweaver-dsh/README.md) · [提交问题或建议](https://github.com/shuishuipingan/InkWeaver/issues/new/choose) · [参与讨论](https://github.com/shuishuipingan/InkWeaver/discussions)
 
+![InkWeaver 欢迎页](docs/assets/inkweaver-welcome.png)
+
 ![InkWeaver continuous writing loop](docs/assets/inkweaver-writing-loop.svg)
 
 ### 适合谁

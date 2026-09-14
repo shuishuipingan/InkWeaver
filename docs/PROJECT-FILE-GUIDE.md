@@ -19,6 +19,7 @@
 | 11 | `CONTRIBUTING.md` / `ROADMAP.md` | 社区贡献规范、公共树卫生门禁和已发布/规划能力边界。 |
 | 12 | `docs/metrics/README.md` / `scripts/github-growth-snapshot.mjs` | 只读 GitHub 流量与 Release 下载快照；不采集应用内容。 |
 | 13 | `docs/upgrade/PUBLIC-DISCOVERABILITY-AND-ONBOARDING-DESIGN-2026-09-14.md` | 公共仓库、首页、首次体验和分发优化的设计约束。 |
+| 14 | `docs/assets/inkweaver-welcome.png` / `docs/assets/inkweaver-writing-loop.svg` | 不含用户正文的产品欢迎页截图与连续写作流程图；由首页引用。 |
 
 ## 根目录文件
 

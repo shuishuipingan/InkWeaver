@@ -12,6 +12,8 @@ Windows/macOS installers and the DSH plugin tarball have been built and read bac
 
 [Download v1.2.0](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.2.0) · [Start your first chapter in three minutes](docs/quickstart/README.md) · [Install the DSH plugin](plugins/inkweaver-dsh/README.md) · [Ask a question or report a problem](https://github.com/shuishuipingan/InkWeaver/issues/new/choose) · [Join the discussion](https://github.com/shuishuipingan/InkWeaver/discussions)
 
+![InkWeaver welcome screen](docs/assets/inkweaver-welcome.png)
+
 ![InkWeaver continuous writing loop](docs/assets/inkweaver-writing-loop.svg)
 
 ### Who it is for
