@@ -2,7 +2,7 @@
 
 验收日期：2026-09-14（Asia/Hong_Kong）
 
-状态：本次公开发现与首次体验优化已冻结，集成提交为 `c1e2737`。该优化不修改 v1.2.0 发布 tag、桌面安装包或 DSH tarball；v1.2.0 发布源码仍为 `2bcff9b9eca7c5eb142aa5293acad5aac78c0728`。
+状态：本次公开发现与首次体验优化已冻结，集成提交为 `c1e2737`，首页视觉补强提交为 `cd14480`。该优化不修改 v1.2.0 发布 tag、桌面安装包或 DSH tarball；v1.2.0 发布源码仍为 `2bcff9b9eca7c5eb142aa5293acad5aac78c0728`。
 
 ## 已交付
 
@@ -35,7 +35,7 @@ github-growth-snapshot.test.ts   2/2 passed
 ```text
 node scripts/check-public-tree.mjs --json
 exit 0
-trackedPathCount: 1067
+trackedPathCount: 1068
 violations: []
 ```
 
