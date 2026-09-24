@@ -26,6 +26,8 @@ export interface StructuredBatchContract<TInput, TOutput> {
     item: TInput
     validatedPrefix: readonly TOutput[]
   }): GenerationTask
+  /** One bounded regeneration when a single item has no JSON envelope at all. */
+  buildInvalidEnvelopeRetryTask?(input: { originalTask: GenerationTask }): GenerationTask
   inputKey(input: TInput): StructuredItemKey
   outputKey(output: TOutput): StructuredItemKey
   decode(content: string): readonly TOutput[]
@@ -228,6 +230,38 @@ export function createStructuredBatchExecutor<TInput, TOutput>(dependencies: {
             compactTask,
             { signal: input.signal },
           )
+          recordAttempt(outcome.receipt)
+          if (input.signal?.aborted) {
+            throw new ExecutionFailure({
+              code: 'cancelled',
+              reason: 'cancelled',
+              message: '结构化生成已取消',
+            })
+          }
+        }
+        let invalidRootEnvelope = false
+        if (
+          outcome.status === 'completed'
+          && items.length === 1
+          && contract.buildInvalidEnvelopeRetryTask
+        ) {
+          try {
+            contract.decode(outcome.content)
+          } catch (error) {
+            const diagnostic = structuredContractDiagnostic(error)
+            invalidRootEnvelope = diagnostic?.code === 'invalid_envelope' && diagnostic.path === '$'
+          }
+        }
+        if (invalidRootEnvelope && contract.buildInvalidEnvelopeRetryTask) {
+          const retryTask = contract.buildInvalidEnvelopeRetryTask({ originalTask: task })
+          if (retryTask.output !== 'structured-data') {
+            throw new ExecutionFailure({
+              code: 'invalid_output',
+              reason: 'invalid_item',
+              message: '结构化封装重试必须请求 structured-data 输出',
+            })
+          }
+          outcome = await session.complete(retryTask, { signal: input.signal })
           recordAttempt(outcome.receipt)
           if (input.signal?.aborted) {
             throw new ExecutionFailure({

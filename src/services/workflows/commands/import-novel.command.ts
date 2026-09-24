@@ -772,6 +772,17 @@ export class InferBlueprintsPerChapterCommand extends BaseWorkflowCommand<void> 
       },
       inputKey: chapter => chapter.number,
       outputKey: blueprint => blueprint.chapterNumber,
+      buildInvalidEnvelopeRetryTask: ({ originalTask }) => ({
+        ...originalTask,
+        purpose: `${originalTask.purpose}:envelope-retry`,
+        messages: [
+          {
+            role: 'system',
+            content: `${originalTask.messages.find(message => message.role === 'system')?.content ?? ''}\n\n${blueprintSemanticGenerationContract(writingLanguage)}`,
+          },
+          ...originalTask.messages.filter(message => message.role !== 'system'),
+        ],
+      }),
       decode: content => parseBlueprintSemanticResponseText(content, activeChapterNumbers)
         .map(blueprint => ({
           ...blueprint,

@@ -14,6 +14,7 @@ import {
   type GenerationTask,
 } from '../../generation/generation-harness'
 import { planBlueprintGenerationCost } from '../blueprint-batch-policy'
+import { StructuredContractDiagnostic } from '../../../shared/structured-contract-diagnostic'
 
 type Blueprint = {
   chapterNumber: number
@@ -690,6 +691,97 @@ describe('StructuredBatchExecutor seam', () => {
       ok: false,
       failure: { code: 'invalid_output', reason: 'malformed_output' },
       receipt: { calls: 2, requestedTokens: 200 },
+    })
+    expect(result).not.toHaveProperty('items')
+  })
+
+  it('retries a single blueprint once when the model returns prose instead of a JSON envelope', async () => {
+    let attempts = 0
+    const complete = vi.fn<GenerationSession['complete']>(async (task) => ({
+      status: 'completed',
+      content: task.purpose.endsWith(':envelope-retry') ? blueprintJson([1]) : 'Here is the blueprint.',
+      finishReason: 'stop',
+      receipt: attemptReceipt(++attempts, 100, attempts * 100, 'stop'),
+    }))
+    const executor = createStructuredBatchExecutor({
+      contract: {
+        ...blueprintContract,
+        decode: content => {
+          if (!content.trim().startsWith('{')) throw new StructuredContractDiagnostic('invalid_envelope', '$')
+          return blueprintContract.decode(content)
+        },
+        buildInvalidEnvelopeRetryTask: ({ originalTask }) => ({
+          ...originalTask,
+          purpose: `${originalTask.purpose}:envelope-retry`,
+        }),
+      },
+      session: { complete },
+    })
+
+    const result = await executor.execute({ items: [1], limits: { maxBatchItems: 5 } })
+
+    expect(result).toMatchObject({
+      ok: true,
+      items: [{ chapterNumber: 1, title: '第1章' }],
+      receipt: { calls: 2, requestedTokens: 200 },
+    })
+  })
+
+  it('retries a single blueprint whose fenced JSON has trailing prose outside the envelope', async () => {
+    let attempts = 0
+    const complete = vi.fn<GenerationSession['complete']>(async (task) => ({
+      status: 'completed',
+      content: task.purpose.endsWith(':envelope-retry')
+        ? blueprintJson([1])
+        : `\`\`\`json\n${blueprintJson([1])}\n\`\`\`\nDone.`,
+      finishReason: 'stop',
+      receipt: attemptReceipt(++attempts, 100, attempts * 100, 'stop'),
+    }))
+    const executor = createStructuredBatchExecutor({
+      contract: {
+        ...blueprintContract,
+        decode: content => {
+          if (!content.trim().startsWith('{')) throw new StructuredContractDiagnostic('invalid_envelope', '$')
+          return blueprintContract.decode(content)
+        },
+        buildInvalidEnvelopeRetryTask: ({ originalTask }) => ({
+          ...originalTask,
+          purpose: `${originalTask.purpose}:envelope-retry`,
+        }),
+      },
+      session: { complete },
+    })
+
+    expect(await executor.execute({ items: [1], limits: { maxBatchItems: 5 } }))
+      .toMatchObject({ ok: true, receipt: { calls: 2 } })
+  })
+
+  it('stops after one invalid-envelope retry without accepting prose or an incomplete item', async () => {
+    let attempts = 0
+    const complete = vi.fn<GenerationSession['complete']>(async () => ({
+      status: 'completed',
+      content: 'Here is the blueprint.',
+      finishReason: 'stop',
+      receipt: attemptReceipt(++attempts, 100, attempts * 100, 'stop'),
+    }))
+    const executor = createStructuredBatchExecutor({
+      contract: {
+        ...blueprintContract,
+        decode: content => {
+          if (!content.trim().startsWith('{')) throw new StructuredContractDiagnostic('invalid_envelope', '$')
+          return blueprintContract.decode(content)
+        },
+        buildInvalidEnvelopeRetryTask: ({ originalTask }) => originalTask,
+      },
+      session: { complete },
+    })
+
+    const result = await executor.execute({ items: [1], limits: { maxBatchItems: 5 } })
+
+    expect(result).toMatchObject({
+      ok: false,
+      failure: { code: 'invalid_output', diagnostic: { code: 'invalid_envelope', path: '$' } },
+      receipt: { calls: 2 },
     })
     expect(result).not.toHaveProperty('items')
   })

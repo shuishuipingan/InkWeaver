@@ -200,6 +200,40 @@ afterEach(() => {
 })
 
 describe('InferBlueprintsPerChapterCommand', () => {
+  it('regenerates one non-JSON single-chapter response under the immutable envelope contract', async () => {
+    const prompts: Array<Array<{ role: string; content: string }>> = []
+    stubIpcInvoke((channel) => {
+      if (channel === 'db:blueprint-commit-range') return { success: false, error: 'captured after retry' }
+      throw new Error(`unexpected IPC ${channel}`)
+    })
+    useLLMStore.setState({
+      defaultModelId: 'model-a',
+      generateStream: vi.fn(async (messages, streamCallbacks) => {
+        prompts.push(messages)
+        streamCallbacks.onDone?.(prompts.length === 1
+          ? '这是章节蓝图：'
+          : JSON.stringify({ blueprints: [{
+              chapterNumber: 1,
+              title: '启程',
+              role: '建置',
+              purpose: '引出主角目标',
+              keyEvents: '主角发现异常',
+              characters: ['主角'],
+              relationships: [],
+              suspenseHook: '门外有人',
+            }] }), undefined, 'stop')
+        return `import-blueprint-envelope-${prompts.length}`
+      }),
+    })
+
+    await expect(new InferBlueprintsPerChapterCommand().execute({
+      step: {}, context: createContext(), callbacks,
+    })).rejects.toThrow('captured after retry')
+
+    expect(prompts).toHaveLength(2)
+    expect(prompts[1]?.[0]?.content).toContain('只输出 {"blueprints":[...]}')
+  })
+
   it('keeps imported UTF-8 intact in English blueprint inference and its syntax-repair request', async () => {
     const importedText = 'At “夜航 Café”, Mara sees 招牌写着“回家” and hears déjà vu in the rain.'
     const valid = JSON.stringify({

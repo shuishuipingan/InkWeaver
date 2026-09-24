@@ -1215,17 +1215,9 @@ severity 取值：error=严重矛盾强烈建议修复, warning=轻微不一致�
 
 ---
 
-请严格按以下 JSON 格式输出本章蓝图：
-
-{
-  "chapterNumber": {{chapter_number}},
-  "title": "从正文内容中提炼的精准章节标题（如果拆章标题已经不错可保留）",
-  "role": "本章在全书中的角色（起、承、转、合、伏笔、高潮、过渡 等）",
-  "purpose": "本章主角最想解决的核心问题（一句话）",
-  "characters": ["本章出场的重要角色名"],
-  "keyEvents": "本章核心事件概述（100-150字，包含因果关系和结果）",
-  "suspenseHook": "章末留下的悬念或钩子（一句话）"
-}
+请按运行时附加的最终不可变 JSON 合同输出 {"blueprints":[...]}。
+每章蓝图包含 chapterNumber、title、role、purpose、characters、relationships、keyEvents、suspenseHook。
+不得沿用单章对象格式；即使只有一章，也必须使用 blueprints 数组封装。
 
 要求：
 1. keyEvents 必须基于正文实际内容提取，不可臆造。
