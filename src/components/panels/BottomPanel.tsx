@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import {
   Trash2, ChevronsDown, Loader2, CheckCircle2, XCircle, Clock,
-  Play, Pause, X, ChevronDown, ChevronRight, Zap, Copy, Download, Filter,
+  Play, Pause, X, ChevronDown, ChevronRight, Zap, Copy, Download, Filter, FolderOpen,
 } from 'lucide-react'
 import { useLayoutStore } from '../../stores/layout-store'
 import { useWorkflowStore, type WorkflowStep, type WorkflowRun } from '../../stores/workflow-store'
@@ -835,7 +835,7 @@ export function LogsView() {
     let disposed = false
     const load = async () => {
       try {
-        const page = await ipc.invoke('runtime:log-page', { limit: 500 })
+        const page = await ipc.invoke('runtime:log-page', { limit: 500, tail: true })
         if (disposed) return
         setPersistedLogs(page.events)
         setLogStatus(page.status)
@@ -913,6 +913,15 @@ export function LogsView() {
     }
   }
 
+  const openLogFolder = async () => {
+    try {
+      const result = await ipc.invoke('runtime:log-open-folder')
+      if (!result.success) toast.error(result.error ?? text('无法打开日志目录。', 'Could not open the log folder.'))
+    } catch (error) {
+      toast.error(text(`无法打开日志目录：${String(error)}`, `Could not open the log folder: ${String(error)}`))
+    }
+  }
+
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-end gap-1 px-2 py-1 flex-shrink-0">
@@ -937,6 +946,14 @@ export function LogsView() {
         <input className="w-20 rounded border bg-transparent px-1 py-0.5 text-[10px]" aria-label={text('日志来源筛选', 'Log source filter')} placeholder={text('来源', 'Source')} value={sourceFilter} onChange={event => setSourceFilter(event.target.value)} />
         <input className="w-20 rounded border bg-transparent px-1 py-0.5 text-[10px]" aria-label={text('日志进程筛选', 'Log process filter')} placeholder={text('进程', 'Process')} value={processFilter} onChange={event => setProcessFilter(event.target.value)} />
         <input className="w-24 rounded border bg-transparent px-1 py-0.5 text-[10px]" aria-label={text('日志关联 ID 筛选', 'Log correlation ID filter')} placeholder={text('关联 ID', 'Correlation ID')} value={correlationFilter} onChange={event => setCorrelationFilter(event.target.value)} />
+        <Button
+          variant="ghost" size="icon"
+          onClick={() => { void openLogFolder() }}
+          title={text('打开日志目录', 'Open log folder')}
+          aria-label={text('打开日志目录', 'Open log folder')}
+        >
+          <FolderOpen size={13} />
+        </Button>
         <Button
           variant="ghost" size="icon"
           onClick={() => { void exportPersistentLogs() }}
@@ -971,6 +988,7 @@ export function LogsView() {
              ? text('日志已持久化', 'Logs are persisted')
              : text(`日志状态：${logStatus.persistenceState} · 待写 ${logStatus.pendingCount}`, `Log state: ${logStatus.persistenceState} · pending ${logStatus.pendingCount}`)}
            {logStatus.totalFailed > 0 ? text(` · 失败 ${logStatus.totalFailed}`, ` · failures ${logStatus.totalFailed}`) : ''}
+           {text(' · 磁盘记录只加载最近 500 条；完整日志保存在本地', ' · Only the latest 500 disk events are loaded; full logs are stored locally')}
            {text(' · 清空只隐藏当前视图，不删除磁盘证据', ' · Clearing only hides this view; disk evidence is kept')}
         </div>
       )}

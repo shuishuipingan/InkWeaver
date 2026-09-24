@@ -12,9 +12,10 @@ describe('public homepage contract', () => {
   it('exposes a consistent product-first entry in Chinese and English', () => {
     const chinese = read('README.md')
     const english = read('README_en.md')
+    const version = (JSON.parse(read('package.json')) as { version: string }).version
     for (const content of [chinese, english]) {
-      expect(content).toContain('v1.2.0')
-      expect(content).toContain('releases/tag/v1.2.0')
+      expect(content).toContain(`v${version}`)
+      expect(content).toContain(`releases/tag/v${version}`)
       expect(content).toContain('docs/quickstart/README.md')
       expect(content).toContain('docs/assets/inkweaver-writing-loop.svg')
       expect(content).toContain('docs/assets/inkweaver-welcome.png')

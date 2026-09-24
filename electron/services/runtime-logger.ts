@@ -11,7 +11,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
-import { app, dialog, ipcMain } from 'electron'
+import { app, dialog, ipcMain, shell } from 'electron'
 
 import { VELA_HOME } from '../utils/config-utils'
 import {
@@ -303,6 +303,11 @@ export function registerRuntimeLoggerIPC(): void {
     await runtimeLogger.flush()
     return { success: true, status: runtimeLogger.status() }
   })
+  ipcMain.handle('runtime:log-open-folder', async () => {
+    await runtimeLogger.flush()
+    const error = await shell.openPath(resolveLogDirectory())
+    return error ? { success: false, error } : { success: true }
+  })
   ipcMain.handle('runtime:log-export', async () => {
     try {
       const selection = await dialog.showOpenDialog({
@@ -329,7 +334,7 @@ export function registerRuntimeLoggerIPC(): void {
 }
 
 const TRACE_SKIP_CHANNELS = new Set([
-  'runtime:log', 'runtime:log-batch', 'runtime:log-status', 'runtime:log-page', 'runtime:log-flush', 'runtime:log-export',
+  'runtime:log', 'runtime:log-batch', 'runtime:log-status', 'runtime:log-page', 'runtime:log-flush', 'runtime:log-open-folder', 'runtime:log-export',
   'runtime:set-level', 'runtime:get-level',
   'llm:stream-chunk', 'llm:stream-done', 'llm:stream-error',
 ])

@@ -119,6 +119,7 @@ export interface RuntimeLogBatchPayload {
 export interface RuntimeLogPageQuery {
   limit?: number
   cursor?: string
+  tail?: boolean
   level?: RuntimeLogLevel
   process?: RuntimeLogProcess
   source?: string

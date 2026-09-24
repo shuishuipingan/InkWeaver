@@ -39,6 +39,21 @@ describe('RuntimeLogWriter', () => {
     expect(page.nextCursor).toBeUndefined()
   })
 
+  it('returns the latest events for a live log view while preserving the complete file', async () => {
+    const root = mkdtempSync(path.join(tmpdir(), 'inkweaver-runtime-log-'))
+    const writer = new RuntimeLogWriter({ rootDir: root })
+    for (let sequence = 1; sequence <= 4; sequence += 1) await writer.append(event(sequence))
+
+    const page = await writer.readPage({ limit: 2, tail: true })
+
+    expect(page.events.map(item => item.sequence)).toEqual([3, 4])
+    expect(page.complete).toBe(false)
+    const segment = readdirSync(root).find(name => /^app-.*\.jsonl$/u.test(name))
+    expect(segment).toBeDefined()
+    const onDisk = readFileSync(path.join(root, segment!), 'utf8')
+    expect(onDisk.trim().split('\n')).toHaveLength(4)
+  })
+
   it('rotates without overwriting segments and retains manifest hashes', async () => {
     const root = mkdtempSync(path.join(tmpdir(), 'inkweaver-runtime-log-'))
     const writer = new RuntimeLogWriter({ rootDir: root, maxSegmentBytes: 260, maxSegments: 20 })

@@ -77,10 +77,19 @@ describe('persisted runtime log view', () => {
 
     await vi.waitFor(() => expect(container.querySelectorAll('[data-runtime-log-event]').length).toBe(1))
     await expect.element(page.getByText('Logs are persisted')).toBeVisible()
+    expect(invoke).toHaveBeenCalledWith('runtime:log-page', { limit: 500, tail: true })
 
     await page.getByTitle('Filter Error logs').click()
     expect(container.querySelectorAll('[data-runtime-log-event]').length).toBe(1)
     await page.getByTitle('Export complete log bundle').click()
     expect(invoke).toHaveBeenCalledWith('runtime:log-export')
+  })
+
+  it('offers a direct way to open the on-disk log directory', async () => {
+    await act(async () => root.render(<div style={{ height: 360 }}><LogsView /></div>))
+
+    await page.getByRole('button', { name: 'Open log folder' }).click()
+
+    expect(invoke).toHaveBeenCalledWith('runtime:log-open-folder')
   })
 })

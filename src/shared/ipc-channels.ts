@@ -294,6 +294,10 @@ export interface ProjectChannels {
     args: []
     return: { success: boolean; status: RuntimeLogStatus }
   }
+  'runtime:log-open-folder': {
+    args: []
+    return: { success: boolean; error?: string }
+  }
   'runtime:log-export': {
     args: []
     return: { success: boolean; cancelled?: boolean; displayName?: string; files?: string[]; error?: string }

@@ -227,14 +227,17 @@ export class RuntimeLogWriter {
   async readPage(query: RuntimeLogPageQuery = {}): Promise<RuntimeLogPage> {
     const names = await this.listSegments()
     const events: RuntimeLogEvent[] = []
+    const seenEventIds = new Set<string>()
     for (const name of names) {
       const filePath = path.join(this.rootDir, name)
       const raw = await this.readText(filePath)
       for (const line of raw.split(/\r?\n/u).filter(Boolean)) {
         try {
           const value: unknown = JSON.parse(line)
-          if (isRuntimeLogEvent(value) && eventMatches(value, query)
-            && !events.some(existing => existing.eventId === value.eventId)) events.push(value)
+          if (isRuntimeLogEvent(value) && eventMatches(value, query) && !seenEventIds.has(value.eventId)) {
+            events.push(value)
+            seenEventIds.add(value.eventId)
+          }
         } catch { /* ignore an incomplete trailing line; manifest reports it */ }
       }
     }
@@ -242,7 +245,10 @@ export class RuntimeLogWriter {
     if (emergencyEvents.length > 0) {
       this.persistenceState = 'emergency-spool'
       for (const event of emergencyEvents) {
-        if (!events.some(existing => existing.eventId === event.eventId)) events.push(event)
+        if (!seenEventIds.has(event.eventId)) {
+          events.push(event)
+          seenEventIds.add(event.eventId)
+        }
       }
     }
     // If even the emergency spool is unavailable, keep the in-memory pending
@@ -250,19 +256,22 @@ export class RuntimeLogWriter {
     // The status remains incomplete, so the UI cannot mistake this view for a
     // fully persisted history.
     for (const item of this.pending) {
-      if (eventMatches(item.event, query) && !events.some(existing => existing.eventId === item.event.eventId)) {
+      if (eventMatches(item.event, query) && !seenEventIds.has(item.event.eventId)) {
         events.push(item.event)
+        seenEventIds.add(item.event.eventId)
       }
     }
     events.sort((left, right) => (left.serverSequence ?? left.sequence) - (right.serverSequence ?? right.sequence))
-    const start = query.cursor ? Math.max(0, Number.parseInt(query.cursor, 10) || 0) : 0
     const limit = safeLimit(query.limit)
+    const start = query.tail
+      ? Math.max(0, events.length - limit)
+      : query.cursor ? Math.max(0, Number.parseInt(query.cursor, 10) || 0) : 0
     const selected = events.slice(start, start + limit)
     const nextIndex = start + selected.length
     return {
       events: selected,
       ...(nextIndex < events.length ? { nextCursor: String(nextIndex) } : {}),
-      complete: nextIndex >= events.length && this.pending.length === 0 && emergencyEvents.length === 0,
+      complete: start === 0 && nextIndex >= events.length && this.pending.length === 0 && emergencyEvents.length === 0,
       status: this.status(),
     }
   }
