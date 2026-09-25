@@ -239,8 +239,15 @@ export function registerLLMController() {
       signal: abortController.signal,
       onChunk: (chunk: string) => win?.webContents.send('llm:stream-chunk', { requestId, chunk }),
       onDiagnostics: diagnostics => {
-        if (diagnostics.normalizedFinishReason === 'stop') return
-        runtimeLogger.warn('llm', 'Gemini 流完成证据异常', { requestId, ...diagnostics })
+        if (diagnostics.normalizedFinishReason === 'stop' && !diagnostics.fallbackAttempted) return
+        const message = diagnostics.fallbackAttempted && diagnostics.normalizedFinishReason === 'stop'
+          ? 'Gemini 流式响应经非流式请求恢复'
+          : 'Gemini 流完成证据异常'
+        if (diagnostics.normalizedFinishReason === 'stop') {
+          runtimeLogger.info('llm', message, { requestId, ...diagnostics })
+        } else {
+          runtimeLogger.warn('llm', message, { requestId, ...diagnostics })
+        }
       },
       onDone: (fullText: string, usage?: TokenUsage, finishReason?: LLMFinishReason) => {
         const terminalReason: LLMFinishReason = finishReason ?? 'unknown'

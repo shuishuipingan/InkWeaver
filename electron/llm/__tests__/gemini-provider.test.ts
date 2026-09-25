@@ -62,6 +62,22 @@ describe('GeminiProvider', () => {
     expect(result).toMatchObject({ success: true, content: '{"blueprints":[]}' })
   })
 
+  it('maps a non-streaming Gemini prompt block to a safety completion', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ promptFeedback: { blockReason: 'SAFETY' } }),
+    }))
+
+    await expect(new GeminiProvider().generate(model, [{ role: 'user', content: '返回 JSON' }], {
+      temperature: 0.2,
+      maxTokens: 512,
+    })).resolves.toMatchObject({
+      success: false,
+      content: '',
+      finishReason: 'content_filter',
+    })
+  })
+
   it('streams every answer part but never forwards thought parts as generated text', async () => {
     const frame = (parts: Array<{ text: string; thought?: boolean }>, finishReason?: string) =>
       `data: ${JSON.stringify({ candidates: [{ content: { parts }, ...(finishReason ? { finishReason } : {}) }] })}\n`
@@ -397,6 +413,144 @@ describe('GeminiProvider', () => {
       promptBlockReason: null,
     })
     expect(JSON.stringify(onDiagnostics.mock.calls)).not.toContain('private response text')
+  })
+
+  it('uses one cancellable non-stream JSON fallback when a Gemini stream has no completion metadata', async () => {
+    const fallbackContent = '{"blueprints":[{"chapterNumber":1,"title":"第1章"}]}'
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        body: {
+          getReader: () => sseReader(
+            'data: {"candidates":[{"content":{"parts":[{"text":"temporary provider response"}]}}]}\n',
+          ),
+        },
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          candidates: [{ content: { parts: [{ text: fallbackContent }] }, finishReason: 'STOP' }],
+          usageMetadata: { promptTokenCount: 12, candidatesTokenCount: 10, totalTokenCount: 22 },
+        }),
+      })
+    vi.stubGlobal('fetch', fetchMock)
+    const onDone = vi.fn()
+    const onDiagnostics = vi.fn()
+    const signal = new AbortController().signal
+
+    await new GeminiProvider().generateStream(model, [{ role: 'user', content: '返回蓝图 JSON' }], {
+      temperature: 0.2,
+      maxTokens: 512,
+      responseFormat: { type: 'json_object' },
+      signal,
+      onChunk: vi.fn(),
+      onDone,
+      onError: vi.fn(),
+      onDiagnostics,
+    })
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain(':streamGenerateContent')
+    expect(String(fetchMock.mock.calls[1]?.[0])).toContain(':generateContent')
+    expect(fetchMock.mock.calls[1]?.[1]).toMatchObject({ signal })
+    expect(onDone).toHaveBeenCalledWith(fallbackContent, {
+      promptTokens: 12,
+      completionTokens: 10,
+      totalTokens: 22,
+      promptCacheHitTokens: null,
+      promptCacheMissTokens: null,
+    }, 'stop')
+    expect(onDiagnostics).toHaveBeenCalledWith(expect.objectContaining({
+      normalizedFinishReason: 'stop',
+      fallbackAttempted: true,
+      fallbackFinishReason: 'stop',
+      fallbackOutputChars: fallbackContent.length,
+      fallbackUsageMetadataPresent: true,
+    }))
+  })
+
+  it('also uses the JSON fallback when an unconfirmed stream happens to be syntactically valid JSON', async () => {
+    const fallbackContent = '{"blueprints":[{"chapterNumber":1,"title":"第1章"}]}'
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        body: {
+          getReader: () => sseReader(
+            'data: {"candidates":[{"content":{"parts":[{"text":"{\\"message\\":\\"unconfirmed\\"}"}]},"finishReason":"OTHER"}]}\n',
+          ),
+        },
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          candidates: [{ content: { parts: [{ text: fallbackContent }] }, finishReason: 'STOP' }],
+        }),
+      })
+    vi.stubGlobal('fetch', fetchMock)
+    const onDone = vi.fn()
+
+    await new GeminiProvider().generateStream(model, [{ role: 'user', content: '返回蓝图 JSON' }], {
+      temperature: 0.2,
+      maxTokens: 512,
+      responseFormat: { type: 'json_object' },
+      signal: new AbortController().signal,
+      onChunk: vi.fn(),
+      onDone,
+      onError: vi.fn(),
+    })
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(onDone).toHaveBeenCalledWith(fallbackContent, undefined, 'stop')
+  })
+
+  it('fails a non-stream fallback without completion evidence instead of returning provider text as a workflow result', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        body: {
+          getReader: () => sseReader(
+            'data: {"candidates":[{"content":{"parts":[{"text":"temporary provider response"}]}}]}\n',
+          ),
+        },
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          candidates: [{ content: { parts: [{ text: 'provider fallback response' }] } }],
+          usageMetadata: { promptTokenCount: 8, candidatesTokenCount: 4, totalTokenCount: 12 },
+        }),
+      })
+    vi.stubGlobal('fetch', fetchMock)
+    const onDone = vi.fn()
+    const onDiagnostics = vi.fn()
+
+    await new GeminiProvider().generateStream(model, [{ role: 'user', content: '返回蓝图 JSON' }], {
+      temperature: 0.2,
+      maxTokens: 512,
+      responseFormat: { type: 'json_object' },
+      signal: new AbortController().signal,
+      onChunk: vi.fn(),
+      onDone,
+      onError: vi.fn(),
+      onDiagnostics,
+    })
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(onDone).toHaveBeenCalledWith('', {
+      promptTokens: 8,
+      completionTokens: 4,
+      totalTokens: 12,
+      promptCacheHitTokens: null,
+      promptCacheMissTokens: null,
+    }, 'error')
+    expect(JSON.stringify(onDiagnostics.mock.calls)).not.toContain('provider fallback response')
+    expect(onDiagnostics).toHaveBeenCalledWith(expect.objectContaining({
+      normalizedFinishReason: 'error',
+      fallbackAttempted: true,
+      fallbackFinishReason: 'unknown',
+      fallbackOutputChars: 26,
+      fallbackUsageMetadataPresent: true,
+    }))
   })
 
   it('maps a Gemini prompt block reason to a safety completion failure', async () => {

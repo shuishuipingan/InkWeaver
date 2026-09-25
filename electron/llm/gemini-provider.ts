@@ -18,6 +18,24 @@ function answerTextParts(parts: readonly GeminiTextPart[] | undefined): string[]
     .map(part => part.text!)
 }
 
+function isJsonText(value: string): boolean {
+  try {
+    JSON.parse(value)
+    return true
+  } catch {
+    return false
+  }
+}
+
+function isProviderErrorEnvelope(value: string): boolean {
+  try {
+    const parsed: unknown = JSON.parse(value)
+    return Boolean(parsed && typeof parsed === 'object' && !Array.isArray(parsed) && 'error' in parsed)
+  } catch {
+    return false
+  }
+}
+
 export class GeminiProvider implements ILLMProvider {
   private applyReasoning(
     generationConfig: Record<string, unknown>,
@@ -86,8 +104,8 @@ export class GeminiProvider implements ILLMProvider {
           'x-goog-api-key': model.apiKey,
         },
         body: JSON.stringify(body),
-        // 非流式请求没有外部取消信号，必须自带超时兜底。
-        signal: AbortSignal.timeout(120_000),
+        // 普通非流式请求自带超时；流式恢复复用原始取消信号。
+        signal: opts.signal ?? AbortSignal.timeout(120_000),
       })
 
       if (!res.ok) {
@@ -102,11 +120,16 @@ export class GeminiProvider implements ILLMProvider {
           finish_reason?: string | null
         }>
         usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number }
+        promptFeedback?: { blockReason?: string | null }
       }
 
       const text = answerTextParts(data.candidates?.[0]?.content?.parts).join('')
       const firstCandidate = data.candidates?.[0]
-      const finishReason = this.normalizeFinishReason(firstCandidate?.finishReason ?? firstCandidate?.finish_reason)
+      const finishReason = this.normalizeFinishReason(
+        firstCandidate?.finishReason
+          ?? firstCandidate?.finish_reason
+          ?? data.promptFeedback?.blockReason,
+      )
       const usage = data.usageMetadata ? {
         promptTokens: data.usageMetadata.promptTokenCount ?? null,
         completionTokens: data.usageMetadata.candidatesTokenCount ?? null,
@@ -132,7 +155,8 @@ export class GeminiProvider implements ILLMProvider {
         error: 'Gemini API 返回的文本未正常完成',
       }
     } catch (error) {
-      return { success: false, content: '', finishReason: 'error', error: String(error) }
+      const finishReason = opts.signal?.aborted ? 'cancelled' : 'error'
+      return { success: false, content: '', finishReason, error: String(error) }
     }
   }
 
@@ -254,6 +278,49 @@ export class GeminiProvider implements ILLMProvider {
       buffer += decoder.decode()
       if (buffer.trim()) processLine(buffer)
 
+      const streamFinishReason = finishReason
+      const streamOutputChars = fullText.length
+      let fallbackAttempted = false
+      let fallbackFinishReason: LLMFinishReason | undefined
+      let fallbackOutputChars: number | undefined
+      let fallbackUsageMetadataPresent: boolean | undefined
+      const needsStructuredTransportFallback = opts.responseFormat?.type === 'json_object'
+        && finishReason === 'unknown'
+        && usage === undefined
+        && candidateCount > 0
+        && fullText.length > 0
+      if (needsStructuredTransportFallback) {
+        fallbackAttempted = true
+        const fallback = await this.generate(model, messages, { ...opts, signal: opts.signal })
+        fallbackFinishReason = fallback.finishReason
+        fallbackOutputChars = fallback.content.length
+        fallbackUsageMetadataPresent = fallback.usage !== undefined
+        if (opts.signal.aborted || fallback.finishReason === 'cancelled') {
+          opts.onError('已取消生成')
+          return
+        }
+
+        if (fallback.finishReason === 'content_filter' || fallback.finishReason === 'length') {
+          fullText = fallback.content
+          usage = fallback.usage
+          finishReason = fallback.finishReason
+        } else if (
+          fallback.finishReason === 'error'
+          || isProviderErrorEnvelope(fallback.content)
+          || (fallback.finishReason === 'unknown' && !isJsonText(fallback.content))
+        ) {
+          // Do not send proxy error/refusal text into structured batch splitting
+          // as if it were a partial model answer.
+          fullText = ''
+          usage = fallback.usage
+          finishReason = 'error'
+        } else {
+          fullText = fallback.content
+          usage = fallback.usage
+          finishReason = fallback.finishReason
+        }
+      }
+
       try {
         opts.onDiagnostics?.({
           provider: 'gemini-native',
@@ -264,6 +331,14 @@ export class GeminiProvider implements ILLMProvider {
           rawFinishReason,
           usageMetadataPresent: usage !== undefined,
           promptBlockReason,
+          ...(fallbackAttempted ? {
+            fallbackAttempted,
+            streamFinishReason,
+            streamOutputChars,
+            fallbackFinishReason,
+            fallbackOutputChars,
+            fallbackUsageMetadataPresent,
+          } : {}),
         })
       } catch { /* diagnostics must never change a generation outcome */ }
       opts.onDone(fullText, usage, finishReason)

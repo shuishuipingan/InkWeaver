@@ -15,6 +15,8 @@ export interface LLMGenerateOptions {
   maxTokens: number
   responseFormat?: { type: string }
   reasoning?: ProviderReasoningDirective
+  /** Main-process-only cancellation signal; never crosses IPC. */
+  signal?: AbortSignal
 }
 
 export interface LLMStreamDiagnostics {
@@ -26,6 +28,12 @@ export interface LLMStreamDiagnostics {
   rawFinishReason: string | null
   usageMetadataPresent: boolean
   promptBlockReason: string | null
+  fallbackAttempted?: boolean
+  streamFinishReason?: LLMFinishReason
+  streamOutputChars?: number
+  fallbackFinishReason?: LLMFinishReason
+  fallbackOutputChars?: number
+  fallbackUsageMetadataPresent?: boolean
 }
 
 export interface LLMStreamOptions extends LLMGenerateOptions {
