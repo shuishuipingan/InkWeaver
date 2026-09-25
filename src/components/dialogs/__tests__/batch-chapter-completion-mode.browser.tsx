@@ -78,6 +78,12 @@ let postProcessSteps: Array<{
   attemptCount: number
 }>
 
+function isPostProcessWriteChannel(channel: unknown): boolean {
+  return channel === 'db:post-process-create-run'
+    || channel === 'db:post-process-mark-step-ok'
+    || channel === 'db:post-process-mark-step-failed'
+}
+
 function project(): ProjectData {
   return {
     id: PROJECT_SESSION.projectId,
@@ -293,6 +299,7 @@ function installIpc() {
         }],
       }]
     }
+    if (channel === 'db:planning-material-list') return []
     if (channel === 'db:consistency-exemption-list') return []
     if (channel === 'db:chapter-handoff-latest-before') return null
     if (channel === 'db:narrative-thread-list-relevant') return []
@@ -674,7 +681,7 @@ describe('batch chapter completion mode browser flow', () => {
       || channel === 'kb:import-text'
       || channel === 'db:blueprint-update-notes'
       || String(channel).startsWith('db:character-roster-')
-      || String(channel).startsWith('db:post-process-')
+      || isPostProcessWriteChannel(channel)
     ))).toBe(false)
   })
 
@@ -718,7 +725,7 @@ describe('batch chapter completion mode browser flow', () => {
     expect(invoke.mock.calls.some(([channel]) => (
       channel === 'finalization:commit'
       || channel === 'kb:import-text'
-      || String(channel).startsWith('db:post-process-')
+      || isPostProcessWriteChannel(channel)
     ))).toBe(false)
   })
 
