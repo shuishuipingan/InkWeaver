@@ -598,6 +598,11 @@ export function createGenerationHarness(dependencies: {
             logPromptBudgetReport(promptBudget)
           }
           const attempt = attempts + 1
+          // Gemini's GenerateContent wire protocol supports JSON MIME output.
+          // When feature capabilities are unknown, still ask for JSON on that
+          // protocol; contract validation remains authoritative downstream.
+          const geminiJsonModeAvailable = frozenModel.protocol === 'gemini'
+            && capabilities.structuredOutput === null
           const plan = Object.freeze({
             attempt,
             output: task.output,
@@ -605,7 +610,9 @@ export function createGenerationHarness(dependencies: {
             contextWindowTokens: capabilities.contextWindowTokens,
             estimatedInputTokens,
             deadlineAt: sessionBudget.deadlineAt,
-            ...(task.output === 'structured-data' && capabilities.structuredOutput === true
+            ...(task.output === 'structured-data' && (
+              capabilities.structuredOutput === true || geminiJsonModeAvailable
+            )
               ? { responseFormat: { type: 'json_object' as const } }
               : {}),
           })

@@ -195,6 +195,80 @@ describe('GenerationHarness', () => {
     })
   })
 
+  it('requests Gemini JSON mode for structured tasks while keeping unverified capability evidence unknown', async () => {
+    const complete = vi.fn<CompletionPort['complete']>().mockResolvedValue({
+      content: '{"blueprints":[]}',
+      finishReason: 'stop',
+    })
+    const harness = createGenerationHarness({
+      modelSource: {
+        snapshotDefaultModel: () => ({
+          revision: 'gemini-protocol-json',
+          model: model({
+            provider: 'gemini',
+            protocol: 'gemini',
+            modelName: 'gemini-3.8-flash-high',
+            baseUrl: 'http://127.0.0.1:8045',
+          }),
+        }),
+      },
+      completionPort: { complete },
+      policy: {
+        maxAttempts: 2,
+        maxRequestedOutputTokens: 4096,
+        maxRequestedOutputTokensPerAttempt: 2048,
+        deadlineMs: 60_000,
+      },
+    })
+
+    const outcome = await harness.openSession().complete({
+      ...task(),
+      output: 'structured-data',
+    })
+
+    expect(outcome.receipt.capabilities.structuredOutput).toBeNull()
+    expect(complete.mock.calls[0]?.[0].plan.responseFormat).toEqual({ type: 'json_object' })
+  })
+
+  it('does not override verified Gemini evidence that structured output is unsupported', async () => {
+    const complete = vi.fn<CompletionPort['complete']>().mockResolvedValue({
+      content: 'plain text',
+      finishReason: 'stop',
+    })
+    const harness = createGenerationHarness({
+      modelSource: {
+        snapshotDefaultModel: () => ({
+          revision: 'gemini-verified-no-json',
+          model: model({ provider: 'gemini', protocol: 'gemini' }),
+          modelExecutionLeaseId: 'lease-gemini',
+          resolvedCapabilities: {
+            contextWindowTokens: 16_384,
+            maxOutputTokens: 4096,
+            reasoning: null,
+            structuredOutput: false,
+            usage: null,
+            source: {
+              contextWindowTokens: 'user-operational-cap',
+              maxOutputTokens: 'user-operational-cap',
+              featureFlags: 'verified-provider-preset',
+            },
+          },
+        }),
+      },
+      completionPort: { complete },
+      policy: {
+        maxAttempts: 1,
+        maxRequestedOutputTokens: 4096,
+        maxRequestedOutputTokensPerAttempt: 2048,
+        deadlineMs: 60_000,
+      },
+    })
+
+    await harness.openSession().complete({ ...task(), output: 'structured-data' })
+
+    expect(complete.mock.calls[0]?.[0].plan.responseFormat).toBeUndefined()
+  })
+
   it('rejects claimed resolved capabilities that are not paired with a main-process lease', () => {
     const harness = createGenerationHarness({
       modelSource: {
