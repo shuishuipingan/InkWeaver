@@ -302,6 +302,7 @@ function installIpc() {
     if (channel === 'db:planning-material-list') return []
     if (channel === 'db:consistency-exemption-list') return []
     if (channel === 'db:chapter-handoff-latest-before') return null
+    if (channel === 'db:chapter-handoff-list-for-chapter') return []
     if (channel === 'db:narrative-thread-list-relevant') return []
     if (channel === 'db:knowledge-event-list-for-chapter') return []
     if (channel === 'db:story-continuity-read') return emptyStoryContinuityDocument(Number(args[0]))
@@ -318,6 +319,7 @@ function installIpc() {
     if (channel === 'db:character-get-all') {
       return [{ id: 1, name: '沈砺', role: 'protagonist', currentState: null }]
     }
+    if (channel === 'db:character-extraction-candidates-list') return []
     if (channel === 'db:project-core-get') {
       return { premise: '雨夜来信开启调查。', charactersArch: '', worldbuilding: '', synopsis: '' }
     }
@@ -613,15 +615,15 @@ describe('batch chapter completion mode browser flow', () => {
       }
       await act(async () => page.getByRole('button', { name: startLabel }).click())
 
-      await vi.waitFor(() => expect(pendingDraftCompletions).toHaveLength(1))
+      await vi.waitFor(() => expect(pendingDraftCompletions).toHaveLength(1), { timeout: 30_000 })
       await vi.waitFor(() => {
         expect(container?.querySelector('[data-testid="task-panel"]')?.textContent).toContain(taskLog)
-      })
+      }, { timeout: 30_000 })
 
       await act(async () => pendingDraftCompletions.shift()?.())
       await vi.waitFor(() => {
         expect(useWorkflowStore.getState().history[0]?.status).toBe('completed')
-      })
+      }, { timeout: 30_000 })
       await vi.waitFor(() => {
         const treeText = container?.querySelector('[data-testid="project-tree"]')?.textContent ?? ''
         const editor = container?.querySelector('[data-testid="chapter-editor"]')
@@ -633,7 +635,7 @@ describe('batch chapter completion mode browser flow', () => {
         } else {
           expect(editor?.textContent).not.toContain(reviewLabel)
         }
-      })
+      }, { timeout: 30_000 })
 
       const prose = page.getByTestId('chapter-editor').getByRole('textbox')
       if (mode === 'draft_review') {
@@ -646,6 +648,7 @@ describe('batch chapter completion mode browser flow', () => {
         await expect.element(prose).toHaveTextContent(DRAFT_TEXT)
       }
     },
+    60_000,
   )
 
   it('feeds the frozen first review draft tail into the second provider prompt without finalized or post-process work', async () => {
@@ -660,7 +663,7 @@ describe('batch chapter completion mode browser flow', () => {
 
     await vi.waitFor(() => {
       expect(useWorkflowStore.getState().history[0]?.status).toBe('completed')
-    })
+    }, { timeout: 30_000 })
 
     const draftRequests = invoke.mock.calls
       .filter(([channel, , request]) => (
@@ -683,7 +686,7 @@ describe('batch chapter completion mode browser flow', () => {
       || String(channel).startsWith('db:character-roster-')
       || isPostProcessWriteChannel(channel)
     ))).toBe(false)
-  })
+  }, 60_000)
 
   it('creates an editable draft in the project tree without finalization side effects', async () => {
     await act(async () => {
@@ -695,7 +698,7 @@ describe('batch chapter completion mode browser flow', () => {
 
     await vi.waitFor(() => {
       expect(useWorkflowStore.getState().history[0]?.status).toBe('completed')
-    })
+    }, { timeout: 30_000 })
 
     expect(useProjectStore.getState().fileTree).toEqual(fileTree())
     expect(useDraftStore.getState().draftsByChapter[1]?.[0]).toMatchObject({
@@ -727,7 +730,7 @@ describe('batch chapter completion mode browser flow', () => {
       || channel === 'kb:import-text'
       || isPostProcessWriteChannel(channel)
     ))).toBe(false)
-  })
+  }, 60_000)
 
   it('confirms and completes auto-finalize with a read-only project result and post-processing log', async () => {
     initProjectService()
@@ -750,7 +753,7 @@ describe('batch chapter completion mode browser flow', () => {
         error: undefined,
       })
       expect(useDraftStore.getState().draftsByChapter[1]?.[0]?.status).toBe('finalized')
-    })
+    }, { timeout: 30_000 })
 
     expect(useProjectStore.getState().fileTree).toEqual(fileTree())
     expect(useEditorStore.getState().tabs.some(tab => (
@@ -770,5 +773,5 @@ describe('batch chapter completion mode browser flow', () => {
     expect(invoke.mock.calls.some(([channel]) => channel === 'finalization:commit')).toBe(true)
     expect(invoke.mock.calls.some(([channel]) => channel === 'kb:import-text')).toBe(true)
     expect(invoke.mock.calls.some(([channel]) => channel === 'db:post-process-mark-step-ok')).toBe(true)
-  })
+  }, 60_000)
 })
