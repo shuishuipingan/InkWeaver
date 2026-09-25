@@ -4,6 +4,8 @@
 
 ## 1.2.9 — 2026-09-25
 
+正式 Release：<https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.2.9>
+
 - Gemini 结构化 JSON 流在结束原因缺失或无法识别、且候选没有 usage 时，会在同一模型执行租约内尝试一次可取消的非流式请求恢复。
 - 非流式回退返回明确 `STOP` 时，结果仍须通过蓝图完整合同；若回退也无结束标记，只有完整覆盖且通过合同的 JSON 可接受，非 JSON 文本或错误信封会明确失败并停止对同一错误响应反复拆批。
 - 将 Gemini 非流式 `promptFeedback.blockReason` 规范化为安全失败原因；运行日志标明是否使用回退及其安全结束元数据，不记录提示词或响应正文。

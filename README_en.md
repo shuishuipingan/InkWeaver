@@ -4,11 +4,11 @@
 
 InkWeaver is a local-first desktop workspace for long-form fiction. It brings project settings, characters, worldbuilding, chapter blueprints, prose, review, revision, and finalization into a traceable writing chain while keeping the author in control of every durable change.
 
-Current version: **v1.2.9 (qualification in progress)**
+Current version: **v1.2.9**
 
 > **Turn a long novel into one continuously developing story.** InkWeaver is a local-first AI writing workspace that connects story premises, character state, chapter blueprints, candidate drafts, evidence-backed review, and author-approved finalization into one traceable writing loop.
 
-The v1.2.9 Windows/macOS installers are undergoing qualification across three architectures. The installers will be published in one GitHub Release after qualification. The DSH plugin tarball remains available in the v1.2.0 Release; npm publication remains out of scope.
+The v1.2.9 Windows x64, macOS Apple Silicon, and macOS Intel installers have passed qualification and are available in one GitHub Release. The DSH plugin tarball remains available in the v1.2.0 Release; npm publication remains out of scope.
 
 [Download v1.2.9](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.2.9) · [Start your first chapter in three minutes](docs/quickstart/README.md) · [Install the DSH plugin](plugins/inkweaver-dsh/README.md) · [Ask a question or report a problem](https://github.com/shuishuipingan/InkWeaver/issues/new/choose) · [Join the discussion](https://github.com/shuishuipingan/InkWeaver/discussions)
 
