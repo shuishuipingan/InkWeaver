@@ -4,11 +4,11 @@
 
 织墨 InkWeaver 是一款面向长篇小说创作的本地优先桌面工作台。它把项目设定、角色、世界观、章节蓝图、正文、审稿、修订与定稿组织成可追溯的创作链，让作者在保留最终决定权的前提下使用自己选择的 AI 模型。
 
-当前版本：**v1.2.10（资格验证中）**
+当前版本：**v1.2.10**
 
 > **把一本长篇小说写成会持续发展的整体。** InkWeaver 是本地优先的 AI 小说创作工作台：它把故事设定、角色状态、章节蓝图、候选草稿、证据化审稿和作者定稿串成一条可追溯的连续写作链。
 
-v1.2.10 正在进行 Windows x64、macOS Apple Silicon 与 macOS Intel 三架构资格验证。完成后会从同一 GitHub Release 提供安装包；DSH 插件 tarball 仍可从 v1.2.0 Release 获取，本轮不发布 npm。
+v1.2.10 已通过 Windows x64、macOS Apple Silicon 与 macOS Intel 三架构资格验证，并从同一 GitHub Release 提供安装包；DSH 插件 tarball 仍可从 v1.2.0 Release 获取，本轮不发布 npm。
 
 [下载 v1.2.10](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.2.10) · [三分钟开始第一章](docs/quickstart/README.md) · [安装 DSH 插件](plugins/inkweaver-dsh/README.md) · [提交问题或建议](https://github.com/shuishuipingan/InkWeaver/issues/new/choose) · [参与讨论](https://github.com/shuishuipingan/InkWeaver/discussions)
 
@@ -158,7 +158,7 @@ inkweaver-mac-arm64-<版本号>-installer.dmg
 inkweaver-mac-x64-<版本号>-installer.dmg
 ```
 
-当前 macOS 安装包未代码签名（未使用 Developer ID 签名）且未公证。v1.2.10 资格验证完成后，请只从正式 Release 下载，并按系统安全提示确认首次打开。桌面 Release 使用七项资产合同，分别覆盖 macOS Apple Silicon 与 macOS Intel；DSH 插件 tarball 保留在 v1.2.0 Release。
+当前 macOS 安装包未代码签名（未使用 Developer ID 签名）且未公证。请只从[正式 v1.2.10 Release](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.2.10)下载，并按系统安全提示确认首次打开。桌面 Release 使用七项资产合同，分别覆盖 macOS Apple Silicon 与 macOS Intel；DSH 插件 tarball 保留在 v1.2.0 Release。
 
 ## DeepSeek Harness 插件
 
