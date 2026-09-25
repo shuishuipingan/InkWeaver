@@ -466,6 +466,49 @@ describe('GeminiProvider', () => {
       fallbackFinishReason: 'stop',
       fallbackOutputChars: fallbackContent.length,
       fallbackUsageMetadataPresent: true,
+      fallbackJsonObjectValid: true,
+    }))
+  })
+
+  it('rejects a non-JSON fallback body even when the gateway marks it STOP', async () => {
+    const gatewayResponse = 'x'.repeat(322)
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        body: {
+          getReader: () => sseReader(
+            'data: {"candidates":[{"content":{"parts":[{"text":"temporary provider response"}]}}]}\n',
+          ),
+        },
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          candidates: [{ content: { parts: [{ text: gatewayResponse }] }, finishReason: 'STOP' }],
+        }),
+      })
+    vi.stubGlobal('fetch', fetchMock)
+    const onDone = vi.fn()
+    const onDiagnostics = vi.fn()
+
+    await new GeminiProvider().generateStream(model, [{ role: 'user', content: '返回蓝图 JSON' }], {
+      temperature: 0.2,
+      maxTokens: 512,
+      responseFormat: { type: 'json_object' },
+      signal: new AbortController().signal,
+      onChunk: vi.fn(),
+      onDone,
+      onError: vi.fn(),
+      onDiagnostics,
+    })
+
+    expect(onDone).toHaveBeenCalledWith('', undefined, 'error')
+    expect(onDiagnostics).toHaveBeenCalledWith(expect.objectContaining({
+      normalizedFinishReason: 'error',
+      fallbackAttempted: true,
+      fallbackFinishReason: 'stop',
+      fallbackOutputChars: 322,
+      fallbackJsonObjectValid: false,
     }))
   })
 

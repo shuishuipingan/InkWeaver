@@ -34,6 +34,7 @@ export interface LLMStreamDiagnostics {
   fallbackFinishReason?: LLMFinishReason
   fallbackOutputChars?: number
   fallbackUsageMetadataPresent?: boolean
+  fallbackJsonObjectValid?: boolean
 }
 
 export interface LLMStreamOptions extends LLMGenerateOptions {

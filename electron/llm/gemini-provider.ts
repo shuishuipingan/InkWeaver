@@ -18,10 +18,10 @@ function answerTextParts(parts: readonly GeminiTextPart[] | undefined): string[]
     .map(part => part.text!)
 }
 
-function isJsonText(value: string): boolean {
+function isJsonObjectText(value: string): boolean {
   try {
-    JSON.parse(value)
-    return true
+    const parsed: unknown = JSON.parse(value)
+    return Boolean(parsed && typeof parsed === 'object' && !Array.isArray(parsed))
   } catch {
     return false
   }
@@ -284,6 +284,7 @@ export class GeminiProvider implements ILLMProvider {
       let fallbackFinishReason: LLMFinishReason | undefined
       let fallbackOutputChars: number | undefined
       let fallbackUsageMetadataPresent: boolean | undefined
+      let fallbackJsonObjectValid: boolean | undefined
       const needsStructuredTransportFallback = opts.responseFormat?.type === 'json_object'
         && finishReason === 'unknown'
         && usage === undefined
@@ -295,6 +296,7 @@ export class GeminiProvider implements ILLMProvider {
         fallbackFinishReason = fallback.finishReason
         fallbackOutputChars = fallback.content.length
         fallbackUsageMetadataPresent = fallback.usage !== undefined
+        fallbackJsonObjectValid = isJsonObjectText(fallback.content)
         if (opts.signal.aborted || fallback.finishReason === 'cancelled') {
           opts.onError('已取消生成')
           return
@@ -307,10 +309,10 @@ export class GeminiProvider implements ILLMProvider {
         } else if (
           fallback.finishReason === 'error'
           || isProviderErrorEnvelope(fallback.content)
-          || (fallback.finishReason === 'unknown' && !isJsonText(fallback.content))
+          || fallbackJsonObjectValid === false
         ) {
-          // Do not send proxy error/refusal text into structured batch splitting
-          // as if it were a partial model answer.
+          // A provider may wrap an error in candidate text and still claim STOP.
+          // Do not route non-JSON fallback text into structured parsing or batch splitting.
           fullText = ''
           usage = fallback.usage
           finishReason = 'error'
@@ -338,6 +340,7 @@ export class GeminiProvider implements ILLMProvider {
             fallbackFinishReason,
             fallbackOutputChars,
             fallbackUsageMetadataPresent,
+            fallbackJsonObjectValid,
           } : {}),
         })
       } catch { /* diagnostics must never change a generation outcome */ }
