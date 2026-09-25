@@ -28,6 +28,8 @@ export interface StructuredBatchContract<TInput, TOutput> {
   }): GenerationTask
   /** One bounded regeneration when a single item has no JSON envelope at all. */
   buildInvalidEnvelopeRetryTask?(input: { originalTask: GenerationTask }): GenerationTask
+  /** Retry once when the provider stream ends without terminal completion evidence. */
+  retryUnknownFinishOnce?: boolean
   inputKey(input: TInput): StructuredItemKey
   outputKey(output: TOutput): StructuredItemKey
   decode(content: string): readonly TOutput[]
@@ -107,6 +109,7 @@ export function createStructuredBatchExecutor<TInput, TOutput>(dependencies: {
   writingLanguage: WritingLanguage
   onAttempt?: (receipt: GenerationAttemptReceipt) => void
   onSplit?: (input: { items: readonly TInput[]; failure: StructuredBatchFailure }) => void
+  onUnknownFinishRetry?: (input: { items: readonly TInput[] }) => void
 }): StructuredBatchExecutor<TInput, TOutput> {
   const { contract, session, writingLanguage } = dependencies
 
@@ -128,6 +131,7 @@ export function createStructuredBatchExecutor<TInput, TOutput>(dependencies: {
       }
       const validated: TOutput[] = []
       let repairUsed = false
+      let unknownFinishRetryUsed = false
       const compactFallbackKeys = new Set<StructuredItemKey>()
       const recordAttempt = (attempt: GenerationAttemptReceipt): void => {
         attemptReceipts.push(attempt)
@@ -183,7 +187,8 @@ export function createStructuredBatchExecutor<TInput, TOutput>(dependencies: {
           })
         }
 
-        let outcome = await session.complete(task, { signal: input.signal })
+        let activeTask: GenerationTask = task
+        let outcome = await session.complete(activeTask, { signal: input.signal })
         recordAttempt(outcome.receipt)
         if (input.signal?.aborted) {
           throw new ExecutionFailure({
@@ -231,6 +236,7 @@ export function createStructuredBatchExecutor<TInput, TOutput>(dependencies: {
             compactTask,
             { signal: input.signal },
           )
+          activeTask = compactTask
           recordAttempt(outcome.receipt)
           if (input.signal?.aborted) {
             throw new ExecutionFailure({
@@ -263,6 +269,25 @@ export function createStructuredBatchExecutor<TInput, TOutput>(dependencies: {
             })
           }
           outcome = await session.complete(retryTask, { signal: input.signal })
+          activeTask = retryTask
+          recordAttempt(outcome.receipt)
+          if (input.signal?.aborted) {
+            throw new ExecutionFailure({
+              code: 'cancelled',
+              reason: 'cancelled',
+              message: '结构化生成已取消',
+            })
+          }
+        }
+        if (
+          outcome.status === 'incomplete'
+          && outcome.finishReason === 'unknown'
+          && contract.retryUnknownFinishOnce === true
+          && !unknownFinishRetryUsed
+        ) {
+          unknownFinishRetryUsed = true
+          dependencies.onUnknownFinishRetry?.({ items: [...items] })
+          outcome = await session.complete(activeTask, { signal: input.signal })
           recordAttempt(outcome.receipt)
           if (input.signal?.aborted) {
             throw new ExecutionFailure({

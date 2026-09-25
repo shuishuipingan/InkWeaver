@@ -25,6 +25,7 @@ function createStructuredBatchExecutor<TInput, TOutput>(dependencies: {
   contract: StructuredBatchContract<TInput, TOutput>
   session: Pick<GenerationSession, 'complete'>
   writingLanguage?: 'zh-CN' | 'en-US'
+  onUnknownFinishRetry?: (input: { items: readonly TInput[] }) => void
 }) {
   return createRuntimeStructuredBatchExecutor({
     ...dependencies,
@@ -781,6 +782,64 @@ describe('StructuredBatchExecutor seam', () => {
     expect(result).toMatchObject({
       ok: false,
       failure: { code: 'invalid_output', diagnostic: { code: 'invalid_envelope', path: '$' } },
+      receipt: { calls: 2 },
+    })
+    expect(result).not.toHaveProperty('items')
+  })
+
+  it('retries one Gemini stream that ends without a finish reason before failing the batch', async () => {
+    let attempts = 0
+    const complete = vi.fn<GenerationSession['complete']>(async () => {
+      attempts += 1
+      return attempts === 1
+        ? {
+            status: 'incomplete',
+            content: '{"blueprints":[{"chapterNumber":1',
+            finishReason: 'unknown',
+            receipt: attemptReceipt(attempts, 100, attempts * 100, 'unknown'),
+          }
+        : {
+            status: 'completed',
+            content: blueprintJson([1]),
+            finishReason: 'stop',
+            receipt: attemptReceipt(attempts, 100, attempts * 100, 'stop'),
+          }
+    })
+    const retryNotice = vi.fn()
+    const executor = createStructuredBatchExecutor({
+      contract: { ...blueprintContract, retryUnknownFinishOnce: true },
+      session: { complete },
+      onUnknownFinishRetry: retryNotice,
+    })
+
+    const result = await executor.execute({ items: [1], limits: { maxBatchItems: 5 } })
+
+    expect(result).toMatchObject({ ok: true, items: [{ chapterNumber: 1 }], receipt: { calls: 2 } })
+    expect(complete).toHaveBeenCalledTimes(2)
+    expect(retryNotice).toHaveBeenCalledOnce()
+  })
+
+  it('keeps failing closed when the one unknown-finish retry also lacks terminal evidence', async () => {
+    let attempts = 0
+    const complete = vi.fn<GenerationSession['complete']>(async () => {
+      attempts += 1
+      return {
+        status: 'incomplete',
+        content: '{"blueprints":[{"chapterNumber":1',
+        finishReason: 'unknown',
+        receipt: attemptReceipt(attempts, 100, attempts * 100, 'unknown'),
+      }
+    })
+    const executor = createStructuredBatchExecutor({
+      contract: { ...blueprintContract, retryUnknownFinishOnce: true },
+      session: { complete },
+    })
+
+    const result = await executor.execute({ items: [1], limits: { maxBatchItems: 5 } })
+
+    expect(result).toMatchObject({
+      ok: false,
+      failure: { code: 'generation_failed', reason: 'unknown' },
       receipt: { calls: 2 },
     })
     expect(result).not.toHaveProperty('items')
