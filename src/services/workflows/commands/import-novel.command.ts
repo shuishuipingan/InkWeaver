@@ -713,8 +713,8 @@ export class InferBlueprintsPerChapterCommand extends BaseWorkflowCommand<void> 
 
     const estimatedCalls = Math.ceil(chapters.length / InferBlueprintsPerChapterCommand.MAX_ITEMS_PER_BATCH)
     callbacks.log(text(
-      `开始分批推演蓝图（共 ${chapters.length} 章，预计至多 ${estimatedCalls} 次调用）...`,
-      `Inferring blueprints in batches (${chapters.length} ${chapters.length === 1 ? 'chapter' : 'chapters'}; at most ${estimatedCalls} model ${estimatedCalls === 1 ? 'call' : 'calls'})...`,
+      `开始分批推演蓝图（共 ${chapters.length} 章，初始预计 ${estimatedCalls} 次调用；结果不合规则缩批重试）...`,
+      `Inferring blueprints in batches (${chapters.length} ${chapters.length === 1 ? 'chapter' : 'chapters'}; initially ${estimatedCalls} model ${estimatedCalls === 1 ? 'call' : 'calls'}; invalid results trigger smaller-batch retries)...`,
     ))
     callbacks.setProgress(5)
 
@@ -765,7 +765,10 @@ export class InferBlueprintsPerChapterCommand extends BaseWorkflowCommand<void> 
           purpose: 'import-chapter-blueprints',
           output: 'structured-data',
           messages: [
-            { role: 'system', content: template.systemRole || promptLanguageText(writingLanguage, '你是一位专业的网文结构分析师。', 'You are a professional fiction-structure analyst.') },
+            {
+              role: 'system',
+              content: `${template.systemRole || promptLanguageText(writingLanguage, '你是一位专业的网文结构分析师。', 'You are a professional fiction-structure analyst.')}\n\n${blueprintSemanticGenerationContract(writingLanguage)}`,
+            },
             { role: 'user', content: prompt },
           ],
         }
@@ -799,6 +802,10 @@ export class InferBlueprintsPerChapterCommand extends BaseWorkflowCommand<void> 
       session: execution.session,
       writingLanguage,
       onAttempt: receipt => this.reportGenerationPromptBudget(callbacks, receipt),
+      onSplit: ({ items, failure }) => callbacks.log(text(
+        `第 ${items[0]?.number}–${items.at(-1)?.number} 章输出未通过校验，缩小批次重试（${failure.diagnostic?.code ?? failure.reason ?? failure.code}）`,
+        `Chapters ${items[0]?.number}–${items.at(-1)?.number} did not pass validation; retrying smaller batches (${failure.diagnostic?.code ?? failure.reason ?? failure.code}).`,
+      )),
     }).execute({
       items: orderedChapters,
       limits: { maxBatchItems: InferBlueprintsPerChapterCommand.MAX_ITEMS_PER_BATCH },

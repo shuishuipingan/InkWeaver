@@ -1,10 +1,10 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
-describe('v1.2.2 release metadata', () => {
+describe('v1.2.3 release metadata', () => {
   it('uses the release version in package metadata', () => {
     const pkg = JSON.parse(readFileSync('package.json', 'utf8')) as { version: string }
-    expect(pkg.version).toBe('1.2.2')
+    expect(pkg.version).toBe('1.2.3')
   })
 
   it('resolves the release tag and exact seven-asset contract from the package version', () => {
@@ -13,15 +13,15 @@ describe('v1.2.2 release metadata', () => {
       releaseAssets: Array<{ name: string }>
     }
 
-    expect(`v${pkg.version}`).toBe('v1.2.2')
+    expect(`v${pkg.version}`).toBe('v1.2.3')
     expect(profile.releaseAssets.map(({ name }) => name.replaceAll('{version}', pkg.version))).toEqual([
-      'inkweaver-setup-1.2.2.exe',
-      'inkweaver-setup-1.2.2.exe.blockmap',
+      'inkweaver-setup-1.2.3.exe',
+      'inkweaver-setup-1.2.3.exe.blockmap',
       'latest.yml',
-      'inkweaver-mac-arm64-1.2.2-installer.dmg',
-      'inkweaver-mac-arm64-1.2.2-installer.dmg.sha256',
-      'inkweaver-mac-x64-1.2.2-installer.dmg',
-      'inkweaver-mac-x64-1.2.2-installer.dmg.sha256',
+      'inkweaver-mac-arm64-1.2.3-installer.dmg',
+      'inkweaver-mac-arm64-1.2.3-installer.dmg.sha256',
+      'inkweaver-mac-x64-1.2.3-installer.dmg',
+      'inkweaver-mac-x64-1.2.3-installer.dmg.sha256',
 
     ])
   })

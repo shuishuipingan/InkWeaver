@@ -242,6 +242,11 @@ describe('built-in prompt contract for local Qwen generation', () => {
   it('adapts every built-in system role for local Qwen3 14B Q4 without rewriting template bodies', () => {
     for (const template of BUILTIN_PROMPTS) {
       const role = template.systemRole ?? ''
+      if (template.key === 'infer_single_chapter_blueprint') {
+        expect(role).not.toContain('Qwen3 14B Q4')
+        expect(role).toContain('运行时附加的 JSON 合同')
+        continue
+      }
       expect(role, `${template.key} should mention Qwen3 14B Q4`).toContain('Qwen3 14B Q4')
       expect(role, `${template.key} should mention local quantization`).toContain('量化模型')
       expect(role, `${template.key} should stay focused on writing or structure`).toMatch(/小说|网文|章节|角色|正文|设定|审稿|风格|结构|JSON/)

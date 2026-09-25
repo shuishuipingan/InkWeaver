@@ -1617,6 +1617,10 @@ internal static class ExactNsisUninstallerHelper {
           '/C',
           `powershell.exe -NoProfile -ExecutionPolicy Bypass -EncodedCommand ${wrapperEncodedCommand}`,
         ],
+        // The process-check fixture requires no matching app process. Keep
+        // that precondition local to the child even when the author has
+        // InkWeaver open on this Windows desktop.
+        { USERNAME: `inkweaver-release-fixture-${process.pid}` },
       )
       if (gate.child.pid == null) throw new Error('The armed uninstaller gate did not expose a PID')
       appendFileSync(

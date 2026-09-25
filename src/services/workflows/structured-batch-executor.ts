@@ -106,6 +106,7 @@ export function createStructuredBatchExecutor<TInput, TOutput>(dependencies: {
   session: Pick<GenerationSession, 'complete'>
   writingLanguage: WritingLanguage
   onAttempt?: (receipt: GenerationAttemptReceipt) => void
+  onSplit?: (input: { items: readonly TInput[]; failure: StructuredBatchFailure }) => void
 }): StructuredBatchExecutor<TInput, TOutput> {
   const { contract, session, writingLanguage } = dependencies
 
@@ -463,6 +464,7 @@ export function createStructuredBatchExecutor<TInput, TOutput>(dependencies: {
           const midpoint = Math.floor(items.length / 2)
           if (midpoint < 1 || midpoint >= items.length) throw error
           receipt.splitCount += 1
+          dependencies.onSplit?.({ items: [...items], failure })
           try {
             await executeBatchResilient(items.slice(0, midpoint))
             await executeBatchResilient(items.slice(midpoint))

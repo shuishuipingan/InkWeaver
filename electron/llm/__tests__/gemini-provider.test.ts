@@ -39,6 +39,55 @@ afterEach(() => {
 })
 
 describe('GeminiProvider', () => {
+  it('returns only answer parts when a non-streaming Gemini response includes thought text', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        candidates: [{
+          content: { parts: [
+            { thought: true, text: 'I should explain the result.' },
+            { text: '{"blueprints":' },
+            { text: '[]}' },
+          ] },
+          finishReason: 'STOP',
+        }],
+      }),
+    }))
+
+    const result = await new GeminiProvider().generate(model, [{ role: 'user', content: '返回 JSON' }], {
+      temperature: 0.2,
+      maxTokens: 512,
+    })
+
+    expect(result).toMatchObject({ success: true, content: '{"blueprints":[]}' })
+  })
+
+  it('streams every answer part but never forwards thought parts as generated text', async () => {
+    const frame = (parts: Array<{ text: string; thought?: boolean }>, finishReason?: string) =>
+      `data: ${JSON.stringify({ candidates: [{ content: { parts }, ...(finishReason ? { finishReason } : {}) }] })}\n`
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      body: { getReader: () => sseReader(
+        frame([{ thought: true, text: 'Thinking aloud.' }, { text: '{"blueprints":' }]),
+        frame([{ text: '[]}' }], 'STOP'),
+      ) },
+    }))
+    const onChunk = vi.fn()
+    const onDone = vi.fn()
+
+    await new GeminiProvider().generateStream(model, [{ role: 'user', content: '返回 JSON' }], {
+      temperature: 0.2,
+      maxTokens: 512,
+      signal: new AbortController().signal,
+      onChunk,
+      onDone,
+      onError: vi.fn(),
+    })
+
+    expect(onChunk.mock.calls.map(([chunk]) => chunk)).toEqual(['{"blueprints":', '[]}'])
+    expect(onDone).toHaveBeenCalledWith('{"blueprints":[]}', undefined, 'stop')
+  })
+
   it('applies the same verified thinking budget to normal and streaming requests', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce({

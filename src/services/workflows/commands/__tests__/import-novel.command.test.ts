@@ -200,6 +200,34 @@ afterEach(() => {
 })
 
 describe('InferBlueprintsPerChapterCommand', () => {
+  it('explains bounded split retries instead of presenting the initial call count as a maximum', async () => {
+    const context = createContext()
+    context.data.chapters = Array.from({ length: 5 }, (_, index) => ({
+      number: index + 1,
+      title: `第 ${index + 1} 章`,
+      content: '主角在雨夜发现异常。',
+      wordCount: 10,
+    }))
+    stubIpcInvoke(channel => { throw new Error(`unexpected mutation ${channel}`) })
+    let attempts = 0
+    const generateStream = vi.fn<ReturnType<typeof useLLMStore.getState>['generateStream']>(
+      async (_messages, streamCallbacks) => {
+        streamCallbacks.onDone?.('模型解释了章节，但没有返回 JSON。', undefined, 'stop')
+        return `invalid-envelope-${++attempts}`
+      },
+    )
+    useLLMStore.setState({ defaultModelId: 'model-a', generateStream })
+
+    await expect(new InferBlueprintsPerChapterCommand().execute({
+      step: {}, context, callbacks,
+    })).rejects.toThrow(/invalid_envelope/u)
+
+    const logs = (callbacks.log as ReturnType<typeof vi.fn>).mock.calls.map(([message]) => String(message))
+    expect(logs.some(message => message.includes('初始预计 1 次调用'))).toBe(true)
+    expect(logs.some(message => message.includes('第 1–5 章输出未通过校验，缩小批次重试'))).toBe(true)
+    expect(logs.some(message => message.includes('第 1–2 章输出未通过校验，缩小批次重试'))).toBe(true)
+  })
+
   it('regenerates one non-JSON single-chapter response under the immutable envelope contract', async () => {
     const prompts: Array<Array<{ role: string; content: string }>> = []
     stubIpcInvoke((channel) => {
@@ -305,7 +333,7 @@ describe('InferBlueprintsPerChapterCommand', () => {
     )
     expect(initialBuiltIn).not.toMatch(CJK_TEXT)
     expect(repairBuiltIn).not.toMatch(CJK_TEXT)
-    expect(callbacks.log).toHaveBeenCalledWith('开始分批推演蓝图（共 1 章，预计至多 1 次调用）...')
+    expect(callbacks.log).toHaveBeenCalledWith('开始分批推演蓝图（共 1 章，初始预计 1 次调用；结果不合规则缩批重试）...')
     expect(callbacks.log).toHaveBeenCalledWith('  正在推演第 1–1 章...')
   })
 
@@ -446,6 +474,7 @@ describe('InferBlueprintsPerChapterCommand', () => {
       throw new Error(`unexpected ${channel}`)
     })
     let generationPrompt = ''
+    let generationSystemMessage = ''
     useLLMStore.setState({
       defaultModelId: 'model-a',
       generateStream: vi.fn(async (
@@ -453,6 +482,7 @@ describe('InferBlueprintsPerChapterCommand', () => {
         streamCallbacks: Parameters<ReturnType<typeof useLLMStore.getState>['generateStream']>[1],
       ) => {
         generationPrompt = messages.map(message => message.content).join('\n')
+        generationSystemMessage = messages.find(message => message.role === 'system')?.content ?? ''
         streamCallbacks.onDone?.(JSON.stringify({
           blueprints: [{
             chapterNumber: 1,
@@ -478,6 +508,8 @@ describe('InferBlueprintsPerChapterCommand', () => {
     expect(workflowContext.data.blueprintCommitReceipt).toMatchObject({ operationId: 'import-commit' })
     expect(workflowContext.data.blueprintCharacterSyncReceipt).toMatchObject({ operationId: 'import-sync' })
     expect(generationPrompt).toContain('relationships 必须是数组')
+    expect(generationSystemMessage).toContain('只输出 {"blueprints":[...]}')
+    expect(generationSystemMessage).not.toContain('Qwen3 14B')
     expect(generationPrompt).toContain('每项必须含非空 from、to、relation')
     expect(generationPrompt).not.toContain('relationshipHints（无关系时为空数组）')
     expect(invoke.mock.calls.map(([channel]) => channel).filter(ch => ch !== 'runtime:log')).toContain('db:blueprint-character-sync-complete')

@@ -1194,7 +1194,7 @@ severity 取值：error=严重矛盾强烈建议修复, warning=轻微不一致�
     key: 'infer_single_chapter_blueprint',
     name: '逆向推演单章蓝图',
     description: '从已有小说章节正文高精度反推出该章的结构化蓝图信息，用于导入旧作场景',
-    systemRole: '你是一位专业的网文结构分析师，擅长从正文中提取结构化蓝图信息。请用明确字段和具体 JSON 适配本地 Qwen3 14B Q4 量化模型。',
+    systemRole: '你是一位专业的网文结构分析师，擅长从正文中提取结构化蓝图信息。只依据提供的章节正文填写字段，并严格遵守运行时附加的 JSON 合同。',
     variables: {
       chapter_content: '本章正文全文',
       chapter_number: '本章序号',

@@ -1,6 +1,17 @@
 import { ILLMProvider, LLMGenerateOptions, LLMResponse, LLMStreamOptions } from './provider.interface'
 import type { LLMFinishReason, ModelProfile, TokenUsage } from '../../src/shared/ipc-channels'
 
+interface GeminiTextPart {
+  text?: string
+  thought?: boolean
+}
+
+function answerTextParts(parts: readonly GeminiTextPart[] | undefined): string[] {
+  return (parts ?? [])
+    .filter(part => part.thought !== true && typeof part.text === 'string' && part.text.length > 0)
+    .map(part => part.text!)
+}
+
 export class GeminiProvider implements ILLMProvider {
   private applyReasoning(
     generationConfig: Record<string, unknown>,
@@ -79,13 +90,13 @@ export class GeminiProvider implements ILLMProvider {
 
       const data = await res.json() as {
         candidates?: Array<{
-          content?: { parts?: Array<{ text?: string }> }
+          content?: { parts?: GeminiTextPart[] }
           finishReason?: string | null
         }>
         usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number }
       }
 
-      const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
+      const text = answerTextParts(data.candidates?.[0]?.content?.parts).join('')
       const finishReason = this.normalizeFinishReason(data.candidates?.[0]?.finishReason)
       const usage = data.usageMetadata ? {
         promptTokens: data.usageMetadata.promptTokenCount ?? null,
@@ -177,7 +188,7 @@ export class GeminiProvider implements ILLMProvider {
         try {
           const parsed = JSON.parse(json) as {
             candidates?: Array<{
-              content?: { parts?: Array<{ text?: string }> }
+              content?: { parts?: GeminiTextPart[] }
                 finishReason?: string | null
             }>
             usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number }
@@ -186,8 +197,7 @@ export class GeminiProvider implements ILLMProvider {
           if (candidate?.finishReason !== undefined) {
             finishReason = this.normalizeFinishReason(candidate.finishReason)
           }
-          const chunk = candidate?.content?.parts?.[0]?.text
-          if (chunk) {
+          for (const chunk of answerTextParts(candidate?.content?.parts)) {
             fullText += chunk
             opts.onChunk(chunk)
           }
