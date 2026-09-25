@@ -17,6 +17,17 @@ export interface LLMGenerateOptions {
   reasoning?: ProviderReasoningDirective
 }
 
+export interface LLMStreamDiagnostics {
+  provider: 'gemini-native'
+  normalizedFinishReason: LLMFinishReason
+  frameCount: number
+  candidateCount: number
+  finishReasonFieldSeen: boolean
+  rawFinishReason: string | null
+  usageMetadataPresent: boolean
+  promptBlockReason: string | null
+}
+
 export interface LLMStreamOptions extends LLMGenerateOptions {
   signal: AbortSignal
   onChunk: (chunk: string) => void
@@ -27,6 +38,8 @@ export interface LLMStreamOptions extends LLMGenerateOptions {
    */
   onDone: (fullText: string, usage: TokenUsage | undefined, finishReason: LLMFinishReason) => void
   onError: (error: string) => void
+  /** Safe provider metadata only; never includes prompt or response text. */
+  onDiagnostics?: (diagnostics: LLMStreamDiagnostics) => void
 }
 
 export interface ILLMProvider {

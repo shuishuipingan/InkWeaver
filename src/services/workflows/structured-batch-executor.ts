@@ -28,7 +28,7 @@ export interface StructuredBatchContract<TInput, TOutput> {
   }): GenerationTask
   /** One bounded regeneration when a single item has no JSON envelope at all. */
   buildInvalidEnvelopeRetryTask?(input: { originalTask: GenerationTask }): GenerationTask
-  /** Recover an unconfirmed provider stream through one bounded retry or split. */
+  /** Recover an unconfirmed provider stream; only a complete contract-valid response may be accepted. */
   recoverUnknownFinish?: boolean
   inputKey(input: TInput): StructuredItemKey
   outputKey(output: TOutput): StructuredItemKey
@@ -101,6 +101,31 @@ export interface StructuredBatchExecutor<TInput, TOutput> {
     limits: StructuredBatchLimits
     signal?: AbortSignal
   }): Promise<StructuredBatchResult<TOutput>>
+}
+
+function hasCompleteContractOutput<TInput, TOutput>(
+  contract: StructuredBatchContract<TInput, TOutput>,
+  items: readonly TInput[],
+  content: string,
+): boolean {
+  try {
+    const outputs = contract.decode(content)
+    if (!Array.isArray(outputs)) return false
+    const expectedKeys = items.map(item => contract.inputKey(item))
+    const expectedKeySet = new Set(expectedKeys)
+    if (expectedKeySet.size !== expectedKeys.length || outputs.length !== expectedKeys.length) return false
+
+    const outputKeys = new Set<StructuredItemKey>()
+    for (const output of outputs) {
+      if (contract.validateItem(output) !== undefined) return false
+      const key = contract.outputKey(output)
+      if (!expectedKeySet.has(key) || outputKeys.has(key)) return false
+      outputKeys.add(key)
+    }
+    return expectedKeys.every(key => outputKeys.has(key))
+  } catch {
+    return false
+  }
 }
 
 export function createStructuredBatchExecutor<TInput, TOutput>(dependencies: {
@@ -279,12 +304,17 @@ export function createStructuredBatchExecutor<TInput, TOutput>(dependencies: {
             })
           }
         }
+        let unknownFinishHasCompleteOutput = contract.recoverUnknownFinish === true
+          && outcome.status === 'incomplete'
+          && outcome.finishReason === 'unknown'
+          && hasCompleteContractOutput(contract, items, outcome.content)
         if (
           outcome.status === 'incomplete'
           && outcome.finishReason === 'unknown'
           && contract.recoverUnknownFinish === true
           && items.length === 1
           && !unknownFinishRecoveryUsed
+          && !unknownFinishHasCompleteOutput
         ) {
           unknownFinishRecoveryUsed = true
           dependencies.onUnknownFinishRetry?.({ items: [...items], strategy: 'retry' })
@@ -297,8 +327,11 @@ export function createStructuredBatchExecutor<TInput, TOutput>(dependencies: {
               message: '结构化生成已取消',
             })
           }
+          unknownFinishHasCompleteOutput = outcome.status === 'incomplete'
+            && outcome.finishReason === 'unknown'
+            && hasCompleteContractOutput(contract, items, outcome.content)
         }
-        if (outcome.status === 'incomplete') {
+        if (outcome.status === 'incomplete' && !unknownFinishHasCompleteOutput) {
           if (outcome.finishReason !== 'length') {
             const reason: StructuredGenerationFailureReason = outcome.finishReason === 'content_filter'
               ? 'safety'
@@ -329,7 +362,7 @@ export function createStructuredBatchExecutor<TInput, TOutput>(dependencies: {
 
         let candidateContent = outcome.content
         let syntaxRepairApplied = false
-        if (isRepairableDirectJsonSyntaxFailure(candidateContent)) {
+        if (outcome.status === 'completed' && isRepairableDirectJsonSyntaxFailure(candidateContent)) {
           const originalContract = task.messages
             .map(message => `[${message.role}]\n${message.content}`)
             .join('\n\n')

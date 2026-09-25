@@ -298,6 +298,29 @@ describe('GeminiProvider', () => {
     expect(onDone).toHaveBeenCalledWith('正文', undefined, 'stop')
   })
 
+  it('accepts OpenAI-style finish_reason casing returned by Gemini compatible gateways', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      body: {
+        getReader: () => sseReader(
+          'data: {"candidates":[{"content":{"parts":[{"text":"正文"}]},"finish_reason":"STOP"}]}' + '\n',
+        ),
+      },
+    }))
+    const onDone = vi.fn()
+
+    await new GeminiProvider().generateStream(model, [{ role: 'user', content: '写正文' }], {
+      temperature: 0.2,
+      maxTokens: 512,
+      signal: new AbortController().signal,
+      onChunk: vi.fn(),
+      onDone,
+      onError: vi.fn(),
+    })
+
+    expect(onDone).toHaveBeenCalledWith('正文', undefined, 'stop')
+  })
+
   it('forwards Gemini stream MAX_TOKENS as a length completion', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
@@ -340,5 +363,66 @@ describe('GeminiProvider', () => {
     })
 
     expect(onDone).toHaveBeenCalledWith('完整', undefined, 'unknown')
+  })
+
+  it('reports safe envelope metadata when a Gemini stream ends without terminal evidence', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      body: {
+        getReader: () => sseReader(
+          'data: {"candidates":[{"content":{"parts":[{"text":"private response text"}]}}]}\n',
+        ),
+      },
+    }))
+    const onDiagnostics = vi.fn()
+
+    await new GeminiProvider().generateStream(model, [{ role: 'user', content: '写正文' }], {
+      temperature: 0.2,
+      maxTokens: 512,
+      signal: new AbortController().signal,
+      onChunk: vi.fn(),
+      onDone: vi.fn(),
+      onError: vi.fn(),
+      onDiagnostics,
+    })
+
+    expect(onDiagnostics).toHaveBeenCalledWith({
+      provider: 'gemini-native',
+      normalizedFinishReason: 'unknown',
+      frameCount: 1,
+      candidateCount: 1,
+      finishReasonFieldSeen: false,
+      rawFinishReason: null,
+      usageMetadataPresent: false,
+      promptBlockReason: null,
+    })
+    expect(JSON.stringify(onDiagnostics.mock.calls)).not.toContain('private response text')
+  })
+
+  it('maps a Gemini prompt block reason to a safety completion failure', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      body: {
+        getReader: () => sseReader('data: {"promptFeedback":{"blockReason":"SAFETY"}}\n'),
+      },
+    }))
+    const onDone = vi.fn()
+    const onDiagnostics = vi.fn()
+
+    await new GeminiProvider().generateStream(model, [{ role: 'user', content: '写正文' }], {
+      temperature: 0.2,
+      maxTokens: 512,
+      signal: new AbortController().signal,
+      onChunk: vi.fn(),
+      onDone,
+      onError: vi.fn(),
+      onDiagnostics,
+    })
+
+    expect(onDone).toHaveBeenCalledWith('', undefined, 'content_filter')
+    expect(onDiagnostics).toHaveBeenCalledWith(expect.objectContaining({
+      normalizedFinishReason: 'content_filter',
+      promptBlockReason: 'SAFETY',
+    }))
   })
 })

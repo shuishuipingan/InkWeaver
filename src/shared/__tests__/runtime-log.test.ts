@@ -68,6 +68,37 @@ describe('runtime log event contract', () => {
     expect(normalized.redaction.applied).toBe(true)
   })
 
+  it('redacts prompt and manuscript text nested in IPC argument details', () => {
+    const promptText = 'private prompt passage'
+    const chapterText = 'private novel chapter passage'
+    const event = createRuntimeLogEvent({
+      sequence: 3,
+      sessionId: 'session-a',
+      process: 'main',
+      level: 'info',
+      source: 'ipc',
+      event: 'ipc.llm:generate-stream',
+      message: '调用 llm:generate-stream',
+      details: {
+        args: [{
+          prompt: promptText,
+          messages: [{ role: 'user', content: chapterText }],
+          text: 'private reference text',
+        }],
+      },
+    })
+
+    const serialized = JSON.stringify(event)
+    expect(serialized).not.toContain(promptText)
+    expect(serialized).not.toContain(chapterText)
+    expect(serialized).not.toContain('private reference text')
+    expect(event.redaction?.fields).toEqual(expect.arrayContaining([
+      'args[0].prompt',
+      'args[0].messages[0].content',
+      'args[0].text',
+    ]))
+  })
+
   it('bounds direct event messages and records that the message was redacted', () => {
     const event = createRuntimeLogEvent({
       sequence: 2,

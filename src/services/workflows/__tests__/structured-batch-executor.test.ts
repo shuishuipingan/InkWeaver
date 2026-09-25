@@ -819,6 +819,28 @@ describe('StructuredBatchExecutor seam', () => {
     expect(retryNotice).toHaveBeenCalledOnce()
   })
 
+  it('accepts an unknown-finish response only when the full structured contract validates', async () => {
+    const complete = vi.fn<GenerationSession['complete']>(async () => ({
+      status: 'incomplete',
+      content: blueprintJson([1]),
+      finishReason: 'unknown',
+      receipt: attemptReceipt(1, 100, 100, 'unknown'),
+    }))
+    const executor = createStructuredBatchExecutor({
+      contract: { ...blueprintContract, recoverUnknownFinish: true },
+      session: { complete },
+    })
+
+    const result = await executor.execute({ items: [1], limits: { maxBatchItems: 5 } })
+
+    expect(result).toMatchObject({
+      ok: true,
+      items: [{ chapterNumber: 1, title: '第1章' }],
+      receipt: { calls: 1 },
+    })
+    expect(complete).toHaveBeenCalledOnce()
+  })
+
   it('splits a multi-item batch when its Gemini stream has no finish marker', async () => {
     let attempts = 0
     const complete = vi.fn<GenerationSession['complete']>(async (task) => {

@@ -238,6 +238,10 @@ export function registerLLMController() {
       ...generationParameters,
       signal: abortController.signal,
       onChunk: (chunk: string) => win?.webContents.send('llm:stream-chunk', { requestId, chunk }),
+      onDiagnostics: diagnostics => {
+        if (diagnostics.normalizedFinishReason === 'stop') return
+        runtimeLogger.warn('llm', 'Gemini 流完成证据异常', { requestId, ...diagnostics })
+      },
       onDone: (fullText: string, usage?: TokenUsage, finishReason?: LLMFinishReason) => {
         const terminalReason: LLMFinishReason = finishReason ?? 'unknown'
         const success = terminalReason === 'stop'

@@ -176,6 +176,7 @@ const SENSITIVE_KEYS = new Set([
   'apikey', 'api_key', 'authorization', 'cookie', 'password', 'secret',
   'token', 'access_token', 'refresh_token', 'privatekey', 'private_key',
 ])
+const SENSITIVE_CONTENT_KEY_SUFFIX = /(?:content|prompt|text|body|excerpt|passage|response|novel|draft|chapter)$/u
 const PATH_SHAPED_PATTERN = /^(?:[A-Za-z]:[\\/]|\\\\|\/[^/]+(?:[\\/][^/]+)+)/u
 const SECRET_SHAPED_PATTERN = /^(?:bearer\s+|sk-[A-Za-z0-9]|gh[pousr]_[A-Za-z0-9]|AIza[A-Za-z0-9_-]{20,})/u
 
@@ -321,7 +322,9 @@ export function normalizeRuntimeLogDetails(
     const output: Record<string, unknown> = {}
     for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
       const childPath = keyPath ? `${keyPath}.${key}` : key
-      if (SENSITIVE_KEYS.has(key.toLowerCase().replaceAll('-', '_'))) {
+      const normalizedKey = key.toLowerCase().replaceAll('-', '_')
+      const compactKey = normalizedKey.replaceAll('_', '')
+      if (SENSITIVE_KEYS.has(normalizedKey) || SENSITIVE_CONTENT_KEY_SUFFIX.test(compactKey)) {
         fields.add(childPath)
         output[key] = '[REDACTED]'
       } else {

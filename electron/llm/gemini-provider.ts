@@ -6,6 +6,12 @@ interface GeminiTextPart {
   thought?: boolean
 }
 
+interface GeminiCandidate {
+  content?: { parts?: GeminiTextPart[] }
+  finishReason?: string | null
+  finish_reason?: string | null
+}
+
 function answerTextParts(parts: readonly GeminiTextPart[] | undefined): string[] {
   return (parts ?? [])
     .filter(part => part.thought !== true && typeof part.text === 'string' && part.text.length > 0)
@@ -22,9 +28,10 @@ export class GeminiProvider implements ILLMProvider {
   }
 
   private normalizeFinishReason(reason: string | null | undefined): LLMFinishReason {
-    if (reason === 'STOP') return 'stop'
-    if (reason === 'MAX_TOKENS') return 'length'
-    if (reason && ['SAFETY', 'RECITATION', 'BLOCKLIST', 'PROHIBITED_CONTENT'].includes(reason)) {
+    const normalized = reason?.trim().toUpperCase()
+    if (normalized === 'STOP') return 'stop'
+    if (normalized === 'MAX_TOKENS') return 'length'
+    if (normalized && ['SAFETY', 'RECITATION', 'BLOCKLIST', 'PROHIBITED_CONTENT'].includes(normalized)) {
       return 'content_filter'
     }
     return 'unknown'
@@ -92,12 +99,14 @@ export class GeminiProvider implements ILLMProvider {
         candidates?: Array<{
           content?: { parts?: GeminiTextPart[] }
           finishReason?: string | null
+          finish_reason?: string | null
         }>
         usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number }
       }
 
       const text = answerTextParts(data.candidates?.[0]?.content?.parts).join('')
-      const finishReason = this.normalizeFinishReason(data.candidates?.[0]?.finishReason)
+      const firstCandidate = data.candidates?.[0]
+      const finishReason = this.normalizeFinishReason(firstCandidate?.finishReason ?? firstCandidate?.finish_reason)
       const usage = data.usageMetadata ? {
         promptTokens: data.usageMetadata.promptTokenCount ?? null,
         completionTokens: data.usageMetadata.candidatesTokenCount ?? null,
@@ -180,6 +189,11 @@ export class GeminiProvider implements ILLMProvider {
       let usage: TokenUsage | undefined
       let buffer = ''
       let finishReason: LLMFinishReason = 'unknown'
+      let frameCount = 0
+      let candidateCount = 0
+      let finishReasonFieldSeen = false
+      let rawFinishReason: string | null = null
+      let promptBlockReason: string | null = null
 
       const processLine = (line: string) => {
         if (!line.startsWith('data: ')) return
@@ -187,15 +201,25 @@ export class GeminiProvider implements ILLMProvider {
         if (!json) return
         try {
           const parsed = JSON.parse(json) as {
-            candidates?: Array<{
-              content?: { parts?: GeminiTextPart[] }
-                finishReason?: string | null
-            }>
+            candidates?: GeminiCandidate[]
             usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number }
+            promptFeedback?: { blockReason?: string | null }
+          }
+          frameCount += 1
+          candidateCount += parsed.candidates?.length ?? 0
+          const blockReason = parsed.promptFeedback?.blockReason
+          if (typeof blockReason === 'string' && blockReason.trim()) {
+            promptBlockReason = blockReason.slice(0, 80)
+            if (finishReason === 'unknown') finishReason = this.normalizeFinishReason(blockReason)
           }
           const candidate = parsed.candidates?.[0]
-          if (candidate?.finishReason !== undefined) {
-            finishReason = this.normalizeFinishReason(candidate.finishReason)
+          if (candidate && ('finishReason' in candidate || 'finish_reason' in candidate)) {
+            const candidateFinishReason = candidate.finishReason ?? candidate.finish_reason ?? null
+            finishReasonFieldSeen = true
+            rawFinishReason = typeof candidateFinishReason === 'string' ? candidateFinishReason.slice(0, 80) : null
+            if (typeof candidateFinishReason === 'string') {
+              finishReason = this.normalizeFinishReason(candidateFinishReason)
+            }
           }
           for (const chunk of answerTextParts(candidate?.content?.parts)) {
             fullText += chunk
@@ -230,6 +254,18 @@ export class GeminiProvider implements ILLMProvider {
       buffer += decoder.decode()
       if (buffer.trim()) processLine(buffer)
 
+      try {
+        opts.onDiagnostics?.({
+          provider: 'gemini-native',
+          normalizedFinishReason: finishReason,
+          frameCount,
+          candidateCount,
+          finishReasonFieldSeen,
+          rawFinishReason,
+          usageMetadataPresent: usage !== undefined,
+          promptBlockReason,
+        })
+      } catch { /* diagnostics must never change a generation outcome */ }
       opts.onDone(fullText, usage, finishReason)
     } catch (error) {
       if ((error as Error).name === 'AbortError') {
