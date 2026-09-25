@@ -4,6 +4,8 @@
 
 ## 1.2.8 — 2026-09-25
 
+正式 Release：<https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.2.8>
+
 - Gemini 兼容网关返回小写或 `finish_reason` 字段时仍能识别结束原因；上游明确报告安全拦截时，工作流现在显示安全失败原因。
 - Gemini 流缺少完成标记时，只有完整覆盖本批章节且通过字段合同校验的结构化结果才可提交；未验证的输出仍会失败关闭。
 - 增加 Gemini 异常流的安全诊断：记录原始结束码、候选/帧数量、usage 是否存在和提示拦截码，不保存模型响应正文。
