@@ -721,7 +721,7 @@ export class InferBlueprintsPerChapterCommand extends BaseWorkflowCommand<void> 
     let activeChapterNumbers: number[] = []
     const contract: StructuredBatchContract<ImportedChapter, ChapterBlueprint> = {
       retryInvalidOutputWithSmallerBatch: true,
-      retryUnknownFinishOnce: true,
+      recoverUnknownFinish: true,
       buildTask: ({ items, validatedPrefix }) => {
         activeChapterNumbers = items.map(item => item.number)
         const source = items.map(chapter => promptLanguageText(
@@ -815,9 +815,13 @@ export class InferBlueprintsPerChapterCommand extends BaseWorkflowCommand<void> 
         `第 ${items[0]?.number}–${items.at(-1)?.number} 章输出未通过校验，缩小批次重试（${failure.diagnostic?.code ?? failure.reason ?? failure.code}）`,
         `Chapters ${items[0]?.number}–${items.at(-1)?.number} did not pass validation; retrying smaller batches (${failure.diagnostic?.code ?? failure.reason ?? failure.code}).`,
       )),
-      onUnknownFinishRetry: ({ items }) => callbacks.log(text(
-        `第 ${items[0]?.number}–${items.at(-1)?.number} 章的模型流未提供完成标记，正在对当前批次重试一次`,
-        `The model stream omitted its completion marker for Chapters ${items[0]?.number}–${items.at(-1)?.number}; retrying this batch once.`,
+      onUnknownFinishRetry: ({ items, strategy }) => callbacks.log(text(
+        strategy === 'split'
+          ? `第 ${items[0]?.number}–${items.at(-1)?.number} 章的模型流未提供完成标记，拆分批次重试`
+          : `第 ${items[0]?.number} 章的模型流未提供完成标记，重试一次`,
+        strategy === 'split'
+          ? `The model stream omitted its completion marker for Chapters ${items[0]?.number}–${items.at(-1)?.number}; retrying as smaller batches.`
+          : `The model stream omitted its completion marker for Chapter ${items[0]?.number}; retrying once.`,
       )),
     }).execute({
       items: orderedChapters,

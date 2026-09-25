@@ -25,7 +25,7 @@ function createStructuredBatchExecutor<TInput, TOutput>(dependencies: {
   contract: StructuredBatchContract<TInput, TOutput>
   session: Pick<GenerationSession, 'complete'>
   writingLanguage?: 'zh-CN' | 'en-US'
-  onUnknownFinishRetry?: (input: { items: readonly TInput[] }) => void
+  onUnknownFinishRetry?: (input: { items: readonly TInput[]; strategy: 'retry' | 'split' }) => void
 }) {
   return createRuntimeStructuredBatchExecutor({
     ...dependencies,
@@ -807,7 +807,7 @@ describe('StructuredBatchExecutor seam', () => {
     })
     const retryNotice = vi.fn()
     const executor = createStructuredBatchExecutor({
-      contract: { ...blueprintContract, retryUnknownFinishOnce: true },
+      contract: { ...blueprintContract, recoverUnknownFinish: true },
       session: { complete },
       onUnknownFinishRetry: retryNotice,
     })
@@ -817,6 +817,43 @@ describe('StructuredBatchExecutor seam', () => {
     expect(result).toMatchObject({ ok: true, items: [{ chapterNumber: 1 }], receipt: { calls: 2 } })
     expect(complete).toHaveBeenCalledTimes(2)
     expect(retryNotice).toHaveBeenCalledOnce()
+  })
+
+  it('splits a multi-item batch when its Gemini stream has no finish marker', async () => {
+    let attempts = 0
+    const complete = vi.fn<GenerationSession['complete']>(async (task) => {
+      attempts += 1
+      if (attempts === 1) {
+        return {
+          status: 'incomplete',
+          content: '{"blueprints":[{"chapterNumber":1',
+          finishReason: 'unknown',
+          receipt: attemptReceipt(attempts, 100, attempts * 100, 'unknown'),
+        }
+      }
+      return {
+        status: 'completed',
+        content: blueprintJson(taskPayload(task).items),
+        finishReason: 'stop',
+        receipt: attemptReceipt(attempts, 100, attempts * 100, 'stop'),
+      }
+    })
+    const retryNotice = vi.fn()
+    const executor = createStructuredBatchExecutor({
+      contract: { ...blueprintContract, recoverUnknownFinish: true },
+      session: { complete },
+      onUnknownFinishRetry: retryNotice,
+    })
+
+    const result = await executor.execute({ items: [1, 2, 3, 4, 5], limits: { maxBatchItems: 5 } })
+
+    expect(result).toMatchObject({
+      ok: true,
+      items: [{ chapterNumber: 1 }, { chapterNumber: 2 }, { chapterNumber: 3 }, { chapterNumber: 4 }, { chapterNumber: 5 }],
+      receipt: { calls: 3, splitCount: 1 },
+    })
+    expect(complete).toHaveBeenCalledTimes(3)
+    expect(retryNotice).toHaveBeenCalledWith({ items: [1, 2, 3, 4, 5], strategy: 'split' })
   })
 
   it('keeps failing closed when the one unknown-finish retry also lacks terminal evidence', async () => {
@@ -831,7 +868,7 @@ describe('StructuredBatchExecutor seam', () => {
       }
     })
     const executor = createStructuredBatchExecutor({
-      contract: { ...blueprintContract, retryUnknownFinishOnce: true },
+      contract: { ...blueprintContract, recoverUnknownFinish: true },
       session: { complete },
     })
 

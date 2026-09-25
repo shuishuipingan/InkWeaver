@@ -28,8 +28,8 @@ export interface StructuredBatchContract<TInput, TOutput> {
   }): GenerationTask
   /** One bounded regeneration when a single item has no JSON envelope at all. */
   buildInvalidEnvelopeRetryTask?(input: { originalTask: GenerationTask }): GenerationTask
-  /** Retry once when the provider stream ends without terminal completion evidence. */
-  retryUnknownFinishOnce?: boolean
+  /** Recover an unconfirmed provider stream through one bounded retry or split. */
+  recoverUnknownFinish?: boolean
   inputKey(input: TInput): StructuredItemKey
   outputKey(output: TOutput): StructuredItemKey
   decode(content: string): readonly TOutput[]
@@ -109,7 +109,7 @@ export function createStructuredBatchExecutor<TInput, TOutput>(dependencies: {
   writingLanguage: WritingLanguage
   onAttempt?: (receipt: GenerationAttemptReceipt) => void
   onSplit?: (input: { items: readonly TInput[]; failure: StructuredBatchFailure }) => void
-  onUnknownFinishRetry?: (input: { items: readonly TInput[] }) => void
+  onUnknownFinishRetry?: (input: { items: readonly TInput[]; strategy: 'retry' | 'split' }) => void
 }): StructuredBatchExecutor<TInput, TOutput> {
   const { contract, session, writingLanguage } = dependencies
 
@@ -131,7 +131,7 @@ export function createStructuredBatchExecutor<TInput, TOutput>(dependencies: {
       }
       const validated: TOutput[] = []
       let repairUsed = false
-      let unknownFinishRetryUsed = false
+      let unknownFinishRecoveryUsed = false
       const compactFallbackKeys = new Set<StructuredItemKey>()
       const recordAttempt = (attempt: GenerationAttemptReceipt): void => {
         attemptReceipts.push(attempt)
@@ -282,11 +282,12 @@ export function createStructuredBatchExecutor<TInput, TOutput>(dependencies: {
         if (
           outcome.status === 'incomplete'
           && outcome.finishReason === 'unknown'
-          && contract.retryUnknownFinishOnce === true
-          && !unknownFinishRetryUsed
+          && contract.recoverUnknownFinish === true
+          && items.length === 1
+          && !unknownFinishRecoveryUsed
         ) {
-          unknownFinishRetryUsed = true
-          dependencies.onUnknownFinishRetry?.({ items: [...items] })
+          unknownFinishRecoveryUsed = true
+          dependencies.onUnknownFinishRetry?.({ items: [...items], strategy: 'retry' })
           outcome = await session.complete(activeTask, { signal: input.signal })
           recordAttempt(outcome.receipt)
           if (input.signal?.aborted) {
@@ -484,7 +485,16 @@ export function createStructuredBatchExecutor<TInput, TOutput>(dependencies: {
             && items.length > 1
             && failure?.code === 'invalid_output'
             && ['malformed_output', 'missing_item', 'duplicate_item', 'unexpected_item', 'invalid_item'].includes(String(failure.reason))
-          if (!splittable) throw error
+          const recoverUnknownFinish = contract.recoverUnknownFinish === true
+            && !unknownFinishRecoveryUsed
+            && items.length > 1
+            && failure?.code === 'generation_failed'
+            && failure.reason === 'unknown'
+          if (!splittable && !recoverUnknownFinish) throw error
+          if (recoverUnknownFinish) {
+            unknownFinishRecoveryUsed = true
+            dependencies.onUnknownFinishRetry?.({ items: [...items], strategy: 'split' })
+          }
           validated.splice(validatedBefore)
           const midpoint = Math.floor(items.length / 2)
           if (midpoint < 1 || midpoint >= items.length) throw error
