@@ -13,6 +13,7 @@ import {
   filterRelationshipGraph,
   relationshipListRows,
 } from './relationship-graph-model'
+import { calculateRepulsionForces } from './relationship-graph-layout'
 
 interface CharacterNode {
   name: string
@@ -710,22 +711,16 @@ export default function RelationshipGraph({ characters, projectKey, onOpenEviden
         // alpha 冷却：所有力随迭代衰减，确保结束时布局静止而非"冻结在半失控瞬间"
         const alpha = Math.pow(1 - iteration / maxIterations, 1.5)
 
-        // 斥力（O(n²)，200 节点约 2 万对，单帧可负担）
+        // Barnes-Hut keeps long-range repulsion while avoiding every node pair
+        // on dense graphs. Small graphs retain the exact pairwise force model.
+        const repulsionForces = calculateRepulsionForces(nodes, {
+          repulsion,
+          alpha,
+          theta: dense ? 0.65 : 0,
+        })
         for (let i = 0; i < nodes.length; i++) {
-          const ni = nodes[i]
-          for (let j = i + 1; j < nodes.length; j++) {
-            const nj = nodes[j]
-            const dx = nj.x - ni.x
-            const dy = nj.y - ni.y
-            const dist = Math.max(Math.sqrt(dx * dx + dy * dy), 1)
-            const force = (repulsion / (dist * dist)) * alpha
-            const fx = (dx / dist) * force
-            const fy = (dy / dist) * force
-            ni.vx -= fx
-            ni.vy -= fy
-            nj.vx += fx
-            nj.vy += fy
-          }
+          nodes[i].vx += repulsionForces[i].x
+          nodes[i].vy += repulsionForces[i].y
         }
 
         // 弹簧（理想长度已按度数放宽）
