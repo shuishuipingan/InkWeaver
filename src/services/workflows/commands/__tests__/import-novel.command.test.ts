@@ -200,6 +200,53 @@ afterEach(() => {
 })
 
 describe('InferBlueprintsPerChapterCommand', () => {
+  it('uses a compact syntax-repair contract without resending long chapter sources', async () => {
+    const context = createContext()
+    context.data.chapters = Array.from({ length: 5 }, (_, index) => ({
+      number: index + 1,
+      title: `第 ${index + 1} 章`,
+      content: '正文证据'.repeat(1_500),
+      wordCount: 6_000,
+    }))
+    stubIpcInvoke(channel => {
+      if (channel === 'db:blueprint-commit-range') return { success: false, error: 'captured after repaired output' }
+      throw new Error(`unexpected IPC ${channel}`)
+    })
+    const blueprints = Array.from({ length: 5 }, (_, index) => ({
+      chapterNumber: index + 1,
+      title: `雨夜 ${index + 1}`,
+      role: '建置',
+      purpose: '引出调查',
+      keyEvents: '主角发现了重要线索。',
+      characters: ['主角'],
+      relationships: [],
+      suspenseHook: '门后传来敲击声。',
+    }))
+    const validResponse = JSON.stringify({ blueprints })
+    const malformedResponse = validResponse.slice(0, -1)
+    const prompts: string[] = []
+    const generateStream = vi.fn<ReturnType<typeof useLLMStore.getState>['generateStream']>(
+      async (messages, streamCallbacks) => {
+        prompts.push(messages.map(message => message.content).join('\n'))
+        streamCallbacks.onDone?.(prompts.length === 1 ? malformedResponse : validResponse, undefined, 'stop')
+        return `import-blueprint-repair-budget-${prompts.length}`
+      },
+    )
+    useLLMStore.setState({
+      defaultModelId: 'model-a',
+      generateStream,
+    })
+
+    await expect(new InferBlueprintsPerChapterCommand().execute({
+      step: {}, context, callbacks,
+    })).rejects.toThrow('captured after repaired output')
+
+    expect(prompts).toHaveLength(2)
+    expect(prompts[1]).toContain('每项必须完整包含')
+    expect(prompts[1]).toContain('chapterNumber 必须且只能为以下值：1、2、3、4、5')
+    expect(prompts[1]).not.toContain('正文证据'.repeat(100))
+  })
+
   it('explains bounded split retries instead of presenting the initial call count as a maximum', async () => {
     const context = createContext()
     context.data.chapters = Array.from({ length: 5 }, (_, index) => ({

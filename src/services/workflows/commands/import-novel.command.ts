@@ -786,6 +786,14 @@ export class InferBlueprintsPerChapterCommand extends BaseWorkflowCommand<void> 
           ...originalTask.messages.filter(message => message.role !== 'system'),
         ],
       }),
+      syntaxRepairContract: ({ items }) => (
+        `${blueprintSemanticGenerationContract(writingLanguage)}\n`
+        + promptLanguageText(
+          writingLanguage,
+          `chapterNumber 必须且只能为以下值：${items.map(item => item.number).join('、')}。`,
+          `chapterNumber must cover exactly these values: ${items.map(item => item.number).join(', ')}.`,
+        )
+      ),
       decode: content => parseBlueprintSemanticResponseText(content, activeChapterNumbers)
         .map(blueprint => ({
           ...blueprint,
