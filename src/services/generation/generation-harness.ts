@@ -86,6 +86,8 @@ export interface GenerationHarnessPolicy {
   maxRequestedOutputTokens: number
   /** Intent-level cost cap for one physical request; independent of model identity. */
   maxRequestedOutputTokensPerAttempt: number
+  /** Multi-step extraction can reserve a bounded slice per request. */
+  respectIntentOutputCaps?: boolean
   deadlineMs: number
 }
 
@@ -483,20 +485,18 @@ export function createGenerationHarness(dependencies: {
       const capabilities = selected.resolvedCapabilities
         ? copyCapabilities(selected.resolvedCapabilities)
         : resolveInitialCapabilities(frozenModel)
-      // 总输出预算也跟随模型能力：意图预算作为软上限，不压制模型能力。
-      // 策略值若小于模型能力，则提升到至少能容纳模型单次最大输出。
+      // Large creative generations retain the model cap. Multi-step extraction
+      // opts into bounded slices so its first request cannot reserve the run.
       const modelOutputCap = capabilities.maxOutputTokens ?? 0
-      const effectiveTotalTokens = Math.max(
-        policy.maxRequestedOutputTokens,
-        modelOutputCap,
-      )
+      const effectiveTotalTokens = policy.respectIntentOutputCaps
+        ? policy.maxRequestedOutputTokens
+        : Math.max(policy.maxRequestedOutputTokens, modelOutputCap)
       const sessionBudget = Object.freeze({
         maxAttempts: policy.maxAttempts,
         maxRequestedOutputTokens: effectiveTotalTokens,
-        maxRequestedOutputTokensPerAttempt: Math.max(
-          policy.maxRequestedOutputTokensPerAttempt,
-          modelOutputCap,
-        ),
+        maxRequestedOutputTokensPerAttempt: policy.respectIntentOutputCaps
+          ? policy.maxRequestedOutputTokensPerAttempt
+          : Math.max(policy.maxRequestedOutputTokensPerAttempt, modelOutputCap),
         deadlineAt: now() + policy.deadlineMs,
       })
       let attempts = 0
@@ -556,10 +556,7 @@ export function createGenerationHarness(dependencies: {
           // 单次输出上限不压制模型能力：意图预算只作为"应用想限制的软上限"，
           // 当模型能力更大时按模型能力走（max() 使 min() 中由模型能力主导）。
           // 这保证配置了 384K 输出上限的模型真正能用到它的能力。
-          const effectivePerAttemptCap = Math.max(
-            sessionBudget.maxRequestedOutputTokensPerAttempt,
-            capabilities.maxOutputTokens,
-          )
+          const effectivePerAttemptCap = sessionBudget.maxRequestedOutputTokensPerAttempt
           const intentOutputTokens = Math.min(
             capabilities.maxOutputTokens,
             remainingRequestedTokens,

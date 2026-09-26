@@ -408,6 +408,39 @@ describe('GenerationHarness', () => {
     })
   })
 
+  it('respects an opt-in intent cap across several post-process requests', async () => {
+    const complete = vi.fn<CompletionPort['complete']>()
+      .mockResolvedValue({ content: 'done', finishReason: 'stop' })
+    const harness = createGenerationHarness({
+      modelSource: {
+        snapshotDefaultModel: () => ({
+          revision: 'post-process-model',
+          model: model({ maxTokens: 384_000, capabilities: {
+            contextWindowTokens: 1_048_576,
+            maxOutputTokens: 384_000,
+            reasoning: true,
+            structuredOutput: true,
+            usage: true,
+          } }),
+        }),
+      },
+      completionPort: { complete },
+      policy: {
+        maxAttempts: 6,
+        maxRequestedOutputTokens: 96_000,
+        maxRequestedOutputTokensPerAttempt: 16_000,
+        deadlineMs: 60_000,
+        respectIntentOutputCaps: true,
+      },
+    })
+    const session = harness.openSession()
+    await session.complete({ ...task(), purpose: 'chapter-notes' })
+    await session.complete({ ...task(), purpose: 'chapter-handoff' })
+    await session.complete({ ...task(), purpose: 'character-cards' })
+    expect(complete).toHaveBeenCalledTimes(3)
+    expect(complete.mock.calls.map(([request]) => request.plan.maxOutputTokens)).toEqual([16_000, 16_000, 16_000])
+  })
+
   it('counts a known mixed-language sample as UTF-8 bytes and rejects it before a fake provider attempt', async () => {
     const complete = vi.fn<CompletionPort['complete']>().mockResolvedValue({
       content: 'unused',

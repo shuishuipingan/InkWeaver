@@ -43,13 +43,20 @@ type WorkflowLLMOptions = {
   promptBudget?: PromptBudgetPolicy
 }
 
-export type WorkflowGenerationIntent = 'structured' | 'text' | 'character-architecture'
+export type WorkflowGenerationIntent = 'structured' | 'text' | 'character-architecture' | 'post-process'
 
 /**
  * Intent cost ceilings are product policy, never model profiles. The runtime
  * still plans every physical request from the frozen lease capability receipt.
  */
 export const WORKFLOW_GENERATION_BUDGETS = Object.freeze({
+  'post-process': Object.freeze({
+    maxAttempts: 8,
+    maxRequestedOutputTokens: 262_144,
+    maxRequestedOutputTokensPerAttempt: 32_768,
+    deadlineMs: 10 * 60_000,
+    respectIntentOutputCaps: true,
+  }),
   structured: Object.freeze({
     maxAttempts: 16,
     maxRequestedOutputTokens: 262_144,

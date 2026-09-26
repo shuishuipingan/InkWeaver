@@ -559,7 +559,7 @@ export class RunFinalizePostProcessCommand extends BaseWorkflowCommand<PostProce
   }
 
   async execute(params: CommandExecuteParams): Promise<PostProcessStatus> {
-    return this.executeWithGenerationRuntime('structured', params, () => this.executeWithinGeneration(params))
+    return this.executeWithGenerationRuntime('post-process', params, () => this.executeWithinGeneration(params))
   }
 
   private async executeWithinGeneration({ context, callbacks }: CommandExecuteParams): Promise<PostProcessStatus> {

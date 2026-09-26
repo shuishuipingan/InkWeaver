@@ -6,6 +6,16 @@ export interface CharacterRenameRow {
 
 export class CharacterRenameLengthError extends Error {}
 
+/** Diagnostic only: never silently merges persisted character cards. */
+export function findQuoteWrappedNameCollisions(names: string[]): string[] {
+  const existing = new Set(names.map(name => name.trim()))
+  return names.filter(name => {
+    const trimmed = name.trim()
+    const unquoted = trimmed.replace(/^["“‘]/u, '').replace(/["”’]$/u, '')
+    return unquoted !== trimmed && existing.has(unquoted)
+  })
+}
+
 export function chunkCharacterRenameRoster<T>(roster: T[], size = 8): T[][] {
   const batches: T[][] = []
   for (let offset = 0; offset < roster.length; offset += size) {

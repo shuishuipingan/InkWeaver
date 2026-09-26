@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { CharacterRenameLengthError, chunkCharacterRenameRoster, generateUniqueCharacterRenameBatch, validateCharacterRenameBatch } from '../character-rename-batches'
+import { CharacterRenameLengthError, chunkCharacterRenameRoster, findQuoteWrappedNameCollisions, generateUniqueCharacterRenameBatch, validateCharacterRenameBatch } from '../character-rename-batches'
 
 describe('character rename batches', () => {
   it('includes every character beyond the former 40-character cutoff', () => {
@@ -47,5 +47,10 @@ describe('character rename batches', () => {
     )
     expect(rows.map(row => row.to)).toEqual(['新甲', '新乙'])
     expect(observed[1]).toContain('新甲')
+  })
+
+  it('flags quote-wrapped aliases that duplicate another character card', () => {
+    expect(findQuoteWrappedNameCollisions(['沈笑笑', '"沈笑笑"', '云花', '“云花”', '任双']))
+      .toEqual(['"沈笑笑"', '“云花”'])
   })
 })

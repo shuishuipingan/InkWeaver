@@ -8,7 +8,7 @@ import { useLLMStore } from '../../stores/llm-store'
 import { ipc } from '../../services/ipc-client'
 import { globalEventBus } from '../../shared/event-bus'
 import { countDraftUnits } from '../../shared/draft-units'
-import { CharacterRenameLengthError, chunkCharacterRenameRoster, generateUniqueCharacterRenameBatch, type CharacterRenameRow } from '../../services/character-rename-batches'
+import { CharacterRenameLengthError, chunkCharacterRenameRoster, findQuoteWrappedNameCollisions, generateUniqueCharacterRenameBatch, type CharacterRenameRow } from '../../services/character-rename-batches'
 import {
   captureProjectSession,
   isProjectSessionCurrent,
@@ -64,6 +64,10 @@ export default function AIRenameCharactersDialog({ onClose }: { onClose: () => v
   const projectSession = useMemo(() => captureProjectSession(currentProject), [currentProject])
   const currentNames = useMemo(
     () => new Set(characters.map(c => c.name)),
+    [characters],
+  )
+  const quoteWrappedNameCollisions = useMemo(
+    () => findQuoteWrappedNameCollisions(characters.map(character => character.name)),
     [characters],
   )
   const previewTargets = renames.map(row => row.to.trim())
@@ -241,6 +245,15 @@ export default function AIRenameCharactersDialog({ onClose }: { onClose: () => v
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
+          {quoteWrappedNameCollisions.length > 0 && (step === 'input' || step === 'preview') && (
+            <p className="text-xs flex items-start gap-1.5" style={{ color: 'var(--color-warning-text)' }}>
+              <AlertTriangle size={13} className="shrink-0 mt-0.5" />
+              {text(
+                `角色卡中有 ${quoteWrappedNameCollisions.length} 个带引号的名字与未带引号的名字疑似指向同一角色。请核对角色卡；批量改名不会自动合并它们。`,
+                `${quoteWrappedNameCollisions.length} quoted character name(s) also exist without quotes. Review those cards; bulk renaming will not merge them automatically.`,
+              )}
+            </p>
+          )}
           {step === 'input' && (
             <>
               <p className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
