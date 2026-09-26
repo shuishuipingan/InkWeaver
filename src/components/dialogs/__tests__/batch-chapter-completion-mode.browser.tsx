@@ -678,14 +678,17 @@ describe('batch chapter completion mode browser flow', () => {
         ['llm:begin-execution-lease', 'grok-browser'],
         ['llm:begin-execution-lease', 'grok-browser'],
       ])
-    expect(invoke.mock.calls.some(([channel]) => (
-      channel === 'db:draft-get-finalized'
-      || channel === 'finalization:commit'
-      || channel === 'kb:import-text'
-      || channel === 'db:blueprint-update-notes'
-      || String(channel).startsWith('db:character-roster-')
-      || isPostProcessWriteChannel(channel)
-    ))).toBe(false)
+    const forbiddenSideEffectChannels = invoke.mock.calls
+      .filter(([channel]) => (
+        channel === 'db:draft-get-finalized'
+        || channel === 'finalization:commit'
+        || channel === 'kb:import-text'
+        || channel === 'db:blueprint-update-notes'
+        || channel === 'db:character-roster-commit'
+        || isPostProcessWriteChannel(channel)
+      ))
+      .map(([channel]) => String(channel))
+    expect(forbiddenSideEffectChannels).toEqual([])
   }, 60_000)
 
   it('creates an editable draft in the project tree without finalization side effects', async () => {

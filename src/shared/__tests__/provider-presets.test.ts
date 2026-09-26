@@ -34,7 +34,7 @@ describe('provider catalog', () => {
     }))
   })
 
-  it('resolves provider facts only for an exact official provider, protocol, endpoint and model', () => {
+  it('resolves current DeepSeek facts through a supported API alias', () => {
     const legacy = {
       provider: 'deepseek',
       protocol: 'openai',
@@ -45,8 +45,8 @@ describe('provider catalog', () => {
     }
 
     expect(resolveModelProfileCapabilities(legacy)).toEqual({
-      contextWindowTokens: 1_000_000,
-      maxOutputTokens: 384_000,
+      contextWindowTokens: 1_048_576,
+      maxOutputTokens: 393_216,
       reasoning: true,
       structuredOutput: true,
       usage: true,
@@ -57,8 +57,8 @@ describe('provider catalog', () => {
       ...legacy,
       baseUrl: 'https://proxy.example.com/v1',
     })).toEqual({
-      contextWindowTokens: 1_000_000,
-      maxOutputTokens: 384_000,
+      contextWindowTokens: 1_048_576,
+      maxOutputTokens: 393_216,
       reasoning: true,
       structuredOutput: true,
       usage: true,
@@ -77,8 +77,8 @@ describe('provider catalog', () => {
       usage: false,
     }
     expect(resolveModelProfileCapabilities({ ...legacy, capabilities: explicit })).toEqual({
-      contextWindowTokens: 1_000_000,
-      maxOutputTokens: 384_000,
+      contextWindowTokens: 1_048_576,
+      maxOutputTokens: 393_216,
       reasoning: true,
       structuredOutput: true,
       usage: true,
@@ -86,10 +86,37 @@ describe('provider catalog', () => {
 
     expect(resolveModelProfileReasoningMapping(legacy)).toEqual({
       adapter: 'deepseek-v4-thinking',
-      supportedEfforts: ['off', 'high', 'max'],
-      providerValues: { off: 'disabled', high: 'high', max: 'max' },
-      requestAliases: { low: 'high', medium: 'high' },
+      supportedEfforts: ['off', 'low', 'high', 'max'],
+      providerValues: { off: 'disabled', low: 'low', high: 'high', max: 'max' },
+      requestAliases: { medium: 'high' },
     })
+  })
+
+  it.each(['deepseek-flash', 'deepseek-v4.1-flash'])(
+    'recognizes JSON output capability for DeepSeek V4.1 Flash model id %s',
+    (modelName) => {
+      expect(resolveModelProfileCapabilities({
+        provider: 'deepseek',
+        protocol: 'openai',
+        baseUrl: 'https://api.deepseek.com',
+        modelName,
+      })).toEqual({
+        contextWindowTokens: 1_048_576,
+        maxOutputTokens: 393_216,
+        reasoning: true,
+        structuredOutput: true,
+        usage: true,
+      })
+    },
+  )
+
+  it('offers current DeepSeek API model ids in its built-in catalog', () => {
+    const deepseek = createProviderCatalog().find(preset => preset.provider === 'deepseek')
+
+    expect(deepseek?.models.map(model => model.name)).toEqual([
+      'deepseek-flash',
+      'deepseek-v4-pro',
+    ])
   })
 
   it('publishes Gemini 2.5 Flash-Lite as one exact official capability fact', () => {

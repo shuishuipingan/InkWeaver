@@ -99,7 +99,7 @@ describe('reasoning policy settings', () => {
     expect(markup).toContain('Max → High')
   })
 
-  it('shows verified DeepSeek V4 requested-to-effective mappings instead of unsupported', () => {
+  it('shows verified DeepSeek V4.1 Flash requested-to-effective mappings instead of unsupported', () => {
     useLocaleStore.setState({ locale: 'zh-CN' })
     useProjectStore.setState({
       currentProject: {
@@ -123,7 +123,7 @@ describe('reasoning policy settings', () => {
       <ReasoningPolicySettings model={legacyDeepSeekV4} onModelChange={() => {}} />,
     )
 
-    expect(markup).toContain('低 → 高')
+    expect(markup).toContain('低 → 低')
     expect(markup).toContain('已映射')
     expect(markup).not.toContain('不支持 / 不发送参数')
   })

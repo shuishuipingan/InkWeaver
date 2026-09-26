@@ -22,7 +22,7 @@ function modelProfile(): ModelProfile {
     temperature: 0.7,
     maxTokens: 8192,
     capabilities: {
-      contextWindowTokens: 1_000_000,
+      contextWindowTokens: 1_048_576,
       maxOutputTokens: 8192,
       reasoning: false,
       structuredOutput: true,
@@ -109,7 +109,7 @@ describe('ModelExecutionLeaseRegistry', () => {
         featureFlags: 'verified-provider-preset',
       },
       subjectFingerprint: expect.stringMatching(/^[a-f0-9]{64}$/u),
-      contextWindowTokens: 1_000_000,
+      contextWindowTokens: 1_048_576,
       maxOutputTokens: 8192,
       reasoning: true,
       structuredOutput: true,
@@ -216,7 +216,7 @@ describe('ModelExecutionLeaseRegistry', () => {
     })
 
     expect(registry.begin('generation-model').capabilityEvidence).toMatchObject({
-      maxOutputTokens: 384_000,
+      maxOutputTokens: 393_216,
       source: { maxOutputTokens: 'verified-provider-preset' },
     })
 
@@ -279,6 +279,23 @@ describe('ModelExecutionLeaseRegistry', () => {
       usage: true,
     })
   })
+
+  it.each(['deepseek-flash', 'deepseek-v4.1-flash'])(
+    'puts verified JSON output capability for DeepSeek V4.1 Flash %s into the model lease',
+    (modelName) => {
+      const receipt = createModelExecutionLeaseReceipt({
+        ...modelProfile(),
+        modelName,
+        maxTokens: 393_216,
+        capabilities: undefined,
+      }, { leaseId: 'deepseek-flash-json-lease', createdAt: 10, expiresAt: 20 })
+
+      expect(receipt.capabilityEvidence).toMatchObject({
+        source: { featureFlags: 'verified-provider-preset' },
+        structuredOutput: true,
+      })
+    },
+  )
 
   it('irreversibly closes an active lease without affecting other leases', () => {
     const registry = new ModelExecutionLeaseRegistry({

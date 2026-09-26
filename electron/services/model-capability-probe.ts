@@ -15,7 +15,10 @@
 
 import type { ModelProfile } from '../../src/shared/ipc-channels'
 import type { ModelCapabilityProbeResult } from '../../src/shared/ipc-channels'
-import { resolveModelProfileCapabilities } from '../../src/shared/provider-presets'
+import {
+  isKnownModelProfileApiId,
+  resolveModelProfileCapabilities,
+} from '../../src/shared/provider-presets'
 
 const PROBE_TIMEOUT_MS = 15_000
 const PROBE_MAX_TOKENS = 1
@@ -48,9 +51,8 @@ const BUILTIN_MODEL_CAPABILITIES: BuiltinModelCap[] = [
   // Google Gemini
   { prefixes: ['gemini-3', 'gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.0', 'gemini-1.5-pro', 'gemini-1.5-flash'], contextWindowTokens: 1_000_000, maxOutputTokens: 65_536 },
   { prefixes: ['gemini-1.0'], contextWindowTokens: 32_768, maxOutputTokens: 2_048 },
-  // DeepSeek
-  { prefixes: ['deepseek-v4', 'deepseek-v3', 'deepseek-reasoner', 'deepseek-chat'], contextWindowTokens: 1_000_000, maxOutputTokens: 64_000 },
-  { prefixes: ['deepseek-r1'], contextWindowTokens: 64_000, maxOutputTokens: 8_192 },
+  // Current DeepSeek V4.1 API ids and documented compatibility aliases.
+  { prefixes: ['deepseek-v4-flash-vision-exp', 'deepseek-v4-flash', 'deepseek-flash', 'deepseek-v4-pro'], contextWindowTokens: 1_048_576, maxOutputTokens: 393_216 },
   // Qwen / 通义
   { prefixes: ['qwen3-max', 'qwen3-coder'], contextWindowTokens: 128_000, maxOutputTokens: 16_384 },
   { prefixes: ['qwen2.5-max'], contextWindowTokens: 32_768, maxOutputTokens: 8_192 },
@@ -170,7 +172,7 @@ export class ModelCapabilityProbe {
 
     // 策略 A1：内置预设匹配（官方模型，最可靠，无需网络）
     const presetCapabilities = resolveModelProfileCapabilities(model)
-    if (presetCapabilities?.maxOutputTokens) {
+    if (presetCapabilities?.maxOutputTokens && isKnownModelProfileApiId(model)) {
       return {
         contextWindowTokens: presetCapabilities.contextWindowTokens ?? null,
         maxOutputTokens: presetCapabilities.maxOutputTokens,
@@ -259,7 +261,7 @@ export class ModelCapabilityProbe {
         })
         const verified = res.ok
         // 部分服务在响应体或错误信息中给出能力提示；尽力解析
-        let contextWindowTokens: number | null = null
+        const contextWindowTokens: number | null = null
         let maxOutputTokens: number | null = null
         if (res.ok) {
           const payload = await res.json().catch(() => null)

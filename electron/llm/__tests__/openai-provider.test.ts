@@ -254,7 +254,7 @@ describe('OpenAIProvider NovelAI compatibility', () => {
     }
   })
 
-  it('maps auto DeepSeek V4 drafts to enabled high effort in normal and streaming requests', async () => {
+  it('maps auto DeepSeek V4.1 drafts to enabled low effort in normal and streaming requests', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce({
         ok: true,
@@ -291,7 +291,54 @@ describe('OpenAIProvider NovelAI compatibility', () => {
     for (const [, request] of fetchMock.mock.calls as Array<[string, RequestInit]>) {
       expect(JSON.parse(String(request.body))).toMatchObject({
         thinking: { type: 'enabled' },
-        reasoning_effort: 'high',
+        reasoning_effort: 'low',
+      })
+    }
+  })
+
+  it('sends JSON Output and the documented low effort for structured DeepSeek Flash requests', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ choices: [{ message: { content: '{}' }, finish_reason: 'stop' }] }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        body: {
+          getReader: () => sseReader(
+            'data: {"choices":[{"delta":{"content":"{}"},"finish_reason":"stop"}]}\n',
+            'data: [DONE]\n',
+          ),
+        },
+      })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const flashModel = { ...legacyDeepSeekV4Model, modelName: 'deepseek-flash', maxTokens: 393_216 }
+    const parameters = resolveGenerationParameters(flashModel, {
+      maxTokens: 4096,
+      creativeStrategy: 'auto',
+      reasoningStage: 'drafting',
+      responseFormat: { type: 'json_object' },
+    })
+    const messages = [
+      { role: 'system', content: 'Output JSON only.' },
+      { role: 'user', content: '{"value":1}' },
+    ]
+    const provider = new OpenAIProvider()
+    await provider.generate(flashModel, messages, parameters)
+    await provider.generateStream(flashModel, messages, {
+      ...parameters,
+      signal: new AbortController().signal,
+      onChunk: vi.fn(),
+      onDone: vi.fn(),
+      onError: vi.fn(),
+    })
+
+    for (const [, request] of fetchMock.mock.calls as Array<[string, RequestInit]>) {
+      expect(JSON.parse(String(request.body))).toMatchObject({
+        response_format: { type: 'json_object' },
+        thinking: { type: 'enabled' },
+        reasoning_effort: 'low',
       })
     }
   })

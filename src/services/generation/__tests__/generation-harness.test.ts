@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import type { ModelProfile } from '../../../shared/ipc-channels'
+import { createModelExecutionLeaseReceipt } from '../../../../electron/services/model-execution-lease'
 import {
   createGenerationHarness,
   type CompletionPort,
@@ -227,6 +228,53 @@ describe('GenerationHarness', () => {
     })
 
     expect(outcome.receipt.capabilities.structuredOutput).toBeNull()
+    expect(complete.mock.calls[0]?.[0].plan.responseFormat).toEqual({ type: 'json_object' })
+  })
+
+  it('requests JSON mode for DeepSeek V4.1 Flash using its verified execution-lease capabilities', async () => {
+    const profile = model({
+      provider: 'deepseek',
+      protocol: 'openai',
+      modelName: 'deepseek-v4.1-flash',
+      baseUrl: 'https://api.deepseek.com',
+      maxTokens: 393_216,
+    })
+    const lease = createModelExecutionLeaseReceipt(profile, {
+      leaseId: 'deepseek-v4.1-flash-json-lease',
+      createdAt: 1,
+      expiresAt: 60_001,
+    })
+    const complete = vi.fn<CompletionPort['complete']>().mockResolvedValue({
+      content: '{"blueprints":[]}',
+      finishReason: 'stop',
+    })
+    const harness = createGenerationHarness({
+      modelSource: {
+        snapshotDefaultModel: () => ({
+          revision: 'deepseek-v4.1-flash-revision',
+          model: profile,
+          modelExecutionLeaseId: lease.leaseId,
+          resolvedCapabilities: lease.capabilityEvidence,
+        }),
+      },
+      completionPort: { complete },
+      policy: {
+        maxAttempts: 1,
+        maxRequestedOutputTokens: 4096,
+        maxRequestedOutputTokensPerAttempt: 4096,
+        deadlineMs: 60_000,
+      },
+    })
+
+    await harness.openSession().complete({
+      ...task(),
+      output: 'structured-data',
+      messages: [
+        { role: 'system', content: 'Return JSON only.' },
+        { role: 'user', content: 'Return {"blueprints":[]}.' },
+      ],
+    })
+
     expect(complete.mock.calls[0]?.[0].plan.responseFormat).toEqual({ type: 'json_object' })
   })
 

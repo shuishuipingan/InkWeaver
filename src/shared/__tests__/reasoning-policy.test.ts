@@ -132,16 +132,16 @@ describe('reasoning policy', () => {
       .not.toHaveProperty('providerDirective')
   })
 
-  it('maps the exact official DeepSeek V4 profile without trusting persisted capability flags', () => {
+  it('maps the DeepSeek V4.1 Flash effort levels without trusting persisted capability flags', () => {
     const legacyDeepSeek: ModelProfile = {
       ...geminiFlashLite,
       provider: 'deepseek',
       protocol: 'openai',
       baseUrl: 'https://api.deepseek.com',
-      modelName: 'deepseek-v4-flash',
+      modelName: 'deepseek-v4.1-flash',
       capabilities: {
         contextWindowTokens: 1_000_000,
-        maxOutputTokens: 384_000,
+        maxOutputTokens: 393_216,
         reasoning: false,
         structuredOutput: true,
         usage: true,
@@ -165,12 +165,12 @@ describe('reasoning policy', () => {
       stage: 'drafting',
     })).toMatchObject({
       requested: 'low',
-      effective: 'high',
+      effective: 'low',
       status: 'mapped',
       providerDirective: {
         adapter: 'deepseek-v4-thinking',
         thinking: 'enabled',
-        reasoningEffort: 'high',
+        reasoningEffort: 'low',
       },
     })
 

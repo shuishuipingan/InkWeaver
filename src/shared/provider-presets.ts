@@ -8,6 +8,10 @@ import type { VerifiedReasoningMapping } from './reasoning-types'
 /** 单个模型的预设 — name + 该模型的输出 token 上限 */
 export interface ModelPreset {
   name: string
+  /** API ids the provider documents as compatible with this model; not shown as separate choices. */
+  compatibilityAliases?: readonly string[]
+  /** Display names from existing profiles; grant capabilities but still require endpoint verification. */
+  capabilityAliases?: readonly string[]
   /** Model-specific capability metadata. `maxTokens` remains the legacy output limit. */
   capabilities?: ModelCapabilities
   /** Provider request mapping verified against the official model documentation. */
@@ -255,66 +259,42 @@ export function createProviderCatalog(): ProviderPreset[] {
     protocol: 'openai',
     models: [
       {
-        name: 'deepseek-chat',
-        maxTokens: 8192,
-        capabilities: { contextWindowTokens: 131072, maxOutputTokens: 8192, reasoning: false, structuredOutput: true, usage: true },
-      },
-      {
-        name: 'deepseek-reasoner',
-        maxTokens: 8192,
-        capabilities: { contextWindowTokens: 131072, maxOutputTokens: 8192, reasoning: true, structuredOutput: true, usage: true },
-        reasoningMapping: {
-          adapter: 'deepseek-v4-thinking',
-          supportedEfforts: ['off', 'high', 'max'],
-          providerValues: { off: 'disabled', high: 'high', max: 'max' },
-          requestAliases: { low: 'high', medium: 'high' },
-        },
-      },
-      {
-        name: 'deepseek-v3',
-        maxTokens: 65536,
-        capabilities: { contextWindowTokens: 131072, maxOutputTokens: 65536, reasoning: true, structuredOutput: true, usage: true },
-        reasoningMapping: {
-          adapter: 'deepseek-v4-thinking',
-          supportedEfforts: ['off', 'high', 'max'],
-          providerValues: { off: 'disabled', high: 'high', max: 'max' },
-          requestAliases: { low: 'high', medium: 'high' },
-        },
-      },
-      {
-        name: 'deepseek-v4-flash',
-        maxTokens: 384_000,
+        name: 'deepseek-flash',
+        compatibilityAliases: [
+          'deepseek-v4-flash',
+          'deepseek-v4-flash-vision-exp',
+        ],
+        capabilityAliases: ['deepseek-v4.1-flash'],
+        maxTokens: 393_216,
         capabilities: {
-          contextWindowTokens: 1_000_000,
-          maxOutputTokens: 384_000,
+          contextWindowTokens: 1_048_576,
+          maxOutputTokens: 393_216,
           reasoning: true,
           structuredOutput: true,
           usage: true,
         },
-        // https://api-docs.deepseek.com/guides/thinking_mode/
         reasoningMapping: {
           adapter: 'deepseek-v4-thinking',
-          supportedEfforts: ['off', 'high', 'max'],
-          providerValues: { off: 'disabled', high: 'high', max: 'max' },
-          requestAliases: { low: 'high', medium: 'high' },
+          supportedEfforts: ['off', 'low', 'high', 'max'],
+          providerValues: { off: 'disabled', low: 'low', high: 'high', max: 'max' },
+          requestAliases: { medium: 'high' },
         },
       },
       {
         name: 'deepseek-v4-pro',
-        maxTokens: 384_000,
+        maxTokens: 393_216,
         capabilities: {
-          contextWindowTokens: 1_000_000,
-          maxOutputTokens: 384_000,
+          contextWindowTokens: 1_048_576,
+          maxOutputTokens: 393_216,
           reasoning: true,
           structuredOutput: true,
           usage: true,
         },
-        // https://api-docs.deepseek.com/guides/thinking_mode/
         reasoningMapping: {
           adapter: 'deepseek-v4-thinking',
-          supportedEfforts: ['off', 'high', 'max'],
-          providerValues: { off: 'disabled', high: 'high', max: 'max' },
-          requestAliases: { low: 'high', medium: 'high' },
+          supportedEfforts: ['off', 'low', 'high', 'max'],
+          providerValues: { off: 'disabled', low: 'low', high: 'high', max: 'max' },
+          requestAliases: { medium: 'high' },
         },
       },
     ],
@@ -900,8 +880,40 @@ function normalizeModelNameForPreset(modelName: string): string {
   return base
 }
 
+function findPresetModel(preset: ProviderPreset, modelName: string): ModelPreset | undefined {
+  const normalizedName = normalizeModelNameForPreset(modelName)
+  return preset.models.find(candidate => candidate.name === modelName)
+    ?? preset.models.find(candidate => candidate.compatibilityAliases?.includes(modelName))
+    ?? preset.models.find(candidate => candidate.capabilityAliases?.includes(modelName))
+    ?? preset.models.find(candidate => candidate.name === normalizedName)
+    ?? preset.models.find(candidate => candidate.compatibilityAliases?.includes(normalizedName))
+    ?? preset.models.find(candidate => candidate.capabilityAliases?.includes(normalizedName))
+}
+
+/** Whether the saved model id is documented as an API id or accepted compatibility alias. */
+export function isKnownModelProfileApiId(profile: ModelCapabilityProfile): boolean {
+  if (
+    typeof profile.provider !== 'string'
+    || typeof profile.protocol !== 'string'
+    || typeof profile.modelName !== 'string'
+  ) return false
+
+  const preset = BUILTIN_PRESETS.find(candidate => candidate.provider === profile.provider)
+  if (!preset || preset.protocol !== profile.protocol) return false
+
+  const modelName = profile.modelName.trim()
+  const normalizedName = normalizeModelNameForPreset(modelName)
+  return preset.models.some(candidate => (
+    candidate.name === modelName
+    || candidate.name === normalizedName
+    || candidate.compatibilityAliases?.includes(modelName)
+    || candidate.compatibilityAliases?.includes(normalizedName)
+  ))
+}
+
 /**
- * Resolve verified built-in provider facts without mutating persisted data.
+ * Resolve verified built-in provider facts for official ids, documented aliases,
+ * and known display-name aliases without mutating persisted data.
  * User-stored capabilities and output limits are operational policy, not proof
  * of what a provider endpoint supports, so they never override this result.
  */
@@ -922,15 +934,14 @@ export function resolveModelProfileCapabilities(
     return undefined
   }
 
-  const model = preset.models.find(candidate => candidate.name === modelName)
-    ?? preset.models.find(candidate => candidate.name === normalizeModelNameForPreset(modelName))
+  const model = findPresetModel(preset, modelName)
   return validatedCapabilities(model?.capabilities)
 }
 
 /**
- * Resolve only provider request mappings whose endpoint and exact model slug
- * match an app-maintained built-in preset. User-entered capability flags are
- * operational hints and never become protocol evidence.
+ * Resolve only provider request mappings whose provider, protocol, and model id
+ * match an app-maintained preset or vetted alias. User-entered capability flags
+ * are operational hints and never become protocol evidence.
  */
 export function resolveModelProfileReasoningMapping(
   profile: ModelCapabilityProfile,
@@ -950,10 +961,7 @@ export function resolveModelProfileReasoningMapping(
   // 推理参数格式由 协议 + 模型名 决定，与网关地址无关。
   // 第三方中转站/代理使用同名主流模型时，也应采用官方预设的推理映射；
   // 前提是 provider 与协议一致、且模型名精确命中官方预设目录。
-  const mapping = preset.models.find(candidate => candidate.name === modelName)
-    ?.reasoningMapping
-    ?? preset.models.find(candidate => candidate.name === normalizeModelNameForPreset(modelName))
-      ?.reasoningMapping
+  const mapping = findPresetModel(preset, modelName)?.reasoningMapping
   if (!mapping) return undefined
   return {
     adapter: mapping.adapter,
