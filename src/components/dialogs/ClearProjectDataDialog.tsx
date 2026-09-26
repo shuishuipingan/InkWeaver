@@ -153,7 +153,7 @@ export default function ClearProjectDataDialog({
           </div>
         </div>
 
-        <div className="space-y-2 p-4">
+        <div className="min-h-0 overflow-y-auto space-y-2 p-4">
           {OPTIONS.map(({ key, labelZh, labelEn, descZh, descEn, Icon }) => (
             <label
               key={key}

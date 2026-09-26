@@ -36,7 +36,7 @@ DialogOverlay.displayName = DialogPrimitive.Overlay.displayName
 const DialogContent = React.forwardRef<
   React.ComponentRef<typeof DialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & { hideCloseButton?: boolean }
->(({ className, children, hideCloseButton = false, ...props }, ref) => {
+>(({ className, children, hideCloseButton = false, style, ...props }, ref) => {
   const text = useLocaleStore(s => s.text)
   return (
   <DialogPortal>
@@ -44,7 +44,7 @@ const DialogContent = React.forwardRef<
     <DialogPrimitive.Content
       ref={ref}
       className={cn(
-        'fixed left-[50%] top-[50%] z-50 w-full max-w-lg translate-x-[-50%] translate-y-[-50%]',
+        'fixed left-[50%] top-[50%] z-50 w-full max-w-lg max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain translate-x-[-50%] translate-y-[-50%]',
         'rounded-2xl outline-none',
         'bg-[var(--color-popover-bg)] border border-[var(--color-border)]',
         'shadow-2xl shadow-black/20',
@@ -57,6 +57,10 @@ const DialogContent = React.forwardRef<
       )}
       style={{
         boxShadow: 'var(--shadow-popover)',
+        maxHeight: 'calc(100dvh - 2rem)',
+        overflowY: className?.includes('overflow-hidden') ? undefined : 'auto',
+        overscrollBehavior: 'contain',
+        ...style,
       }}
       {...props}
     >

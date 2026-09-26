@@ -2,6 +2,13 @@
 
 本文件按用户可见行为记录变更。`1.2.x` 桌面版本不发布 npm；DSH 插件沿用已发布的 `1.2.0` 包。`1.2.0` 已从同一源码 commit 完成工程验收、三平台资产回读和正式 Release；`1.1.0` 的历史 Release 收据保留在 `docs/upgrade/`，不与 1.2.0 混用。
 
+## 1.2.15 — 2026-09-26
+
+正式 Release：<https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.2.15>
+
+- 修复章节创作弹窗在一致性预检线索较多时超过屏幕高度，导致“仅本次忽略并继续”等底部选项无法看到或点击的问题；现在弹窗保持在视口内，内容可滚动到底部。
+- 同步修复其他使用公共弹窗的长内容窗口；“清除项目生成内容”的选项列表在小视口中也可以独立滚动。
+
 ## 1.2.14 — 2026-09-26
 
 正式 Release：<https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.2.14>
