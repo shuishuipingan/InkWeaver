@@ -8,17 +8,14 @@ import { useLLMStore } from '../../stores/llm-store'
 import { ipc } from '../../services/ipc-client'
 import { globalEventBus } from '../../shared/event-bus'
 import { countDraftUnits } from '../../shared/draft-units'
+import { chunkCharacterRenameRoster, validateCharacterRenameBatch, type CharacterRenameRow } from '../../services/character-rename-batches'
 import {
   captureProjectSession,
   isProjectSessionCurrent,
 } from '../project-session-gate'
 import { useLocaleStore } from '../../stores/locale-store'
 
-interface RenameRow {
-  from: string
-  to: string
-  reason: string
-}
+type RenameRow = CharacterRenameRow
 
 interface ApplySummary {
   renamedCards: number
@@ -79,11 +76,6 @@ export default function AIRenameCharactersDialog({ onClose }: { onClose: () => v
     setStep('generating')
     setError(null)
     const config = currentProject.novelConfig
-    const rosterLines = characters.slice(0, 40).map(c => {
-      const brief = [c.gender, c.age, c.role, c.personality?.slice(0, 40)]
-        .filter(Boolean).join(' / ')
-      return `- ${c.name}${brief ? `（${brief}）` : ''}`
-    }).join('\n')
     const settingBrief = [
       config.genre && `类型：${config.genre}`,
       config.subGenre && `细分：${config.subGenre}`,
@@ -93,45 +85,58 @@ export default function AIRenameCharactersDialog({ onClose }: { onClose: () => v
       '你是资深小说编辑。用户正在进行"拆书仿写"：需要把一本书里的全部角色名替换成全新原创名字，使作品看不出与原著的关联，同时新名字必须符合剧情与设定。',
       'You are a senior fiction editor. The user is adapting a book: replace ALL character names with fresh original names so the result no longer resembles the source, while every new name fits the plot and setting.',
     )
-    const user = [
-      text(`作品设定：${settingBrief || '未提供'}`, `Setting: ${settingBrief || 'not provided'}`),
-      styleHint ? text(`风格要求：${styleHint}`, `Style requests: ${styleHint}`) : '',
-      text('现有角色名单：', 'Current characters:'),
-      rosterLines,
-      '',
-      text(
-        '请为上面每个角色生成一个全新的名字，并输出 JSON：{"renames":[{"from":"原名","to":"新名","reason":"一句话理由"}]}。',
-        'Generate a new name for EVERY character above and output JSON: {"renames":[{"from":"old","to":"new","reason":"one line"}]}.',
-      ),
-      text(
-        '规则：1) 名字符合世界观、时代与角色性别身份；2) 主角名好听好记有辨识度，配角名不与主角撞名；3) 不使用原名中的任何单字，读音也不要与原名相近；4) 新名字彼此不重名；5) reason 用中文一句话说明起名思路。',
-        'Rules: 1) fit the world, era, and gender identity; 2) protagonist names memorable, no collisions; 3) share no character with the old name and avoid similar sounds; 4) all new names distinct; 5) reason is one sentence.',
-      ),
-    ].filter(Boolean).join('\n')
-
     try {
-      const res = await useLLMStore.getState().generate(
-        [
-          { role: 'system', content: system },
-          { role: 'user', content: user },
-        ],
-        undefined,
-        {
+      const modelId = useLLMStore.getState().defaultModelId
+      if (!modelId) throw new Error(text('请先配置默认创作模型', 'Configure a default writing model first'))
+      const rows: RenameRow[] = []
+      const generateBatch = async (batch: typeof characters): Promise<RenameRow[]> => {
+        const rosterLines = batch.map(c => {
+          const brief = [c.gender, c.age, c.role, c.personality?.slice(0, 40)]
+            .filter(Boolean).join(' / ')
+          return `- ${c.name}${brief ? `（${brief}）` : ''}`
+        }).join('\n')
+        const user = [
+          text(`作品设定：${settingBrief || '未提供'}`, `Setting: ${settingBrief || 'not provided'}`),
+          styleHint ? text(`风格要求：${styleHint}`, `Style requests: ${styleHint}`) : '',
+          text('现有角色名单：', 'Current characters:'),
+          rosterLines,
+          text('只为本批列出的角色生成名字，逐个完整返回。', 'Return one complete mapping for each character in this batch only.'),
+          text('输出 JSON：{"renames":[{"from":"原名","to":"新名","reason":"一句话理由"}]}。',
+            'Output JSON: {"renames":[{"from":"old","to":"new","reason":"one line"}]}.'),
+          text('新名符合设定，不含原名的字或近音，不与其他角色重名。',
+            'New names must fit the setting, avoid old characters and similar sounds, and be unique.'),
+        ].filter(Boolean).join('\n')
+        const res = await ipc.invoke('llm:generate', {
+          modelId,
+          messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
           responseFormat: { type: 'json_object' },
           purpose: 'character-rename-mapping',
           maxTokens: 8192,
-        },
-      )
-      if (!res.success) throw new Error(res.error ?? text('AI 生成失败', 'Generation failed'))
-      const parsed = extractJson(res.content) as { renames?: Array<{ from?: unknown; to?: unknown; reason?: unknown }> }
-      const rows: RenameRow[] = (parsed.renames ?? [])
-        .map(r => ({
-          from: String(r.from ?? ''),
-          to: String(r.to ?? '').trim(),
-          reason: String(r.reason ?? ''),
-        }))
-        .filter(r => r.from && currentNames.has(r.from))
-    if (rows.length === 0) throw new Error(text('AI 未返回有效的改名映射，请重试。', 'AI returned no valid mapping. Please retry.'))
+          projectSession,
+          creativeStrategy: 'fluent-drafting',
+          reasoningStage: 'general',
+        })
+        if (!res.success) {
+          if (res.finishReason === 'length' && batch.length > 1) {
+            const middle = Math.ceil(batch.length / 2)
+            const splitRows = [...await generateBatch(batch.slice(0, middle)), ...await generateBatch(batch.slice(middle))]
+            return validateCharacterRenameBatch(batch.map(c => c.name), splitRows, currentNames, new Set(rows.map(row => row.to)))
+          }
+          throw new Error(text(
+            `AI 改名未完成（结束原因：${res.finishReason}）。${res.error ?? ''}`,
+            `Character renaming did not complete (finish reason: ${res.finishReason}). ${res.error ?? ''}`,
+          ))
+        }
+        const parsed = extractJson(res.content) as { renames?: Array<{ from?: unknown; to?: unknown; reason?: unknown }> }
+        if (!Array.isArray(parsed.renames)) throw new Error(text('AI 未返回改名列表', 'AI did not return a rename list'))
+        return validateCharacterRenameBatch(batch.map(c => c.name), parsed.renames.map(r => ({
+          from: String(r.from ?? ''), to: String(r.to ?? ''), reason: String(r.reason ?? ''),
+        })), currentNames, new Set(rows.map(row => row.to)))
+      }
+      for (const batch of chunkCharacterRenameRoster(characters)) {
+        rows.push(...await generateBatch(batch))
+      }
+      if (!isProjectSessionCurrent(projectSession)) return
       setRenames(rows)
       setStep('preview')
     } catch (e) {

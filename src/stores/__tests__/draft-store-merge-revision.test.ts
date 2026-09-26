@@ -82,7 +82,7 @@ describe('draft-store merged revision persistence', () => {
     })
   })
 
-  it('marks the direct vela revision URI as merged after its target draft is updated', async () => {
+  it('applies a direct vela revision and updates its draft in one database operation', async () => {
     const result = await useDraftStore.getState().applyMergedRevision(
       'vela://draft/ch1',
       1,
@@ -96,10 +96,15 @@ describe('draft-store merged revision persistence', () => {
     expect(result).toEqual({ success: true })
     expect(invokeWithProjectSession).toHaveBeenCalledWith(
       projectSession,
-      'db:revision-mark-merged',
+      'db:revision-apply-merge',
       1,
       11,
+      '已人工合并的修订稿',
+      expect.any(Number),
       projectPath,
+    )
+    expect(invokeWithProjectSession).not.toHaveBeenCalledWith(
+      projectSession, 'db:draft-update-content', expect.anything(), expect.anything(), expect.anything(), projectPath,
     )
   })
 })

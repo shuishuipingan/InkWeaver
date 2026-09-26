@@ -1047,6 +1047,7 @@ export interface DatabaseChannels {
   'db:revision-get-full': { args: [id: number, expectedProjectPath: string]; return: RevisionFull | null }
   'db:revision-next-index': { args: [baseDraftId: number, expectedProjectPath: string]; return: number }
   'db:revision-mark-merged': { args: [id: number, mergedToDraftId: number, expectedProjectPath: string]; return: { success: boolean; error?: string } }
+  'db:revision-apply-merge': { args: [id: number, targetDraftId: number, mergedContent: string, wordCount: number, expectedProjectPath: string]; return: { success: boolean; error?: string } }
   'db:revision-mark-discarded': { args: [id: number, expectedProjectPath: string]; return: { success: boolean; error?: string } }
 
   // 6. reviews

@@ -67,6 +67,34 @@ function assertBaseContentHash(db: NonNullable<ReturnType<typeof getProjectDb>>,
 }
 
 export class RevisionRepository {
+    /** 在同一事务内核验旧正文、写入合并结果并完成修稿状态流转。 */
+    static applyMerge(id: number, targetDraftId: number, mergedContent: string, wordCount: number): void {
+        const db = getProjectDb()
+        if (!db) throw new Error('[RevisionRepository] 数据库未连接')
+        ensureBaseHashColumn(db)
+
+        db.transaction(() => {
+            const revision = db.prepare('SELECT base_draft_id, base_content_hash, status FROM revisions WHERE id = ?')
+                .get(id) as { base_draft_id: number; base_content_hash: string; status: string } | undefined
+            if (!revision || revision.status !== 'pending') throw new Error('修稿不存在或已处理')
+            if (revision.base_draft_id !== targetDraftId) throw new Error('修稿与目标草稿不匹配')
+            const draft = db.prepare('SELECT content_id, status FROM drafts WHERE id = ?')
+                .get(targetDraftId) as { content_id: number; status: string } | undefined
+            if (!draft) throw new Error('修稿基准草稿不存在')
+            if (draft.status === 'finalized') throw new Error('已定稿正文为只读内容，不能再修改')
+            const currentBody = ContentRepository.getBody(draft.content_id)
+            const alreadyApplied = draft.status === 'revised' && currentBody === mergedContent
+            if (revision.base_content_hash && currentDraftContentHash(db, targetDraftId) !== revision.base_content_hash && !alreadyApplied) {
+                throw new Error('修稿基准正文已变化，已拒绝合并旧修稿')
+            }
+            ContentRepository.updateBody(draft.content_id, mergedContent)
+            db.prepare("UPDATE drafts SET status = 'revised', word_count = ?, updated_at = datetime('now') WHERE id = ?")
+                .run(wordCount, targetDraftId)
+            db.prepare("UPDATE revisions SET status = 'merged', merged_to_draft_id = ?, updated_at = datetime('now') WHERE id = ? AND status = 'pending'")
+                .run(targetDraftId, id)
+        })()
+    }
+
     /**
      * 创建修稿（事务内原子分配 revision_index，再入内容池 + 元数据）
      * 不接受调用方传入序号，避免与落库结果不一致。

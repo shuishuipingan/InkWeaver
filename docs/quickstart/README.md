@@ -13,11 +13,11 @@
 
 ## 0. 准备环境
 
-最简单的方式是从 [v1.2.15 GitHub Release](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.2.15) 下载对应系统的安装包：
+最简单的方式是从 [v1.2.16 GitHub Release](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.2.16) 下载对应系统的安装包：
 
-- Windows x64：`inkweaver-setup-1.2.15.exe`
-- macOS Apple Silicon：`inkweaver-mac-arm64-1.2.15-installer.dmg`
-- macOS Intel：`inkweaver-mac-x64-1.2.15-installer.dmg`
+- Windows x64：`inkweaver-setup-1.2.16.exe`
+- macOS Apple Silicon：`inkweaver-mac-arm64-1.2.16-installer.dmg`
+- macOS Intel：`inkweaver-mac-x64-1.2.16-installer.dmg`
 
 安装包目前未签名；Windows 可能显示未知发布者，macOS 可能要求你在系统设置中确认首次打开。请核对 Release 里的 SHA-256，并只从项目官方 Release 下载。
 

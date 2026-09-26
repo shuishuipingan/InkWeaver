@@ -182,6 +182,15 @@ export function registerLLMController() {
         request.messages,
         resolveGenerationParameters(model, request),
       )
+      if (!result.success) {
+        runtimeLogger.warn('llm', '非流式生成未正常完成', {
+          purpose: request.purpose ?? 'generation',
+          finishReason: result.finishReason,
+          maxTokens: request.maxTokens ?? null,
+          outputChars: result.content.length,
+          elapsedMs: Date.now() - startedAt,
+        })
+      }
       recordProviderOutcome(request, model, startedAt, result)
       return result
     } catch (error) {

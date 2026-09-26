@@ -91,6 +91,7 @@ const MUTATING_DATABASE_CHANNELS = new Set([
   'db:revision-create',
   'db:revision-replace-pending',
   'db:revision-mark-merged',
+  'db:revision-apply-merge',
   'db:revision-mark-discarded',
   'db:review-create',
   'db:consistency-exemption-save',
@@ -1103,6 +1104,16 @@ ipcMain.handle('db:revision-create', async (_event, params: {
       return { success: true }
     } catch (err) {
       return { success: false, error: String(err) }
+    }
+  })
+
+  ipcMain.handle('db:revision-apply-merge', async (_event, id: number, targetDraftId: number, mergedContent: string, wordCount: number, expectedProjectPath: string) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      RevisionRepository.applyMerge(id, targetDraftId, mergedContent, wordCount)
+      return { success: true }
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : String(err) }
     }
   })
 

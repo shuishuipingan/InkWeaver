@@ -24,6 +24,9 @@ beforeEach(() => {
     CREATE TABLE drafts (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       content_id INTEGER NOT NULL,
+      status TEXT NOT NULL DEFAULT 'draft',
+      word_count INTEGER NOT NULL DEFAULT 0,
+      updated_at TEXT DEFAULT (datetime('now')),
       FOREIGN KEY (content_id) REFERENCES contents(id) ON DELETE RESTRICT
     );
     CREATE TABLE revisions (
@@ -52,6 +55,41 @@ beforeEach(() => {
 afterEach(() => db.close())
 
 describe('RevisionRepository.replacePending', () => {
+  it('atomically applies a pending revision against its unchanged base', () => {
+    const revision = RevisionRepository.create({
+      baseDraftId: 1, revisionType: 'refine', content: '新修稿', wordCount: 3,
+      baseContentHash: textFingerprint('原稿'),
+    })
+    RevisionRepository.applyMerge(revision.id, 1, '作者确认的合并正文', 8)
+    expect(RevisionRepository.getFull(revision.id)).toMatchObject({ status: 'merged', mergedToDraftId: 1 })
+    expect((db.prepare('SELECT body FROM contents WHERE id = 1').get() as { body: string }).body)
+      .toBe('作者确认的合并正文')
+    expect((db.prepare('SELECT status FROM drafts WHERE id = 1').get() as { status: string }).status)
+      .toBe('revised')
+  })
+
+  it('does not change the draft when the revision base is stale', () => {
+    const revision = RevisionRepository.create({
+      baseDraftId: 1, revisionType: 'refine', content: '旧修稿', wordCount: 3,
+      baseContentHash: textFingerprint('原稿'),
+    })
+    db.prepare('UPDATE contents SET body = ? WHERE id = 1').run('作者更新的原稿')
+    expect(() => RevisionRepository.applyMerge(revision.id, 1, '错误覆盖', 4)).toThrow(/基准正文已变化/)
+    expect((db.prepare('SELECT body FROM contents WHERE id = 1').get() as { body: string }).body)
+      .toBe('作者更新的原稿')
+    expect(RevisionRepository.getFull(revision.id)?.status).toBe('pending')
+  })
+
+  it('finishes a previously written merge without writing different content', () => {
+    const revision = RevisionRepository.create({
+      baseDraftId: 1, revisionType: 'refine', content: '新修稿', wordCount: 3,
+      baseContentHash: textFingerprint('原稿'),
+    })
+    db.prepare('UPDATE contents SET body = ? WHERE id = 1').run('上次合并后的正文')
+    db.prepare("UPDATE drafts SET status = 'revised' WHERE id = 1").run()
+    RevisionRepository.applyMerge(revision.id, 1, '上次合并后的正文', 8)
+    expect(RevisionRepository.getFull(revision.id)?.status).toBe('merged')
+  })
   it('J07 rejects an old refinement after the author edits the draft, then merges a fresh replacement', () => {
     const originalHash = textFingerprint('原稿')
     const oldRevision = RevisionRepository.create({
