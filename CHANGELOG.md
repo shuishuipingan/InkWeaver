@@ -2,6 +2,13 @@
 
 本文件按用户可见行为记录变更。`1.2.x` 桌面版本不发布 npm；DSH 插件沿用已发布的 `1.2.0` 包。`1.2.0` 已从同一源码 commit 完成工程验收、三平台资产回读和正式 Release；`1.1.0` 的历史 Release 收据保留在 `docs/upgrade/`，不与 1.2.0 混用。
 
+## 1.2.11 — 2026-09-26
+
+正式 Release：<https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.2.11>
+
+- 修复 Gemini 兼容网关把 Google 内容政策拦截说明作为普通 `STOP` 文本返回时，InkWeaver 将其误报成通用 `error` 的问题；现在会识别为 `content_filter`，工作流给出内容政策失败提示。
+- 流式响应已明确包含该拦截说明时，不再发起重复的非流式恢复请求；拦截说明不会作为生成结果交给结构化合同解析。
+
 ## 1.2.10 — 2026-09-26
 
 正式 Release：<https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.2.10>

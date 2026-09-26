@@ -152,8 +152,9 @@ describe('AIOutputPanel failed chapter draft', () => {
 
     await act(async () => failedRun?.click())
 
-    expect(container?.textContent).toContain('模型的内容安全策略拦截了这次输出。')
-    expect(container?.textContent).toContain('本次未保存草稿或正文章节')
+    expect(container?.textContent).toContain('生成被内容策略拦截')
+    expect(container?.textContent).toContain('模型或网关的内容安全策略拦截了这次生成。')
+    expect(container?.textContent).toContain('本次未保存生成结果')
   })
 })
 

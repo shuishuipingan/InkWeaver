@@ -11,7 +11,11 @@ function read(relativePath: string): string {
 describe('public quickstart contract', () => {
   it('documents a complete first-chapter path without requiring hidden credentials', () => {
     const guide = read('docs/quickstart/README.md')
-    expect(guide).toContain('releases/tag/v1.2.0')
+    const version = (JSON.parse(read('package.json')) as { version: string }).version
+    expect(guide).toContain(`releases/tag/v${version}`)
+    expect(guide).toContain(`inkweaver-setup-${version}.exe`)
+    expect(guide).toContain(`inkweaver-mac-arm64-${version}-installer.dmg`)
+    expect(guide).toContain(`inkweaver-mac-x64-${version}-installer.dmg`)
     expect(guide).toContain('Node.js')
     expect(guide).toContain('pnpm')
     expect(guide).toContain('模型账号')

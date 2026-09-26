@@ -4,13 +4,13 @@
 
 InkWeaver is a local-first desktop workspace for long-form fiction. It brings project settings, characters, worldbuilding, chapter blueprints, prose, review, revision, and finalization into a traceable writing chain while keeping the author in control of every durable change.
 
-Current version: **v1.2.10**
+Current version: **v1.2.11**
 
 > **Turn a long novel into one continuously developing story.** InkWeaver is a local-first AI writing workspace that connects story premises, character state, chapter blueprints, candidate drafts, evidence-backed review, and author-approved finalization into one traceable writing loop.
 
-The v1.2.10 Windows x64, macOS Apple Silicon, and macOS Intel installers have passed qualification and are available in one GitHub Release. The DSH plugin tarball remains available in the v1.2.0 Release; npm publication remains out of scope.
+The v1.2.11 update recognizes Google content-policy notices returned by Gemini-compatible gateways and reports them as content-filter failures rather than generic provider errors. Windows x64 and both macOS installers are distributed in the same desktop GitHub Release. The DSH plugin tarball remains available in the v1.2.0 Release; npm publication remains out of scope.
 
-[Download v1.2.10](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.2.10) · [Start your first chapter in three minutes](docs/quickstart/README.md) · [Install the DSH plugin](plugins/inkweaver-dsh/README.md) · [Ask a question or report a problem](https://github.com/shuishuipingan/InkWeaver/issues/new/choose) · [Join the discussion](https://github.com/shuishuipingan/InkWeaver/discussions)
+[Download v1.2.11](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.2.11) · [Start your first chapter in three minutes](docs/quickstart/README.md) · [Install the DSH plugin](plugins/inkweaver-dsh/README.md) · [Ask a question or report a problem](https://github.com/shuishuipingan/InkWeaver/issues/new/choose) · [Join the discussion](https://github.com/shuishuipingan/InkWeaver/discussions)
 
 ![InkWeaver welcome screen](docs/assets/inkweaver-welcome.png)
 
@@ -162,7 +162,7 @@ inkweaver-mac-arm64-<version>-installer.dmg
 inkweaver-mac-x64-<version>-installer.dmg
 ```
 
-The current macOS installers do not have a Developer ID signature and are not notarized. Download only from the [formal v1.2.10 Release](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.2.10) and follow the operating system's first-launch confirmation. The desktop Release uses a seven-asset contract covering macOS Apple Silicon and macOS Intel; the DSH plugin tarball remains in the v1.2.0 Release.
+The current macOS installers do not have a Developer ID signature and are not notarized. Download only from the [formal v1.2.11 Release](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.2.11) and follow the operating system's first-launch confirmation. The desktop Release uses a seven-asset contract covering macOS Apple Silicon and macOS Intel; the DSH plugin tarball remains in the v1.2.0 Release.
 
 ## DeepSeek Harness plugin
 
