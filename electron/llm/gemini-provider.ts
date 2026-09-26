@@ -36,6 +36,22 @@ function isProviderErrorEnvelope(value: string): boolean {
   }
 }
 
+const GOOGLE_POLICY_NOTICE_PREFIX = 'the prompt could not be submitted.'
+
+function isGooglePolicyNotice(value: string): boolean {
+  const normalized = value.trim().toLowerCase()
+  return !isJsonObjectText(normalized)
+    && normalized.startsWith(GOOGLE_POLICY_NOTICE_PREFIX)
+    && normalized.includes('generative ai prohibited use policy')
+    && normalized.includes('https://policies.google.com/terms/generative-ai/use-policy')
+}
+
+function couldBeGooglePolicyNoticePrefix(value: string): boolean {
+  const normalized = value.trimStart().toLowerCase()
+  return GOOGLE_POLICY_NOTICE_PREFIX.startsWith(normalized)
+    || normalized.startsWith(GOOGLE_POLICY_NOTICE_PREFIX)
+}
+
 export class GeminiProvider implements ILLMProvider {
   private applyReasoning(
     generationConfig: Record<string, unknown>,
@@ -125,11 +141,6 @@ export class GeminiProvider implements ILLMProvider {
 
       const text = answerTextParts(data.candidates?.[0]?.content?.parts).join('')
       const firstCandidate = data.candidates?.[0]
-      const finishReason = this.normalizeFinishReason(
-        firstCandidate?.finishReason
-          ?? firstCandidate?.finish_reason
-          ?? data.promptFeedback?.blockReason,
-      )
       const usage = data.usageMetadata ? {
         promptTokens: data.usageMetadata.promptTokenCount ?? null,
         completionTokens: data.usageMetadata.candidatesTokenCount ?? null,
@@ -137,6 +148,20 @@ export class GeminiProvider implements ILLMProvider {
         promptCacheHitTokens: null,
         promptCacheMissTokens: null,
       } : undefined
+      if (isGooglePolicyNotice(text)) {
+        return {
+          success: false,
+          content: '',
+          usage,
+          finishReason: 'content_filter',
+          error: 'Gemini prompt blocked by Google content policy',
+        }
+      }
+      const finishReason = this.normalizeFinishReason(
+        firstCandidate?.finishReason
+          ?? firstCandidate?.finish_reason
+          ?? data.promptFeedback?.blockReason,
+      )
 
       if (finishReason === 'stop') {
         return {
@@ -210,6 +235,7 @@ export class GeminiProvider implements ILLMProvider {
 
       const decoder = new TextDecoder()
       let fullText = ''
+      let forwardedTextLength = 0
       let usage: TokenUsage | undefined
       let buffer = ''
       let finishReason: LLMFinishReason = 'unknown'
@@ -247,7 +273,10 @@ export class GeminiProvider implements ILLMProvider {
           }
           for (const chunk of answerTextParts(candidate?.content?.parts)) {
             fullText += chunk
-            opts.onChunk(chunk)
+            if (!couldBeGooglePolicyNoticePrefix(fullText)) {
+              opts.onChunk(fullText.slice(forwardedTextLength))
+              forwardedTextLength = fullText.length
+            }
           }
           if (parsed.usageMetadata) {
             usage = {
@@ -280,6 +309,14 @@ export class GeminiProvider implements ILLMProvider {
 
       const streamFinishReason = finishReason
       const streamOutputChars = fullText.length
+      const googlePolicyNotice = isGooglePolicyNotice(fullText)
+      if (googlePolicyNotice) {
+        fullText = ''
+        finishReason = 'content_filter'
+      } else if (forwardedTextLength < fullText.length) {
+        opts.onChunk(fullText.slice(forwardedTextLength))
+        forwardedTextLength = fullText.length
+      }
       let fallbackAttempted = false
       let fallbackFinishReason: LLMFinishReason | undefined
       let fallbackOutputChars: number | undefined

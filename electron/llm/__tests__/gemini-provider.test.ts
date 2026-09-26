@@ -24,6 +24,13 @@ const reasoningModel: ModelProfile = {
   reasoningOverride: 'high',
 }
 
+const googlePolicyNotice = [
+  'The prompt could not be submitted. The prompt contains sensitive words that violate Google\'s',
+  '[Generative AI Prohibited Use policy](https://policies.google.com/terms/generative-ai/use-policy).',
+  'Try rephrasing the prompt. If you think this was an error,',
+  '[send feedback](https://ai.google.dev/gemini-api/docs/troubleshooting).',
+].join(' ')
+
 function sseReader(...messages: string[]) {
   const encoder = new TextEncoder()
   const reads: Array<{ done: boolean; value?: Uint8Array }> = messages.map(message => ({
@@ -76,6 +83,60 @@ describe('GeminiProvider', () => {
       content: '',
       finishReason: 'content_filter',
     })
+  })
+
+  it('maps a Google policy notice returned as STOP to a filtered failure without exposing the notice', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        candidates: [{ content: { parts: [{ text: googlePolicyNotice }] }, finishReason: 'STOP' }],
+      }),
+    }))
+
+    const result = await new GeminiProvider().generate(model, [{ role: 'user', content: '返回 JSON' }], {
+      temperature: 0.2,
+      maxTokens: 512,
+    })
+
+    expect(result).toMatchObject({
+      success: false,
+      content: '',
+      finishReason: 'content_filter',
+    })
+    expect(result.error).not.toContain('sensitive words')
+  })
+
+  it('stops on a streamed Google policy notice without exposing it or making a structured fallback request', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      body: {
+        getReader: () => sseReader(
+          `data: ${JSON.stringify({ candidates: [{ content: { parts: [{ text: googlePolicyNotice }] } }] })}\n`,
+        ),
+      },
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const onChunk = vi.fn()
+    const onDone = vi.fn()
+    const onDiagnostics = vi.fn()
+
+    await new GeminiProvider().generateStream(model, [{ role: 'user', content: '返回 JSON' }], {
+      temperature: 0.2,
+      maxTokens: 512,
+      responseFormat: { type: 'json_object' },
+      signal: new AbortController().signal,
+      onChunk,
+      onDone,
+      onError: vi.fn(),
+      onDiagnostics,
+    })
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(onChunk).not.toHaveBeenCalled()
+    expect(onDone).toHaveBeenCalledWith('', undefined, 'content_filter')
+    expect(onDiagnostics).toHaveBeenCalledWith(expect.objectContaining({
+      normalizedFinishReason: 'content_filter',
+    }))
   })
 
   it('streams every answer part but never forwards thought parts as generated text', async () => {
