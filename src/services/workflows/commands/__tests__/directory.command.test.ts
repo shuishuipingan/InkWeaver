@@ -1057,6 +1057,75 @@ describe('GenerateDirectoryCommand', () => {
     expect(invoke.mock.calls.map(([channel]) => channel)).not.toContain('db:blueprint-commit-range')
   })
 
+  it('drops only dangling optional relationship hints before committing generated chapter blueprints', async () => {
+    const invoke = stubIpcInvoke(successfulCommitHandler({
+      other: (channel, ...args) => {
+        if (channel === 'db:character-roster-read') {
+          return { status: 'empty', revision: 0, entries: [] }
+        }
+        if (channel === 'db:character-roster-commit') {
+          const request = args[0] as { entries: unknown[] }
+          return {
+            success: true,
+            receipt: { revision: 1, snapshot: { status: 'ready', entries: request.entries } },
+          }
+        }
+        return { success: true }
+      },
+    }))
+    const callbacks = stepCallbacks()
+    const generated = [
+      modelBlueprint(1),
+      modelBlueprint(2, {
+        characters: ['主角', '同伴'],
+        relationshipHints: [
+          { from: '主角', to: '同伴', relation: '共同调查' },
+          { from: '主角', to: '不在本章角色清单中的旧友', relation: '曾经相识' },
+        ],
+      }),
+    ]
+    const session = generationSession(async () => ({
+      status: 'completed',
+      content: JSON.stringify({ blueprints: generated }),
+      finishReason: 'stop',
+      receipt: generationReceipt(1, 'stop'),
+    }))
+    const command = new GenerateDirectoryCommand(
+      { mode: 'full', count: 2 },
+      projectSnapshot,
+      { createRuntime: vi.fn(async () => testRuntime(session)) },
+    )
+
+    const result = await command.execute({
+      step: {},
+      context: workflowContext(),
+      callbacks,
+    })
+
+    expect(result[1]).toMatchObject({
+      chapterNumber: 2,
+      title: '第2章',
+      keyEvents: '第2章发生关键事件',
+      characters: ['主角', '同伴'],
+      relationshipHints: [{ from: '主角', to: '同伴', relation: '共同调查' }],
+    })
+    const commitRequest = invoke.mock.calls.find(([channel]) => channel === 'db:blueprint-commit-range')?.[1] as {
+      blueprints: Blueprint[]
+    }
+    expect(commitRequest.blueprints[1]).toMatchObject({
+      chapterNumber: 2,
+      title: '第2章',
+      keyEvents: '第2章发生关键事件',
+      characters: ['主角', '同伴'],
+      relationshipHints: [{ from: '主角', to: '同伴', relation: '共同调查' }],
+    })
+    const logText = (callbacks.log as ReturnType<typeof vi.fn>).mock.calls
+      .map(([message]) => String(message))
+      .join('\n')
+    expect(logText).toContain('忽略 1 条关系提示')
+    expect(logText).not.toContain('不在本章角色清单中的旧友')
+  })
+
   it('returns the single transaction readback snapshot instead of generated pre-commit objects', async () => {
     const readback = [1, 2, 3].map(chapterNumber => blueprint(chapterNumber, {
       title: `第${chapterNumber}章（事务回读）`,

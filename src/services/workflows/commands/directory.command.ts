@@ -19,9 +19,11 @@ import {
 import {
   BLUEPRINT_SEMANTIC_CONTRACT_MANIFEST,
   blueprintSemanticGenerationContract,
+  pruneDanglingBlueprintRelationships,
   validateBlueprintSemanticItem,
 } from '../../../shared/blueprint-semantic-contract'
-import { requireWorkflowProjectSession, workflowWritingLanguage } from '../workflow-project-session'
+import { stripThinkingTags } from '../workflow-utils'
+import { requireWorkflowProjectSession, workflowUiText, workflowWritingLanguage } from '../workflow-project-session'
 import { promptLanguageText } from '../../prompt-language'
 import {
   listPendingDirectoryCharacterSyncs,
@@ -310,6 +312,7 @@ export class GenerateDirectoryCommand extends BaseWorkflowCommand<ChapterBluepri
     if (!template) throw new Error('模板丢失')
 
     let activeRange = { startChapter, endChapter }
+    const droppedRelationshipCountByChapter = new Map<number, number>()
     const contract: StructuredBatchContract<number, ChapterBlueprint> = {
       retryInvalidOutputWithSmallerBatch: true,
       buildTask: ({ items, validatedPrefix }) => {
@@ -370,11 +373,24 @@ export class GenerateDirectoryCommand extends BaseWorkflowCommand<ChapterBluepri
       }),
       inputKey: chapterNumber => chapterNumber,
       outputKey: blueprint => blueprint.chapterNumber,
-      decode: content => parseTextBlueprintsStrict(
-        content,
-        activeRange.startChapter,
-        activeRange.endChapter,
-      ),
+      decode: content => {
+        const pruned = pruneDanglingBlueprintRelationships(stripThinkingTags(content))
+        const decoded = parseTextBlueprintsStrict(
+          pruned.content,
+          activeRange.startChapter,
+          activeRange.endChapter,
+        )
+        const prunedCountByChapter = new Map(
+          pruned.droppedByChapter.map(({ chapterNumber, count }) => [chapterNumber, count]),
+        )
+        for (const blueprint of decoded) {
+          droppedRelationshipCountByChapter.set(
+            blueprint.chapterNumber,
+            prunedCountByChapter.get(blueprint.chapterNumber) ?? 0,
+          )
+        }
+        return decoded
+      },
       validateItem: validateBlueprintSemanticItem,
       syntaxRepairContract: ({ items }) => (
         `${blueprintSemanticGenerationContract(writingLanguage)}\n`
@@ -415,6 +431,16 @@ export class GenerateDirectoryCommand extends BaseWorkflowCommand<ChapterBluepri
           throw new DirectoryBlueprintContractError(batchResult.failure.diagnostic, generationSummary)
         }
         throw new Error(`${batchResult.failure.message}；${generationSummary}`)
+      }
+
+      const droppedRelationshipCount = [...droppedRelationshipCountByChapter.values()]
+        .reduce((sum, count) => sum + count, 0)
+      if (droppedRelationshipCount > 0) {
+        callbacks.log(workflowUiText(
+          context,
+          `已忽略 ${droppedRelationshipCount} 条关系提示（端点不在对应章节角色清单中）`,
+          `Ignored ${droppedRelationshipCount} relationship hints with endpoints absent from their chapter character lists.`,
+        ))
       }
 
       this.assertNotCancelled(context)
