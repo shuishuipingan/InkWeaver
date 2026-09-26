@@ -448,6 +448,74 @@ describe('InferBlueprintsPerChapterCommand', () => {
     expect(invoke.mock.calls.map(([channel]) => channel).filter(ch => ch !== 'runtime:log')).not.toContain('db:blueprint-commit-range')
   })
 
+  it('drops dangling relationship hints from imported blueprints while preserving valid relationships and chapter data', async () => {
+    const context = createContext()
+    context.data.chapters = Array.from({ length: 3 }, (_, index) => ({
+      number: index + 1,
+      title: `第 ${index + 1} 章`,
+      content: `正文片段 ${index + 1}`,
+      wordCount: 6,
+    }))
+    let committedBlueprints: Array<Record<string, unknown>> | undefined
+    const invoke = stubIpcInvoke((channel, request) => {
+      if (channel === 'db:blueprint-commit-range') {
+        committedBlueprints = (request as { blueprints: Array<Record<string, unknown>> }).blueprints
+        return { success: false, error: 'captured normalized import blueprints' }
+      }
+      throw new Error(`unexpected IPC ${channel}`)
+    })
+    const blueprints: Array<{
+      chapterNumber: number
+      title: string
+      role: string
+      purpose: string
+      keyEvents: string
+      characters: string[]
+      relationships: Array<{ from: string; to: string; relation: string }>
+      suspenseHook: string
+    }> = Array.from({ length: 3 }, (_, index) => ({
+      chapterNumber: index + 1,
+      title: `蓝图 ${index + 1}`,
+      role: '建置',
+      purpose: '推进调查',
+      keyEvents: `事件 ${index + 1}`,
+      characters: ['主角'],
+      relationships: [],
+      suspenseHook: `悬念 ${index + 1}`,
+    }))
+    blueprints[2] = {
+      ...blueprints[2]!,
+      characters: ['主角', '同伴'],
+      relationships: [
+        { from: '主角', to: '同伴', relation: '共同调查' },
+        { from: '主角', to: '未列入本章的旧友', relation: '过往相识' },
+      ],
+    }
+    const generateStream = vi.fn(async (_messages, streamCallbacks) => {
+      streamCallbacks.onDone?.(JSON.stringify({ blueprints }), undefined, 'stop')
+      return 'import-blueprint-dangling-relationship'
+    })
+    useLLMStore.setState({ defaultModelId: 'model-a', generateStream })
+
+    await expect(new InferBlueprintsPerChapterCommand().execute({
+      step: {}, context, callbacks,
+    })).rejects.toThrow('captured normalized import blueprints')
+
+    expect(generateStream).toHaveBeenCalledOnce()
+    expect(committedBlueprints).toHaveLength(3)
+    expect(committedBlueprints?.[2]).toMatchObject({
+      chapterNumber: 3,
+      title: '蓝图 3',
+      keyEvents: '事件 3',
+      characters: ['主角', '同伴'],
+      relationshipHints: [{ from: '主角', to: '同伴', relation: '共同调查' }],
+    })
+    const logText = (callbacks.log as ReturnType<typeof vi.fn>).mock.calls.map(([message]) => String(message)).join('\n')
+    expect(logText).toContain('忽略 1 条')
+    expect(logText).not.toContain('未列入本章的旧友')
+    expect(invoke.mock.calls.map(([channel]) => channel).filter(ch => ch !== 'runtime:log')).toContain('db:blueprint-commit-range')
+  })
+
   it('records the atomic commit receipt and completes its durable character-sync operation before success', async () => {
     const workflowContext = createContext()
     const snapshot = [{

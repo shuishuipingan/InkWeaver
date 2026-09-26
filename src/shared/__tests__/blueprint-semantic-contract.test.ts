@@ -4,6 +4,7 @@ import {
   decodeBlueprintSemanticPayload,
   blueprintSemanticGenerationContract,
   parseBlueprintSemanticResponseText,
+  pruneDanglingBlueprintRelationships,
   validateBlueprintSemanticItem,
 } from '../blueprint-semantic-contract'
 import { StructuredContractDiagnostic } from '../structured-contract-diagnostic'
@@ -123,6 +124,40 @@ describe('blueprint semantic contract', () => {
     expect(validateBlueprintSemanticItem(validBlueprint({
       relationships: [{ from: '林岚', to: '周砚', relation: '' }],
     }))).toContain('code=invalid_value path=blueprint.relationships[0].relation')
+  })
+
+  it('prunes only complete relationship hints with endpoints outside the same blueprint character list', () => {
+    const payload = {
+      blueprints: [validBlueprint({
+        chapterNumber: 3,
+        characters: ['林岚', '周砚'],
+        relationships: [
+          { from: '林岚', to: '周砚', relation: '临时盟友' },
+          { from: '林岚', to: '未出场者', relation: '追踪' },
+          { from: '林岚', to: '', relation: '缺少端点' },
+          { from: '林岚', to: '周砚' },
+        ],
+      })],
+    }
+    expect(() => decodeBlueprintSemanticPayload(payload, [3]))
+      .toThrow(/code=relationship_endpoint_not_in_characters path=blueprints\[0\]\.relationships\[1\]/u)
+    const result = pruneDanglingBlueprintRelationships(JSON.stringify(payload))
+    const normalized = JSON.parse(result.content) as { blueprints: Array<Record<string, unknown>> }
+
+    expect(result.droppedRelationshipCount).toBe(1)
+    expect(normalized.blueprints[0]).toMatchObject({
+      chapterNumber: 3,
+      title: '雨夜来信',
+      characters: ['林岚', '周砚'],
+      relationships: [
+        { from: '林岚', to: '周砚', relation: '临时盟友' },
+        { from: '林岚', to: '', relation: '缺少端点' },
+        { from: '林岚', to: '周砚' },
+      ],
+    })
+    expect(payload.blueprints[0]?.relationships).toHaveLength(4)
+    expect(() => decodeBlueprintSemanticPayload(JSON.parse(result.content), [3]))
+      .toThrow(/code=invalid_value path=blueprints\[0\]\.relationships\[1\]\.to/u)
   })
 
   it.each([

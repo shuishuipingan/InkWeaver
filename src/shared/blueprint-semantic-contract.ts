@@ -250,6 +250,107 @@ export function decodeBlueprintSemanticPayload(
   return decoded.sort((left, right) => left.chapterNumber - right.chapterNumber)
 }
 
+function parseBlueprintSemanticResponsePayload(text: string): unknown {
+  const trimmed = text.trim()
+  const fenced = /^```(?:json)?\s*([\s\S]*?)\s*```$/iu.exec(trimmed)
+  const candidate = fenced ? fenced[1].trim() : trimmed
+  if (!candidate || !/^[{[]/u.test(candidate)) {
+    throw new StructuredContractDiagnostic('invalid_envelope', '$')
+  }
+  try {
+    return JSON.parse(candidate) as unknown
+  } catch {
+    throw new StructuredContractDiagnostic('invalid_json', '$')
+  }
+}
+
+export interface DanglingBlueprintRelationshipPruneResult {
+  content: string
+  droppedRelationshipCount: number
+  droppedByChapter: Array<{ chapterNumber: number; count: number }>
+}
+
+/**
+ * Removes only well-formed relationship hints whose endpoints are outside
+ * that same blueprint's character list. Other malformed contract fields are
+ * left intact for the strict decoder to reject.
+ */
+export function pruneDanglingBlueprintRelationships(text: string): DanglingBlueprintRelationshipPruneResult {
+  const payload = parseBlueprintSemanticResponsePayload(text)
+  const envelope = isRecord(payload) && Object.hasOwn(payload, 'blueprints') ? payload : undefined
+  const candidates = envelope ? envelope.blueprints : payload
+  if (!Array.isArray(candidates)) {
+    return { content: text, droppedRelationshipCount: 0, droppedByChapter: [] }
+  }
+
+  const droppedByChapter = new Map<number, number>()
+  let droppedRelationshipCount = 0
+  const normalizedCandidates = candidates.map(candidate => {
+    if (!isRecord(candidate)) return candidate
+
+    let characters: string[]
+    try {
+      characters = normalizedCharacters(candidate.characters, 'blueprint.characters')
+    } catch {
+      return candidate
+    }
+
+    const relationshipKey = ['relationships', 'relationshipHints', 'relations']
+      .find(key => Object.hasOwn(candidate, key))
+    if (!relationshipKey) return candidate
+    const relationships = candidate[relationshipKey]
+    if (!Array.isArray(relationships)
+      || relationships.length > BLUEPRINT_SEMANTIC_CONTRACT_MANIFEST.outputLimits.relationshipItems) {
+      return candidate
+    }
+
+    const characterSet = new Set(characters)
+    let removedForBlueprint = 0
+    const retainedRelationships = relationships.filter(relationship => {
+      if (!isRecord(relationship)) return true
+      let from: string
+      let to: string
+      try {
+        from = requiredText(fieldValue(relationship, 'from', ['source']), 'blueprint.relationships.from')
+        to = requiredText(fieldValue(relationship, 'to', ['target']), 'blueprint.relationships.to')
+        requiredText(
+          relationship.relation,
+          'blueprint.relationships.relation',
+          BLUEPRINT_SEMANTIC_CONTRACT_MANIFEST.outputLimits.relationshipCharacters,
+        )
+      } catch {
+        return true
+      }
+      if (from === to || (characterSet.has(from) && characterSet.has(to))) return true
+      removedForBlueprint += 1
+      return false
+    })
+    if (removedForBlueprint === 0) return candidate
+
+    const chapterValue = fieldValue(candidate, 'chapterNumber', ['chapter_number'])
+    const chapterNumber = typeof chapterValue === 'number' || typeof chapterValue === 'string'
+      ? Number(chapterValue)
+      : Number.NaN
+    if (Number.isSafeInteger(chapterNumber) && chapterNumber > 0) {
+      droppedByChapter.set(chapterNumber, (droppedByChapter.get(chapterNumber) ?? 0) + removedForBlueprint)
+    }
+    droppedRelationshipCount += removedForBlueprint
+    return { ...candidate, [relationshipKey]: retainedRelationships }
+  })
+
+  if (droppedRelationshipCount === 0) {
+    return { content: text, droppedRelationshipCount, droppedByChapter: [] }
+  }
+  const normalizedPayload = envelope
+    ? { ...envelope, blueprints: normalizedCandidates }
+    : normalizedCandidates
+  return {
+    content: JSON.stringify(normalizedPayload),
+    droppedRelationshipCount,
+    droppedByChapter: [...droppedByChapter].map(([chapterNumber, count]) => ({ chapterNumber, count })),
+  }
+}
+
 /**
  * Accepts exactly one JSON root or one complete Markdown JSON fence. It never
  * searches narrative prose for a nested JSON fragment.
@@ -258,17 +359,5 @@ export function parseBlueprintSemanticResponseText(
   text: string,
   expectedChapterNumbers: readonly number[],
 ): BlueprintSemanticItem[] {
-  const trimmed = text.trim()
-  const fenced = /^```(?:json)?\s*([\s\S]*?)\s*```$/iu.exec(trimmed)
-  const candidate = fenced ? fenced[1].trim() : trimmed
-  if (!candidate || !/^[{[]/u.test(candidate)) {
-    throw new StructuredContractDiagnostic('invalid_envelope', '$')
-  }
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(candidate)
-  } catch {
-    throw new StructuredContractDiagnostic('invalid_json', '$')
-  }
-  return decodeBlueprintSemanticPayload(parsed, expectedChapterNumbers)
+  return decodeBlueprintSemanticPayload(parseBlueprintSemanticResponsePayload(text), expectedChapterNumbers)
 }

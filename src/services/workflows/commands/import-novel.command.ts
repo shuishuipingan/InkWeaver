@@ -29,6 +29,7 @@ import type {
 import {
   blueprintSemanticGenerationContract,
   parseBlueprintSemanticResponseText,
+  pruneDanglingBlueprintRelationships,
   validateBlueprintSemanticItem,
 } from '../../../shared/blueprint-semantic-contract'
 import {
@@ -719,6 +720,7 @@ export class InferBlueprintsPerChapterCommand extends BaseWorkflowCommand<void> 
     callbacks.setProgress(5)
 
     let activeChapterNumbers: number[] = []
+    const loggedDanglingRelationshipChapters = new Set<number>()
     const contract: StructuredBatchContract<ImportedChapter, ChapterBlueprint> = {
       retryInvalidOutputWithSmallerBatch: true,
       recoverUnknownFinish: true,
@@ -795,13 +797,28 @@ export class InferBlueprintsPerChapterCommand extends BaseWorkflowCommand<void> 
           `chapterNumber must cover exactly these values: ${items.map(item => item.number).join(', ')}.`,
         )
       ),
-      decode: content => parseBlueprintSemanticResponseText(content, activeChapterNumbers)
-        .map(blueprint => ({
+      decode: content => {
+        const pruned = pruneDanglingBlueprintRelationships(content)
+        const newPrunes = pruned.droppedByChapter.filter(({ chapterNumber }) => {
+          return !loggedDanglingRelationshipChapters.has(chapterNumber)
+        })
+        for (const { chapterNumber } of newPrunes) {
+          loggedDanglingRelationshipChapters.add(chapterNumber)
+        }
+        const newlyIgnoredRelationships = newPrunes.reduce((sum, entry) => sum + entry.count, 0)
+        if (newlyIgnoredRelationships > 0) {
+          callbacks.log(text(
+            `  已忽略 ${newlyIgnoredRelationships} 条关系提示（端点不在对应章节角色清单中）`,
+            `  Ignored ${newlyIgnoredRelationships} relationship hints with endpoints absent from their chapter character lists.`,
+          ))
+        }
+        return parseBlueprintSemanticResponseText(pruned.content, activeChapterNumbers).map(blueprint => ({
           ...blueprint,
           userGuidance: '',
           notes: '',
           notesUpdatedAt: '',
-        })),
+        }))
+      },
       validateItem: validateBlueprintSemanticItem,
     }
 
