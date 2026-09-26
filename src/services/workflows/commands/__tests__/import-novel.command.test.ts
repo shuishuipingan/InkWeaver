@@ -516,6 +516,35 @@ describe('InferBlueprintsPerChapterCommand', () => {
     expect(invoke.mock.calls.map(([channel]) => channel).filter(ch => ch !== 'runtime:log')).toContain('db:blueprint-commit-range')
   })
 
+  it('does not report pruned relationships when the rest of the imported blueprint remains invalid', async () => {
+    const invoke = stubIpcInvoke(channel => {
+      throw new Error(`unexpected IPC ${channel}`)
+    })
+    const generateStream = vi.fn(async (_messages, streamCallbacks) => {
+      streamCallbacks.onDone?.(JSON.stringify({
+        blueprints: [{
+          chapterNumber: 1,
+          role: '建置',
+          purpose: '推进调查',
+          keyEvents: '主角发现异常',
+          characters: ['主角'],
+          relationships: [{ from: '主角', to: '不在本章角色中的对象', relation: '追踪' }],
+          suspenseHook: '门外有人',
+        }],
+      }), undefined, 'stop')
+      return 'import-blueprint-invalid-after-prune'
+    })
+    useLLMStore.setState({ defaultModelId: 'model-a', generateStream })
+
+    await expect(new InferBlueprintsPerChapterCommand().execute({
+      step: {}, context: createContext(), callbacks,
+    })).rejects.toThrow('code=missing_field path=blueprints[0].title')
+
+    const logText = (callbacks.log as ReturnType<typeof vi.fn>).mock.calls.map(([message]) => String(message)).join('\n')
+    expect(logText).not.toContain('已忽略 1 条关系提示')
+    expect(invoke.mock.calls.map(([channel]) => channel).filter(ch => ch !== 'runtime:log')).not.toContain('db:blueprint-commit-range')
+  })
+
   it('records the atomic commit receipt and completes its durable character-sync operation before success', async () => {
     const workflowContext = createContext()
     const snapshot = [{

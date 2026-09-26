@@ -720,7 +720,7 @@ export class InferBlueprintsPerChapterCommand extends BaseWorkflowCommand<void> 
     callbacks.setProgress(5)
 
     let activeChapterNumbers: number[] = []
-    const loggedDanglingRelationshipChapters = new Set<number>()
+    const droppedRelationshipCountByChapter = new Map<number, number>()
     const contract: StructuredBatchContract<ImportedChapter, ChapterBlueprint> = {
       retryInvalidOutputWithSmallerBatch: true,
       recoverUnknownFinish: true,
@@ -799,20 +799,17 @@ export class InferBlueprintsPerChapterCommand extends BaseWorkflowCommand<void> 
       ),
       decode: content => {
         const pruned = pruneDanglingBlueprintRelationships(content)
-        const newPrunes = pruned.droppedByChapter.filter(({ chapterNumber }) => {
-          return !loggedDanglingRelationshipChapters.has(chapterNumber)
-        })
-        for (const { chapterNumber } of newPrunes) {
-          loggedDanglingRelationshipChapters.add(chapterNumber)
+        const decoded = parseBlueprintSemanticResponseText(pruned.content, activeChapterNumbers)
+        const prunedCountByChapter = new Map(
+          pruned.droppedByChapter.map(({ chapterNumber, count }) => [chapterNumber, count]),
+        )
+        for (const blueprint of decoded) {
+          droppedRelationshipCountByChapter.set(
+            blueprint.chapterNumber,
+            prunedCountByChapter.get(blueprint.chapterNumber) ?? 0,
+          )
         }
-        const newlyIgnoredRelationships = newPrunes.reduce((sum, entry) => sum + entry.count, 0)
-        if (newlyIgnoredRelationships > 0) {
-          callbacks.log(text(
-            `  已忽略 ${newlyIgnoredRelationships} 条关系提示（端点不在对应章节角色清单中）`,
-            `  Ignored ${newlyIgnoredRelationships} relationship hints with endpoints absent from their chapter character lists.`,
-          ))
-        }
-        return parseBlueprintSemanticResponseText(pruned.content, activeChapterNumbers).map(blueprint => ({
+        return decoded.map(blueprint => ({
           ...blueprint,
           userGuidance: '',
           notes: '',
@@ -849,6 +846,14 @@ export class InferBlueprintsPerChapterCommand extends BaseWorkflowCommand<void> 
       `蓝图推演失败：${batch.failure.message}`,
       `Blueprint inference failed (${batch.failure.reason}).`,
     ))
+    const droppedRelationshipCount = [...droppedRelationshipCountByChapter.values()]
+      .reduce((sum, count) => sum + count, 0)
+    if (droppedRelationshipCount > 0) {
+      callbacks.log(text(
+        `已忽略 ${droppedRelationshipCount} 条关系提示（端点不在对应章节角色清单中）`,
+        `Ignored ${droppedRelationshipCount} relationship hints with endpoints absent from their chapter character lists.`,
+      ))
+    }
 
     this.assertNotCancelled(context)
     const commitRequest: BlueprintRangeCommitRequest = {
