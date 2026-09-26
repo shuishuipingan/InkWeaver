@@ -2,6 +2,13 @@
 
 本文件按用户可见行为记录变更。`1.2.x` 桌面版本不发布 npm；DSH 插件沿用已发布的 `1.2.0` 包。`1.2.0` 已从同一源码 commit 完成工程验收、三平台资产回读和正式 Release；`1.1.0` 的历史 Release 收据保留在 `docs/upgrade/`，不与 1.2.0 混用。
 
+## 1.2.12 — 2026-09-26
+
+正式 Release：<https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.2.12>
+
+- 导入蓝图时，若某条关系引用了不在同一章节角色名单里的端点，会安全忽略该关系提示并继续校验、提交其余蓝图内容，不再因此中断整批导入。
+- 运行日志只记录忽略的关系数量，不记录角色名或小说正文；有效关系、章节角色和其他蓝图字段保持原样。
+
 ## 1.2.11 — 2026-09-26
 
 正式 Release：<https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.2.11>
