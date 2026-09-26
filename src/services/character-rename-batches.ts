@@ -4,6 +4,8 @@ export interface CharacterRenameRow {
   reason: string
 }
 
+export class CharacterRenameLengthError extends Error {}
+
 export function chunkCharacterRenameRoster<T>(roster: T[], size = 8): T[][] {
   const batches: T[][] = []
   for (let offset = 0; offset < roster.length; offset += size) {
@@ -31,4 +33,44 @@ export function validateCharacterRenameBatch(
   }
   if (bySource.size !== expected.size) throw new Error('AI 改名映射缺少角色，请重试')
   return expectedNames.map(name => bySource.get(name)!)
+}
+
+/** Retry a rejected mapping without repeating batches already accepted by the caller. */
+export async function generateUniqueCharacterRenameBatch<T extends { name: string }>(
+  batch: T[],
+  originalNames: Set<string>,
+  reservedNames: Set<string>,
+  request: (characters: T[], forbiddenNames: Set<string>) => Promise<CharacterRenameRow[]>,
+): Promise<CharacterRenameRow[]> {
+  const split = async (characters: T[], forbidden: Set<string>): Promise<CharacterRenameRow[]> => {
+    if (characters.length < 2) throw new Error('单个角色的改名映射仍不完整，请稍后重试')
+    const middle = Math.ceil(characters.length / 2)
+    const first = await generateUniqueCharacterRenameBatch(characters.slice(0, middle), originalNames, forbidden, request)
+    const second = await generateUniqueCharacterRenameBatch(
+      characters.slice(middle), originalNames,
+      new Set([...forbidden, ...first.map(row => row.to)]), request,
+    )
+    return [...first, ...second]
+  }
+
+  let forbidden = new Set(reservedNames)
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    let candidates: CharacterRenameRow[]
+    try {
+      candidates = await request(batch, forbidden)
+    } catch (error) {
+      if (error instanceof CharacterRenameLengthError && batch.length > 1) return split(batch, forbidden)
+      throw error
+    }
+    try {
+      return validateCharacterRenameBatch(batch.map(character => character.name), candidates, originalNames, reservedNames)
+    } catch (error) {
+      if (attempt === 2) {
+        if (batch.length > 1) return split(batch, forbidden)
+        throw error
+      }
+      forbidden = new Set([...forbidden, ...candidates.map(row => row.to.trim()).filter(Boolean)])
+    }
+  }
+  throw new Error('AI 改名映射未能通过校验')
 }

@@ -2,6 +2,13 @@
 
 本文件按用户可见行为记录变更。`1.2.x` 桌面版本不发布 npm；DSH 插件沿用已发布的 `1.2.0` 包。`1.2.0` 已从同一源码 commit 完成工程验收、三平台资产回读和正式 Release；`1.1.0` 的历史 Release 收据保留在 `docs/upgrade/`，不与 1.2.0 混用。
 
+## 1.2.17 — 2026-09-26
+
+正式 Release：<https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.2.17>
+
+- 角色批量改名遇到批内或跨批次重复新名时，不再直接终止整轮生成；冲突批次会收到已占用名字清单并重试，持续冲突时拆成更小批次，先前已验证的映射保持不变。
+- 预览页手动编辑后若出现两个角色共用同一新名，会提示冲突并阻止应用；应用前再次校验，防止冲突写入角色卡。
+
 ## 1.2.16 — 2026-09-26
 
 正式 Release：<https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.2.16>

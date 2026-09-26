@@ -2,11 +2,11 @@
 
 织墨是一款面向长篇小说创作的本地优先桌面工作台。它把项目设定、角色、世界观、章节蓝图、正文、审稿、修订和定稿连接成可追溯的创作流程，并允许作者接入自己的本地或云端模型。
 
-当前版本：**v1.2.16**
+当前版本：**v1.2.17**
 
 这是兼容旧链接的中文入口。请从[中文主文档](README.md)开始，先查看 Windows/macOS 下载、三分钟快速开始和连续写作示例；英文说明见 [README_en.md](README_en.md)。
 
-- [下载 v1.2.16 Release](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.2.16)
+- [下载 v1.2.17 Release](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.2.17)
 - [三分钟快速开始](docs/quickstart/README.md)
 - [DSH 插件安装说明](plugins/inkweaver-dsh/README.md)
 - [完整功能与验收图](docs/upgrade/INKWEAVER-1.2.0-FEATURE-AND-ACCEPTANCE-MAP.md)

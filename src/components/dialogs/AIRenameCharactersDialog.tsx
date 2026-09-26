@@ -8,7 +8,7 @@ import { useLLMStore } from '../../stores/llm-store'
 import { ipc } from '../../services/ipc-client'
 import { globalEventBus } from '../../shared/event-bus'
 import { countDraftUnits } from '../../shared/draft-units'
-import { chunkCharacterRenameRoster, validateCharacterRenameBatch, type CharacterRenameRow } from '../../services/character-rename-batches'
+import { CharacterRenameLengthError, chunkCharacterRenameRoster, generateUniqueCharacterRenameBatch, type CharacterRenameRow } from '../../services/character-rename-batches'
 import {
   captureProjectSession,
   isProjectSessionCurrent,
@@ -66,6 +66,10 @@ export default function AIRenameCharactersDialog({ onClose }: { onClose: () => v
     () => new Set(characters.map(c => c.name)),
     [characters],
   )
+  const previewTargets = renames.map(row => row.to.trim())
+  const previewHasInvalidNames = renames.length !== characters.length
+    || previewTargets.some((target, index) => !target || currentNames.has(target)
+      || previewTargets.indexOf(target) !== index)
 
   const generate = useCallback(async () => {
     if (!currentProject || !projectSession) return
@@ -89,7 +93,7 @@ export default function AIRenameCharactersDialog({ onClose }: { onClose: () => v
       const modelId = useLLMStore.getState().defaultModelId
       if (!modelId) throw new Error(text('请先配置默认创作模型', 'Configure a default writing model first'))
       const rows: RenameRow[] = []
-      const generateBatch = async (batch: typeof characters): Promise<RenameRow[]> => {
+      const generateBatch = async (batch: typeof characters, forbiddenNames: Set<string>): Promise<RenameRow[]> => {
         const rosterLines = batch.map(c => {
           const brief = [c.gender, c.age, c.role, c.personality?.slice(0, 40)]
             .filter(Boolean).join(' / ')
@@ -100,6 +104,9 @@ export default function AIRenameCharactersDialog({ onClose }: { onClose: () => v
           styleHint ? text(`风格要求：${styleHint}`, `Style requests: ${styleHint}`) : '',
           text('现有角色名单：', 'Current characters:'),
           rosterLines,
+          forbiddenNames.size > 0
+            ? text(`以下新名已被占用或本轮不可使用：${[...forbiddenNames].join('、')}`, `These new names are unavailable: ${[...forbiddenNames].join(', ')}`)
+            : '',
           text('只为本批列出的角色生成名字，逐个完整返回。', 'Return one complete mapping for each character in this batch only.'),
           text('输出 JSON：{"renames":[{"from":"原名","to":"新名","reason":"一句话理由"}]}。',
             'Output JSON: {"renames":[{"from":"old","to":"new","reason":"one line"}]}.'),
@@ -117,24 +124,23 @@ export default function AIRenameCharactersDialog({ onClose }: { onClose: () => v
           reasoningStage: 'general',
         })
         if (!res.success) {
-          if (res.finishReason === 'length' && batch.length > 1) {
-            const middle = Math.ceil(batch.length / 2)
-            const splitRows = [...await generateBatch(batch.slice(0, middle)), ...await generateBatch(batch.slice(middle))]
-            return validateCharacterRenameBatch(batch.map(c => c.name), splitRows, currentNames, new Set(rows.map(row => row.to)))
-          }
-          throw new Error(text(
+          const message = text(
             `AI 改名未完成（结束原因：${res.finishReason}）。${res.error ?? ''}`,
             `Character renaming did not complete (finish reason: ${res.finishReason}). ${res.error ?? ''}`,
-          ))
+          )
+          if (res.finishReason === 'length') throw new CharacterRenameLengthError(message)
+          throw new Error(message)
         }
         const parsed = extractJson(res.content) as { renames?: Array<{ from?: unknown; to?: unknown; reason?: unknown }> }
         if (!Array.isArray(parsed.renames)) throw new Error(text('AI 未返回改名列表', 'AI did not return a rename list'))
-        return validateCharacterRenameBatch(batch.map(c => c.name), parsed.renames.map(r => ({
+        return parsed.renames.map(r => ({
           from: String(r.from ?? ''), to: String(r.to ?? ''), reason: String(r.reason ?? ''),
-        })), currentNames, new Set(rows.map(row => row.to)))
+        }))
       }
       for (const batch of chunkCharacterRenameRoster(characters)) {
-        rows.push(...await generateBatch(batch))
+        rows.push(...await generateUniqueCharacterRenameBatch(
+          batch, currentNames, new Set(rows.map(row => row.to)), generateBatch,
+        ))
       }
       if (!isProjectSessionCurrent(projectSession)) return
       setRenames(rows)
@@ -147,6 +153,10 @@ export default function AIRenameCharactersDialog({ onClose }: { onClose: () => v
 
   const apply = useCallback(async () => {
     if (!currentProject || !projectSession) return
+    if (previewHasInvalidNames) {
+      setError(text('新名字缺失或重复，请修改后再应用。', 'New names are missing or duplicated. Edit them before applying.'))
+      return
+    }
     const valid = renames.filter(r => r.to.trim() && r.to.trim() !== r.from)
     if (valid.length === 0) return
     setStep('applying')
@@ -200,7 +210,7 @@ export default function AIRenameCharactersDialog({ onClose }: { onClose: () => v
       setError(String(e))
       setStep('preview')
     }
-  }, [currentProject, projectSession, renames, replaceProse, text])
+  }, [currentProject, projectSession, renames, replaceProse, text, previewHasInvalidNames])
 
   if (!currentProject || !projectSession) return null
 
@@ -274,7 +284,8 @@ export default function AIRenameCharactersDialog({ onClose }: { onClose: () => v
           {step === 'preview' && (
             <div className="space-y-1.5">
               {renames.map((r, i) => {
-                const collision = characters.some(c => c.name === r.to.trim() && c.name !== r.from)
+                const collision = currentNames.has(r.to.trim())
+                  || renames.some((other, index) => index !== i && other.to.trim() === r.to.trim())
                 const invalid = !r.to.trim() || r.to.trim() === r.from || collision
                 return (
                   <div key={r.from} className="flex items-center gap-2 text-xs">
@@ -294,7 +305,7 @@ export default function AIRenameCharactersDialog({ onClose }: { onClose: () => v
                   </div>
                 )
               })}
-              {renames.some(r => !r.to.trim() || r.to.trim() === r.from || characters.some(c => c.name === r.to.trim() && c.name !== r.from)) && (
+              {previewHasInvalidNames && (
                 <p className="text-[0.7rem] flex items-center gap-1" style={{ color: 'var(--color-accent)' }}>
                   <AlertTriangle size={12} />
                   {text('存在空名字、与原名相同或与其他角色重名的新名字，请修改后再应用。', 'Some names are empty, unchanged, or collide with existing characters.')}
@@ -349,7 +360,7 @@ export default function AIRenameCharactersDialog({ onClose }: { onClose: () => v
               <Button variant="ghost" onClick={() => setStep('input')}>{text('上一步', 'Back')}</Button>
               <Button
                 onClick={apply}
-                disabled={renames.some(r => !r.to.trim() || r.to.trim() === r.from || characters.some(c => c.name === r.to.trim() && c.name !== r.from))}
+                disabled={previewHasInvalidNames}
               >
                 <Replace size={13} /> {text('应用改名', 'Apply renames')}
               </Button>
