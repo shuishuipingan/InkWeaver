@@ -2,6 +2,13 @@
 
 本文件按用户可见行为记录变更。`1.2.x` 桌面版本不发布 npm；DSH 插件沿用已发布的 `1.2.0` 包。`1.2.0` 已从同一源码 commit 完成工程验收、三平台资产回读和正式 Release；`1.1.0` 的历史 Release 收据保留在 `docs/upgrade/`，不与 1.2.0 混用。
 
+## 1.2.14 — 2026-09-26
+
+正式 Release：<https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.2.14>
+
+- 全书目录生成和导入章节蓝图现在都会忽略端点不在本章角色清单中的可选关系提示；有效关系和其他蓝图内容仍按原合同严格校验，日志只记录忽略数量，不记录角色名或正文。
+- DeepSeek V4.1 Flash 结构化工作流启用 JSON Output；当前模型目录、已存模型别名和 `low/high/max` 推理映射已更新。
+
 ## 1.2.13 — 2026-09-26
 
 正式 Release：<https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.2.13>
