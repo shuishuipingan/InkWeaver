@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
+import { EditorView } from '@codemirror/view'
 
 import type { ModelExecutionLeaseReceipt } from '../../../shared/ipc-channels'
 import { useLLMStore } from '../../../stores/llm-store'
@@ -42,6 +43,7 @@ let invoke: ReturnType<typeof vi.fn>
 let listeners: Map<string, EventListener>
 
 beforeEach(() => {
+  window.getSelection()?.removeAllRanges()
   container = document.createElement('div')
   document.body.append(container)
   root = createRoot(container)
@@ -87,6 +89,7 @@ beforeEach(() => {
 
 afterEach(async () => {
   await act(async () => root.unmount())
+  window.getSelection()?.removeAllRanges()
   container.remove()
   useLLMStore.setState({ defaultModelId: null, activeRequests: new Map() })
   Reflect.deleteProperty(window, 'velaAPI')
@@ -98,8 +101,20 @@ describe('CodeMirror editor AI generation boundary', () => {
       <CodeMirrorEditor content="原文段落" mode="prose" />,
     ))
 
-    await page.getByText('原文段落').click({ clickCount: 3 })
-
+    const editorContent = container.querySelector<HTMLElement>('.cm-content')
+    expect(editorContent).not.toBeNull()
+    const view = EditorView.findFromDOM(editorContent!)
+    expect(view).not.toBeNull()
+    await act(async () => {
+      view!.dispatch({
+        selection: { anchor: 0, head: view!.state.doc.length },
+        userEvent: 'select',
+      })
+      view!.focus()
+    })
+    await act(async () => {
+      await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+    })
     await act(async () => page.getByRole('button', { name: '润色' }).click())
 
     await expect.element(page.getByText('生成未完整完成，结果不可应用')).toBeVisible()
