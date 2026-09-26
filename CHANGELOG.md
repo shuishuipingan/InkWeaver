@@ -2,6 +2,14 @@
 
 本文件按用户可见行为记录变更。`1.2.x` 桌面版本不发布 npm；DSH 插件沿用已发布的 `1.2.0` 包。`1.2.0` 已从同一源码 commit 完成工程验收、三平台资产回读和正式 Release；`1.1.0` 的历史 Release 收据保留在 `docs/upgrade/`，不与 1.2.0 混用。
 
+## 1.2.13 — 2026-09-26
+
+正式 Release：<https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.2.13>
+
+- DeepSeek V4.1 Flash 使用 JSON Output 进行结构化工作流；已保存的 `deepseek-v4.1-flash` 与 V4 Flash 兼容别名会识别为当前 Flash 能力，不再因能力未知而省略 JSON 模式。
+- DeepSeek 当前模型目录使用 `deepseek-flash` 与 `deepseek-v4-pro`；V4.1 的推理强度映射支持 `low`、`high`、`max`，并把产品的 `medium` 映射为官方 `high`。
+- 不再把已停用或目录外的旧型号仅凭名称前缀判为已验证可用；兼容端点会通过实际模型发现或探测确认。
+
 ## 1.2.12 — 2026-09-26
 
 正式 Release：<https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.2.12>
