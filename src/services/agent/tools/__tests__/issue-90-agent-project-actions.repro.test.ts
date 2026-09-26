@@ -32,6 +32,9 @@ const project = {
   },
 }
 
+let pendingIpcResolvers: Array<(value: unknown) => void> = []
+let workflowTestTearingDown = false
+
 function stubWorkflowIpc(overrides: Partial<Record<string, unknown>> = {}): ReturnType<typeof vi.fn> {
   const invoke = vi.fn((channel: string) => {
     if (channel in overrides) return Promise.resolve(overrides[channel])
@@ -56,7 +59,8 @@ function stubWorkflowIpc(overrides: Partial<Record<string, unknown>> = {}): Retu
       })
     }
     // Keep the real workflow registered while this launcher-seam test observes it.
-    return new Promise(() => {})
+    if (workflowTestTearingDown) return Promise.resolve(undefined)
+    return new Promise<unknown>(resolve => pendingIpcResolvers.push(resolve))
   })
   vi.stubGlobal('window', {
     velaAPI: {
@@ -73,6 +77,8 @@ function stubWorkflowIpc(overrides: Partial<Record<string, unknown>> = {}): Retu
 }
 
 beforeEach(() => {
+  pendingIpcResolvers = []
+  workflowTestTearingDown = false
   useProjectStore.setState({ currentProject: project as never })
   useWorkflowStore.setState({
     activeRuns: [],
@@ -85,10 +91,25 @@ beforeEach(() => {
   })
 })
 
-afterEach(() => {
-  toolRegistry.unregister('start_workflow')
-  vi.unstubAllGlobals()
-  useProjectStore.setState({ currentProject: null })
+afterEach(async () => {
+  workflowTestTearingDown = true
+  for (const run of useWorkflowStore.getState().activeRuns) {
+    useWorkflowStore.getState().cancelWorkflow(run.id)
+  }
+  try {
+    const cleanupDeadline = Date.now() + 5_000
+    while (useWorkflowStore.getState().activeRuns.length > 0 && Date.now() < cleanupDeadline) {
+      for (const resolve of pendingIpcResolvers.splice(0)) resolve(undefined)
+      await new Promise<void>(resolve => setTimeout(resolve, 10))
+    }
+    await useWorkflowStore.getState().cancelProjectWorkflowsAndWait(projectPath, 5_000)
+    expect(useWorkflowStore.getState().activeRuns).toEqual([])
+  } finally {
+    for (const resolve of pendingIpcResolvers.splice(0)) resolve(undefined)
+    toolRegistry.unregister('start_workflow')
+    vi.unstubAllGlobals()
+    useProjectStore.setState({ currentProject: null })
+  }
 })
 
 describe('Issue #90 AI assistant project actions', () => {
