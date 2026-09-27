@@ -790,7 +790,7 @@ export const BUILTIN_PROMPTS: PromptTemplate[] = [
     variables: {
       chapter_content: '章节内容',
       character_states: '角色状态',
-      global_summary: '上下文检索结果',
+      global_summary: '目标章之前的本项目已定稿连续性事实',
       world_building: '世界观设定',
       review_focus: '审稿维度侧重点（可选）',
     },
@@ -802,7 +802,7 @@ export const BUILTIN_PROMPTS: PromptTemplate[] = [
 【角色状态】
 {{character_states}}
 
-【全局摘要】
+【目标章之前的本项目已定稿正文事实】
 {{global_summary}}
 
 【世界观设定】
@@ -817,7 +817,7 @@ export const BUILTIN_PROMPTS: PromptTemplate[] = [
 
 【检查维度】
 
-1. 剧情连贯性：本章情节是否与前文（全局摘要）有矛盾？前后文是否自相矛盾？
+1. 剧情连贯性：本章情节是否与目标章之前已定稿的本项目事实有矛盾？不得引用知识库参照文档推断未写剧情。
 2. 剧情合理性：因果逻辑是否成立？人物动机是否合理？是否有常识性硬伤？
 3. 角色状态：角色行为、能力、位置、情感是否与角色状态档案一致？
 4. 前后章节串联：伏笔、悬念是否连贯？是否出现未交代前因的突兀情节？

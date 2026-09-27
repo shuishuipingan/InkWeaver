@@ -47,6 +47,22 @@ interface PartialPlan {
 
 const CONFIG_KEYS = new Set(['coreOutline', 'worldSetting', 'protagonistProfile', 'globalGuidance', 'goldenFinger'])
 const BATCH_SIZE = 5
+const DIRECTION_FIELD_LABELS: Record<string, readonly [string, string]> = {
+  coreOutline: ['核心大纲', 'Core outline'], worldSetting: ['世界设定', 'World setting'],
+  protagonistProfile: ['主角设定', 'Protagonist profile'], globalGuidance: ['全局指导', 'Global guidance'],
+  goldenFinger: ['金手指', 'Special advantage'], premise: ['故事前提', 'Premise'],
+  worldbuilding: ['世界观', 'World building'], synopsis: ['情节大纲', 'Synopsis'],
+  personality: ['性格', 'Personality'], abilities: ['能力', 'Abilities'],
+  motivation: ['动机', 'Motivation'], arc: ['角色弧光', 'Character arc'], notes: ['备注', 'Notes'],
+  title: ['章节标题', 'Chapter title'], role: ['章节定位', 'Chapter role'],
+  purpose: ['章节目的', 'Purpose'], keyEvents: ['关键事件', 'Key events'], suspenseHook: ['悬念钩子', 'Suspense hook'],
+  userGuidance: ['作者指导', 'Author guidance'],
+}
+
+function directionFieldLabel(field: string, text: (zhCNText: string, enUSText: string) => string): string {
+  const labels = DIRECTION_FIELD_LABELS[field]
+  return labels ? text(labels[0], labels[1]) : field
+}
 
 function compact(value: string, limit: number): string {
   return value.length <= limit ? value : `${value.slice(0, limit)}…`
@@ -103,8 +119,9 @@ export default function StoryDirectionDialog({ open, onClose, onApplied }: Props
         setRoster(rosterValue)
         setLatestRun(lastRun)
         const available = selectedBlueprints(value, 1, Number.MAX_SAFE_INTEGER)
-        setStartChapter(available[0]?.chapterNumber ?? 1)
-        setEndChapter(available.at(-1)?.chapterNumber ?? 1)
+        const latestFinalized = Math.max(0, ...value.drafts.filter(draft => draft.status === 'finalized').map(draft => draft.chapterNumber))
+        setStartChapter(available[0]?.chapterNumber ?? Math.min(value.core.totalChapters || 1, latestFinalized + 1))
+        setEndChapter(available.at(-1)?.chapterNumber ?? Math.max(1, value.core.totalChapters || 1))
       })
       .catch(reason => { if (!disposed) setError(String(reason)) })
     return () => { disposed = true }
@@ -127,7 +144,8 @@ export default function StoryDirectionDialog({ open, onClose, onApplied }: Props
       .map(draft => draft.chapterNumber)).size
     : 0
   const busy = phase === 'generating' || phase === 'applying' || phase === 'drafts'
-  const canStart = !!snapshot && !!idea.trim() && idea.length <= 4_000 && startChapter <= endChapter
+  const canStart = !!snapshot && !!idea.trim() && idea.length <= 4_000 && startChapter >= 1
+    && endChapter >= startChapter && endChapter <= snapshot.core.totalChapters
     && activeRuns.length === 0 && (estimatedCalls <= 11 || largeRunConfirmed)
 
   const requestModel = async (
@@ -456,6 +474,7 @@ export default function StoryDirectionDialog({ open, onClose, onApplied }: Props
                 onChange={event => { setEndChapter(Number(event.target.value)); setPartial(null); setLargeRunConfirmed(false) }} /></label>
               <span className="text-xs opacity-70">{text(`将分析 ${editable.length} 章（${batches.length} 批）与 ${roster?.entries.length ?? 0} 名角色（${characterBatches.length} 批）；范围内未定稿草稿 ${unfinishedDraftCount} 份`, `Analyze ${editable.length} chapters (${batches.length} batches) and ${roster?.entries.length ?? 0} characters (${characterBatches.length} batches); ${unfinishedDraftCount} unfinished drafts in range`)}</span>
             </div>
+            {editable.length === 0 && <p className="text-xs opacity-80">{text('此范围没有可改动的未定稿蓝图；仍可调整项目设定、故事架构、角色卡或新增后续叙事线索。', 'No unfinished blueprints are available in this range; you can still adjust project settings, architecture, character cards, or add future narrative threads.')}</p>}
             {estimatedCalls > 11 && <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={largeRunConfirmed} disabled={busy}
               onChange={event => setLargeRunConfirmed(event.target.checked)} />{text(`我知道本次预计调用模型约 ${estimatedCalls} 次，可能花费较长时间与额度。`, `I understand this run may need about ${estimatedCalls} model calls and substantial time and usage.`)}</label>}
             <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={includeDrafts} disabled={busy}
@@ -474,15 +493,15 @@ export default function StoryDirectionDialog({ open, onClose, onApplied }: Props
             <div className="space-y-2">
               <p className="font-medium">{text(`设定与架构变更（${Object.keys(partial.core.changes).length} 项）`, `Project and architecture changes (${Object.keys(partial.core.changes).length})`)}</p>
               {Object.entries(partial.core.changes).map(([field, value]) => <details key={field} className="rounded border border-[var(--color-border)] p-2 text-xs">
-                <summary className="cursor-pointer font-medium">{field}</summary>
+                <summary className="cursor-pointer font-medium">{directionFieldLabel(field, text)}</summary>
                 <div className="grid grid-cols-2 gap-2 mt-2 whitespace-pre-wrap break-words"><p>{String(snapshot.core[field as keyof typeof snapshot.core] ?? '')}</p><p>{value}</p></div>
               </details>)}
             </div>
             {partial.core.characterChanges.length > 0 && <div className="space-y-2">
               <p className="font-medium">{text(`角色卡调整（${partial.core.characterChanges.length} 人）`, `Character card changes (${partial.core.characterChanges.length})`)}</p>
               {partial.core.characterChanges.map(item => <details key={item.name} className="rounded border border-[var(--color-border)] p-2 text-xs">
-                <summary className="cursor-pointer">{item.name} · {Object.keys(item.changes).join('、')}</summary>
-                {Object.entries(item.changes).map(([field, value]) => <p key={field} className="mt-2 whitespace-pre-wrap"><strong>{field}：</strong>{value}</p>)}
+                <summary className="cursor-pointer">{item.name} · {Object.keys(item.changes).map(field => directionFieldLabel(field, text)).join('、')}</summary>
+                {Object.entries(item.changes).map(([field, value]) => <p key={field} className="mt-2 whitespace-pre-wrap"><strong>{directionFieldLabel(field, text)}：</strong>{value}</p>)}
               </details>)}
             </div>}
             {partial.core.newNarrativeThreads.length > 0 && <div className="space-y-1 text-xs">
@@ -494,8 +513,8 @@ export default function StoryDirectionDialog({ open, onClose, onApplied }: Props
               {phase === 'preview' && <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={includeDrafts}
                 onChange={event => setIncludeDrafts(event.target.checked)} />{text(`为约 ${candidateDraftEstimate} 章未定稿正文生成候选修稿（不覆盖原稿）`, `Generate candidate revisions for about ${candidateDraftEstimate} unfinished chapters without overwriting originals`)}</label>}
               {partial.chapterChanges.map(item => <details key={item.chapterNumber} className="rounded border border-[var(--color-border)] p-2 text-xs">
-                <summary className="cursor-pointer">{text(`第 ${item.chapterNumber} 章`, `Chapter ${item.chapterNumber}`)} · {Object.keys(item.changes).join('、')}</summary>
-                {Object.entries(item.changes).map(([field, value]) => <div key={field} className="mt-2 grid grid-cols-[6rem_1fr] gap-2"><strong>{field}</strong><span className="whitespace-pre-wrap">{value}</span></div>)}
+                <summary className="cursor-pointer">{text(`第 ${item.chapterNumber} 章`, `Chapter ${item.chapterNumber}`)} · {Object.keys(item.changes).map(field => directionFieldLabel(field, text)).join('、')}</summary>
+                {Object.entries(item.changes).map(([field, value]) => <div key={field} className="mt-2 grid grid-cols-[6rem_1fr] gap-2"><strong>{directionFieldLabel(field, text)}</strong><span className="whitespace-pre-wrap">{value}</span></div>)}
               </details>)}
             </div>
             {phase === 'drafts' && <p>{text('正在逐章生成候选修稿…', 'Generating candidate revisions chapter by chapter…')}</p>}

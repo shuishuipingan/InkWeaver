@@ -23,6 +23,15 @@ describe('story direction proposal contract', () => {
     })
   })
 
+  it('maps Chinese free-form field labels such as second-personality settings instead of rejecting the plan', () => {
+    const result = decodeCoreDirectionChanges(JSON.stringify({
+      coreChanges: { '第二人格定位': '第二人格平时沉睡，在主角遇险时短暂接管身体。' },
+    }), core)
+    expect(result.changes.protagonistProfile).toContain('第二人格定位')
+    expect(result.changes.protagonistProfile).toContain('短暂接管身体')
+    expect(result.summary).toContain('第二人格定位→protagonistProfile')
+  })
+
   it('accepts bounded updates to known character cards only', () => {
     expect(decodeCoreDirectionChanges(JSON.stringify({
       coreChanges: {}, characterChanges: [{ name: '主角', changes: { personality: '表面冷静，第二人格在危机时接管' } }],

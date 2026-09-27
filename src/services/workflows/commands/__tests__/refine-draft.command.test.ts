@@ -284,8 +284,9 @@ describe('RefineDraftCommand bounded visible completion', () => {
           content: DEFAULT_CONFIRMED_REVIEW_CONTENT,
         }
       }
-      if (channel === 'kb:search' || channel === 'db:character-get-all') return []
+      if (channel === 'db:character-get-all' || channel === 'db:continuity-list-before') return []
       if (channel === 'db:project-core-get') return {}
+      if (channel === 'db:blueprint-get') return null
       throw new Error(`unexpected IPC: ${channel}`)
     }))
     const context = { ...workflowContext(), writingLanguage: 'en-US' as const }
@@ -831,12 +832,49 @@ describe('RefineFromReviewCommand bounded visible completion', () => {
 })
 
 describe('ReviewChapterCommand reasoning stage', () => {
+  it('reviews the current draft against finalized prior chapters and never queries imported knowledge-base prose', async () => {
+    let capturedPrompt = ''
+    const completeWithLease = vi.fn<GenerationRuntimeEnvironment['completeWithLease']>(async request => {
+      capturedPrompt = request.messages.map(message => message.content).join('\n')
+      return { content: '{"summary":"ok","items":[]}', finishReason: 'stop' }
+    })
+    const prior = [{
+      draftId: 4, chapterNumber: 1, chapterTitle: '已写过的第一章', chapterNotes: '主角拿到了铜钥匙。',
+      facts: [{ category: 'plot', entities: ['主角'], statement: '主角取得铜钥匙。', sourceChapter: 1, evidence: '主角把铜钥匙放进口袋。' }],
+    }]
+    const invoke = vi.fn(async (channel: string, ...args: unknown[]) => {
+      if (channel === 'kb:search') throw new Error('Knowledge-base search must not be used in manuscript review')
+      if (channel === 'db:continuity-list-before') return prior
+      if (channel === 'db:character-get-all') return [{
+        name: '主角', role: 'protagonist', currentState: { location: '第九十九章未来地点', updatedAtChapter: 99 },
+      }]
+      if (channel === 'db:project-core-get') return { worldbuilding: '本项目世界观' }
+      if (channel === 'db:blueprint-get') return { chapterNumber: 2, title: '第二章', characters: ['主角'], keyEvents: '', purpose: '', notes: '' }
+      if (channel === 'db:draft-get-meta') return { id: 2, chapterNumber: 2, version: 1, status: 'draft', source: 'write' }
+      if (channel === 'db:draft-get-full') return { id: 2, content: '待审章节正文。' }
+      if (channel === 'db:draft-get-finalized') return null
+      if (channel === 'db:review-next-index') return 1
+      if (channel === 'db:consistency-exemption-list') return []
+      if (channel === 'db:review-create') return { success: true, id: 88 }
+      throw new Error(`unexpected IPC: ${channel} ${String(args[0] ?? '')}`)
+    })
+    stubIpc(invoke)
+    await new ReviewChapterCommand({ draftPath: 'vela://draft/2', draftContent: '待审章节正文。', chapterNumber: 2 }, runtimeDependencies(completeWithLease))
+      .execute({ step: {}, context: workflowContext(), callbacks: callbacks() })
+
+    expect(capturedPrompt).toContain('待审章节正文')
+    expect(capturedPrompt).toContain('主角取得铜钥匙')
+    expect(capturedPrompt).not.toContain('第九十九章未来地点')
+    expect(capturedPrompt).not.toContain('Knowledge-base search')
+    expect(invoke.mock.calls.some(([channel]) => channel === 'kb:search')).toBe(false)
+  })
+
   it('maps current deterministic findings into the persisted review for human confirmation', async () => {
     const completeWithLease = vi.fn<GenerationRuntimeEnvironment['completeWithLease']>()
       .mockResolvedValue({ content: '{"summary":"ok","items":[]}', finishReason: 'stop' })
     const createParams: Array<{ content: string }> = []
     stubIpc(vi.fn(async (channel: string, ...args: unknown[]) => {
-      if (channel === 'kb:search' || channel === 'db:character-get-all') return []
+      if (channel === 'db:character-get-all') return []
       if (channel === 'db:project-core-get') return {}
       if (channel === 'db:draft-get-meta') return { id: 1, chapterNumber: 2, version: 1, status: 'draft', source: 'write' }
       if (channel === 'db:review-next-index') return 1
@@ -868,7 +906,7 @@ describe('ReviewChapterCommand reasoning stage', () => {
       .mockResolvedValue({ content: '{"summary":"AI review","items":[]}', finishReason: 'stop' })
     const createParams: Array<{ content: string }> = []
     stubIpc(vi.fn(async (channel: string, ...args: unknown[]) => {
-      if (channel === 'kb:search' || channel === 'db:character-get-all') return []
+      if (channel === 'db:character-get-all') return []
       if (channel === 'db:project-core-get') return {}
       if (channel === 'db:draft-get-meta') return { id: 1, chapterNumber: 2, version: 1, status: 'draft', source: 'write' }
       if (channel === 'db:review-next-index') return 1
@@ -902,7 +940,7 @@ describe('ReviewChapterCommand reasoning stage', () => {
     const completeWithLease = vi.fn<GenerationRuntimeEnvironment['completeWithLease']>()
       .mockResolvedValue({ content: '{"summary":"ok","items":[]}', finishReason: 'stop' })
     stubIpc(vi.fn(async (channel: string) => {
-      if (channel === 'kb:search' || channel === 'db:character-get-all') return []
+      if (channel === 'db:character-get-all' || channel === 'db:continuity-list-before') return []
       if (channel === 'db:project-core-get') return {}
       if (channel === 'db:draft-get-meta') {
         return { id: 1, chapterNumber: 1, version: 1, status: 'draft', source: 'write' }
@@ -932,8 +970,8 @@ describe('ReviewChapterCommand reasoning stage', () => {
     const completeWithLease = vi.fn<GenerationRuntimeEnvironment['completeWithLease']>()
       .mockResolvedValue({ content: '{"summary":"ok","items":[]}', finishReason: 'stop' })
     stubIpc(vi.fn(async (channel: string) => {
-      if (channel === 'kb:search') return []
       if (channel === 'db:character-get-all') return []
+      if (channel === 'db:continuity-list-before') return []
       if (channel === 'db:project-core-get') return {}
       if (channel === 'db:draft-get-meta') {
         return { id: 1, chapterNumber: 1, version: 1, status: 'draft', source: 'write' }

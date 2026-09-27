@@ -4,13 +4,13 @@
 
 织墨 InkWeaver 是一款面向长篇小说创作的本地优先桌面工作台。它把项目设定、角色、世界观、章节蓝图、正文、审稿、修订与定稿组织成可追溯的创作链，让作者在保留最终决定权的前提下使用自己选择的 AI 模型。
 
-当前版本：**v1.3.0**
+当前版本：**v1.3.1**
 
 > **把一本长篇小说写成会持续发展的整体。** InkWeaver 是本地优先的 AI 小说创作工作台：它把故事设定、角色状态、章节蓝图、候选草稿、证据化审稿和作者定稿串成一条可追溯的连续写作链。
 
-v1.3.0 新增侧边栏「AI 全书方向调整」：输入新想法后分批生成设定、故事架构、角色卡、叙事线索和未定稿蓝图的可预览变更；确认后原子提交规划，并可为受影响的未定稿正文生成逐章候选修稿。已定稿正文保持只读。角色批量改名现在也同步更新故事架构、叙事线索与蓝图文本；修复蓝图目录生成首个请求按 384,000 Token 占尽整轮预算的问题。Windows 与 macOS 安装包随同一 GitHub Release 分发；DSH 插件 tarball 保留在 v1.2.0 Release，本轮不发布 npm。
+v1.3.1 修复方向调整将“第二人格定位”等中文字段名误判为无效的问题；审计改为只使用当前草稿和目标章之前本项目已定稿的事实，不再检索拆书知识库里的后续原文。角色状态会按目标章过滤，角色改名还会同步架构与蓝图文本。Windows 与 macOS 桌面安装包随同一 GitHub Release 分发；DSH 插件 tarball 保留在 v1.2.0 Release，本轮不发布 npm。
 
-[下载 v1.3.0](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.3.0) · [三分钟开始第一章](docs/quickstart/README.md) · [全书方向调整指南](docs/features/story-direction-adjustment.md) · [安装 DSH 插件](plugins/inkweaver-dsh/README.md) · [提交问题或建议](https://github.com/shuishuipingan/InkWeaver/issues/new/choose) · [参与讨论](https://github.com/shuishuipingan/InkWeaver/discussions)
+[下载 v1.3.1](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.3.1) · [三分钟开始第一章](docs/quickstart/README.md) · [全书方向调整指南](docs/features/story-direction-adjustment.md) · [安装 DSH 插件](plugins/inkweaver-dsh/README.md) · [提交问题或建议](https://github.com/shuishuipingan/InkWeaver/issues/new/choose) · [参与讨论](https://github.com/shuishuipingan/InkWeaver/discussions)
 
 ![InkWeaver 欢迎页](docs/assets/inkweaver-welcome.png)
 
@@ -158,7 +158,7 @@ inkweaver-mac-arm64-<版本号>-installer.dmg
 inkweaver-mac-x64-<版本号>-installer.dmg
 ```
 
-当前 macOS 安装包未代码签名（未使用 Developer ID 签名）且未公证。请只从[正式 v1.3.0 Release](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.3.0)下载，并按系统安全提示确认首次打开。桌面 Release 使用七项资产合同，分别覆盖 macOS Apple Silicon 与 macOS Intel；DSH 插件 tarball 保留在 v1.2.0 Release。
+当前 macOS 安装包未代码签名（未使用 Developer ID 签名）且未公证。请只从[正式 v1.3.1 Release](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.3.1)下载，并按系统安全提示确认首次打开。桌面 Release 使用七项资产合同，分别覆盖 macOS Apple Silicon 与 macOS Intel；DSH 插件 tarball 保留在 v1.2.0 Release。
 
 ## DeepSeek Harness 插件
 

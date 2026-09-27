@@ -4,7 +4,6 @@ import { resolvePromptTemplate } from '../../prompt-templates'
 import { ReviewPromptBuilder } from '../../prompts/prompt-builder'
 import { ipc } from '../../ipc-client'
 import { requireIpcSuccess } from '../../ipc-result'
-import { unwrapKnowledgeValue } from '../../knowledge-service'
 import { projectSessionContextFromProject, sameProjectSessionContext } from '../../../shared/project-session-context'
 import type { ProjectSessionContext } from '../../../shared/ipc-channels'
 import { readWorkflowDraftMeta } from '../workflow-draft-meta'
@@ -22,6 +21,8 @@ import {
 } from '../../../shared/adjacent-continuity'
 import { buildBlueprintEventCoverage } from '../../../shared/review-event-coverage'
 import { textFingerprint } from '../../../shared/character-extraction'
+import { buildFinalizedReviewContext } from '../../../shared/review-context'
+import type { FinalizedContinuityProjection } from '../../../shared/finalized-continuity'
 
 export function parseReviewOutput(text: string): ReviewLike | null {
   try {
@@ -75,46 +76,52 @@ export class ReviewChapterCommand extends BaseWorkflowCommand<string> {
     if (!draft) throw new Error(text('无草稿内容', 'There is no draft content to review.'))
 
     callbacks.log(text('准备启动一致性审查引擎...', 'Preparing the continuity review...'))
-    callbacks.log(text('  检索全书设定档案...', '  Retrieving established story facts...'))
+    callbacks.log(text('  读取本项目在本章之前的已定稿事实...', '  Reading this project’s finalized facts before the target chapter...'))
 
-    // 使用向量检索获取与待审章节相关的历史上下文（替代全局摘要）
-    let contextSummary = promptLanguageText(writingLanguage, '（无上下文参考）', '(no relevant prior context)')
+    // The review corpus is the current draft plus this project's finalized
+    // history. Knowledge-base search can contain imported reference novels
+    // whose later chapters must never be treated as this story's canon.
+    let continuity: FinalizedContinuityProjection[] = []
     try {
-      // 从待审内容中提取前 200 字作为检索 query
-      const queryText = draft.slice(0, 200)
-      const results = unwrapKnowledgeValue(await ipc.invokeWithProjectSession(
+      continuity = await ipc.invokeWithProjectSession(
         projectSession,
-        'kb:search',
-        queryText,
-        5,
+        'db:continuity-list-before',
+        this.params.chapterNumber,
         context.projectPath,
-      ))
-      if (results.length > 0) {
-        contextSummary = results
-          .map((r: { fileName: string; score: number; text: string }, i: number) =>
-            promptLanguageText(
-              writingLanguage,
-              `[${i + 1}] (${r.fileName}, 相关度 ${(r.score * 100).toFixed(0)}%)\n${r.text}`,
-              `[${i + 1}] (${r.fileName}, relevance ${(r.score * 100).toFixed(0)}%)\n${r.text}`,
-            ))
-          .join('\n\n')
-      }
+      )
     } catch {
-      contextSummary = promptLanguageText(writingLanguage, '（知识库检索不可用）', '(knowledge-base search unavailable)')
+      continuity = []
     }
+    const blueprint = await ipc.invokeWithProjectSession(
+      projectSession, 'db:blueprint-get', this.params.chapterNumber, context.projectPath,
+    )
+    const contextSummary = buildFinalizedReviewContext(
+      continuity,
+      this.params.chapterNumber,
+      Array.isArray(blueprint?.characters) ? blueprint.characters : [],
+    )
 
-    const characterState = await this.readCharacterStates(context.projectPath, projectSession, writingLanguage)
+    const characterState = await this.readCharacterStates(
+      context.projectPath, projectSession, writingLanguage, this.params.chapterNumber,
+    )
     const worldBuilding = await this.readWorldBuilding(context.projectPath, projectSession, writingLanguage)
 
     const template = await resolvePromptTemplate('consistency_check', projectSession, writingLanguage)
     if (!template) throw new Error(text('未找到审稿模板', 'The review prompt template was not found.'))
+    const reviewTemplate = {
+      ...template,
+      systemRole: `${template.systemRole || ''}\n\n${this.reviewScopeGuidance(writingLanguage)}`,
+    }
 
-    const promptBuilder = new ReviewPromptBuilder(template, writingLanguage)
+    const promptBuilder = new ReviewPromptBuilder(reviewTemplate, writingLanguage)
       .withChapterContent(draft)
       .withCharacterStates(characterState)
       .withGlobalSummary(contextSummary)
       .withWorldBuilding(worldBuilding)
-      .withReviewFocus(this.params.reviewFocus || '')
+      .withReviewFocus([
+        this.params.reviewFocus || '',
+        this.reviewScopeGuidance(writingLanguage),
+      ].filter(Boolean).join('\n\n'))
 
     callbacks.log(text('调用 AI 审查员对本章进行多维度扫描...', 'Running the AI continuity review...'))
 
@@ -138,13 +145,14 @@ export class ReviewChapterCommand extends BaseWorkflowCommand<string> {
         '审稿结果格式无效；将在同一预算内重建一次，不会保存无效报告。',
         'The review response was invalid; rebuilding it once within the same budget. No invalid report will be saved.',
       ))
-      const repairBuilder = new ReviewPromptBuilder(template, writingLanguage)
+      const repairBuilder = new ReviewPromptBuilder(reviewTemplate, writingLanguage)
         .withChapterContent(draft)
         .withCharacterStates(characterState)
-        .withGlobalSummary(contextSummary)
-        .withWorldBuilding(worldBuilding)
-        .withReviewFocus([
-          this.params.reviewFocus || '',
+          .withGlobalSummary(contextSummary)
+          .withWorldBuilding(worldBuilding)
+          .withReviewFocus([
+            this.params.reviewFocus || '',
+            this.reviewScopeGuidance(writingLanguage),
           promptLanguageText(
             writingLanguage,
             '上一次审稿响应不是有效 JSON。请只返回包含 summary 字符串和 items 数组的完整 JSON 对象；不要解释、Markdown 或代码块。',
@@ -195,9 +203,6 @@ export class ReviewChapterCommand extends BaseWorkflowCommand<string> {
 
     const revIndex = await ipc.invokeWithProjectSession(projectSession, 'db:review-next-index', baseDraft.id, context.projectPath)
 
-    const blueprint = await ipc.invokeWithProjectSession(
-      projectSession, 'db:blueprint-get', this.params.chapterNumber, context.projectPath,
-    )
     if (blueprint) {
       const eventCoverage = buildBlueprintEventCoverage(
         blueprint.keyEvents,
@@ -317,12 +322,14 @@ export class ReviewChapterCommand extends BaseWorkflowCommand<string> {
     projectPath: string,
     projectSession: ProjectSessionContext,
     writingLanguage: NonNullable<CommandExecuteParams['context']['writingLanguage']>,
+    chapterNumber: number,
   ): Promise<string> {
     try {
       const allChars = await ipc.invokeWithProjectSession(projectSession, 'db:character-get-all', projectPath)
       const states: string[] = []
       for (const card of allChars) {
-        if (card.name && card.currentState) {
+        if (card.name && card.currentState
+          && (card.currentState.updatedAtChapter === undefined || card.currentState.updatedAtChapter < chapterNumber)) {
           const cs = card.currentState
           states.push(promptLanguageText(
             writingLanguage,
@@ -342,5 +349,13 @@ export class ReviewChapterCommand extends BaseWorkflowCommand<string> {
   ): Promise<string> {
     const core = await ipc.invokeWithProjectSession(projectSession, 'db:project-core-get', projectPath)
     return core?.worldbuilding || promptLanguageText(writingLanguage, '（暂无）', '(none)')
+  }
+
+  private reviewScopeGuidance(writingLanguage: NonNullable<CommandExecuteParams['context']['writingLanguage']>): string {
+    return promptLanguageText(
+      writingLanguage,
+      `审计边界：只审查“待审章节”中的当前草稿。历史事实仅采用目标章之前本项目已定稿的正文投影、角色先前状态和项目设定。不要读取或推断知识库导入的参考小说、拆书原文、目标章之后的蓝图或未写章节内容；参考语料不得作为本项目剧情证据。`,
+      `Review boundary: audit only the current draft shown as the target chapter. Use only this project's finalized continuity records before that chapter, character states established before it, and project settings. Do not infer from imported knowledge-base novels, source-book text, later blueprints, or unwritten chapters; reference corpora are not evidence of this story's canon.`,
+    )
   }
 }

@@ -20,6 +20,20 @@ export function parseDirectionJson(content: string): Record<string, unknown> {
   return object(JSON.parse(clean) as unknown)
 }
 
+function normalizeCoreField(field: string): StoryDirectionCoreField {
+  if (STORY_DIRECTION_CORE_FIELDS.includes(field as StoryDirectionCoreField)) return field as StoryDirectionCoreField
+  if (/(?:主角|主人公|人格|第二人格)/u.test(field)) return 'protagonistProfile'
+  if (/(?:世界|法则|规则)/u.test(field)) return 'worldSetting'
+  if (/(?:前提|核心冲突)/u.test(field)) return 'premise'
+  if (/(?:大纲|情节|剧情)/u.test(field)) return 'synopsis'
+  if (/(?:金手指|外挂)/u.test(field)) return 'goldenFinger'
+  if (/(?:风格|参考作品)/u.test(field)) return 'globalGuidance'
+  if (/(?:设定|指导|调整|方向)/u.test(field)) return 'globalGuidance'
+  // An unexpected free-form label remains visible to the author, but it can
+  // no longer invalidate an otherwise useful proposal.
+  return 'globalGuidance'
+}
+
 export function decodeCoreDirectionChanges(
   content: string,
   current: ProjectCoreData,
@@ -31,12 +45,17 @@ export function decodeCoreDirectionChanges(
   const root = parseDirectionJson(content)
   const raw = object(root.coreChanges ?? {})
   const changes: Partial<Record<StoryDirectionCoreField, string>> = {}
+  const normalizedLabels: string[] = []
   for (const [field, value] of Object.entries(raw)) {
-    if (!STORY_DIRECTION_CORE_FIELDS.includes(field as StoryDirectionCoreField)
-      || typeof value !== 'string' || value.length > 20_000) throw new Error(`方向调整项目字段无效：${field}`)
-    if (value.trim() && value !== current[field as StoryDirectionCoreField]) {
-      changes[field as StoryDirectionCoreField] = value.trim()
-    }
+    if (typeof value !== 'string' || value.length > 20_000) throw new Error(`方向调整项目字段值无效：${field}`)
+    const normalizedField = normalizeCoreField(field)
+    const normalizedValue = field === normalizedField ? value.trim() : `【${field}】\n${value.trim()}`
+    if (normalizedField !== field) normalizedLabels.push(`${field}→${normalizedField}`)
+    if (!normalizedValue.trim() || normalizedValue === current[normalizedField]) continue
+    const previous = changes[normalizedField]
+    changes[normalizedField] = previous && field !== normalizedField
+      ? `${previous}\n\n${normalizedValue}`
+      : normalizedValue
   }
   const conflicts = Array.isArray(root.conflicts)
     ? root.conflicts.filter((item): item is string => typeof item === 'string').map(item => item.slice(0, 500)).slice(0, 20)
@@ -87,7 +106,9 @@ export function decodeCoreDirectionChanges(
     changes,
     characterChanges,
     newNarrativeThreads,
-    summary: typeof root.summary === 'string' ? root.summary.slice(0, 2_000) : '',
+    summary: [typeof root.summary === 'string' ? root.summary.slice(0, 1_800) : '',
+      ...(normalizedLabels.length > 0 ? [`AI 字段标签已兼容映射：${normalizedLabels.slice(0, 20).join('、')}`] : [])]
+      .filter(Boolean).join('\n'),
     conflicts,
   }
 }
