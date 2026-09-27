@@ -34,7 +34,7 @@ describe('macOS ARM64 cloud build workflow contract', () => {
     expect(workflow).toContain('default: .release/release-profile.json')
 
     const checkout = namedStep(workflow, 'Check out source')
-    expect(checkout).toContain('ref: ${{ inputs.expected_sha }}')
+    expect(checkout).toContain('ref: ${{ github.ref }}')
     expect(checkout).toContain('fetch-depth: 0')
     expect(checkout).toContain('persist-credentials: false')
 
@@ -72,7 +72,7 @@ describe('macOS ARM64 cloud build workflow contract', () => {
     expect(workflow).toMatch(/node-version:\s*['"]?22\.23\.1['"]?/)
     expect(workflow).toMatch(/version:\s*['"]?11\.11\.0['"]?/)
     const checkout = namedStep(workflow, 'Check out source')
-    expect(checkout).toContain('ref: ${{ inputs.expected_sha }}')
+    expect(checkout).toContain('ref: ${{ github.ref }}')
     expect(checkout).toContain('persist-credentials: false')
 
     const initializeEvidence = namedStep(workflow, 'Initialize macOS v2 acceptance evidence')
@@ -186,7 +186,7 @@ describe('macOS ARM64 cloud build workflow contract', () => {
     expect(workflow).toContain('name: macOS Intel x64 cloud package qualification')
     expect(workflow).toContain('runs-on: macos-15-intel')
     expect(workflow).toContain('group: macos-x64-cloud-build-${{ inputs.expected_sha }}-${{ inputs.release_version }}')
-    expect(workflow).toContain('ref: ${{ inputs.expected_sha }}')
+    expect(workflow).toContain('ref: ${{ github.ref }}')
     expect(workflow).toContain('persist-credentials: false')
     expect(workflow).toContain('release-evidence-v2.mjs init --platform macos-x64')
     expect(workflow).toContain("--runner-label 'macos-15-intel'")

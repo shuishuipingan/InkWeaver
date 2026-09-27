@@ -81,7 +81,7 @@ describe('Windows cloud build workflow contract', () => {
     expect(workflow).toContain('default: .release/release-profile.json')
 
     const checkout = namedStep(workflow, 'Check out source')
-    expect(checkout).toContain('ref: ${{ inputs.expected_sha }}')
+    expect(checkout).toContain('ref: ${{ github.ref }}')
     expect(checkout).toContain('fetch-depth: 0')
     expect(checkout).toContain('persist-credentials: false')
 
@@ -196,7 +196,7 @@ describe('Windows cloud build workflow contract', () => {
     const diagnostics = namedStep(workflow, 'Collect Windows build diagnostics')
     const upload = namedStep(workflow, 'Upload runtime-verified Windows package')
 
-    expect(checkout).toContain('ref: ${{ inputs.expected_sha }}')
+    expect(checkout).toContain('ref: ${{ github.ref }}')
     expect(checkout).toContain('persist-credentials: false')
     expect(workflow.indexOf('Initialize frozen Windows release evidence'))
       .toBeLessThan(workflow.indexOf('Install locked dependencies'))
