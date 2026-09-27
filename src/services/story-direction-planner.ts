@@ -9,6 +9,11 @@ import {
   type StoryDirectionCoreField,
   type StoryDirectionCharacterField,
 } from '../shared/story-direction'
+import {
+  normalizeTerminologyReplacements,
+  replaceTerminologyNameArray,
+  type StoryDirectionTerminologyReplacement,
+} from '../shared/story-direction-terminology'
 
 function object(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('方向调整响应必须是 JSON 对象')
@@ -41,9 +46,24 @@ export function decodeCoreDirectionChanges(
   existingThreadTitles: readonly string[] = [],
   latestFinalizedChapter = 0,
   totalChapters = Number.MAX_SAFE_INTEGER,
-): { changes: Partial<Record<StoryDirectionCoreField, string>>; characterChanges: Array<{ name: string; changes: Partial<Record<StoryDirectionCharacterField, string>> }>; newNarrativeThreads: NarrativeThreadPlanInput[]; summary: string; conflicts: string[] } {
+  authorTerminologyReplacements: readonly StoryDirectionTerminologyReplacement[] = [],
+): { changes: Partial<Record<StoryDirectionCoreField, string>>; characterChanges: Array<{ name: string; changes: Partial<Record<StoryDirectionCharacterField, string>> }>; newNarrativeThreads: NarrativeThreadPlanInput[]; terminologyReplacements: StoryDirectionTerminologyReplacement[]; summary: string; conflicts: string[] } {
   const root = parseDirectionJson(content)
-  const raw = object(root.coreChanges ?? {})
+  const rawCoreChanges = object(root.coreChanges ?? {})
+  let modelTerminologyReplacements: StoryDirectionTerminologyReplacement[] = []
+  try {
+    modelTerminologyReplacements = normalizeTerminologyReplacements(
+      root.terminologyReplacements ?? rawCoreChanges.terminology,
+    )
+  } catch {
+    // The explicit author instruction remains authoritative; malformed optional
+    // model terminology must not invalidate otherwise usable project fields.
+  }
+  const terminologyReplacements = authorTerminologyReplacements.length > 0
+    ? [...authorTerminologyReplacements]
+    : modelTerminologyReplacements
+  const raw = { ...rawCoreChanges }
+  delete raw.terminology
   const changes: Partial<Record<StoryDirectionCoreField, string>> = {}
   const normalizedLabels: string[] = []
   for (const [field, value] of Object.entries(raw)) {
@@ -106,8 +126,12 @@ export function decodeCoreDirectionChanges(
     changes,
     characterChanges,
     newNarrativeThreads,
+    terminologyReplacements,
     summary: [typeof root.summary === 'string' ? root.summary.slice(0, 1_800) : '',
-      ...(normalizedLabels.length > 0 ? [`AI 字段标签已兼容映射：${normalizedLabels.slice(0, 20).join('、')}`] : [])]
+      ...(normalizedLabels.length > 0 ? [`AI 字段标签已兼容映射：${normalizedLabels.slice(0, 20).join('、')}`] : []),
+      ...(terminologyReplacements.length > 0
+        ? [`术语替换：${terminologyReplacements.map(pair => `${pair.from}→${pair.to}`).join('、')}`]
+        : [])]
       .filter(Boolean).join('\n'),
     conflicts,
   }
@@ -116,6 +140,7 @@ export function decodeCoreDirectionChanges(
 export function decodeBlueprintDirectionChanges(
   content: string,
   expected: readonly BlueprintData[],
+  terminologyReplacements: readonly StoryDirectionTerminologyReplacement[] = [],
 ): StoryDirectionBlueprintChange[] {
   const root = parseDirectionJson(content)
   if (!Array.isArray(root.changes)) throw new Error('方向调整缺少章节变更列表')
@@ -132,6 +157,17 @@ export function decodeBlueprintDirectionChanges(
     const current = byNumber.get(Number(chapterNumber))!
     const changes: StoryDirectionBlueprintChange['changes'] = {}
     for (const [field, value] of Object.entries(rawChanges)) {
+      if (field === 'characters' && Array.isArray(value)
+        && value.every((name): name is string => typeof name === 'string')) {
+        const proposedCharacters = [...value].sort()
+        const allowedCharacterLists = [
+          [...current.characters],
+          ...(terminologyReplacements.length > 0
+            ? [replaceTerminologyNameArray(current.characters, terminologyReplacements)]
+            : []),
+        ].map(names => JSON.stringify(names.sort()))
+        if (allowedCharacterLists.includes(JSON.stringify(proposedCharacters))) continue
+      }
       if (!STORY_DIRECTION_BLUEPRINT_FIELDS.includes(field as keyof typeof changes)
         || typeof value !== 'string' || value.length > 20_000) throw new Error(`第 ${chapterNumber} 章方向调整字段无效：${field}`)
       if (value.trim() && value !== current[field as keyof typeof changes]) {

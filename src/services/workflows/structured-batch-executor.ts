@@ -23,6 +23,8 @@ export interface StructuredBatchSemanticRepairPlan {
   task: GenerationTask
   /** Applies only validated repair data to the original response evidence. */
   applyRepair(candidateContent: string, repairContent: string): string
+  /** Optional deterministic completion that derives the omitted field only from the validated candidate. */
+  recoverWithoutModel?(candidateContent: string): string
 }
 
 export interface StructuredBatchContract<TInput, TOutput> {
@@ -456,7 +458,7 @@ export function createStructuredBatchExecutor<TInput, TOutput>(dependencies: {
           }
           candidateContent = repaired.content
         }
-        let decoded: readonly TOutput[]
+        let decoded: readonly TOutput[] = []
         try {
           decoded = contract.decode(candidateContent)
           if (!Array.isArray(decoded)) throw new TypeError('decoder did not return an array')
@@ -502,50 +504,79 @@ export function createStructuredBatchExecutor<TInput, TOutput>(dependencies: {
                 : {}),
             })
           }
-          const repaired = await session.complete({
-            ...repairPlan.task,
-            reasoningStage: 'planning',
-          }, { signal: input.signal })
-          recordAttempt(repaired.receipt)
+          const candidateBeforeRepair = candidateContent
+          const recoverFromCandidate = (): boolean => {
+            if (!repairPlan?.recoverWithoutModel) return false
+            try {
+              const recovered = repairPlan.recoverWithoutModel(candidateBeforeRepair)
+              candidateContent = recovered
+              decoded = contract.decode(candidateContent)
+              return Array.isArray(decoded)
+            } catch {
+              return false
+            }
+          }
           receipt.semanticRepairCallCount = (receipt.semanticRepairCallCount ?? 0) + 1
-          if (input.signal?.aborted || repaired.finishReason === 'cancelled') {
-            throw new ExecutionFailure({
-              code: 'cancelled',
-              reason: 'cancelled',
-              message: '结构化语义补全已取消',
-            })
-          }
-          if (repaired.status !== 'completed' || repaired.finishReason !== 'stop') {
-            const reason: StructuredGenerationFailureReason = repaired.finishReason === 'content_filter'
-              ? 'safety'
-              : repaired.finishReason === 'error'
-                ? 'server_error'
-                : 'unknown'
-            throw new ExecutionFailure({
-              code: repaired.finishReason === 'length' ? 'limit_exceeded' : 'generation_failed',
-              reason: repaired.finishReason === 'length' ? 'output_limit' : reason,
-              message: `结构化语义补全未正常完成：${repaired.finishReason}；${diagnostic?.message ?? '原始输出缺少必填内容'}`,
-            })
-          }
+          let repaired: Awaited<ReturnType<typeof session.complete>> | undefined
           try {
-            candidateContent = repairPlan.applyRepair(candidateContent, repaired.content)
-            decoded = contract.decode(candidateContent)
-            if (!Array.isArray(decoded)) throw new TypeError('decoder did not return an array')
-          } catch (repairError) {
-            const repairedDiagnostic = structuredContractDiagnostic(repairError)
-            const reportedDiagnostic = repairedDiagnostic ?? diagnostic
-            throw new ExecutionFailure({
-              code: 'invalid_output',
-              reason: repairedDiagnostic || diagnostic ? 'invalid_item' : 'malformed_output',
-              message: repairedDiagnostic?.message
-                ?? diagnostic?.message
-                ?? (syntaxRepairApplied
-                  ? '结构化输出经一次语义补全和语法修复后仍无法按合同解码'
-                  : '结构化输出经语义补全后仍无法按合同解码'),
-              ...(reportedDiagnostic
-                ? { diagnostic: { code: reportedDiagnostic.code, path: reportedDiagnostic.path, field: reportedDiagnostic.field } }
-                : {}),
-            })
+            repaired = await session.complete({
+              ...repairPlan.task,
+              reasoningStage: 'planning',
+            }, { signal: input.signal })
+            recordAttempt(repaired.receipt)
+          } catch (repairRequestError) {
+            const cancellation = input.signal?.aborted
+              || (repairRequestError instanceof GenerationHarnessError && repairRequestError.code === 'CANCELLED')
+            if (cancellation) throw repairRequestError
+            if (repairRequestError instanceof GenerationAttemptError) recordAttempt(repairRequestError.receipt)
+            if (!recoverFromCandidate()) throw repairRequestError
+          }
+          if (repaired) {
+            if (input.signal?.aborted || repaired.finishReason === 'cancelled') {
+              throw new ExecutionFailure({
+                code: 'cancelled',
+                reason: 'cancelled',
+                message: '结构化语义补全已取消',
+              })
+            }
+            if (repaired.status !== 'completed' || repaired.finishReason !== 'stop') {
+              if (!recoverFromCandidate()) {
+                const reason: StructuredGenerationFailureReason = repaired.finishReason === 'content_filter'
+                  ? 'safety'
+                  : repaired.finishReason === 'error'
+                    ? 'server_error'
+                    : 'unknown'
+                throw new ExecutionFailure({
+                  code: repaired.finishReason === 'length' ? 'limit_exceeded' : 'generation_failed',
+                  reason: repaired.finishReason === 'length' ? 'output_limit' : reason,
+                  message: `结构化语义补全未正常完成：${repaired.finishReason}；${diagnostic?.message ?? '原始输出缺少必填内容'}`,
+                })
+              }
+            } else {
+              try {
+                candidateContent = repairPlan.applyRepair(candidateContent, repaired.content)
+                decoded = contract.decode(candidateContent)
+                if (!Array.isArray(decoded)) throw new TypeError('decoder did not return an array')
+              } catch (repairError) {
+                if (!recoverFromCandidate()) {
+                  candidateContent = candidateBeforeRepair
+                  const repairedDiagnostic = structuredContractDiagnostic(repairError)
+                  const reportedDiagnostic = repairedDiagnostic ?? diagnostic
+                  throw new ExecutionFailure({
+                    code: 'invalid_output',
+                    reason: repairedDiagnostic || diagnostic ? 'invalid_item' : 'malformed_output',
+                    message: repairedDiagnostic?.message
+                      ?? diagnostic?.message
+                      ?? (syntaxRepairApplied
+                        ? '结构化输出经一次语义补全和语法修复后仍无法按合同解码'
+                        : '结构化输出经语义补全后仍无法按合同解码'),
+                    ...(reportedDiagnostic
+                      ? { diagnostic: { code: reportedDiagnostic.code, path: reportedDiagnostic.path, field: reportedDiagnostic.field } }
+                      : {}),
+                  })
+                }
+              }
+            }
           }
         }
         for (const output of decoded) {

@@ -4,13 +4,13 @@
 
 织墨 InkWeaver 是一款面向长篇小说创作的本地优先桌面工作台。它把项目设定、角色、世界观、章节蓝图、正文、审稿、修订与定稿组织成可追溯的创作链，让作者在保留最终决定权的前提下使用自己选择的 AI 模型。
 
-当前版本：**v1.3.2**
+当前版本：**v1.3.3**
 
 > **把一本长篇小说写成会持续发展的整体。** InkWeaver 是本地优先的 AI 小说创作工作台：它把故事设定、角色状态、章节蓝图、候选草稿、证据化审稿和作者定稿串成一条可追溯的连续写作链。
 
-v1.3.2 修复蓝图生成漏掉悬念钩子时直接失败的问题，扩大全角色改名覆盖的小说配置字段，并新增可预览、编辑和逐章应用的 AI 批量章节名工具。Windows 与 macOS 安装包随同一 GitHub Release 分发；DSH 插件沿用 v1.2.0，不发布 npm。
+v1.3.3 修复全书方向调整对显式术语映射和章节角色列表的处理，补上悬念钩子补全失败时的安全恢复，并同步更新改名后的小说配置、项目标题和已打开的架构页。章节蓝图工具栏提供可预览、编辑和逐章应用的 AI 批量改章名。Windows 与 macOS 安装包随同一 GitHub Release 分发；DSH 插件沿用 v1.2.0，不发布 npm。
 
-[下载 v1.3.2](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.3.2) · [三分钟开始第一章](docs/quickstart/README.md) · [全书方向调整指南](docs/features/story-direction-adjustment.md) · [安装 DSH 插件](plugins/inkweaver-dsh/README.md) · [提交问题或建议](https://github.com/shuishuipingan/InkWeaver/issues/new/choose) · [参与讨论](https://github.com/shuishuipingan/InkWeaver/discussions)
+[下载 v1.3.3](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.3.3) · [三分钟开始第一章](docs/quickstart/README.md) · [全书方向调整指南](docs/features/story-direction-adjustment.md) · [安装 DSH 插件](plugins/inkweaver-dsh/README.md) · [提交问题或建议](https://github.com/shuishuipingan/InkWeaver/issues/new/choose) · [参与讨论](https://github.com/shuishuipingan/InkWeaver/discussions)
 
 ![InkWeaver 欢迎页](docs/assets/inkweaver-welcome.png)
 
@@ -158,7 +158,7 @@ inkweaver-mac-arm64-<版本号>-installer.dmg
 inkweaver-mac-x64-<版本号>-installer.dmg
 ```
 
-当前 macOS 安装包未代码签名（未使用 Developer ID 签名）且未公证。请只从[正式 v1.3.2 Release](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.3.2)下载，并按系统安全提示确认首次打开。桌面 Release 使用七项资产合同，分别覆盖 macOS Apple Silicon 与 macOS Intel；DSH 插件 tarball 保留在 v1.2.0 Release。
+当前 macOS 安装包未代码签名（未使用 Developer ID 签名）且未公证。请只从[正式 v1.3.3 Release](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.3.3)下载，并按系统安全提示确认首次打开。桌面 Release 使用七项资产合同，分别覆盖 macOS Apple Silicon 与 macOS Intel；DSH 插件 tarball 保留在 v1.2.0 Release。
 
 ## DeepSeek Harness 插件
 

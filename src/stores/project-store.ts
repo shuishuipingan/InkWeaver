@@ -288,6 +288,8 @@ interface ProjectState {
   updateNovelConfig: (config: Partial<NovelConfig>, expectedProjectSession?: ProjectSessionContext) => void
   /** Reflect a project-core transaction already committed by the main process. */
   syncCommittedNovelConfig: (config: Partial<NovelConfig>, expectedProjectSession: ProjectSessionContext) => void
+  /** Refresh project identity fields after a main-process transaction already changed project_core. */
+  syncCommittedProjectName: (name: string, expectedProjectSession: ProjectSessionContext) => Promise<boolean>
   hasUnsavedNovelConfig: (projectPath: string) => boolean
   /** 放弃指定项目的配置草稿并恢复到已保存基准。 */
   discardNovelConfigDraft: (
@@ -678,6 +680,31 @@ export const useProjectStore = create<ProjectState>()((set, get) => ({
     persistConfigDraftLedger(settleProjectEditorSave(
       readConfigDraftLedger(), project.path, nextConfig, nextConfig,
     ))
+  },
+
+  syncCommittedProjectName: async (name, expectedProjectSession) => {
+    const project = get().currentProject
+    if (!project || !sameProjectSessionContext(expectedProjectSession, projectSessionContextFromProject(project))) return false
+    set(state => ({
+      currentProject: { ...project, name },
+      recentProjects: state.recentProjects.map(recent => (
+        sameProjectPathKey(recent.path, project.path) ? { ...recent, name } : recent
+      )),
+    }))
+    try {
+      // Persist only the name. The core transaction already wrote the project
+      // data; resaving a full ProjectData snapshot could restore stale state.
+      const result = await ipc.invokeWithProjectSession(
+        expectedProjectSession,
+        'project:save',
+        project.id,
+        { name, path: project.path },
+        project.path,
+      )
+      return result.success
+    } catch {
+      return false
+    }
   },
 
   hasUnsavedNovelConfig: (projectPath) => !!getProjectEditorDraft(readConfigDraftLedger(), projectPath),

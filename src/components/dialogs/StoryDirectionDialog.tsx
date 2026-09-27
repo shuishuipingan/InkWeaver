@@ -6,6 +6,10 @@ import type { CharacterRosterSnapshot } from '../../shared/character-roster'
 import { countDraftUnits } from '../../shared/draft-units'
 import { textFingerprint } from '../../shared/character-extraction'
 import {
+  parseExplicitTerminologyReplacements,
+  replaceTerminologyText,
+} from '../../shared/story-direction-terminology'
+import {
   STORY_DIRECTION_CORE_FIELDS,
   type StoryDirectionBlueprintChange,
   type StoryDirectionSnapshot,
@@ -130,6 +134,9 @@ export default function StoryDirectionDialog({ open, onClose, onApplied }: Props
 
   const editable = useMemo(() => snapshot
     ? selectedBlueprints(snapshot, startChapter, endChapter) : [], [snapshot, startChapter, endChapter])
+  const explicitTerminologyReplacements = useMemo(
+    () => parseExplicitTerminologyReplacements(idea.trim()), [idea],
+  )
   const unfinishedDraftCount = snapshot?.drafts.filter(draft => draft.status !== 'finalized'
     && draft.chapterNumber >= startChapter && draft.chapterNumber <= endChapter).length ?? 0
   const batches = useMemo(() => Array.from({ length: Math.ceil(editable.length / BATCH_SIZE) }, (_, index) =>
@@ -140,7 +147,9 @@ export default function StoryDirectionDialog({ open, onClose, onApplied }: Props
   const estimatedCalls = 1 + batches.length + characterBatches.length
   const candidateDraftEstimate = snapshot && partial
     ? new Set(snapshot.drafts.filter(draft => draft.status !== 'finalized'
-      && partial.chapterChanges.some(item => item.chapterNumber === draft.chapterNumber))
+      && draft.chapterNumber >= partial.start && draft.chapterNumber <= partial.end
+      && (partial.core.terminologyReplacements.length > 0
+        || partial.chapterChanges.some(item => item.chapterNumber === draft.chapterNumber)))
       .map(draft => draft.chapterNumber)).size
     : 0
   const busy = phase === 'generating' || phase === 'applying' || phase === 'drafts'
@@ -211,8 +220,9 @@ export default function StoryDirectionDialog({ open, onClose, onApplied }: Props
             title: item.title, type: item.type, targetStartChapter: item.targetStartChapter,
             targetEndChapter: item.targetEndChapter, authorIntent: compact(item.authorIntent, 300),
           })),
-          outputContract: {
-            coreChanges: '仅包含需要修改的 coreOutline/worldSetting/protagonistProfile/globalGuidance/premise/worldbuilding/synopsis/goldenFinger 字符串字段',
+            outputContract: {
+              terminologyReplacements: [{ from: '作者明确要求替换的原名', to: '作者指定的新名' }],
+              coreChanges: '仅包含需要修改的 coreOutline/worldSetting/protagonistProfile/globalGuidance/premise/worldbuilding/synopsis/goldenFinger 字符串字段',
             characterChanges: [{ name: '只允许已有角色名', changes: { personality: '需要修改时的新性格', abilities: '需要修改时的新能力', arc: '需要修改时的新角色弧光' } }],
             newNarrativeThreads: [{ title: '需要新增时的线索标题', type: '线索类型', authorIntent: '作者预期的埋设与回收', targetStartChapter: startChapter, targetEndChapter: endChapter, lane: 'sub' }],
             summary: '调整摘要', conflicts: ['与已定稿事实冲突或需要作者决定的事项'],
@@ -221,7 +231,7 @@ export default function StoryDirectionDialog({ open, onClose, onApplied }: Props
       ), snapshot.core, roster?.status === 'ready' ? roster.entries.map(entry => entry.name) : [],
       snapshot.threadPlans.map(item => item.title),
       Math.max(0, ...snapshot.drafts.filter(draft => draft.status === 'finalized').map(draft => draft.chapterNumber)),
-      snapshot.core.totalChapters)
+      snapshot.core.totalChapters, explicitTerminologyReplacements)
       let plan: PartialPlan = existing ?? {
         fingerprint: snapshot.fingerprint, idea: normalizedIdea, start: startChapter, end: endChapter,
         rosterRevision: roster?.revision ?? null,
@@ -261,10 +271,11 @@ export default function StoryDirectionDialog({ open, onClose, onApplied }: Props
         try {
           const content = await requestModel(
             modelId, 'story-direction-blueprints',
-            '你是长篇小说编辑。逐章调整需要受新想法影响的未定稿章节蓝图；无须改变的章节不返回。保留人物名单和作者备注，只输出 JSON 对象。',
+            '你是长篇小说编辑。逐章调整需要受新想法影响的未定稿章节蓝图；无须改变的章节不返回。保留人物名单和作者备注，只输出 JSON 对象。人物名单的确定改名由系统同步，不要改 characters。',
             JSON.stringify({
               newIdea: normalizedIdea,
               globalChanges: core.changes,
+              terminologyReplacements: core.terminologyReplacements,
               relevantCharacterChanges: plan.core.characterChanges.filter(change =>
                 batch.some(item => item.characters.includes(change.name))),
               previousApprovedBatchChanges: priorChanges.slice(-20).map(item => ({
@@ -281,7 +292,7 @@ export default function StoryDirectionDialog({ open, onClose, onApplied }: Props
               outputContract: { changes: [{ chapterNumber: 1, changes: { purpose: '更新后的章节目的', keyEvents: '更新后的关键事件', userGuidance: '后续写作指导' } }] },
             }), 16_384,
           )
-          return decodeBlueprintDirectionChanges(content, batch)
+          return decodeBlueprintDirectionChanges(content, batch, plan.core.terminologyReplacements)
         } catch (reason) {
           if (batch.length > 1 && String(reason).includes('（length）')) {
             const middle = Math.ceil(batch.length / 2)
@@ -310,7 +321,8 @@ export default function StoryDirectionDialog({ open, onClose, onApplied }: Props
     if (!snapshot || !partial || !projectSession || partial.nextBatch !== batches.length) return
     if (activeRuns.length > 0) { setError('有工作流正在运行，请完成后再提交方向调整'); return }
     if (useProjectStore.getState().hasUnsavedNovelConfig(projectSession.projectPath)
-      || (partial.core.characterChanges.length > 0 && useCharacterStore.getState().hasUnsavedCharacterDraft(projectSession.projectPath))
+      || ((partial.core.characterChanges.length > 0 || partial.core.terminologyReplacements.length > 0)
+        && useCharacterStore.getState().hasUnsavedCharacterDraft(projectSession.projectPath))
       || useEditorStore.getState().tabs.some(tab => tab.projectKey === projectSession.projectPath
         && tab.dirty && ['config', 'chapter-card', 'world-building', 'arch-file'].includes(tab.type))) {
       setError('项目配置或架构/蓝图仍有未保存编辑，请先保存后重新生成方案')
@@ -326,21 +338,61 @@ export default function StoryDirectionDialog({ open, onClose, onApplied }: Props
           blueprintChanges: partial.chapterChanges,
           characterChanges: partial.core.characterChanges,
           newNarrativeThreads: partial.core.newNarrativeThreads,
-          ...(partial.core.characterChanges.length > 0 ? { expectedRosterRevision: partial.rosterRevision ?? undefined } : {}),
+          terminologyReplacements: partial.core.terminologyReplacements,
+          ...(partial.core.characterChanges.length > 0 || partial.core.terminologyReplacements.length > 0
+            ? { expectedRosterRevision: partial.rosterRevision ?? undefined } : {}),
+          ...(includeDrafts && partial.core.terminologyReplacements.length > 0
+            ? { draftCandidateChapterNumbers: snapshot.drafts
+              .filter(draft => draft.status !== 'finalized'
+                && draft.chapterNumber >= partial.start && draft.chapterNumber <= partial.end)
+              .map(draft => draft.chapterNumber) }
+            : {}),
           idea: partial.idea,
           modelId: partial.modelId,
           generateDraftCandidates: includeDrafts,
         }, projectSession.projectPath,
       ), '提交全书方向调整')
       if (!result.snapshot || !isProjectSessionCurrent(projectSession)) return
-      const configChanges = Object.fromEntries(Object.entries(partial.core.changes)
-        .filter(([field]) => CONFIG_KEYS.has(field)))
-      useProjectStore.getState().syncCommittedNovelConfig(configChanges, projectSession)
+      const protectedCharacterNames = roster?.status === 'ready'
+        ? roster.entries.map(entry => entry.name)
+        : []
+      const currentNovelConfig = useProjectStore.getState().currentProject?.novelConfig
+      if (currentNovelConfig) {
+        const mappedConfig = Object.fromEntries(Object.entries(currentNovelConfig).map(([field, value]) => [
+          field,
+          typeof value === 'string'
+            ? replaceTerminologyText(value, partial.core.terminologyReplacements,
+              protectedCharacterNames)
+            : value,
+        ])) as Partial<typeof currentNovelConfig>
+        const configChanges = Object.fromEntries(Object.entries(partial.core.changes)
+          .filter(([field]) => CONFIG_KEYS.has(field))
+          .map(([field, value]) => [field, replaceTerminologyText(value, partial.core.terminologyReplacements,
+            protectedCharacterNames)]))
+        useProjectStore.getState().syncCommittedNovelConfig({ ...mappedConfig, ...configChanges }, projectSession)
+      }
+      const currentProjectName = useProjectStore.getState().currentProject?.name
+      if (currentProjectName) {
+        const nextProjectName = replaceTerminologyText(
+          currentProjectName, partial.core.terminologyReplacements, protectedCharacterNames,
+        )
+        if (nextProjectName !== currentProjectName) {
+          const recentProjectSaved = await useProjectStore.getState()
+            .syncCommittedProjectName(nextProjectName, projectSession)
+          if (!recentProjectSaved && isProjectSessionCurrent(projectSession)) {
+            globalEventBus.emit('SYSTEM_NOTICE', {
+              level: 'warn',
+              message: text('方向调整已提交，但最近项目名称同步失败。重新打开项目后会自动校正。',
+                'The story plan was applied, but the recent-project label did not sync. Reopening the project will refresh it.'),
+            })
+          }
+        }
+      }
       globalEventBus.emit('REFRESH_RESOURCE', {
         resources: ['blueprints', 'characterCards', 'fileTree'], projectPath: projectSession.projectPath, projectSession,
       })
-      for (const field of ['premise', 'worldbuilding', 'synopsis']) {
-        if (field in partial.core.changes) globalEventBus.emit('ARCH_FILE_UPDATED', {
+      for (const field of ['premise', 'worldbuilding', 'synopsis', 'characters']) {
+        if (field in partial.core.changes || partial.core.terminologyReplacements.length > 0) globalEventBus.emit('ARCH_FILE_UPDATED', {
           fileName: `${field}.md`, projectPath: projectSession.projectPath, projectSession,
           runId: `story-direction-${partial.fingerprint.slice(0, 12)}`,
         })
@@ -363,7 +415,10 @@ export default function StoryDirectionDialog({ open, onClose, onApplied }: Props
 
   const generateDraftCandidates = async (applied: StoryDirectionSnapshot, run: StoryDirectionRun, retryChapters?: Set<number>) => {
     if (!projectSession) return
-    const changed = new Set(run.blueprintChanges.map(item => item.chapterNumber))
+    const changed = new Set([
+      ...run.blueprintChanges.map(item => item.chapterNumber),
+      ...(run.terminologyReplacements.length > 0 ? run.drafts.map(item => item.chapterNumber) : []),
+    ])
     const pending = new Set(run.drafts.filter(item => item.status !== 'completed'
       && (!retryChapters || retryChapters.has(item.chapterNumber))).map(item => item.draftId))
     const latest = new Map<number, (typeof applied.drafts)[number]>()
@@ -395,17 +450,23 @@ export default function StoryDirectionDialog({ open, onClose, onApplied }: Props
           .filter(item => item.chapterNumber < draft.chapterNumber
             && applied.drafts.some(candidate => candidate.chapterNumber === item.chapterNumber && candidate.status === 'finalized'))
           .slice(-12).map(item => ({ chapterNumber: item.chapterNumber, title: item.title, notes: compact(item.notes, 240) }))
-        const content = await requestModel(
+        const rawContent = await requestModel(
           (useLLMStore.getState().models.some(model => model.id === run.modelId)
             ? run.modelId : useLLMStore.getState().defaultModelId) || '', 'story-direction-draft-candidate',
           '你是长篇小说修稿编辑。按新故事方向改写这份未定稿草稿，保留其他重要事实、人物声线和情节连续性。返回完整修订正文，不要解释或 JSON。',
           JSON.stringify({ idea: run.idea, globalDirection: run.coreChanges,
-            characterChanges: run.characterChanges.filter(change => blueprint?.characters.includes(change.name)),
+            terminologyReplacements: run.terminologyReplacements,
+            characterChanges: run.characterChanges.map(change => ({
+              ...change,
+              name: run.terminologyReplacements.find(pair => pair.from === change.name)?.to ?? change.name,
+            })).filter(change => blueprint?.characters.includes(change.name)),
             newNarrativeThreads: run.newNarrativeThreads.filter(thread =>
               draft.chapterNumber >= thread.targetStartChapter && draft.chapterNumber <= thread.targetEndChapter),
             blueprint, priorFinalized, originalDraft: full.content }),
           65_536, false,
         )
+        const content = replaceTerminologyText(rawContent, run.terminologyReplacements,
+          roster?.status === 'ready' ? roster.entries.map(entry => entry.name) : [])
         if (!content.trim()) throw new Error('模型返回了空修稿')
         if (content.trim().length < Math.max(5, full.content.trim().length * 0.4)) {
           throw new Error('候选修稿过短，已拒绝保存不完整正文')
@@ -442,7 +503,9 @@ export default function StoryDirectionDialog({ open, onClose, onApplied }: Props
       rosterRevision: roster?.revision ?? null,
       start: startChapter, end: endChapter,
       core: { changes: latestRun.coreChanges, characterChanges: latestRun.characterChanges,
-        newNarrativeThreads: latestRun.newNarrativeThreads, summary: '已提交的全书方向调整', conflicts: [] },
+        newNarrativeThreads: latestRun.newNarrativeThreads,
+        terminologyReplacements: latestRun.terminologyReplacements,
+        summary: '已提交的全书方向调整', conflicts: [] },
       chapterChanges: latestRun.blueprintChanges, nextCharacterBatch: characterBatches.length, nextBatch: batches.length,
     })
     await generateDraftCandidates(snapshot, latestRun)
@@ -485,6 +548,13 @@ export default function StoryDirectionDialog({ open, onClose, onApplied }: Props
           </>}
           {(phase === 'preview' || phase === 'applying' || phase === 'drafts' || phase === 'done') && partial && snapshot && <>
             <p className="font-medium">{partial.core.summary || text('全书调整方案', 'Story adjustment plan')}</p>
+            {partial.core.terminologyReplacements.length > 0 && <div className="rounded border border-[var(--color-border)] p-3 text-xs space-y-2">
+              <p className="font-medium">{text('全书术语与角色名替换', 'Book-wide term and character-name replacements')}</p>
+              <div className="space-y-1">
+                {partial.core.terminologyReplacements.map(pair => <p key={pair.from}>{pair.from} → {pair.to}</p>)}
+              </div>
+              <p className="opacity-75">{text('确认后同步更新项目配置、角色卡、关系、蓝图与叙事线索。未定稿正文只生成可审阅候选修稿，已定稿正文不会改动。', 'Confirmation updates project settings, character cards, relationships, blueprints, and narrative threads. Unfinished prose gets reviewable candidate revisions; finalized prose stays unchanged.')}</p>
+            </div>}
             {partial.core.conflicts.length > 0 && <div className="rounded border border-amber-500 p-3 text-xs space-y-1">
               <p className="font-medium">{text('需要作者核对的已定稿事实', 'Finalized facts to review')}</p>
               {partial.core.conflicts.map((item, index) => <p key={index}>{item}</p>)}
@@ -529,7 +599,7 @@ export default function StoryDirectionDialog({ open, onClose, onApplied }: Props
             ? <Button variant="outline" onClick={() => { cancelled.current = true }}>{text('当前请求完成后停止', 'Stop after current request')}</Button>
             : <Button variant="outline" onClick={close}>{text('关闭', 'Close')}</Button>}
           {phase === 'input' && <Button disabled={!canStart} onClick={() => void generate()}>{text(partial ? '继续生成' : '生成调整方案', partial ? 'Resume generation' : 'Generate plan')}</Button>}
-          {phase === 'preview' && <Button onClick={() => void apply()} disabled={activeRuns.length > 0 || (!!partial?.core.conflicts.length && !acknowledgedConflicts) || (Object.keys(partial?.core.changes ?? {}).length === 0 && (partial?.chapterChanges.length ?? 0) === 0 && (partial?.core.characterChanges.length ?? 0) === 0 && (partial?.core.newNarrativeThreads.length ?? 0) === 0)}>{text('确认并应用规划', 'Confirm and apply plan')}</Button>}
+          {phase === 'preview' && <Button onClick={() => void apply()} disabled={activeRuns.length > 0 || (!!partial?.core.conflicts.length && !acknowledgedConflicts) || (Object.keys(partial?.core.changes ?? {}).length === 0 && (partial?.chapterChanges.length ?? 0) === 0 && (partial?.core.characterChanges.length ?? 0) === 0 && (partial?.core.newNarrativeThreads.length ?? 0) === 0 && (partial?.core.terminologyReplacements.length ?? 0) === 0)}>{text('确认并应用规划', 'Confirm and apply plan')}</Button>}
           {phase === 'done' && draftFailures.length > 0 && snapshot && latestRun && <Button onClick={() => void generateDraftCandidates(snapshot, latestRun, new Set(draftFailures.map(item => item.chapter)))}>{text('重试失败的候选修稿', 'Retry failed candidate revisions')}</Button>}
         </div>
       </DialogContent>

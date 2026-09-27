@@ -47,6 +47,19 @@ function textValue(value: unknown): string {
   return typeof value === 'string' ? value.trim().slice(0, MAX_REPAIR_CONTEXT_CHARACTERS) : ''
 }
 
+function factBoundedFallbackHook(blueprint: JsonRecord, english: boolean): string {
+  const fact = textValue(blueprint.keyEvents ?? blueprint.key_events)
+    || textValue(blueprint.purpose)
+    || textValue(blueprint.title)
+  if (!fact) throw new Error('缺少可用于安全补全悬念钩子的章节事实')
+  const prefix = english ? 'How will “' : '围绕“'
+  const suffix = english ? '” shape what follows?' : '”，后续会怎样发展？'
+  const limit = BLUEPRINT_SEMANTIC_CONTRACT_MANIFEST.outputLimits.suspenseHookCharacters
+  const available = Math.max(1, limit - Array.from(prefix + suffix).length)
+  const boundedFact = Array.from(fact).slice(0, available).join('')
+  return `${prefix}${boundedFact}${suffix}`
+}
+
 function parseCandidate(content: string): { root: unknown; blueprints: JsonRecord[] } {
   let parsed: unknown
   try {
@@ -176,6 +189,20 @@ export function buildMissingSuspenseHookRepairPlan(
         applied += 1
       }
       if (applied !== repairs.length) throw new Error('悬念钩子补全目标未全部找到')
+      return JSON.stringify(candidate.root)
+    },
+    recoverWithoutModel(candidateContent) {
+      const candidate = parseCandidate(candidateContent)
+      let applied = 0
+      for (const blueprint of candidate.blueprints) {
+        const chapterNumber = readChapterNumber(blueprint)
+        if (chapterNumber === undefined || !expectedItems.has(chapterNumber)) continue
+        const currentHook = blueprint.suspenseHook ?? blueprint.suspense_hook
+        if (typeof currentHook === 'string' && currentHook.trim()) continue
+        blueprint.suspenseHook = factBoundedFallbackHook(blueprint, english)
+        applied += 1
+      }
+      if (applied !== chapterNumbers.length) throw new Error('无法从原有章节事实补全全部悬念钩子')
       return JSON.stringify(candidate.root)
     },
   }

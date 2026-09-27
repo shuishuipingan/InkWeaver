@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { decodeBlueprintDirectionChanges, decodeCoreDirectionChanges } from '../story-direction-planner'
 import type { BlueprintData } from '../../../electron/repositories/blueprint-repository'
 import type { ProjectCoreData } from '../../../electron/repositories/project-core-repository'
+import { parseExplicitTerminologyReplacements } from '../../shared/story-direction-terminology'
 
 const core = { premise: '主角独自面对危机', globalGuidance: '' } as ProjectCoreData
 const blueprint = {
@@ -19,6 +20,7 @@ describe('story direction proposal contract', () => {
       changes: { premise: '第二人格在危机时帮助主角' },
       characterChanges: [],
       newNarrativeThreads: [],
+      terminologyReplacements: [],
       summary: '增加人格伏笔', conflicts: ['第1章已定稿，不能改写'],
     })
   })
@@ -30,6 +32,21 @@ describe('story direction proposal contract', () => {
     expect(result.changes.protagonistProfile).toContain('第二人格定位')
     expect(result.changes.protagonistProfile).toContain('短暂接管身体')
     expect(result.summary).toContain('第二人格定位→protagonistProfile')
+  })
+
+  it('accepts structured terminology mappings from coreChanges and keeps them outside project text fields', () => {
+    const replacements = parseExplicitTerminologyReplacements('幽狼换成凤凰，黑虫系统换成智虫')
+    const result = decodeCoreDirectionChanges(JSON.stringify({
+      coreChanges: {
+        terminology: { 幽狼: '凤凰', 黑虫系统: '智虫' },
+      },
+    }), core, [], [], 0, 100, replacements)
+
+    expect(result.changes).toEqual({})
+    expect(result.terminologyReplacements).toEqual([
+      { from: '幽狼', to: '凤凰' },
+      { from: '黑虫系统', to: '智虫' },
+    ])
   })
 
   it('accepts bounded updates to known character cards only', () => {
@@ -70,5 +87,35 @@ describe('story direction proposal contract', () => {
     expect(decodeBlueprintDirectionChanges(JSON.stringify({
       changes: [{ chapterNumber: 2, changes: { purpose: '第二人格帮主角脱险' } }],
     }), [blueprint])).toEqual([{ chapterNumber: 2, changes: { purpose: '第二人格帮主角脱险' } }])
+  })
+
+  it('accepts a cast list changed only by explicit terminology replacements without emitting a roster edit', () => {
+    const castBlueprint: BlueprintData = { ...blueprint, characters: ['幽狼', '黑虫系统'] }
+    const replacements = parseExplicitTerminologyReplacements('幽狼换成凤凰，黑虫系统换成智虫')
+
+    expect(decodeBlueprintDirectionChanges(JSON.stringify({
+      changes: [{ chapterNumber: 2, changes: { characters: ['凤凰', '智虫'], purpose: '凤凰发现智虫系统的痕迹' } }],
+    }), [castBlueprint], replacements)).toEqual([{
+      chapterNumber: 2,
+      changes: { purpose: '凤凰发现智虫系统的痕迹' },
+    }])
+  })
+
+  it('also ignores the original cast list when a model echoes it beside explicit mappings', () => {
+    const castBlueprint: BlueprintData = { ...blueprint, characters: ['幽狼', '黑虫系统'] }
+    const replacements = parseExplicitTerminologyReplacements('幽狼换成凤凰，黑虫系统换成智虫')
+
+    expect(decodeBlueprintDirectionChanges(JSON.stringify({
+      changes: [{ chapterNumber: 2, changes: { characters: ['幽狼', '黑虫系统'], purpose: '主角借此找到线索' } }],
+    }), [castBlueprint], replacements)).toEqual([{
+      chapterNumber: 2,
+      changes: { purpose: '主角借此找到线索' },
+    }])
+  })
+
+  it('ignores an unchanged cast list echoed as context by the model', () => {
+    expect(decodeBlueprintDirectionChanges(JSON.stringify({
+      changes: [{ chapterNumber: 2, changes: { characters: ['主角'], purpose: '主角在危机中脱险' } }],
+    }), [blueprint])).toEqual([{ chapterNumber: 2, changes: { purpose: '主角在危机中脱险' } }])
   })
 })

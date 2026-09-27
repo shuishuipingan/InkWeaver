@@ -2,6 +2,7 @@ import type { BlueprintData } from '../../electron/repositories/blueprint-reposi
 import type { ProjectCoreData } from '../../electron/repositories/project-core-repository'
 import type { CharacterRosterEntry } from './character-roster'
 import type { NarrativeThreadPlanInput } from './narrative-thread'
+import type { StoryDirectionTerminologyReplacement } from './story-direction-terminology'
 
 export const STORY_DIRECTION_CORE_FIELDS = [
   'coreOutline', 'worldSetting', 'protagonistProfile', 'globalGuidance',
@@ -36,6 +37,9 @@ export interface StoryDirectionApplyRequest {
   blueprintChanges: StoryDirectionBlueprintChange[]
   characterChanges?: Array<{ name: string; changes: Partial<Pick<CharacterRosterEntry, StoryDirectionCharacterField>> }>
   expectedRosterRevision?: number
+  terminologyReplacements?: StoryDirectionTerminologyReplacement[]
+  /** Draft chapters that should receive reviewable candidate revisions for explicit terminology changes. */
+  draftCandidateChapterNumbers?: number[]
   idea?: string
   modelId?: string
   generateDraftCandidates?: boolean
@@ -48,6 +52,7 @@ export interface StoryDirectionRun {
   modelId: string
   coreChanges: StoryDirectionApplyRequest['coreChanges']
   characterChanges: NonNullable<StoryDirectionApplyRequest['characterChanges']>
+  terminologyReplacements: NonNullable<StoryDirectionApplyRequest['terminologyReplacements']>
   newNarrativeThreads: NarrativeThreadPlanInput[]
   blueprintChanges: StoryDirectionBlueprintChange[]
   drafts: Array<{ draftId: number; chapterNumber: number; status: 'pending' | 'failed' | 'completed'; revisionId?: number; error?: string }>

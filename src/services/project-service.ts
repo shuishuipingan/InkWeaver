@@ -14,6 +14,7 @@
 
 import { globalEventBus, type EventPayloadMap } from '../shared/event-bus'
 import type { ProjectSessionContext } from '../shared/ipc-channels'
+import { ipc } from './ipc-client'
 import { useProjectStore } from '../stores/project-store'
 import { useCharacterStore } from '../stores/character-store'
 import { useDraftStore } from '../stores/draft-store'
@@ -22,6 +23,7 @@ import { useWorkflowStore } from '../stores/workflow-store'
 import { useLocaleStore } from '../stores/locale-store'
 import {
   projectSessionContextFromProject,
+  sameProjectPathKey,
   sameProjectSessionContext,
 } from '../shared/project-session-context'
 import {
@@ -32,6 +34,13 @@ import {
 
 /** 存放解绑函数，用于 dispose 时清理 */
 let disposers: Array<() => void> = []
+
+const ARCH_FILE_CORE_FIELDS = {
+  'premise.md': { pathKey: 'premise', coreField: 'premise' },
+  'characters.md': { pathKey: 'characters', coreField: 'charactersArch' },
+  'worldbuilding.md': { pathKey: 'worldbuilding', coreField: 'worldbuilding' },
+  'synopsis.md': { pathKey: 'synopsis', coreField: 'synopsis' },
+} as const
 
 function runProjectEventTask(label: () => string, task: () => Promise<void>): void {
   void task().catch((error) => {
@@ -213,6 +222,45 @@ export function initProjectService(): void {
       }
       },
     ))
+  )
+
+  // A committed project-core change must refresh matching clean architecture tabs.
+  // Dirty tabs are kept intact; their owning flow must stop before changing data.
+  disposers.push(
+    globalEventBus.on('ARCH_FILE_UPDATED', payload => runProjectEventTask(
+      () => text('架构文档刷新失败', 'Could not refresh architecture documents'),
+      async () => {
+        if (!isProjectSessionCurrent(payload.projectSession)) return
+        const mapping = ARCH_FILE_CORE_FIELDS[payload.fileName as keyof typeof ARCH_FILE_CORE_FIELDS]
+        if (!mapping) return
+        const matchingTabs = useEditorStore.getState().tabs.filter(tab => (
+          tab.type === 'arch-file'
+          && tab.filePath === `vela://core/${mapping.pathKey}`
+          && sameProjectPathKey(tab.projectKey, payload.projectPath)
+        ))
+        if (matchingTabs.length === 0) return
+        const core = await ipc.invokeWithProjectSession(
+          payload.projectSession,
+          'db:project-core-get',
+          payload.projectPath,
+        )
+        if (!core || !isProjectSessionCurrent(payload.projectSession)) return
+        const content = String(core[mapping.coreField] ?? '')
+        for (const originalTab of matchingTabs) {
+          const tab = useEditorStore.getState().tabs.find(item => (
+            item.id === originalTab.id
+            && item.instanceId === originalTab.instanceId
+            && item.type === 'arch-file'
+            && item.filePath === `vela://core/${mapping.pathKey}`
+            && sameProjectPathKey(item.projectKey, payload.projectPath)
+          ))
+          if (!tab || tab.dirty) continue
+          const editor = useEditorStore.getState()
+          editor.syncTabContent(tab.id, content)
+          editor.markTabSaved(tab.id, content)
+        }
+      },
+    )),
   )
 
   console.log('[ProjectService] 已初始化，事件监听已注册')

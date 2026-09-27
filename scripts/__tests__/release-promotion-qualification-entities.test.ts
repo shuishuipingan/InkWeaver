@@ -15,7 +15,7 @@ describe('desktop promotion qualification entities', () => {
     const changelog = [
       '# 更新日志',
       '',
-      '## 1.3.2 — 2026-09-27',
+      '## 1.3.3 — 2026-09-28',
       '',
       '- 新增 AI 批量生成章节名。',
       '- 改名覆盖小说配置中的文本字段。',
@@ -24,15 +24,15 @@ describe('desktop promotion qualification entities', () => {
       '',
       '- Added batch AI chapter titles.',
       '',
-      '## 1.3.1 — 2026-09-27',
+      '## 1.3.2 — 2026-09-27',
       '',
       '- 旧版本说明不应混入本次 Release。',
     ].join('\n')
 
-    expect(extractReleaseNotes(changelog, '1.3.2')).toBe(
+    expect(extractReleaseNotes(changelog, '1.3.3')).toBe(
       '- 新增 AI 批量生成章节名。\n- 改名覆盖小说配置中的文本字段。\n\n## What changed\n\n- Added batch AI chapter titles.',
     )
-    expect(() => extractReleaseNotes(changelog, '1.3.3')).toThrow(/CHANGELOG.md/u)
+    expect(() => extractReleaseNotes(changelog, '1.3.4')).toThrow(/CHANGELOG.md/u)
   })
 
   it('requires independent Windows, Apple Silicon, and Intel qualification run identities', () => {

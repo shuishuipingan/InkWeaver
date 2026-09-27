@@ -3,11 +3,13 @@ import { Wand2, Loader2, Check, AlertTriangle, ArrowRight, Replace } from 'lucid
 import { Button } from '../ui/Button'
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../ui/Dialog'
 import { useCharacterStore } from '../../stores/character-store'
+import { useEditorStore } from '../../stores/editor-store'
 import { useProjectStore } from '../../stores/project-store'
 import { useLLMStore } from '../../stores/llm-store'
 import { ipc } from '../../services/ipc-client'
 import { globalEventBus } from '../../shared/event-bus'
 import { countDraftUnits } from '../../shared/draft-units'
+import { replaceCharacterNamesSimultaneously } from '../../shared/character-rename-references'
 import { CharacterRenameLengthError, chunkCharacterRenameRoster, findQuoteWrappedNameCollisions, generateUniqueCharacterRenameBatch, type CharacterRenameRow } from '../../services/character-rename-batches'
 import {
   captureProjectSession,
@@ -23,16 +25,15 @@ interface ApplySummary {
   finalizedSkipped: number
 }
 
-/** 最长优先替换，避免"林岚"误吃"林岚儿"的前缀。 */
-function replaceNamesInText(text: string, renames: Array<{ from: string; to: string }>): string {
-  let out = text
-  const sorted = [...renames].sort((a, b) => b.from.length - a.from.length)
-  for (const r of sorted) {
-    if (r.from && r.to && r.from !== r.to) {
-      out = out.split(r.from).join(r.to)
-    }
-  }
-  return out
+function replaceNamesInText(
+  text: string,
+  renames: Array<{ from: string; to: string }>,
+  protectedNames: string[] = [],
+): string {
+  return replaceCharacterNamesSimultaneously(text, renames.map(rename => ({
+    originalName: rename.from,
+    newName: rename.to,
+  })), protectedNames)
 }
 
 function extractJson(text: string): unknown {
@@ -163,6 +164,15 @@ export default function AIRenameCharactersDialog({ onClose }: { onClose: () => v
     }
     const valid = renames.filter(r => r.to.trim() && r.to.trim() !== r.from)
     if (valid.length === 0) return
+    if (useProjectStore.getState().hasUnsavedNovelConfig(currentProject.path)) {
+      setError(text('项目配置仍有未保存修改，请先保存后再替换角色名。', 'Save or discard pending project settings before replacing character names.'))
+      return
+    }
+    if (useEditorStore.getState().tabs.some(tab => tab.projectKey === currentProject.path
+      && tab.dirty && ['config', 'chapter-card', 'world-building', 'arch-file'].includes(tab.type))) {
+      setError(text('配置、蓝图或架构页仍有未保存修改，请先保存后再替换角色名。', 'Save or discard pending settings, blueprint, or architecture edits before replacing character names.'))
+      return
+    }
     setStep('applying')
     setError(null)
     try {
@@ -174,6 +184,40 @@ export default function AIRenameCharactersDialog({ onClose }: { onClose: () => v
       // 2) 经 roster seam 原子提交：角色主键、关系、蓝图结构化引用、图谱投影
       await useCharacterStore.getState().saveAll(currentProject.path, projectSession)
       if (!isProjectSessionCurrent(projectSession)) return
+
+      // The roster commit rewrites project_core in SQLite; refresh the open
+      // configuration snapshot too, or the editor keeps showing old names.
+      const currentNovelConfig = useProjectStore.getState().currentProject?.novelConfig
+      if (currentNovelConfig) {
+        const nextConfig = Object.fromEntries(Object.entries(currentNovelConfig).map(([key, value]) => [
+          key,
+          typeof value === 'string'
+            ? replaceNamesInText(value,
+              valid.map(rename => ({ from: rename.from, to: rename.to.trim() })),
+              characters.map(character => character.name))
+            : value,
+        ])) as Partial<typeof currentNovelConfig>
+        useProjectStore.getState().syncCommittedNovelConfig(nextConfig, projectSession)
+      }
+      const currentProjectName = useProjectStore.getState().currentProject?.name
+      if (currentProjectName) {
+        const nextProjectName = replaceNamesInText(
+          currentProjectName,
+          valid.map(rename => ({ from: rename.from, to: rename.to.trim() })),
+          characters.map(character => character.name),
+        )
+        if (nextProjectName !== currentProjectName) {
+          const recentProjectSaved = await useProjectStore.getState()
+            .syncCommittedProjectName(nextProjectName, projectSession)
+          if (!recentProjectSaved && isProjectSessionCurrent(projectSession)) {
+            globalEventBus.emit('SYSTEM_NOTICE', {
+              level: 'warn',
+              message: text('角色名已替换，但最近项目名称同步失败。重新打开项目后会自动校正。',
+                'Character names were replaced, but the recent-project label did not sync. Reopening the project will refresh it.'),
+            })
+          }
+        }
+      }
 
       // 3) 正文中的角色名替换（仅未定稿草稿；已定稿正文为不可变事实）
       let proseChapters = 0
@@ -189,7 +233,7 @@ export default function AIRenameCharactersDialog({ onClose }: { onClose: () => v
             projectSession, 'db:draft-get-full', meta.id, currentProject.path,
           )
           if (!full) continue
-          const next = replaceNamesInText(full.content, valid)
+          const next = replaceNamesInText(full.content, valid, characters.map(character => character.name))
           if (next === full.content) continue
           const updated = await ipc.invokeWithProjectSession(
             projectSession, 'db:draft-update-content',
@@ -200,10 +244,16 @@ export default function AIRenameCharactersDialog({ onClose }: { onClose: () => v
       }
 
       globalEventBus.emit('REFRESH_RESOURCE', {
-        resources: ['characterCards', 'drafts'],
+        resources: ['characterCards', 'drafts', 'blueprints', 'fileTree'],
         projectPath: currentProject.path,
         projectSession,
       })
+      for (const fileName of ['premise.md', 'characters.md', 'worldbuilding.md', 'synopsis.md']) {
+        globalEventBus.emit('ARCH_FILE_UPDATED', {
+          fileName, projectPath: currentProject.path, projectSession,
+          runId: `character-rename-${Date.now()}`,
+        })
+      }
       setSummary({
         renamedCards: valid.length,
         proseChapters,
@@ -214,7 +264,7 @@ export default function AIRenameCharactersDialog({ onClose }: { onClose: () => v
       setError(String(e))
       setStep('preview')
     }
-  }, [currentProject, projectSession, renames, replaceProse, text, previewHasInvalidNames])
+  }, [characters, currentProject, projectSession, renames, replaceProse, text, previewHasInvalidNames])
 
   if (!currentProject || !projectSession) return null
 

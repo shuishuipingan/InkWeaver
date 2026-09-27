@@ -18,7 +18,12 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('../ipc-client', () => ({
-  ipc: { invoke: mocks.invoke },
+  ipc: {
+    invoke: mocks.invoke,
+    invokeWithProjectSession: (_projectSession: unknown, channel: string, ...args: unknown[]) => (
+      mocks.invoke(channel, ...args)
+    ),
+  },
 }))
 
 const projectAPath = 'C:\\novels\\A'
@@ -49,6 +54,39 @@ afterEach(() => {
 })
 
 describe('ProjectService REFRESH_RESOURCE project identity', () => {
+  it('reloads clean open architecture tabs from the committed project core and preserves dirty tabs', async () => {
+    const session = { projectId: 'B', leaseId: 'lease-B', projectPath: projectBPath }
+    useEditorStore.setState({
+      tabs: [
+        { id: 'premise', name: '前提', type: 'arch-file', filePath: 'vela://core/premise',
+          projectKey: projectBPath, content: '旧前提', savedContent: '旧前提', dirty: false },
+        { id: 'worldbuilding', name: '世界观', type: 'arch-file', filePath: 'vela://core/worldbuilding',
+          projectKey: projectBPath, content: '作者正在写', savedContent: '旧世界观', dirty: true },
+      ],
+      activeTabId: 'premise', draftLedgers: {},
+    })
+    mocks.invoke.mockImplementation(async (channel: string) => channel === 'db:project-core-get'
+      ? { premise: '替换后的前提', worldbuilding: '替换后的世界观' }
+      : undefined)
+    initProjectService()
+
+    globalEventBus.emit('ARCH_FILE_UPDATED', {
+      fileName: 'premise.md', projectPath: projectBPath, projectSession: session, runId: 'term-replacement',
+    })
+    globalEventBus.emit('ARCH_FILE_UPDATED', {
+      fileName: 'worldbuilding.md', projectPath: projectBPath, projectSession: session, runId: 'term-replacement',
+    })
+
+    await vi.waitFor(() => {
+      expect(useEditorStore.getState().tabs.find(tab => tab.id === 'premise')).toMatchObject({
+        content: '替换后的前提', savedContent: '替换后的前提', dirty: false,
+      })
+    })
+    expect(useEditorStore.getState().tabs.find(tab => tab.id === 'worldbuilding')).toMatchObject({
+      content: '作者正在写', savedContent: '旧世界观', dirty: true,
+    })
+  })
+
   it('J09 drops a late project-A extraction refresh after switching to project B', async () => {
     const sessionA = { projectId: 'A', leaseId: 'lease-A', projectPath: projectAPath }
     const sessionB = { projectId: 'B', leaseId: 'lease-B', projectPath: projectBPath }

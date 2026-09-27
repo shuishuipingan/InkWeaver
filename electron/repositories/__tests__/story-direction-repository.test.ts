@@ -164,6 +164,74 @@ describe('StoryDirectionRepository', () => {
     expect(StoryDirectionRepository.snapshot().blueprints[1].title).toBe('危机')
   })
 
+  it('applies confirmed terminology replacements to settings, roster identities, blueprints, and unfinished draft tasks', () => {
+    db.exec(`
+      CREATE TABLE contents (id INTEGER PRIMARY KEY AUTOINCREMENT, body TEXT NOT NULL);
+      INSERT INTO contents (body) VALUES ('定稿正文：幽狼保留原名，黑虫系统保留原名。');
+      INSERT INTO contents (body) VALUES ('未定稿正文：幽狼与黑虫系统进入山谷。');
+      ALTER TABLE drafts ADD COLUMN content_id INTEGER;
+      UPDATE drafts SET content_id = 1 WHERE id = 1;
+      UPDATE drafts SET content_id = 2 WHERE id = 2;
+      INSERT INTO drafts (id, chapter_number, version, status) VALUES (3, 1, 2, 'draft');
+    `)
+    db.exec(`CREATE TABLE characters (
+      name TEXT PRIMARY KEY, role TEXT DEFAULT 'supporting', gender TEXT DEFAULT '', age TEXT DEFAULT '',
+      appearance TEXT DEFAULT '', personality TEXT DEFAULT '', background TEXT DEFAULT '', abilities TEXT DEFAULT '',
+      motivation TEXT DEFAULT '', relationships TEXT DEFAULT '', arc TEXT DEFAULT '', notes TEXT DEFAULT '',
+      cs_location TEXT DEFAULT '', cs_power_level TEXT DEFAULT '', cs_physical_state TEXT DEFAULT '',
+      cs_mental_state TEXT DEFAULT '', cs_key_items TEXT DEFAULT '', cs_recent_events TEXT DEFAULT '',
+      cs_updated_at_chapter INTEGER DEFAULT NULL, created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    )`)
+    ensureCharacterRosterSchema(db)
+    const roster = CharacterRosterRepository.commit({
+      operationId: 'terminology-roster', expectedRevision: 0, schemaVersion: 1, intent: 'manual_edit',
+      entries: [{ name: '幽狼', role: 'supporting', gender: '', age: '', appearance: '',
+        personality: '警觉', background: '', abilities: '黑虫系统赋予追踪力', motivation: '',
+        relationships: [], arc: '守护山谷', notes: '旧称幽狼的定稿记录', }],
+    })
+    db.prepare("UPDATE project_core SET premise = ?, golden_finger = ? WHERE id = 'main'")
+      .run('幽狼守护山谷', '黑虫系统协助追踪')
+    db.prepare('UPDATE blueprints SET characters = ?, purpose = ?, notes = ? WHERE chapter_number = 1')
+      .run(JSON.stringify(['幽狼']), '幽狼守住入口', '定稿事实：幽狼在此受伤')
+    db.prepare('UPDATE blueprints SET characters = ?, purpose = ? WHERE chapter_number = 2')
+      .run(JSON.stringify(['幽狼']), '黑虫系统发现线索')
+    const before = StoryDirectionRepository.snapshot()
+
+    const applied = StoryDirectionRepository.apply({
+      expectedFingerprint: before.fingerprint,
+      expectedRosterRevision: roster.revision,
+      coreChanges: {},
+      blueprintChanges: [],
+      terminologyReplacements: [
+        { from: '幽狼', to: '凤凰' },
+        { from: '黑虫系统', to: '智虫' },
+      ],
+      draftCandidateChapterNumbers: [1, 2],
+      idea: '幽狼换成凤凰，黑虫系统换成智虫',
+      modelId: 'test-model',
+      generateDraftCandidates: true,
+    })
+
+    expect(applied.snapshot.core.premise).toBe('凤凰守护山谷')
+    expect(applied.snapshot.core.goldenFinger).toBe('智虫协助追踪')
+    expect(CharacterRosterRepository.read().entries).toMatchObject([
+      { name: '凤凰', abilities: '智虫赋予追踪力', notes: '旧称幽狼的定稿记录' },
+    ])
+    expect(applied.snapshot.blueprints.map(item => item.characters)).toEqual([['凤凰'], ['凤凰']])
+    expect(applied.snapshot.blueprints[0].notes).toBe('定稿事实：幽狼在此受伤')
+    expect(StoryDirectionRepository.latestRun()?.drafts).toMatchObject([
+      { draftId: 2, chapterNumber: 2, status: 'pending' },
+    ])
+    expect(StoryDirectionRepository.latestRun()?.terminologyReplacements).toEqual([
+      { from: '幽狼', to: '凤凰' },
+      { from: '黑虫系统', to: '智虫' },
+    ])
+    expect(db.prepare('SELECT body FROM contents WHERE id = 1').get()).toEqual({
+      body: '定稿正文：幽狼保留原名，黑虫系统保留原名。',
+    })
+  })
+
   it('rejects a stale proposal and any finalized-chapter edit without partial writes', () => {
     const snapshot = StoryDirectionRepository.snapshot()
     expect(() => StoryDirectionRepository.apply({

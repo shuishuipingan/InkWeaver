@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { ProjectData } from '../../shared/ipc-channels'
+import { projectSessionContextFromProject } from '../../shared/project-session-context'
 import { checkArchStatusWithWordCount, getBlueprintCount } from '../../services/architecture-service'
 import { useDraftStore } from '../draft-store'
 import { useProjectStore } from '../project-store'
@@ -75,6 +76,30 @@ beforeEach(() => {
 })
 
 describe('project refresh context', () => {
+  it('refreshes a committed project name only for its matching open session', async () => {
+    const current = project('A')
+    const session = projectSessionContextFromProject(current)!
+    useProjectStore.setState({
+      currentProject: current,
+      recentProjects: [{ name: 'A', path: current.path, updatedAt: '2026-09-28T00:00:00.000Z' }],
+    })
+    invoke.mockResolvedValue({ success: true })
+
+    await expect(useProjectStore.getState().syncCommittedProjectName('凤凰的世界', session)).resolves.toBe(true)
+
+    expect(useProjectStore.getState().currentProject?.name).toBe('凤凰的世界')
+    expect(useProjectStore.getState().recentProjects).toEqual([{
+      name: '凤凰的世界', path: current.path, updatedAt: '2026-09-28T00:00:00.000Z',
+    }])
+    expect(invoke).toHaveBeenCalledWith('project:save', current.id, {
+      name: '凤凰的世界', path: current.path,
+    }, current.path)
+
+    useProjectStore.setState({ currentProject: { ...current, sessionLease: 'newer-lease' } })
+    await expect(useProjectStore.getState().syncCommittedProjectName('stale name', session)).resolves.toBe(false)
+    expect(useProjectStore.getState().currentProject?.name).toBe('A')
+  })
+
   it('commits only the latest project-open request when IPC replies out of order', async () => {
     const openAResult = deferred<unknown>()
     const openBResult = deferred<unknown>()

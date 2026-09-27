@@ -4,6 +4,7 @@ import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 
 import { setActiveProjectSessionContext } from '../../../shared/project-session-context'
+import { globalEventBus } from '../../../shared/event-bus'
 import { useProjectStore } from '../../../stores/project-store'
 import { useLLMStore } from '../../../stores/llm-store'
 import { useWorkflowStore } from '../../../stores/workflow-store'
@@ -12,6 +13,7 @@ import type { StoryDirectionRun, StoryDirectionSnapshot } from '../../../shared/
 import StoryDirectionDialog from '../StoryDirectionDialog'
 
 const invoke = vi.fn()
+const syncCommittedProjectName = vi.fn(async () => true)
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
 const projectPath = 'C:\\novels\\direction-test'
@@ -35,16 +37,19 @@ let appliedRun: StoryDirectionRun | null
 
 beforeEach(() => {
   invoke.mockReset()
+  syncCommittedProjectName.mockReset()
+  syncCommittedProjectName.mockResolvedValue(true)
   appliedRun = null
   invoke.mockImplementation(async (channel: string, request: { purpose: string }) => {
     if (channel === 'db:story-direction-snapshot') return snapshot
     if (channel === 'db:character-roster-read') return { status: 'ready', revision: 0, entries: [{ name: '主角', role: 'protagonist', personality: '', abilities: '', arc: '' }] }
     if (channel === 'db:story-direction-latest-run') return appliedRun
     if (channel === 'db:story-direction-apply') {
-      const plan = request as unknown as { idea: string; modelId: string; coreChanges: StoryDirectionRun['coreChanges']; blueprintChanges: StoryDirectionRun['blueprintChanges']; generateDraftCandidates: boolean }
+      const plan = request as unknown as { idea: string; modelId: string; coreChanges: StoryDirectionRun['coreChanges']; blueprintChanges: StoryDirectionRun['blueprintChanges']; terminologyReplacements: StoryDirectionRun['terminologyReplacements']; generateDraftCandidates: boolean }
       appliedRun = {
         id: 'test-run', idea: plan.idea, modelId: plan.modelId, coreChanges: plan.coreChanges,
         characterChanges: [],
+        terminologyReplacements: plan.terminologyReplacements,
         newNarrativeThreads: [],
         blueprintChanges: plan.blueprintChanges,
         drafts: plan.generateDraftCandidates ? [{ draftId: 2, chapterNumber: 2, status: 'pending' }] : [],
@@ -80,6 +85,7 @@ beforeEach(() => {
       novelConfig: { totalChapters: 2 } } as never,
     hasUnsavedNovelConfig: () => false,
     syncCommittedNovelConfig: vi.fn(),
+    syncCommittedProjectName,
   })
   useLLMStore.setState({ defaultModelId: 'model' })
   useWorkflowStore.setState({ activeRuns: [] })
@@ -155,6 +161,7 @@ it('resumes pending candidate revisions after reopening the dialog', async () =>
     id: 'test-run', idea: '主角有第二人格', modelId: 'model',
     coreChanges: { premise: '第二人格在危机时出现' },
     characterChanges: [],
+    terminologyReplacements: [],
     newNarrativeThreads: [],
     blueprintChanges: [{ chapterNumber: 2, changes: { purpose: '第二人格帮助主角脱险' } }],
     drafts: [{ draftId: 2, chapterNumber: 2, status: 'pending' }],
@@ -196,4 +203,61 @@ it('analyzes character cards beyond the first 80 in separate batches', async () 
   await expect.element(page.getByText(/角色卡调整（1 人）/)).toBeVisible()
   expect(invoke.mock.calls.filter(([channel, request]) => channel === 'llm:generate'
     && request.purpose === 'story-direction-characters')).toHaveLength(5)
+})
+
+it('previews explicit term mappings and keeps the same replacements in candidate prose', async () => {
+  const renamedSnapshot: StoryDirectionSnapshot = {
+    ...snapshot,
+    blueprints: snapshot.blueprints.map(blueprint => blueprint.chapterNumber === 2
+      ? { ...blueprint, characters: ['幽狼'] }
+      : blueprint),
+  }
+  const defaultInvoke = invoke.getMockImplementation()!
+  const refreshedArchitectureFiles: string[] = []
+  const unsubscribe = globalEventBus.on('ARCH_FILE_UPDATED', event => refreshedArchitectureFiles.push(event.fileName))
+  const currentProject = useProjectStore.getState().currentProject!
+  useProjectStore.setState({ currentProject: { ...currentProject, name: '幽狼的世界' } })
+  invoke.mockImplementation(async (channel: string, request: { purpose: string; messages?: Array<{ content: string }> }) => {
+    if (channel === 'db:story-direction-snapshot') return renamedSnapshot
+    if (channel === 'db:character-roster-read') return {
+      status: 'ready', revision: 4, entries: [{ name: '幽狼', role: 'protagonist', personality: '', abilities: '', arc: '' }],
+    }
+    if (channel === 'llm:generate' && request.purpose === 'story-direction-global') {
+      return { success: true, finishReason: 'stop', content: JSON.stringify({
+        coreChanges: { terminology: { 幽狼: '凤凰', 黑虫系统: '智虫' } },
+        summary: '替换角色名与系统名', conflicts: [],
+      }) }
+    }
+    if (channel === 'llm:generate' && request.purpose === 'story-direction-blueprints') {
+      return { success: true, finishReason: 'stop', content: JSON.stringify({
+        changes: [{ chapterNumber: 2, changes: { characters: ['凤凰'], purpose: '凤凰使用智虫追踪线索' } }],
+      }) }
+    }
+    if (channel === 'llm:generate' && request.purpose === 'story-direction-draft-candidate') {
+      return { success: true, finishReason: 'stop', content: '幽狼再次检查黑虫系统。' }
+    }
+    if (channel === 'db:draft-get-full') return { id: 2, status: 'draft', content: '幽狼遭遇追兵，黑虫系统记录线索。' }
+    return defaultInvoke(channel, request)
+  })
+
+  await act(async () => root?.render(<StoryDirectionDialog open onClose={vi.fn()} onApplied={vi.fn()} />))
+  await expect.element(page.getByText(/将分析 1 章/)).toBeVisible()
+  await act(async () => page.getByPlaceholder(/主角有第二人格/).fill('幽狼换成凤凰，黑虫系统换成智虫'))
+  await act(async () => page.getByRole('button', { name: '生成调整方案' }).click())
+  await expect.element(page.getByText('幽狼 → 凤凰')).toBeVisible()
+  await expect.element(page.getByText('黑虫系统 → 智虫')).toBeVisible()
+  await act(async () => page.getByRole('button', { name: '确认并应用规划' }).click())
+  await expect.element(page.getByText(/候选修稿成功 1 章/)).toBeVisible()
+
+  const applied = invoke.mock.calls.find(([channel]) => channel === 'db:story-direction-apply')?.[1]
+  expect(applied).toMatchObject({
+    terminologyReplacements: [{ from: '幽狼', to: '凤凰' }, { from: '黑虫系统', to: '智虫' }],
+    expectedRosterRevision: 4,
+    draftCandidateChapterNumbers: [2],
+  })
+  expect(syncCommittedProjectName).toHaveBeenCalledWith('凤凰的世界', session)
+  expect(refreshedArchitectureFiles).toEqual(['premise.md', 'worldbuilding.md', 'synopsis.md', 'characters.md'])
+  const revision = invoke.mock.calls.find(([channel]) => channel === 'db:story-direction-save-candidate')?.[1]
+  expect(revision?.content).toBe('凤凰再次检查智虫。')
+  unsubscribe()
 })

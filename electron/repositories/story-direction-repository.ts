@@ -16,6 +16,12 @@ import {
   type StoryDirectionSnapshot,
   type StoryDirectionRun,
 } from '../../src/shared/story-direction'
+import {
+  normalizeTerminologyReplacements,
+  parseExplicitTerminologyReplacements,
+  replaceTerminologyText,
+  type StoryDirectionTerminologyReplacement,
+} from '../../src/shared/story-direction-terminology'
 
 function dbOrThrow() {
   const db = getProjectDb()
@@ -63,13 +69,15 @@ function assertStringChanges(
 }
 
 function ensureRunSchema(): void {
-  dbOrThrow().exec(`
+  const db = dbOrThrow()
+  db.exec(`
     CREATE TABLE IF NOT EXISTS story_direction_runs (
       id TEXT PRIMARY KEY,
       idea TEXT NOT NULL,
       model_id TEXT NOT NULL,
       core_changes TEXT NOT NULL,
       character_changes TEXT NOT NULL DEFAULT '[]',
+      terminology_replacements TEXT NOT NULL DEFAULT '[]',
       narrative_threads TEXT NOT NULL DEFAULT '[]',
       blueprint_changes TEXT NOT NULL,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -85,6 +93,79 @@ function ensureRunSchema(): void {
       FOREIGN KEY(run_id) REFERENCES story_direction_runs(id) ON DELETE CASCADE
     );
   `)
+  const columns = new Set((db.prepare('PRAGMA table_info(story_direction_runs)').all() as Array<{ name: string }>)
+    .map(column => column.name))
+  if (!columns.has('terminology_replacements')) {
+    db.exec("ALTER TABLE story_direction_runs ADD COLUMN terminology_replacements TEXT NOT NULL DEFAULT '[]'")
+  }
+}
+
+function sameTerminologyReplacements(
+  left: readonly StoryDirectionTerminologyReplacement[],
+  right: readonly StoryDirectionTerminologyReplacement[],
+): boolean {
+  return left.length === right.length && left.every((pair, index) => (
+    pair.from === right[index]?.from && pair.to === right[index]?.to
+  ))
+}
+
+/** Replace terms in user-authored planning fields while leaving immutable chapter notes alone. */
+function replacePlanningTextReferences(
+  db: ReturnType<typeof dbOrThrow>,
+  replacements: readonly StoryDirectionTerminologyReplacement[],
+  protectedNames: readonly string[],
+): void {
+  if (replacements.length === 0) return
+  const rewriteTextColumns = (table: string, key: string, protectedColumns: readonly string[]) => {
+    const columns = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string; type: string }>
+    const textColumns = columns.filter(column => column.type.toUpperCase().includes('TEXT')
+      && column.name !== key && !protectedColumns.includes(column.name))
+    if (textColumns.length === 0) return
+    const rows = db.prepare(`SELECT ${key}, ${textColumns.map(column => column.name).join(', ')} FROM ${table}`)
+      .all() as Array<Record<string, string | number | null>>
+    for (const row of rows) {
+      const changes = textColumns.flatMap(column => {
+        const before = typeof row[column.name] === 'string' ? row[column.name] as string : ''
+        const after = replaceTerminologyText(before, replacements, protectedNames)
+        return after === before ? [] : [{ column: column.name, after }]
+      })
+      if (changes.length > 0) {
+        db.prepare(`UPDATE ${table} SET ${changes.map(change => `${change.column} = ?`).join(', ')} WHERE ${key} = ?`)
+          .run(...changes.map(change => change.after), row[key])
+      }
+    }
+  }
+  rewriteTextColumns('project_core', 'id', ['id', 'created_at', 'updated_at', 'character_states', 'characters_arch'])
+  rewriteTextColumns('blueprints', 'chapter_number', [
+    'chapter_number', 'characters', 'notes', 'notes_updated_at', 'created_at', 'updated_at',
+  ])
+  const hasThreadsTable = !!db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'narrative_thread_plans'").get()
+  if (hasThreadsTable) {
+    rewriteTextColumns('narrative_thread_plans', 'id', ['id', 'created_at', 'updated_at'])
+  }
+}
+
+function replaceRosterPlanningFields(
+  value: ReturnType<typeof CharacterRosterRepository.read>['entries'][number],
+  replacements: readonly StoryDirectionTerminologyReplacement[],
+  protectedNames: readonly string[],
+): typeof value {
+  const rewrite = (field: string) => replaceTerminologyText(
+    value[field as keyof typeof value] as string, replacements, protectedNames,
+  )
+  return {
+    ...value,
+    appearance: rewrite('appearance'),
+    personality: rewrite('personality'),
+    background: rewrite('background'),
+    abilities: rewrite('abilities'),
+    motivation: rewrite('motivation'),
+    arc: rewrite('arc'),
+    relationships: value.relationships.map(relationship => ({
+      ...relationship,
+      relation: replaceTerminologyText(relationship.relation, replacements, protectedNames),
+    })),
+  }
 }
 
 export class StoryDirectionRepository {
@@ -100,6 +181,21 @@ export class StoryDirectionRepository {
         throw new Error('项目规划或章节状态已变化，请重新生成方向调整预览')
       }
       assertStringChanges(request.coreChanges as Record<string, unknown>, STORY_DIRECTION_CORE_FIELDS, '项目配置')
+      const authorTerminologyReplacements = parseExplicitTerminologyReplacements(request.idea ?? '')
+      const suppliedTerminologyReplacements = normalizeTerminologyReplacements(request.terminologyReplacements)
+      if (authorTerminologyReplacements.length > 0 && suppliedTerminologyReplacements.length > 0
+        && !sameTerminologyReplacements(authorTerminologyReplacements, suppliedTerminologyReplacements)) {
+        throw new Error('术语替换必须与作者明确提出的名称映射一致')
+      }
+      const terminologyReplacements = suppliedTerminologyReplacements.length > 0
+        ? suppliedTerminologyReplacements
+        : authorTerminologyReplacements
+      if (!Array.isArray(request.draftCandidateChapterNumbers ?? [])
+        || (request.draftCandidateChapterNumbers?.length ?? 0) > 10_000
+        || (request.draftCandidateChapterNumbers ?? []).some(chapterNumber => !Number.isSafeInteger(chapterNumber) || chapterNumber < 1)
+        || new Set(request.draftCandidateChapterNumbers ?? []).size !== (request.draftCandidateChapterNumbers?.length ?? 0)) {
+        throw new Error('方向调整候选草稿章节列表无效')
+      }
       if (!Array.isArray(request.blueprintChanges) || request.blueprintChanges.length > 1_000) {
         throw new Error('章节蓝图变更数量无效')
       }
@@ -124,18 +220,28 @@ export class StoryDirectionRepository {
         }
       }
       if (Object.keys(request.coreChanges).length === 0 && request.blueprintChanges.length === 0) {
-        if (!request.characterChanges?.length && !request.newNarrativeThreads?.length) {
+        if (!request.characterChanges?.length && !request.newNarrativeThreads?.length && terminologyReplacements.length === 0) {
           throw new Error('方向调整方案没有可提交的变更')
         }
       }
       const characterChanges = request.characterChanges ?? []
       if (!Array.isArray(characterChanges) || characterChanges.length > 1_000) throw new Error('角色变更数量无效')
       let roster: ReturnType<typeof CharacterRosterRepository.read> | null = null
-      if (characterChanges.length > 0) {
+      if (characterChanges.length > 0 || terminologyReplacements.length > 0) {
         roster = CharacterRosterRepository.read()
-        if (roster.status !== 'ready' || roster.revision !== request.expectedRosterRevision) {
+        if (characterChanges.length > 0 && roster.status !== 'ready') {
           throw new Error('角色名单已变化或不可安全更新，请重新生成预览')
         }
+        if (terminologyReplacements.length > 0 && !['ready', 'empty'].includes(roster.status)) {
+          throw new Error('角色名单当前不可安全更新，请先完成修复后再应用术语替换')
+        }
+        if (roster.status === 'ready'
+          && (characterChanges.length > 0 || terminologyReplacements.length > 0)
+          && roster.revision !== request.expectedRosterRevision) {
+          throw new Error('角色名单已变化或不可安全更新，请重新生成预览')
+        }
+      }
+      if (characterChanges.length > 0 && roster?.status === 'ready') {
         const existingNames = new Set(roster.entries.map(entry => entry.name))
         const seenNames = new Set<string>()
         for (const item of characterChanges) {
@@ -143,6 +249,21 @@ export class StoryDirectionRepository {
           seenNames.add(item.name)
           assertStringChanges(item.changes as Record<string, unknown>, STORY_DIRECTION_CHARACTER_FIELDS, '角色卡')
         }
+      }
+      const rosterRenames = roster?.status === 'ready'
+        ? terminologyReplacements.filter(pair => roster!.entries.some(entry => entry.name === pair.from))
+        : []
+      if (roster?.status === 'ready' && rosterRenames.length > 0) {
+        const renamedSources = new Set(rosterRenames.map(pair => pair.from))
+        const existingNames = new Set(roster.entries.map(entry => entry.name))
+        const finalNames = new Set(roster.entries.filter(entry => !renamedSources.has(entry.name)).map(entry => entry.name))
+        for (const rename of rosterRenames) {
+          if (existingNames.has(rename.to) && !renamedSources.has(rename.to)) {
+            throw new Error(`新角色名「${rename.to}」已由其他角色使用`)
+          }
+          finalNames.add(rename.to)
+        }
+        if (finalNames.size !== roster.entries.length) throw new Error('角色改名会造成重复姓名')
       }
       const newThreads = request.newNarrativeThreads ?? []
       if (!Array.isArray(newThreads) || newThreads.length > 50) throw new Error('新增叙事线索数量无效')
@@ -166,7 +287,28 @@ export class StoryDirectionRepository {
           : item.changes
         BlueprintRepository.upsert({ ...byChapter.get(item.chapterNumber)!, ...changes })
       }
-      if (roster) {
+      if (roster?.status === 'ready' && terminologyReplacements.length > 0) {
+        const changesByName = new Map(characterChanges.map(item => [item.name, item.changes]))
+        const renameByName = new Map(rosterRenames.map(item => [item.from, item.to]))
+        const protectedNames = roster.entries.map(entry => entry.name)
+        CharacterRosterRepository.commit({
+          operationId: `story-direction-${randomUUID()}`,
+          expectedRevision: roster.revision,
+          schemaVersion: CHARACTER_ROSTER_SCHEMA_VERSION,
+          intent: 'manual_edit',
+          renames: rosterRenames.map(pair => ({ originalName: pair.from, newName: pair.to })),
+          entries: roster.entries.map(entry => {
+            const safeEntry = replaceRosterPlanningFields(entry, terminologyReplacements, protectedNames)
+            const changes = changesByName.get(entry.name)
+            const candidate = {
+              ...safeEntry,
+              ...(changes ?? {}),
+              name: renameByName.get(entry.name) ?? entry.name,
+            }
+            return replaceRosterPlanningFields(candidate, terminologyReplacements, protectedNames)
+          }),
+        })
+      } else if (roster?.status === 'ready' && characterChanges.length > 0) {
         const byName = new Map(characterChanges.map(item => [item.name, item.changes]))
         CharacterRosterRepository.commit({
           operationId: `story-direction-${randomUUID()}`,
@@ -183,26 +325,46 @@ export class StoryDirectionRepository {
         })
       }
       for (const thread of newThreads) NarrativeThreadRepository.createPlan(thread)
+      replacePlanningTextReferences(db, terminologyReplacements,
+        roster?.status === 'ready' ? roster.entries.map(entry => entry.name) : [])
       const snapshot = readSnapshot()
       let runId: string | undefined
       if (request.idea?.trim()) {
         ensureRunSchema()
         runId = randomUUID()
-        db.prepare(`INSERT INTO story_direction_runs (id, idea, model_id, core_changes, character_changes, narrative_threads, blueprint_changes)
-          VALUES (?, ?, ?, ?, ?, ?, ?)`).run(
+        db.prepare(`INSERT INTO story_direction_runs (id, idea, model_id, core_changes, character_changes, terminology_replacements, narrative_threads, blueprint_changes)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(
           runId, request.idea.trim().slice(0, 4_000), request.modelId ?? '',
           JSON.stringify(request.coreChanges), JSON.stringify(request.characterChanges ?? []),
-          JSON.stringify(newThreads), JSON.stringify(request.blueprintChanges),
+          JSON.stringify(terminologyReplacements), JSON.stringify(newThreads), JSON.stringify(request.blueprintChanges),
         )
         if (request.generateDraftCandidates) {
-          const affected = new Set(request.blueprintChanges.map(item => item.chapterNumber))
+          const affected = new Set([
+            ...request.blueprintChanges.map(item => item.chapterNumber),
+            ...(terminologyReplacements.length > 0 ? request.draftCandidateChapterNumbers ?? [] : []),
+          ])
+          const finalizedChapters = new Set(before.drafts.filter(draft => draft.status === 'finalized')
+            .map(draft => draft.chapterNumber))
           const latest = new Map<number, (typeof before.drafts)[number]>()
           for (const draft of before.drafts) {
-            if (!affected.has(draft.chapterNumber) || draft.status === 'finalized') continue
+            if (!affected.has(draft.chapterNumber) || draft.status === 'finalized'
+              || finalizedChapters.has(draft.chapterNumber)) continue
             if ((latest.get(draft.chapterNumber)?.version ?? -1) < draft.version) latest.set(draft.chapterNumber, draft)
           }
           const insert = db.prepare(`INSERT INTO story_direction_drafts (run_id, draft_id, chapter_number) VALUES (?, ?, ?)`)
-          for (const draft of latest.values()) insert.run(runId, draft.id, draft.chapterNumber)
+          const hasContentId = (db.prepare('PRAGMA table_info(drafts)').all() as Array<{ name: string }>)
+            .some(column => column.name === 'content_id')
+          const hasContentsTable = !!db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'contents'").get()
+          const readDraftBody = hasContentId && hasContentsTable
+            ? db.prepare('SELECT content.body FROM drafts JOIN contents AS content ON content.id = drafts.content_id WHERE drafts.id = ?')
+            : null
+          for (const draft of latest.values()) {
+            if (terminologyReplacements.length > 0 && !request.blueprintChanges.some(item => item.chapterNumber === draft.chapterNumber)) {
+              const body = readDraftBody?.get(draft.id) as { body?: string } | undefined
+              if (typeof body?.body === 'string' && !terminologyReplacements.some(pair => body.body!.includes(pair.from))) continue
+            }
+            insert.run(runId, draft.id, draft.chapterNumber)
+          }
         }
       }
       return { snapshot, ...(runId ? { runId } : {}) }
@@ -213,7 +375,7 @@ export class StoryDirectionRepository {
     ensureRunSchema()
     const db = dbOrThrow()
     const row = db.prepare('SELECT * FROM story_direction_runs ORDER BY created_at DESC, rowid DESC LIMIT 1')
-      .get() as { id: string; idea: string; model_id: string; core_changes: string; character_changes: string; narrative_threads: string; blueprint_changes: string } | undefined
+      .get() as { id: string; idea: string; model_id: string; core_changes: string; character_changes: string; terminology_replacements: string; narrative_threads: string; blueprint_changes: string } | undefined
     if (!row) return null
     const drafts = db.prepare('SELECT * FROM story_direction_drafts WHERE run_id = ? ORDER BY chapter_number, draft_id')
       .all(row.id) as Array<{ draft_id: number; chapter_number: number; status: StoryDirectionRun['drafts'][number]['status']; revision_id: number | null; error: string | null }>
@@ -221,6 +383,7 @@ export class StoryDirectionRepository {
       id: row.id, idea: row.idea, modelId: row.model_id,
       coreChanges: JSON.parse(row.core_changes) as StoryDirectionRun['coreChanges'],
       characterChanges: JSON.parse(row.character_changes) as StoryDirectionRun['characterChanges'],
+      terminologyReplacements: JSON.parse(row.terminology_replacements ?? '[]') as StoryDirectionRun['terminologyReplacements'],
       newNarrativeThreads: JSON.parse(row.narrative_threads) as StoryDirectionRun['newNarrativeThreads'],
       blueprintChanges: JSON.parse(row.blueprint_changes) as StoryDirectionRun['blueprintChanges'],
       drafts: drafts.map(draft => ({

@@ -2,6 +2,20 @@
 
 本文件按用户可见行为记录变更。桌面版本不发布 npm；DSH 插件沿用已发布的 `1.2.0` 包。`1.2.0` 已从同一源码 commit 完成工程验收、三平台资产回读和正式 Release；`1.1.0` 的历史 Release 收据保留在 `docs/upgrade/`，不与 1.2.0 混用。
 
+## 1.3.3 — 2026-09-28
+
+- 全书方向调整支持作者明确提出的术语映射，例如“幽狼换成凤凰，黑虫系统换成智虫”。确认后会同步更新小说文本配置、角色卡、蓝图角色引用、规划文本和叙事线索；未定稿正文只创建可逐章审阅的候选修稿，定稿正文与章节事实备注保持不变。
+- 修复模型把 `terminology` 作为对象、或回显蓝图 `characters` 列表时整批方向调整被字段合同拒绝的问题。确认术语映射后，会刷新当前配置、项目名、最近项目标签及已打开的架构页，避免旧值随后覆盖新值。
+- 蓝图生成缺少 `suspenseHook` 且模型补全请求失败时，会依据本章已有事件生成提问式悬念钩子，不增添新的剧情事实，继续校验后再提交。
+- 「AI 批量改章名」可从「章节蓝图」工具栏打开，为未定稿章节批量生成标题，预览、编辑并逐章选择应用；已定稿章节自动跳过。
+
+## What's changed
+
+- Story direction adjustment now accepts explicit terminology mappings such as “幽狼换成凤凰，黑虫系统换成智虫”. After confirmation, it updates textual project settings, character cards, blueprint cast references, planning prose, and narrative threads. Unfinished prose receives reviewable per-chapter candidate revisions; finalized prose and chapter fact notes remain unchanged.
+- Fixed batch direction plans being rejected when a model returns a structured `terminology` mapping or echoes the unchanged/mapped blueprint `characters` list. Confirmed mappings now refresh the open settings, project name, recent-project label, and open architecture tabs so stale values cannot overwrite them later.
+- If the model cannot complete a missing `suspenseHook`, blueprint generation can derive a question from that chapter's existing event facts without adding new plot events, then validates the full contract before saving.
+- The “AI Batch Chapter Titles” dialog is available from the Chapter Blueprints toolbar. It generates titles for unfinished chapters in batches and lets authors review, edit, and select titles before applying; finalized chapters are skipped.
+
 ## 1.3.2 — 2026-09-27
 
 正式 Release：<https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.3.2>
