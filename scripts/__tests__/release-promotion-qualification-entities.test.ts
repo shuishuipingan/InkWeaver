@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
+  extractReleaseNotes,
   parseQualificationRuns,
   validatePromotionProfile,
 } from '../../.release/scripts/github-desktop-promotion.mjs'
@@ -10,6 +11,30 @@ const repositoryRoot = path.resolve(import.meta.dirname, '..', '..')
 const profile = JSON.parse(readFileSync(path.join(repositoryRoot, '.release', 'release-profile.json'), 'utf8'))
 
 describe('desktop promotion qualification entities', () => {
+  it('extracts only the changelog section for the qualified release version', () => {
+    const changelog = [
+      '# 更新日志',
+      '',
+      '## 1.3.2 — 2026-09-27',
+      '',
+      '- 新增 AI 批量生成章节名。',
+      '- 改名覆盖小说配置中的文本字段。',
+      '',
+      '## What changed',
+      '',
+      '- Added batch AI chapter titles.',
+      '',
+      '## 1.3.1 — 2026-09-27',
+      '',
+      '- 旧版本说明不应混入本次 Release。',
+    ].join('\n')
+
+    expect(extractReleaseNotes(changelog, '1.3.2')).toBe(
+      '- 新增 AI 批量生成章节名。\n- 改名覆盖小说配置中的文本字段。\n\n## What changed\n\n- Added batch AI chapter titles.',
+    )
+    expect(() => extractReleaseNotes(changelog, '1.3.3')).toThrow(/CHANGELOG.md/u)
+  })
+
   it('requires independent Windows, Apple Silicon, and Intel qualification run identities', () => {
     const validated = validatePromotionProfile(profile)
     const entities = Object.keys(validated.platforms).sort()

@@ -74,6 +74,26 @@ export function parseQualificationRuns(text, requiredPlatforms) {
   }));
 }
 
+export function extractReleaseNotes(changelog, version) {
+  if (typeof changelog !== "string" || !/^\d+\.\d+\.\d+$/.test(version)) {
+    throw new Error("CHANGELOG.md release version is invalid");
+  }
+  const escapedVersion = version.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const lines = changelog.split(/\r?\n/);
+  const sectionStart = lines.findIndex((line) => new RegExp(`^##\\s+${escapedVersion}(?:\\s|$)`, "u").test(line));
+  if (sectionStart < 0) throw new Error(`CHANGELOG.md is missing release notes for ${version}`);
+  let sectionEnd = lines.length;
+  for (let index = sectionStart + 1; index < lines.length; index += 1) {
+    if (/^##\s+\d+\.\d+\.\d+(?:\s|$)/u.test(lines[index])) {
+      sectionEnd = index;
+      break;
+    }
+  }
+  const notes = lines.slice(sectionStart + 1, sectionEnd).join("\n").trim();
+  if (!notes || notes.length > 16_000) throw new Error(`CHANGELOG.md release notes for ${version} are empty or too long`);
+  return notes;
+}
+
 export function validatePromotionProfile(profile) {
   const baseValidation = validateReleaseProfile(profile);
   if (!baseValidation.ok) throw new Error(`release profile is invalid: ${baseValidation.errors.join("; ")}`);
@@ -497,13 +517,13 @@ async function findRelease(api, repository, tag) {
   return matches[0] || null;
 }
 
-function expectedReleaseProvenance(tag, expectedSha, assets, qualifications) {
+function expectedReleaseProvenance(tag, expectedSha, assets, qualifications, releaseNotes) {
   const lines = [...assets.values()].sort((a, b) => a.name.localeCompare(b.name)).map((asset) => `- ${asset.name}: sha256:${asset.sha256}`);
   const signingLines = [...qualifications].sort((a, b) => a.platform.localeCompare(b.platform)).map((qualification) =>
     `- ${qualification.platform}: ${qualification.signing.status}; validation=${qualification.signing.validationResult}; unsigned-impact=${qualification.signing.unsignedDistributionImpact}`);
   return {
     title: tag,
-    body: [`Qualified desktop release ${tag}`, "", `Source: ${expectedSha}`, "", "Verified assets:", ...lines, "", "Signing and notarization disclosure:", ...signingLines].join("\n"),
+    body: [releaseNotes, "", `Qualified desktop release ${tag}`, "", `Source: ${expectedSha}`, "", "Verified assets:", ...lines, "", "Signing and notarization disclosure:", ...signingLines].join("\n"),
   };
 }
 
@@ -642,7 +662,9 @@ async function verifyCommand(options) {
     await rm(output, { recursive: true, force: true });
     await mkdir(output, { recursive: true });
     for (const asset of releaseAssets.values()) await copyFile(asset.source, join(output, asset.name));
-    const provenance = expectedReleaseProvenance(tag, expectedSha, releaseAssets, qualifications);
+    const changelog = await readFile(resolve("CHANGELOG.md"), "utf8");
+    const releaseNotes = extractReleaseNotes(changelog, version);
+    const provenance = expectedReleaseProvenance(tag, expectedSha, releaseAssets, qualifications, releaseNotes);
     const plan = {
       schemaVersion: 1,
       qualificationRepository,

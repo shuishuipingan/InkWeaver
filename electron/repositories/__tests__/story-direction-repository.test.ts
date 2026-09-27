@@ -152,12 +152,29 @@ describe('StoryDirectionRepository', () => {
     expect(next.snapshot.blueprints[1].characters).toEqual(['主角'])
   })
 
+  it('rejects blank and overlong chapter titles before applying a batch', () => {
+    const snapshot = StoryDirectionRepository.snapshot()
+    for (const title of ['', '题'.repeat(61)]) {
+      expect(() => StoryDirectionRepository.apply({
+        expectedFingerprint: snapshot.fingerprint,
+        coreChanges: {},
+        blueprintChanges: [{ chapterNumber: 2, changes: { title } }],
+      })).toThrow(/标题/u)
+    }
+    expect(StoryDirectionRepository.snapshot().blueprints[1].title).toBe('危机')
+  })
+
   it('rejects a stale proposal and any finalized-chapter edit without partial writes', () => {
     const snapshot = StoryDirectionRepository.snapshot()
     expect(() => StoryDirectionRepository.apply({
       expectedFingerprint: snapshot.fingerprint,
       coreChanges: { premise: '错误覆盖' },
       blueprintChanges: [{ chapterNumber: 1, changes: { purpose: '改写定稿章' } }],
+    })).toThrow(/已定稿/)
+    expect(() => StoryDirectionRepository.apply({
+      expectedFingerprint: snapshot.fingerprint,
+      coreChanges: {},
+      blueprintChanges: [{ chapterNumber: 1, changes: { title: '改写定稿标题' } }],
     })).toThrow(/已定稿/)
     expect(StoryDirectionRepository.snapshot().core.premise).toBe('主角只有一个人格')
     db.prepare("UPDATE project_core SET premise = '作者新改的设定' WHERE id = 'main'").run()

@@ -6,16 +6,22 @@ import '../../../index.css'
 
 let root: Root | undefined
 let host: HTMLDivElement | undefined
+let motionStyle: HTMLStyleElement | undefined
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
 afterEach(async () => {
   await act(async () => root?.unmount())
   host?.remove()
+  motionStyle?.remove()
   root = undefined
   host = undefined
+  motionStyle = undefined
 })
 
 it('keeps a long dialog inside the viewport and lets its final action be reached', async () => {
+  motionStyle = document.createElement('style')
+  motionStyle.textContent = '[data-state="open"] { animation: none !important; transition: none !important; }'
+  document.head.append(motionStyle)
   host = document.createElement('div')
   document.body.append(host)
   root = createRoot(host)

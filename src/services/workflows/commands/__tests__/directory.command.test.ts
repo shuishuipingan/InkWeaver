@@ -527,7 +527,7 @@ describe('GenerateDirectoryCommand', () => {
       .toHaveLength(1)
     expect(createRuntime).toHaveBeenCalledWith({
       budget: {
-        maxAttempts: 15,
+        maxAttempts: 17,
         maxRequestedOutputTokens: 131_072,
         maxRequestedOutputTokensPerAttempt: 16_384,
         respectIntentOutputCaps: true,
@@ -571,7 +571,7 @@ describe('GenerateDirectoryCommand', () => {
     expect(observedRanges).toEqual([[10, 14], [15, 19], [20, 20]])
     expect(createRuntime).toHaveBeenCalledWith({
       budget: {
-        maxAttempts: 23,
+        maxAttempts: 26,
         maxRequestedOutputTokens: 131_072,
         maxRequestedOutputTokensPerAttempt: 16_384,
         respectIntentOutputCaps: true,
@@ -740,7 +740,7 @@ describe('GenerateDirectoryCommand', () => {
       .toHaveLength(1)
     expect(createRuntime).toHaveBeenCalledWith({
       budget: {
-        maxAttempts: 11,
+        maxAttempts: 12,
         maxRequestedOutputTokens: 131_072,
         maxRequestedOutputTokensPerAttempt: 16_384,
         respectIntentOutputCaps: true,

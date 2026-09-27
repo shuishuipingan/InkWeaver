@@ -6,7 +6,10 @@ import {
   type GenerationSession,
   type GenerationTask,
 } from '../generation/generation-harness'
-import { structuredContractDiagnostic } from '../../shared/structured-contract-diagnostic'
+import {
+  structuredContractDiagnostic,
+  type StructuredContractDiagnostic,
+} from '../../shared/structured-contract-diagnostic'
 import type { WritingLanguage } from '../../shared/writing-language'
 import {
   buildStructuredSyntaxRepairTask,
@@ -15,6 +18,12 @@ import {
 } from './structured-syntax-repair'
 
 export type StructuredItemKey = string | number
+
+export interface StructuredBatchSemanticRepairPlan {
+  task: GenerationTask
+  /** Applies only validated repair data to the original response evidence. */
+  applyRepair(candidateContent: string, repairContent: string): string
+}
 
 export interface StructuredBatchContract<TInput, TOutput> {
   buildTask(input: {
@@ -42,6 +51,12 @@ export interface StructuredBatchContract<TInput, TOutput> {
   syntaxRepairContract?(input: { items: readonly TInput[] }): string
   /** Planning contracts may opt into same-budget retries for malformed batches. */
   retryInvalidOutputWithSmallerBatch?: boolean
+  /** Repairs a narrow semantic omission without replacing the rest of the candidate. */
+  buildSemanticRepairPlan?(input: {
+    items: readonly TInput[]
+    candidateContent: string
+    diagnostic: StructuredContractDiagnostic
+  }): StructuredBatchSemanticRepairPlan | undefined
 }
 
 export type StructuredGenerationFailureReason =
@@ -57,6 +72,8 @@ export interface StructuredBatchLimits {
   maxBatchItems: number
   /** Total compact single-item attempts; each input key may consume at most one. */
   maxCompactSingleFallbacks?: number
+  /** Bounded additional structured calls for contract-specific semantic omissions. */
+  maxSemanticRepairCalls?: number
 }
 
 export interface StructuredBatchReceipt {
@@ -65,6 +82,7 @@ export interface StructuredBatchReceipt {
   requestedTokens: number
   attempts: readonly GenerationAttemptReceipt[]
   compactSingleFallbackCount?: number
+  semanticRepairCallCount?: number
 }
 
 export interface StructuredBatchFailure {
@@ -153,6 +171,7 @@ export function createStructuredBatchExecutor<TInput, TOutput>(dependencies: {
         requestedTokens: 0,
         attempts: attemptReceipts,
         compactSingleFallbackCount: 0,
+        semanticRepairCallCount: 0,
       }
       const validated: TOutput[] = []
       let repairUsed = false
@@ -184,6 +203,18 @@ export function createStructuredBatchExecutor<TInput, TOutput>(dependencies: {
             code: 'limit_exceeded',
             reason: 'invalid_limit',
             message: '紧凑单项重建上限必须是非负整数',
+          },
+          receipt,
+        }
+      }
+      const maxSemanticRepairCalls = input.limits.maxSemanticRepairCalls ?? 0
+      if (!Number.isInteger(maxSemanticRepairCalls) || maxSemanticRepairCalls < 0) {
+        return {
+          ok: false,
+          failure: {
+            code: 'limit_exceeded',
+            reason: 'invalid_limit',
+            message: '结构化语义修复上限必须是非负整数',
           },
           receipt,
         }
@@ -431,22 +462,91 @@ export function createStructuredBatchExecutor<TInput, TOutput>(dependencies: {
           if (!Array.isArray(decoded)) throw new TypeError('decoder did not return an array')
         } catch (error) {
           const diagnostic = structuredContractDiagnostic(error)
-          throw new ExecutionFailure({
-            code: 'invalid_output',
-            reason: diagnostic
-              ? 'invalid_item'
-              : syntaxRepairApplied
-              ? 'malformed_output'
-              : 'invalid_item',
-            message: diagnostic
-              ? diagnostic.message
-              : syntaxRepairApplied
-              ? '结构化输出经一次语法修复后仍无法按合同解码'
-              : '结构化输出无法按合同解码',
-            ...(diagnostic
-              ? { diagnostic: { code: diagnostic.code, path: diagnostic.path, field: diagnostic.field } }
-              : {}),
-          })
+          let repairPlan: StructuredBatchSemanticRepairPlan | undefined
+          if (diagnostic && (receipt.semanticRepairCallCount ?? 0) < maxSemanticRepairCalls) {
+            try {
+              repairPlan = contract.buildSemanticRepairPlan?.({
+                items: [...items],
+                candidateContent,
+                diagnostic,
+              })
+            } catch {
+              repairPlan = undefined
+            }
+          }
+          if (!repairPlan) {
+            throw new ExecutionFailure({
+              code: 'invalid_output',
+              reason: diagnostic
+                ? 'invalid_item'
+                : syntaxRepairApplied
+                ? 'malformed_output'
+                : 'invalid_item',
+              message: diagnostic
+                ? diagnostic.message
+                : syntaxRepairApplied
+                ? '结构化输出经一次语法修复后仍无法按合同解码'
+                : '结构化输出无法按合同解码',
+              ...(diagnostic
+                ? { diagnostic: { code: diagnostic.code, path: diagnostic.path, field: diagnostic.field } }
+                : {}),
+            })
+          }
+          if (repairPlan.task.output !== 'structured-data') {
+            throw new ExecutionFailure({
+              code: 'invalid_output',
+              reason: 'invalid_item',
+              message: '结构化语义补全必须请求 structured-data 输出',
+              ...(diagnostic
+                ? { diagnostic: { code: diagnostic.code, path: diagnostic.path, field: diagnostic.field } }
+                : {}),
+            })
+          }
+          const repaired = await session.complete({
+            ...repairPlan.task,
+            reasoningStage: 'planning',
+          }, { signal: input.signal })
+          recordAttempt(repaired.receipt)
+          receipt.semanticRepairCallCount = (receipt.semanticRepairCallCount ?? 0) + 1
+          if (input.signal?.aborted || repaired.finishReason === 'cancelled') {
+            throw new ExecutionFailure({
+              code: 'cancelled',
+              reason: 'cancelled',
+              message: '结构化语义补全已取消',
+            })
+          }
+          if (repaired.status !== 'completed' || repaired.finishReason !== 'stop') {
+            const reason: StructuredGenerationFailureReason = repaired.finishReason === 'content_filter'
+              ? 'safety'
+              : repaired.finishReason === 'error'
+                ? 'server_error'
+                : 'unknown'
+            throw new ExecutionFailure({
+              code: repaired.finishReason === 'length' ? 'limit_exceeded' : 'generation_failed',
+              reason: repaired.finishReason === 'length' ? 'output_limit' : reason,
+              message: `结构化语义补全未正常完成：${repaired.finishReason}；${diagnostic?.message ?? '原始输出缺少必填内容'}`,
+            })
+          }
+          try {
+            candidateContent = repairPlan.applyRepair(candidateContent, repaired.content)
+            decoded = contract.decode(candidateContent)
+            if (!Array.isArray(decoded)) throw new TypeError('decoder did not return an array')
+          } catch (repairError) {
+            const repairedDiagnostic = structuredContractDiagnostic(repairError)
+            const reportedDiagnostic = repairedDiagnostic ?? diagnostic
+            throw new ExecutionFailure({
+              code: 'invalid_output',
+              reason: repairedDiagnostic || diagnostic ? 'invalid_item' : 'malformed_output',
+              message: repairedDiagnostic?.message
+                ?? diagnostic?.message
+                ?? (syntaxRepairApplied
+                  ? '结构化输出经一次语义补全和语法修复后仍无法按合同解码'
+                  : '结构化输出经语义补全后仍无法按合同解码'),
+              ...(reportedDiagnostic
+                ? { diagnostic: { code: reportedDiagnostic.code, path: reportedDiagnostic.path, field: reportedDiagnostic.field } }
+                : {}),
+            })
+          }
         }
         for (const output of decoded) {
           let error: string | undefined

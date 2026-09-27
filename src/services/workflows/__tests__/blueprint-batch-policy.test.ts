@@ -18,11 +18,12 @@ describe('blueprint batch policy', () => {
       chapterCount: 5,
       semanticBatchCount: 1,
       expectedCalls: 1,
-      maxCalls: 11,
+      maxCalls: 12,
+      maxSemanticRepairCalls: 1,
       maxCompactSingleFallbacks: 1,
       exceedsHardLimit: false,
       runtimeBudget: {
-        maxAttempts: 11,
+        maxAttempts: 12,
         maxRequestedOutputTokens: 131_072,
         maxRequestedOutputTokensPerAttempt: 16_384,
         respectIntentOutputCaps: true,
@@ -32,11 +33,12 @@ describe('blueprint batch policy', () => {
     expect(planBlueprintGenerationCost(11)).toMatchObject({
       semanticBatchCount: 3,
       expectedCalls: 3,
-      maxCalls: 23,
+      maxCalls: 26,
+      maxSemanticRepairCalls: 3,
       maxCompactSingleFallbacks: 3,
       exceedsHardLimit: false,
       runtimeBudget: {
-        maxAttempts: 23,
+        maxAttempts: 26,
         maxRequestedOutputTokens: 131_072,
         maxRequestedOutputTokensPerAttempt: 16_384,
       },
@@ -45,6 +47,7 @@ describe('blueprint batch policy', () => {
       semanticBatchCount: 10,
       expectedCalls: 10,
       maxCalls: 32,
+      maxSemanticRepairCalls: 10,
       maxCompactSingleFallbacks: 10,
       exceedsHardLimit: false,
       runtimeBudget: {
@@ -57,6 +60,7 @@ describe('blueprint batch policy', () => {
       semanticBatchCount: 11,
       expectedCalls: 11,
       maxCalls: 32,
+      maxSemanticRepairCalls: 11,
       maxCompactSingleFallbacks: 11,
       exceedsHardLimit: true,
       runtimeBudget: { maxAttempts: 32, maxRequestedOutputTokens: 262_144 },
@@ -65,10 +69,10 @@ describe('blueprint batch policy', () => {
 
   it('explains batching and throughput tradeoffs in both interface languages', () => {
     expect(getBlueprintBatchAdvice('zh-CN', 7)).toContain('预计至少 2 次模型调用')
-    expect(getBlueprintBatchAdvice('zh-CN', 7)).toContain('最多允许 15 次')
+    expect(getBlueprintBatchAdvice('zh-CN', 7)).toContain('最多允许 17 次')
     expect(getBlueprintBatchAdvice('zh-CN', 7)).toContain('达到输出限制时会自动继续拆分')
     expect(getBlueprintBatchAdvice('en-US')).toContain('at most 5 chapters')
     expect(getBlueprintBatchAdvice('en-US')).toContain('more time and API calls')
-    expect(getBlueprintBatchAdvice('en-US', 7)).toContain('task allowance: up to 15')
+    expect(getBlueprintBatchAdvice('en-US', 7)).toContain('task allowance: up to 17')
   })
 })

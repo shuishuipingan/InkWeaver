@@ -2,6 +2,20 @@
 
 本文件按用户可见行为记录变更。桌面版本不发布 npm；DSH 插件沿用已发布的 `1.2.0` 包。`1.2.0` 已从同一源码 commit 完成工程验收、三平台资产回读和正式 Release；`1.1.0` 的历史 Release 收据保留在 `docs/upgrade/`，不与 1.2.0 混用。
 
+## 1.3.2 — 2026-09-27
+
+正式 Release：<https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.3.2>
+
+- 蓝图生成遇到已完成的 JSON 少了 `suspenseHook` 时，会追加一次只补缺失钩子的结构化请求，并保留原蓝图其余字段；补全仍须通过章节合同校验。
+- 角色名替换现在还会同步小说名、流派、受众、故事模型、叙事视角等文本型配置字段。语言、创作策略、数字设置和已定稿事实备注不会被改写。
+- 「章节蓝图」新增「AI 批量改章名」。AI 按现有章节信息分批生成标题；作者可预览、编辑、逐章勾选后应用，已定稿章节自动跳过，提交时检查蓝图快照避免覆盖并发修改。
+
+## What's changed
+
+- Blueprint generation now makes one bounded, field-only follow-up request when a completed JSON response omits `suspenseHook`. It patches only that field and validates the complete chapter contract before saving.
+- Bulk character renaming now updates the project name and text-based novel settings such as genre, target audience, plot model, and narrative point of view. Language, creative strategy, numeric settings, and finalized fact notes remain untouched.
+- Added AI batch chapter-title generation to the Chapter Blueprints toolbar. Authors can preview, edit, select, and apply suggestions; finalized chapters are skipped and snapshot checks reject stale updates.
+
 ## 1.3.1 — 2026-09-27
 
 正式 Release：<https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.3.1>

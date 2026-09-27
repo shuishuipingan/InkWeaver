@@ -7,6 +7,7 @@ import { CharacterRosterRepository } from './character-roster-repository'
 import { RevisionRepository } from './revision-repository'
 import { NarrativeThreadRepository } from './narrative-thread-repository'
 import { CHARACTER_ROSTER_SCHEMA_VERSION } from '../../src/shared/character-roster'
+import { BLUEPRINT_SEMANTIC_CONTRACT_MANIFEST } from '../../src/shared/blueprint-semantic-contract'
 import {
   STORY_DIRECTION_BLUEPRINT_FIELDS,
   STORY_DIRECTION_CHARACTER_FIELDS,
@@ -115,6 +116,12 @@ export class StoryDirectionRepository {
         const current = byChapter.get(item.chapterNumber)
         if (!current) throw new Error(`第 ${item.chapterNumber} 章蓝图不存在`)
         assertStringChanges(item.changes as Record<string, unknown>, STORY_DIRECTION_BLUEPRINT_FIELDS, '章节蓝图')
+        if (Object.hasOwn(item.changes, 'title')) {
+          const title = item.changes.title!.trim()
+          if (!title || Array.from(title).length > BLUEPRINT_SEMANTIC_CONTRACT_MANIFEST.outputLimits.titleCharacters) {
+            throw new Error(`第 ${item.chapterNumber} 章标题无效：标题不能为空且不得超过 ${BLUEPRINT_SEMANTIC_CONTRACT_MANIFEST.outputLimits.titleCharacters} 个字符`)
+          }
+        }
       }
       if (Object.keys(request.coreChanges).length === 0 && request.blueprintChanges.length === 0) {
         if (!request.characterChanges?.length && !request.newNarrativeThreads?.length) {
@@ -154,7 +161,10 @@ export class StoryDirectionRepository {
       }
       if (Object.keys(request.coreChanges).length > 0) ProjectCoreRepository.update(request.coreChanges)
       for (const item of request.blueprintChanges) {
-        BlueprintRepository.upsert({ ...byChapter.get(item.chapterNumber)!, ...item.changes })
+        const changes = Object.hasOwn(item.changes, 'title')
+          ? { ...item.changes, title: item.changes.title!.trim() }
+          : item.changes
+        BlueprintRepository.upsert({ ...byChapter.get(item.chapterNumber)!, ...changes })
       }
       if (roster) {
         const byName = new Map(characterChanges.map(item => [item.name, item.changes]))

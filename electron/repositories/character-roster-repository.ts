@@ -794,12 +794,13 @@ function updatePlanningTextReferencesForManualEdit(
 ): void {
   if (renames.length === 0) return
   const coreFields = [
+    'project_name', 'genre', 'sub_genre', 'target_audience', 'plot_structure', 'narrative_pov',
     'premise', 'worldbuilding', 'synopsis', 'core_outline', 'world_setting',
     'protagonist_profile', 'global_guidance', 'golden_finger',
     'writing_style', 'reference_works',
   ]
-  // notes and character_states can project finalized facts; keep that
-  // authority immutable even when planning names change.
+  // Fixed-choice fields, numeric settings, and character_states are not
+  // planning prose; chapter notes can project finalized facts.
   const blueprintFields = ['title', 'purpose', 'key_events', 'suspense_hook', 'user_guidance']
   const available = (table: string) => new Set(
     (db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>).map(column => column.name),

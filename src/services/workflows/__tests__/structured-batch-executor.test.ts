@@ -1118,6 +1118,75 @@ describe('StructuredBatchExecutor seam', () => {
     expect(result).not.toHaveProperty('items')
   })
 
+  it('repairs a missing blueprint suspense hook with a field-only structured follow-up', async () => {
+    type BlueprintWithHook = Blueprint & { suspenseHook: string }
+    const initialContent = JSON.stringify({ blueprints: [{ chapterNumber: 1, title: '夜航' }] })
+    const repairedContent = JSON.stringify({ repairs: [{ chapterNumber: 1, suspenseHook: '门内传来第二次敲击' }] })
+    const complete = vi.fn<GenerationSession['complete']>(async task => ({
+      status: 'completed',
+      content: task.purpose === 'chapter-blueprints' ? initialContent : repairedContent,
+      finishReason: 'stop',
+      receipt: attemptReceipt(task.purpose === 'chapter-blueprints' ? 1 : 2, 100, task.purpose === 'chapter-blueprints' ? 100 : 200, 'stop'),
+    }))
+    const contract = {
+      ...blueprintContract,
+      decode: (content: string): BlueprintWithHook[] => {
+        const payload = JSON.parse(content) as { blueprints: Array<Blueprint & { suspenseHook?: string }> }
+        const first = payload.blueprints[0]
+        if (first && !first.suspenseHook) {
+          throw new StructuredContractDiagnostic('missing_field', 'blueprints[0].suspenseHook')
+        }
+        return payload.blueprints as BlueprintWithHook[]
+      },
+      buildSemanticRepairPlan: (input: {
+        items: readonly number[]
+        candidateContent: string
+        diagnostic: StructuredContractDiagnostic
+      }) => {
+        if (
+          input.items.length !== 1
+          || input.items[0] !== 1
+          || input.diagnostic.field !== 'suspenseHook'
+          || !input.candidateContent.includes('"chapterNumber":1')
+        ) return undefined
+        return ({
+        task: {
+          purpose: 'chapter-blueprints:missing-field-repair',
+          output: 'structured-data' as const,
+          messages: [{ role: 'user' as const, content: '补全第 1 章缺失的悬念钩子' }],
+        },
+        applyRepair: (candidateContent: string, repairContent: string) => {
+          const original = JSON.parse(candidateContent) as { blueprints: Array<Blueprint & { suspenseHook?: string }> }
+          const repair = JSON.parse(repairContent) as { repairs: Array<{ chapterNumber: number; suspenseHook: string }> }
+          const hook = repair.repairs.find(item => item.chapterNumber === 1)?.suspenseHook
+          if (!hook) throw new Error('repair did not return the requested field')
+          original.blueprints[0]!.suspenseHook = hook
+          return JSON.stringify(original)
+        },
+      })
+      },
+    } as unknown as StructuredBatchContract<number, BlueprintWithHook>
+    const executor = createStructuredBatchExecutor({
+      contract,
+      session: { complete },
+    })
+
+    const result = await executor.execute({
+      items: [1],
+      limits: { maxBatchItems: 1, maxSemanticRepairCalls: 1 } as never,
+    })
+
+    expect(result).toMatchObject({
+      ok: true,
+      items: [{ chapterNumber: 1, title: '夜航', suspenseHook: '门内传来第二次敲击' }],
+      receipt: { calls: 2 },
+    })
+    expect(complete.mock.calls.map(([task]) => task.purpose)).toEqual([
+      'chapter-blueprints',
+      'chapter-blueprints:missing-field-repair',
+    ])
+  })
+
   it.each([
     ['missing item', '{"blueprints":[]}', 'missing_item'],
     ['duplicate item', '{"blueprints":[{"chapterNumber":1,"title":"甲"},{"chapterNumber":1,"title":"乙"}]}', 'duplicate_item'],

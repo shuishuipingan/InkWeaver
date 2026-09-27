@@ -22,6 +22,7 @@ import {
   pruneDanglingBlueprintRelationships,
   validateBlueprintSemanticItem,
 } from '../../../shared/blueprint-semantic-contract'
+import { buildMissingSuspenseHookRepairPlan } from '../blueprint-semantic-repair'
 import { stripThinkingTags } from '../workflow-utils'
 import { requireWorkflowProjectSession, workflowUiText, workflowWritingLanguage } from '../workflow-project-session'
 import { promptLanguageText } from '../../prompt-language'
@@ -392,6 +393,10 @@ export class GenerateDirectoryCommand extends BaseWorkflowCommand<ChapterBluepri
         return decoded
       },
       validateItem: validateBlueprintSemanticItem,
+      buildSemanticRepairPlan: input => buildMissingSuspenseHookRepairPlan({
+        ...input,
+        writingLanguage,
+      }),
       syntaxRepairContract: ({ items }) => (
         `${blueprintSemanticGenerationContract(writingLanguage)}\n`
         + promptLanguageText(
@@ -420,6 +425,7 @@ export class GenerateDirectoryCommand extends BaseWorkflowCommand<ChapterBluepri
           limits: {
             maxBatchItems: MAX_BLUEPRINT_ITEMS_PER_BATCH,
             maxCompactSingleFallbacks: costPlan.maxCompactSingleFallbacks,
+            maxSemanticRepairCalls: costPlan.maxSemanticRepairCalls,
           },
           signal: cancellation.signal,
         })

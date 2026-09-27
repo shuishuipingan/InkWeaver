@@ -19,6 +19,8 @@ export interface BlueprintGenerationCostPlan {
   expectedCalls: number
   /** Allowed physical-call ceiling after recursive-split/repair planning and the product hard cap. */
   maxCalls: number
+  /** One short field-repair reserve per initial chapter batch. */
+  maxSemanticRepairCalls: number
   maxCompactSingleFallbacks: number
   /** True means the logical scope must be split into separate workflow runs. */
   exceedsHardLimit: boolean
@@ -41,6 +43,7 @@ export function planBlueprintGenerationCost(chapterCount: number): BlueprintGene
     : 0
   const semanticBatchCount = Math.ceil(normalizedChapterCount / MAX_BLUEPRINT_ITEMS_PER_BATCH)
   const maxCompactSingleFallbacks = Math.min(normalizedChapterCount, semanticBatchCount)
+  const maxSemanticRepairCalls = semanticBatchCount
   // For a semantic batch of n items, recursively splitting every non-single
   // length result creates a full binary tree with 2n-1 physical calls. Across
   // B initial batches this is 2N-B. The executor additionally permits one
@@ -51,6 +54,7 @@ export function planBlueprintGenerationCost(chapterCount: number): BlueprintGene
     : (2 * normalizedChapterCount)
       - semanticBatchCount
       + maxCompactSingleFallbacks
+      + maxSemanticRepairCalls
       + DIRECTORY_SYNTAX_REPAIR_RESERVE_CALLS
   const maxCalls = Math.min(DIRECTORY_MAX_ATTEMPTS_HARD_LIMIT, uncappedMaxCalls)
 
@@ -59,6 +63,7 @@ export function planBlueprintGenerationCost(chapterCount: number): BlueprintGene
     semanticBatchCount,
     expectedCalls: semanticBatchCount,
     maxCalls,
+    maxSemanticRepairCalls,
     maxCompactSingleFallbacks,
     exceedsHardLimit: normalizedChapterCount > MAX_BLUEPRINT_CHAPTERS_PER_TASK,
     runtimeBudget: {

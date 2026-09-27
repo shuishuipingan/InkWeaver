@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   Save, BookOpen, RefreshCw, Plus, Trash2,
-  Sparkles, PenLine, ListChecks, AlertTriangle
+  Sparkles, PenLine, ListChecks, AlertTriangle, Type
 } from 'lucide-react'
 import { useProjectStore } from '../../stores/project-store'
 import { useWorkflowStore } from '../../stores/workflow-store'
@@ -25,6 +25,7 @@ import { launchCreativeWorkflow } from '../../services/workflows/creative-workfl
 import { guardDirectoryGeneration } from '../../services/workflow-guards'
 import DirectoryConfigDialog from '../dialogs/DirectoryConfigDialog'
 import BatchChapterCreationDialog from '../dialogs/BatchChapterCreationDialog'
+import BlueprintTitleBatchDialog from '../dialogs/BlueprintTitleBatchDialog'
 import { Button } from '../ui/Button'
 import { Input } from '../ui/Input'
 import { Textarea } from '../ui/Textarea'
@@ -125,6 +126,7 @@ export default function ChapterCardEditor({ projectKey }: { projectKey: string }
 
   // 蓝图生成弹窗（替代原 inline 批量面板）
   const [showBlueprintDialog, setShowBlueprintDialog] = useState(false)
+  const [showTitleBatchDialog, setShowTitleBatchDialog] = useState(false)
   const [showBatchCreationDialog, setShowBatchCreationDialog] = useState(false)
   const [recoveringLegacyImportedText, setRecoveringLegacyImportedText] = useState(false)
   const roleLabel = (role: string) => text(role, ({
@@ -726,6 +728,16 @@ export default function ChapterCardEditor({ projectKey }: { projectKey: string }
               {text('批量创作', 'Batch write')}
             </Button>
           )}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowTitleBatchDialog(true)}
+            disabled={!projectDataReady || visibleBlueprints.length === 0 || visibleDirty || saving || Boolean(authorityError)}
+            title={text('依据现有蓝图批量生成候选章节名，预览后再应用', 'Generate chapter title candidates from existing blueprints, then review before applying')}
+          >
+            <Type size={12} />
+            {text('AI 批量改章名', 'AI batch titles')}
+          </Button>
           {/* AI 生成蓝图 → 弹出 DirectoryConfigDialog */}
           <Button
             variant="ai"
@@ -813,7 +825,12 @@ export default function ChapterCardEditor({ projectKey }: { projectKey: string }
         existingCount={visibleBlueprints.length}
           onConfirm={handleBatchGenerate}
         />
-          <BatchChapterCreationDialog
+        <BlueprintTitleBatchDialog
+          open={showTitleBatchDialog}
+          onClose={() => setShowTitleBatchDialog(false)}
+          onApplied={() => loadBlueprints()}
+        />
+        <BatchChapterCreationDialog
           isOpen={showBatchCreationDialog}
           startChapterNumber={nextWritableBlueprint?.chapterNumber ?? null}
           onClose={() => setShowBatchCreationDialog(false)}
