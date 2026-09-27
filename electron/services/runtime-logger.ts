@@ -337,6 +337,10 @@ const TRACE_SKIP_CHANNELS = new Set([
   'runtime:log', 'runtime:log-batch', 'runtime:log-status', 'runtime:log-page', 'runtime:log-flush', 'runtime:log-open-folder', 'runtime:log-export',
   'runtime:set-level', 'runtime:get-level',
   'llm:stream-chunk', 'llm:stream-done', 'llm:stream-error',
+  // Direction requests carry author ideas, plan text, candidate prose and
+  // provider error text as positional arguments. Never mirror them to logs.
+  'db:story-direction-apply', 'db:story-direction-save-candidate',
+  'db:story-direction-mark-draft-failed',
 ])
 
 const IMPORTANT_CHANNEL_PREFIXES = [
@@ -406,12 +410,12 @@ let ipcPatchInstalled = false
 
 /** Wrap every ipcMain.handle registration; call before controller registration. */
 export function installIPCGlobalTracing(ipc: {
-  handle: (channel: string, listener: (...args: any[]) => any) => void
+  handle: (channel: string, listener: (...args: unknown[]) => unknown) => void
 }): void {
   if (ipcPatchInstalled) return
   ipcPatchInstalled = true
   const originalHandle = ipc.handle.bind(ipc)
-  ipc.handle = ((channel: string, listener: (...args: any[]) => any) => {
+  ipc.handle = ((channel: string, listener: (...args: unknown[]) => unknown) => {
     return originalHandle(channel, traceIPC(channel, listener))
   }) as typeof ipc.handle
   runtimeLogger.info('ipc', '全局 IPC 追踪已启用', undefined, { operation: 'ipc.tracing.enabled' })

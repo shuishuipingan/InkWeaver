@@ -25,6 +25,7 @@ describe('blueprint batch policy', () => {
         maxAttempts: 11,
         maxRequestedOutputTokens: 131_072,
         maxRequestedOutputTokensPerAttempt: 16_384,
+        respectIntentOutputCaps: true,
         deadlineMs: 600_000,
       },
     })
@@ -48,7 +49,7 @@ describe('blueprint batch policy', () => {
       exceedsHardLimit: false,
       runtimeBudget: {
         maxAttempts: 32,
-        maxRequestedOutputTokens: 131_072,
+        maxRequestedOutputTokens: 262_144,
         deadlineMs: 600_000,
       },
     })
@@ -58,7 +59,7 @@ describe('blueprint batch policy', () => {
       maxCalls: 32,
       maxCompactSingleFallbacks: 11,
       exceedsHardLimit: true,
-      runtimeBudget: { maxAttempts: 32, maxRequestedOutputTokens: 131_072 },
+      runtimeBudget: { maxAttempts: 32, maxRequestedOutputTokens: 262_144 },
     })
   })
 

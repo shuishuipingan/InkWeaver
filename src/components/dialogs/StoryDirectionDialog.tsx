@@ -1,0 +1,518 @@
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { AlertTriangle, Sparkles } from 'lucide-react'
+
+import type { BlueprintData } from '../../../electron/repositories/blueprint-repository'
+import type { CharacterRosterSnapshot } from '../../shared/character-roster'
+import { countDraftUnits } from '../../shared/draft-units'
+import { textFingerprint } from '../../shared/character-extraction'
+import {
+  STORY_DIRECTION_CORE_FIELDS,
+  type StoryDirectionBlueprintChange,
+  type StoryDirectionSnapshot,
+  type StoryDirectionRun,
+} from '../../shared/story-direction'
+import { globalEventBus } from '../../shared/event-bus'
+import { ipc } from '../../services/ipc-client'
+import { requireIpcSuccess } from '../../services/ipc-result'
+import { decodeBlueprintDirectionChanges, decodeCoreDirectionChanges } from '../../services/story-direction-planner'
+import { useLLMStore } from '../../stores/llm-store'
+import { useLocaleStore } from '../../stores/locale-store'
+import { useProjectStore } from '../../stores/project-store'
+import { useCharacterStore } from '../../stores/character-store'
+import { useEditorStore } from '../../stores/editor-store'
+import { useWorkflowStore } from '../../stores/workflow-store'
+import { Button } from '../ui/Button'
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../ui/Dialog'
+import { captureProjectSession, isProjectSessionCurrent } from '../project-session-gate'
+
+interface Props {
+  open: boolean
+  onClose: () => void
+  onApplied: () => void | Promise<void>
+}
+
+type CorePlan = ReturnType<typeof decodeCoreDirectionChanges>
+interface PartialPlan {
+  fingerprint: string
+  rosterRevision: number | null
+  idea: string
+  start: number
+  end: number
+  modelId: string
+  core: CorePlan
+  chapterChanges: StoryDirectionBlueprintChange[]
+  nextCharacterBatch: number
+  nextBatch: number
+}
+
+const CONFIG_KEYS = new Set(['coreOutline', 'worldSetting', 'protagonistProfile', 'globalGuidance', 'goldenFinger'])
+const BATCH_SIZE = 5
+
+function compact(value: string, limit: number): string {
+  return value.length <= limit ? value : `${value.slice(0, limit)}…`
+}
+
+function selectedBlueprints(snapshot: StoryDirectionSnapshot, start: number, end: number): BlueprintData[] {
+  const finalized = new Set(snapshot.drafts.filter(draft => draft.status === 'finalized').map(draft => draft.chapterNumber))
+  return snapshot.blueprints.filter(item => item.chapterNumber >= start && item.chapterNumber <= end && !finalized.has(item.chapterNumber))
+}
+
+export default function StoryDirectionDialog({ open, onClose, onApplied }: Props) {
+  const text = useLocaleStore(state => state.text)
+  const currentProject = useProjectStore(state => state.currentProject)
+  const activeRuns = useWorkflowStore(state => state.activeRuns)
+  const projectSession = captureProjectSession(currentProject)
+  const sessionKey = projectSession ? `${projectSession.projectId}:${projectSession.leaseId}` : ''
+  const [snapshot, setSnapshot] = useState<StoryDirectionSnapshot | null>(null)
+  const [roster, setRoster] = useState<CharacterRosterSnapshot | null>(null)
+  const [latestRun, setLatestRun] = useState<StoryDirectionRun | null>(null)
+  const [idea, setIdea] = useState('')
+  const [startChapter, setStartChapter] = useState(1)
+  const [endChapter, setEndChapter] = useState(1)
+  const [includeDrafts, setIncludeDrafts] = useState(true)
+  const [largeRunConfirmed, setLargeRunConfirmed] = useState(false)
+  const [partial, setPartial] = useState<PartialPlan | null>(null)
+  const [phase, setPhase] = useState<'input' | 'generating' | 'preview' | 'applying' | 'drafts' | 'done'>('input')
+  const [processed, setProcessed] = useState(0)
+  const [error, setError] = useState<string | null>(null)
+  const [draftSuccess, setDraftSuccess] = useState<number[]>([])
+  const [draftFailures, setDraftFailures] = useState<Array<{ chapter: number; error: string }>>([])
+  const [acknowledgedConflicts, setAcknowledgedConflicts] = useState(false)
+  const cancelled = useRef(false)
+
+  useEffect(() => {
+    if (!open || !projectSession) return
+    let disposed = false
+    queueMicrotask(() => {
+      if (disposed) return
+      setSnapshot(null)
+      setRoster(null)
+      setLatestRun(null)
+      setPhase('input')
+      setPartial(null)
+      setError(null)
+      setAcknowledgedConflicts(false)
+    })
+    void Promise.all([
+      ipc.invokeWithProjectSession(projectSession, 'db:story-direction-snapshot', projectSession.projectPath),
+      ipc.invokeWithProjectSession(projectSession, 'db:character-roster-read', projectSession.projectPath),
+      ipc.invokeWithProjectSession(projectSession, 'db:story-direction-latest-run', projectSession.projectPath),
+    ]).then(([value, rosterValue, lastRun]) => {
+        if (disposed || !isProjectSessionCurrent(projectSession)) return
+        setSnapshot(value)
+        setRoster(rosterValue)
+        setLatestRun(lastRun)
+        const available = selectedBlueprints(value, 1, Number.MAX_SAFE_INTEGER)
+        setStartChapter(available[0]?.chapterNumber ?? 1)
+        setEndChapter(available.at(-1)?.chapterNumber ?? 1)
+      })
+      .catch(reason => { if (!disposed) setError(String(reason)) })
+    return () => { disposed = true }
+  // Identity, rather than the mutable project object, owns one dialog session.
+  }, [open, sessionKey]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const editable = useMemo(() => snapshot
+    ? selectedBlueprints(snapshot, startChapter, endChapter) : [], [snapshot, startChapter, endChapter])
+  const unfinishedDraftCount = snapshot?.drafts.filter(draft => draft.status !== 'finalized'
+    && draft.chapterNumber >= startChapter && draft.chapterNumber <= endChapter).length ?? 0
+  const batches = useMemo(() => Array.from({ length: Math.ceil(editable.length / BATCH_SIZE) }, (_, index) =>
+    editable.slice(index * BATCH_SIZE, (index + 1) * BATCH_SIZE)), [editable])
+  const characterBatches = useMemo(() => roster?.status === 'ready'
+    ? Array.from({ length: Math.ceil(roster.entries.length / 20) }, (_, index) => roster.entries.slice(index * 20, (index + 1) * 20))
+    : [], [roster])
+  const estimatedCalls = 1 + batches.length + characterBatches.length
+  const candidateDraftEstimate = snapshot && partial
+    ? new Set(snapshot.drafts.filter(draft => draft.status !== 'finalized'
+      && partial.chapterChanges.some(item => item.chapterNumber === draft.chapterNumber))
+      .map(draft => draft.chapterNumber)).size
+    : 0
+  const busy = phase === 'generating' || phase === 'applying' || phase === 'drafts'
+  const canStart = !!snapshot && !!idea.trim() && idea.length <= 4_000 && startChapter <= endChapter
+    && activeRuns.length === 0 && (estimatedCalls <= 11 || largeRunConfirmed)
+
+  const requestModel = async (
+    modelId: string,
+    purpose: string,
+    system: string,
+    user: string,
+    maxTokens: number,
+    structured = true,
+  ): Promise<string> => {
+    if (!projectSession || !isProjectSessionCurrent(projectSession) || cancelled.current) throw new Error('任务已停止或项目已切换')
+    const configuredLimit = useLLMStore.getState().models.find(model => model.id === modelId)?.maxTokens
+    const result = await ipc.invoke('llm:generate', {
+      modelId,
+      purpose,
+      creativeStrategy: 'consistency-first',
+      reasoningStage: structured ? 'planning' : 'drafting',
+      projectSession,
+      messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
+      ...(structured ? { responseFormat: { type: 'json_object' as const } } : {}),
+      maxTokens: configuredLimit && configuredLimit > 0 ? Math.min(maxTokens, configuredLimit) : maxTokens,
+    })
+    if (!isProjectSessionCurrent(projectSession) || cancelled.current) throw new Error('任务已停止或项目已切换')
+    if (!result.success || result.finishReason !== 'stop') {
+      throw new Error(`模型未完整返回（${result.finishReason}）：${result.error ?? '请缩小章节范围后重试'}`)
+    }
+    return result.content
+  }
+
+  const generate = async () => {
+    if (!snapshot || !projectSession || !canStart) return
+    cancelled.current = false
+    setError(null)
+    setPhase('generating')
+    setAcknowledgedConflicts(false)
+    const normalizedIdea = idea.trim()
+    const existing = partial?.fingerprint === snapshot.fingerprint && partial.idea === normalizedIdea
+      && partial.rosterRevision === (roster?.revision ?? null)
+      && partial.start === startChapter && partial.end === endChapter ? partial : null
+    try {
+      const modelId = existing?.modelId ?? useLLMStore.getState().defaultModelId
+      if (!modelId) throw new Error('请先配置默认生成模型')
+      const finalizedSummaries = snapshot.blueprints
+        .filter(blueprint => snapshot.drafts.some(draft => draft.chapterNumber === blueprint.chapterNumber && draft.status === 'finalized'))
+      const finalizedBrief = finalizedSummaries.map((item, index) => ({
+        chapterNumber: item.chapterNumber,
+        title: compact(item.title, 80),
+        notes: index >= finalizedSummaries.length - 50 ? compact(item.notes, 180) : '',
+      }))
+      const core = existing?.core ?? decodeCoreDirectionChanges(await requestModel(
+        modelId, 'story-direction-global',
+        '你是长篇小说总编辑。根据作者的新想法，提出必要且最小的项目配置和故事架构改动。已定稿章节不可改写。仅输出 JSON 对象。',
+        JSON.stringify({
+          newIdea: normalizedIdea,
+          current: Object.fromEntries(STORY_DIRECTION_CORE_FIELDS.map(field => [field, compact(String(snapshot.core[field] ?? ''), 8_000)])),
+          characters: roster?.status === 'ready' ? roster.entries.map(entry => ({
+            name: entry.name, role: entry.role, personality: compact(entry.personality, 600),
+            abilities: compact(entry.abilities, 600), arc: compact(entry.arc, 600),
+          })).slice(0, 80) : [],
+          finalizedSummaries: finalizedBrief,
+          existingNarrativeThreads: snapshot.threadPlans.map(item => ({
+            title: item.title, type: item.type, targetStartChapter: item.targetStartChapter,
+            targetEndChapter: item.targetEndChapter, authorIntent: compact(item.authorIntent, 300),
+          })),
+          outputContract: {
+            coreChanges: '仅包含需要修改的 coreOutline/worldSetting/protagonistProfile/globalGuidance/premise/worldbuilding/synopsis/goldenFinger 字符串字段',
+            characterChanges: [{ name: '只允许已有角色名', changes: { personality: '需要修改时的新性格', abilities: '需要修改时的新能力', arc: '需要修改时的新角色弧光' } }],
+            newNarrativeThreads: [{ title: '需要新增时的线索标题', type: '线索类型', authorIntent: '作者预期的埋设与回收', targetStartChapter: startChapter, targetEndChapter: endChapter, lane: 'sub' }],
+            summary: '调整摘要', conflicts: ['与已定稿事实冲突或需要作者决定的事项'],
+          },
+        }), 16_384,
+      ), snapshot.core, roster?.status === 'ready' ? roster.entries.map(entry => entry.name) : [],
+      snapshot.threadPlans.map(item => item.title),
+      Math.max(0, ...snapshot.drafts.filter(draft => draft.status === 'finalized').map(draft => draft.chapterNumber)),
+      snapshot.core.totalChapters)
+      let plan: PartialPlan = existing ?? {
+        fingerprint: snapshot.fingerprint, idea: normalizedIdea, start: startChapter, end: endChapter,
+        rosterRevision: roster?.revision ?? null,
+        modelId, core, chapterChanges: [], nextCharacterBatch: 0, nextBatch: 0,
+      }
+      setPartial(plan)
+      for (let index = plan.nextCharacterBatch; index < characterBatches.length; index += 1) {
+        if (cancelled.current) throw new Error('已停止；已完成的分析批次保留，可继续生成')
+        const batch = characterBatches[index].filter(entry => !plan.core.characterChanges.some(change => change.name === entry.name))
+        if (batch.length > 0) {
+          const response = await requestModel(
+            modelId, 'story-direction-characters',
+            '你是长篇小说人物编辑。根据新想法与全局方向，只对本批已有角色提出必要的资料变更。不得改名、删除角色或更改关系与已定稿状态。仅返回 JSON 对象。',
+            JSON.stringify({
+              newIdea: normalizedIdea, globalChanges: plan.core.changes,
+              characters: batch.map(entry => ({
+                name: entry.name, role: entry.role, personality: compact(entry.personality ?? '', 500),
+                abilities: compact(entry.abilities ?? '', 500), motivation: compact(entry.motivation ?? '', 500),
+                arc: compact(entry.arc ?? '', 500), notes: compact(entry.notes ?? '', 500),
+              })),
+              outputContract: { coreChanges: {}, characterChanges: [{ name: '本批已有角色名', changes: { personality: '需要改变时的新性格', arc: '需要改变时的新弧光' } }], conflicts: [] },
+            }), 16_384,
+          )
+          const decoded = decodeCoreDirectionChanges(response, snapshot.core, batch.map(entry => entry.name))
+          plan = { ...plan, core: {
+            ...plan.core,
+            characterChanges: [...plan.core.characterChanges, ...decoded.characterChanges],
+            conflicts: [...new Set([...plan.core.conflicts, ...decoded.conflicts])],
+          }, nextCharacterBatch: index + 1 }
+        } else plan = { ...plan, nextCharacterBatch: index + 1 }
+        setPartial(plan)
+      }
+      const generateBatch = async (
+        batch: BlueprintData[],
+        priorChanges: StoryDirectionBlueprintChange[] = plan.chapterChanges,
+      ): Promise<StoryDirectionBlueprintChange[]> => {
+        try {
+          const content = await requestModel(
+            modelId, 'story-direction-blueprints',
+            '你是长篇小说编辑。逐章调整需要受新想法影响的未定稿章节蓝图；无须改变的章节不返回。保留人物名单和作者备注，只输出 JSON 对象。',
+            JSON.stringify({
+              newIdea: normalizedIdea,
+              globalChanges: core.changes,
+              relevantCharacterChanges: plan.core.characterChanges.filter(change =>
+                batch.some(item => item.characters.includes(change.name))),
+              previousApprovedBatchChanges: priorChanges.slice(-20).map(item => ({
+                chapterNumber: item.chapterNumber,
+                purpose: compact(item.changes.purpose ?? '', 350),
+                keyEvents: compact(item.changes.keyEvents ?? '', 450),
+              })),
+              chapters: batch.map(item => ({
+                chapterNumber: item.chapterNumber, title: item.title, role: item.role,
+                purpose: compact(item.purpose, 1_500), keyEvents: compact(item.keyEvents, 2_500),
+                suspenseHook: compact(item.suspenseHook, 1_000), userGuidance: compact(item.userGuidance, 1_000),
+                characters: item.characters,
+              })),
+              outputContract: { changes: [{ chapterNumber: 1, changes: { purpose: '更新后的章节目的', keyEvents: '更新后的关键事件', userGuidance: '后续写作指导' } }] },
+            }), 16_384,
+          )
+          return decodeBlueprintDirectionChanges(content, batch)
+        } catch (reason) {
+          if (batch.length > 1 && String(reason).includes('（length）')) {
+            const middle = Math.ceil(batch.length / 2)
+            const first = await generateBatch(batch.slice(0, middle), priorChanges)
+            const second = await generateBatch(batch.slice(middle), [...priorChanges, ...first])
+            return [...first, ...second]
+          }
+          throw reason
+        }
+      }
+      for (let index = plan.nextBatch; index < batches.length; index += 1) {
+        if (cancelled.current) throw new Error('已停止；已完成的分析批次保留，可继续生成')
+        const changes = await generateBatch(batches[index])
+        plan = { ...plan, chapterChanges: [...plan.chapterChanges, ...changes], nextBatch: index + 1 }
+        setPartial(plan)
+        setProcessed(index + 1)
+      }
+      setPhase('preview')
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason))
+      setPhase('input')
+    }
+  }
+
+  const apply = async () => {
+    if (!snapshot || !partial || !projectSession || partial.nextBatch !== batches.length) return
+    if (activeRuns.length > 0) { setError('有工作流正在运行，请完成后再提交方向调整'); return }
+    if (useProjectStore.getState().hasUnsavedNovelConfig(projectSession.projectPath)
+      || (partial.core.characterChanges.length > 0 && useCharacterStore.getState().hasUnsavedCharacterDraft(projectSession.projectPath))
+      || useEditorStore.getState().tabs.some(tab => tab.projectKey === projectSession.projectPath
+        && tab.dirty && ['config', 'chapter-card', 'world-building', 'arch-file'].includes(tab.type))) {
+      setError('项目配置或架构/蓝图仍有未保存编辑，请先保存后重新生成方案')
+      return
+    }
+    setError(null)
+    setPhase('applying')
+    try {
+      const result = requireIpcSuccess(await ipc.invokeWithProjectSession(
+        projectSession, 'db:story-direction-apply', {
+          expectedFingerprint: partial.fingerprint,
+          coreChanges: partial.core.changes,
+          blueprintChanges: partial.chapterChanges,
+          characterChanges: partial.core.characterChanges,
+          newNarrativeThreads: partial.core.newNarrativeThreads,
+          ...(partial.core.characterChanges.length > 0 ? { expectedRosterRevision: partial.rosterRevision ?? undefined } : {}),
+          idea: partial.idea,
+          modelId: partial.modelId,
+          generateDraftCandidates: includeDrafts,
+        }, projectSession.projectPath,
+      ), '提交全书方向调整')
+      if (!result.snapshot || !isProjectSessionCurrent(projectSession)) return
+      const configChanges = Object.fromEntries(Object.entries(partial.core.changes)
+        .filter(([field]) => CONFIG_KEYS.has(field)))
+      useProjectStore.getState().syncCommittedNovelConfig(configChanges, projectSession)
+      globalEventBus.emit('REFRESH_RESOURCE', {
+        resources: ['blueprints', 'characterCards', 'fileTree'], projectPath: projectSession.projectPath, projectSession,
+      })
+      for (const field of ['premise', 'worldbuilding', 'synopsis']) {
+        if (field in partial.core.changes) globalEventBus.emit('ARCH_FILE_UPDATED', {
+          fileName: `${field}.md`, projectPath: projectSession.projectPath, projectSession,
+          runId: `story-direction-${partial.fingerprint.slice(0, 12)}`,
+        })
+      }
+      await onApplied()
+      setSnapshot(result.snapshot)
+      setPhase('done')
+      if (result.runId) {
+        const run = await ipc.invokeWithProjectSession(projectSession, 'db:story-direction-latest-run', projectSession.projectPath)
+        if (run?.id === result.runId) {
+          setLatestRun(run)
+          if (includeDrafts) await generateDraftCandidates(result.snapshot, run)
+        }
+      }
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason))
+      setPhase('preview')
+    }
+  }
+
+  const generateDraftCandidates = async (applied: StoryDirectionSnapshot, run: StoryDirectionRun, retryChapters?: Set<number>) => {
+    if (!projectSession) return
+    const changed = new Set(run.blueprintChanges.map(item => item.chapterNumber))
+    const pending = new Set(run.drafts.filter(item => item.status !== 'completed'
+      && (!retryChapters || retryChapters.has(item.chapterNumber))).map(item => item.draftId))
+    const latest = new Map<number, (typeof applied.drafts)[number]>()
+    for (const draft of applied.drafts) {
+      if (!changed.has(draft.chapterNumber) || draft.status === 'finalized'
+        || !pending.has(draft.id)) continue
+      if ((latest.get(draft.chapterNumber)?.version ?? -1) < draft.version) latest.set(draft.chapterNumber, draft)
+    }
+    if (latest.size === 0) return
+    setPhase('drafts')
+    cancelled.current = false
+    const successes: number[] = run.drafts.filter(item => item.status === 'completed').map(item => item.chapterNumber)
+    const failures: Array<{ chapter: number; error: string }> = []
+    const targets = [...latest.values()]
+    for (let index = 0; index < targets.length; index += 1) {
+      const draft = targets[index]
+      if (cancelled.current || !isProjectSessionCurrent(projectSession)) {
+        failures.push(...targets.slice(index).map(item => ({ chapter: item.chapterNumber, error: '已停止，尚未生成' })))
+        break
+      }
+      try {
+        if (applied.drafts.some(item => item.chapterNumber === draft.chapterNumber && item.version > draft.version)) {
+          throw new Error('章节已有更新版本，请重新规划该章的候选修稿')
+        }
+        const full = await ipc.invokeWithProjectSession(projectSession, 'db:draft-get-full', draft.id, projectSession.projectPath)
+        if (!full || full.status === 'finalized') throw new Error('目标草稿已不存在或已定稿')
+        const blueprint = applied.blueprints.find(item => item.chapterNumber === draft.chapterNumber)
+        const priorFinalized = applied.blueprints
+          .filter(item => item.chapterNumber < draft.chapterNumber
+            && applied.drafts.some(candidate => candidate.chapterNumber === item.chapterNumber && candidate.status === 'finalized'))
+          .slice(-12).map(item => ({ chapterNumber: item.chapterNumber, title: item.title, notes: compact(item.notes, 240) }))
+        const content = await requestModel(
+          (useLLMStore.getState().models.some(model => model.id === run.modelId)
+            ? run.modelId : useLLMStore.getState().defaultModelId) || '', 'story-direction-draft-candidate',
+          '你是长篇小说修稿编辑。按新故事方向改写这份未定稿草稿，保留其他重要事实、人物声线和情节连续性。返回完整修订正文，不要解释或 JSON。',
+          JSON.stringify({ idea: run.idea, globalDirection: run.coreChanges,
+            characterChanges: run.characterChanges.filter(change => blueprint?.characters.includes(change.name)),
+            newNarrativeThreads: run.newNarrativeThreads.filter(thread =>
+              draft.chapterNumber >= thread.targetStartChapter && draft.chapterNumber <= thread.targetEndChapter),
+            blueprint, priorFinalized, originalDraft: full.content }),
+          65_536, false,
+        )
+        if (!content.trim()) throw new Error('模型返回了空修稿')
+        if (content.trim().length < Math.max(5, full.content.trim().length * 0.4)) {
+          throw new Error('候选修稿过短，已拒绝保存不完整正文')
+        }
+        requireIpcSuccess(await ipc.invokeWithProjectSession(
+          projectSession, 'db:story-direction-save-candidate', {
+            runId: run.id, draftId: draft.id, content,
+            wordCount: countDraftUnits(content), baseContentHash: textFingerprint(full.content),
+          }, projectSession.projectPath,
+        ), '保存方向调整候选修稿')
+        successes.push(draft.chapterNumber)
+      } catch (reason) {
+        const message = reason instanceof Error ? reason.message : String(reason)
+        failures.push({ chapter: draft.chapterNumber, error: message })
+        try {
+          await ipc.invokeWithProjectSession(projectSession, 'db:story-direction-mark-draft-failed',
+            run.id, draft.id, message, projectSession.projectPath)
+        } catch { /* Retain the pending durable task for the next reopen. */ }
+      }
+      setDraftSuccess([...successes])
+      setDraftFailures([...failures])
+    }
+    if (isProjectSessionCurrent(projectSession)) {
+      const refreshed = await ipc.invokeWithProjectSession(projectSession, 'db:story-direction-latest-run', projectSession.projectPath)
+      if (refreshed?.id === run.id) setLatestRun(refreshed)
+    }
+    setPhase('done')
+  }
+
+  const resumeLastRun = async () => {
+    if (!snapshot || !latestRun) return
+    setPartial({
+      fingerprint: snapshot.fingerprint, idea: latestRun.idea, modelId: latestRun.modelId,
+      rosterRevision: roster?.revision ?? null,
+      start: startChapter, end: endChapter,
+      core: { changes: latestRun.coreChanges, characterChanges: latestRun.characterChanges,
+        newNarrativeThreads: latestRun.newNarrativeThreads, summary: '已提交的全书方向调整', conflicts: [] },
+      chapterChanges: latestRun.blueprintChanges, nextCharacterBatch: characterBatches.length, nextBatch: batches.length,
+    })
+    await generateDraftCandidates(snapshot, latestRun)
+  }
+
+  const close = () => { if (!busy) onClose() }
+  return (
+    <Dialog open={open} onOpenChange={next => { if (!next) close() }}>
+      <DialogContent className="max-w-[880px] flex flex-col" style={{ maxHeight: '90dvh', width: 'min(94vw, 880px)' }}>
+        <div className="border-b border-[var(--color-border)] px-5 py-4">
+          <DialogTitle className="flex items-center gap-2"><Sparkles size={16} />{text('AI 全书方向调整', 'AI Story Direction Adjustment')}</DialogTitle>
+          <DialogDescription>{text('先预览设定、架构和章节差异，再确认提交；已定稿正文不会改动。', 'Preview project and chapter changes before applying. Finalized prose stays immutable.')}</DialogDescription>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4 space-y-4 text-sm">
+          {!snapshot && <p>{text('正在读取项目规划…', 'Loading project planning…')}</p>}
+          {(phase === 'input' || phase === 'generating') && snapshot && <>
+            {phase === 'input' && latestRun?.drafts.some(item => item.status !== 'completed') && <div className="rounded border border-[var(--color-border)] p-3 text-xs space-y-2">
+              <p>{text(`上次方向调整仍有 ${latestRun.drafts.filter(item => item.status !== 'completed').length} 章候选修稿待完成。`, `${latestRun.drafts.filter(item => item.status !== 'completed').length} candidate revisions from the previous plan remain unfinished.`)}</p>
+              <Button variant="outline" size="sm" onClick={() => void resumeLastRun()}>{text('继续上次候选修稿', 'Resume previous candidate revisions')}</Button>
+            </div>}
+            <label className="block space-y-1">{text('新的故事想法', 'New story idea')}
+              <textarea className="w-full rounded border border-[var(--color-border)] bg-[var(--color-raised)] p-2" rows={5}
+                value={idea} onChange={event => { setIdea(event.target.value); setPartial(null) }} disabled={busy}
+                placeholder={text('例如：主角有第二人格，会在关键时刻出来帮忙，并逐渐改变主角与同伴的关系。', 'For example: a second personality helps the protagonist at crucial moments and changes their relationships.')} />
+            </label>
+            <div className="flex flex-wrap gap-3 items-center">
+              <label>{text('从第', 'From chapter')} <input type="number" min={1} className="w-20 rounded border p-1" value={startChapter} disabled={busy}
+                onChange={event => { setStartChapter(Number(event.target.value)); setPartial(null); setLargeRunConfirmed(false) }} /></label>
+              <label>{text('到第', 'To chapter')} <input type="number" min={1} className="w-20 rounded border p-1" value={endChapter} disabled={busy}
+                onChange={event => { setEndChapter(Number(event.target.value)); setPartial(null); setLargeRunConfirmed(false) }} /></label>
+              <span className="text-xs opacity-70">{text(`将分析 ${editable.length} 章（${batches.length} 批）与 ${roster?.entries.length ?? 0} 名角色（${characterBatches.length} 批）；范围内未定稿草稿 ${unfinishedDraftCount} 份`, `Analyze ${editable.length} chapters (${batches.length} batches) and ${roster?.entries.length ?? 0} characters (${characterBatches.length} batches); ${unfinishedDraftCount} unfinished drafts in range`)}</span>
+            </div>
+            {estimatedCalls > 11 && <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={largeRunConfirmed} disabled={busy}
+              onChange={event => setLargeRunConfirmed(event.target.checked)} />{text(`我知道本次预计调用模型约 ${estimatedCalls} 次，可能花费较长时间与额度。`, `I understand this run may need about ${estimatedCalls} model calls and substantial time and usage.`)}</label>}
+            <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={includeDrafts} disabled={busy}
+              onChange={event => setIncludeDrafts(event.target.checked)} />{text('为受影响的未定稿正文生成候选修稿（需逐章审阅后合并）', 'Generate candidate revisions for affected unfinished drafts (review before merging)')}</label>
+            {phase === 'generating' && <p>{text(`角色分析 ${partial?.nextCharacterBatch ?? 0}/${characterBatches.length} 批；章节分析 ${processed}/${batches.length} 批…`, `Character batches ${partial?.nextCharacterBatch ?? 0}/${characterBatches.length}; chapter batches ${processed}/${batches.length}…`)}</p>}
+            {partial && phase === 'input' && <p className="text-xs">{text(`已保留 ${partial.nextBatch} 批结果，可继续生成。`, `${partial.nextBatch} completed batches retained; you can resume.`)}</p>}
+          </>}
+          {(phase === 'preview' || phase === 'applying' || phase === 'drafts' || phase === 'done') && partial && snapshot && <>
+            <p className="font-medium">{partial.core.summary || text('全书调整方案', 'Story adjustment plan')}</p>
+            {partial.core.conflicts.length > 0 && <div className="rounded border border-amber-500 p-3 text-xs space-y-1">
+              <p className="font-medium">{text('需要作者核对的已定稿事实', 'Finalized facts to review')}</p>
+              {partial.core.conflicts.map((item, index) => <p key={index}>{item}</p>)}
+              {phase === 'preview' && <label className="flex items-center gap-2 pt-2"><input type="checkbox" checked={acknowledgedConflicts}
+                onChange={event => setAcknowledgedConflicts(event.target.checked)} />{text('我已核对这些冲突，后续章节会解释，已定稿事实保持不变。', 'I reviewed these conflicts; later chapters will explain them without changing finalized facts.')}</label>}
+            </div>}
+            <div className="space-y-2">
+              <p className="font-medium">{text(`设定与架构变更（${Object.keys(partial.core.changes).length} 项）`, `Project and architecture changes (${Object.keys(partial.core.changes).length})`)}</p>
+              {Object.entries(partial.core.changes).map(([field, value]) => <details key={field} className="rounded border border-[var(--color-border)] p-2 text-xs">
+                <summary className="cursor-pointer font-medium">{field}</summary>
+                <div className="grid grid-cols-2 gap-2 mt-2 whitespace-pre-wrap break-words"><p>{String(snapshot.core[field as keyof typeof snapshot.core] ?? '')}</p><p>{value}</p></div>
+              </details>)}
+            </div>
+            {partial.core.characterChanges.length > 0 && <div className="space-y-2">
+              <p className="font-medium">{text(`角色卡调整（${partial.core.characterChanges.length} 人）`, `Character card changes (${partial.core.characterChanges.length})`)}</p>
+              {partial.core.characterChanges.map(item => <details key={item.name} className="rounded border border-[var(--color-border)] p-2 text-xs">
+                <summary className="cursor-pointer">{item.name} · {Object.keys(item.changes).join('、')}</summary>
+                {Object.entries(item.changes).map(([field, value]) => <p key={field} className="mt-2 whitespace-pre-wrap"><strong>{field}：</strong>{value}</p>)}
+              </details>)}
+            </div>}
+            {partial.core.newNarrativeThreads.length > 0 && <div className="space-y-1 text-xs">
+              <p className="font-medium">{text(`新增叙事线索（${partial.core.newNarrativeThreads.length} 条）`, `New narrative threads (${partial.core.newNarrativeThreads.length})`)}</p>
+              {partial.core.newNarrativeThreads.map(thread => <p key={thread.title}>{thread.title} · {thread.targetStartChapter}–{thread.targetEndChapter} · {thread.authorIntent}</p>)}
+            </div>}
+            <div className="space-y-2">
+              <p className="font-medium">{text(`受影响章节（${partial.chapterChanges.length} 章）`, `Affected chapters (${partial.chapterChanges.length})`)}</p>
+              {phase === 'preview' && <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={includeDrafts}
+                onChange={event => setIncludeDrafts(event.target.checked)} />{text(`为约 ${candidateDraftEstimate} 章未定稿正文生成候选修稿（不覆盖原稿）`, `Generate candidate revisions for about ${candidateDraftEstimate} unfinished chapters without overwriting originals`)}</label>}
+              {partial.chapterChanges.map(item => <details key={item.chapterNumber} className="rounded border border-[var(--color-border)] p-2 text-xs">
+                <summary className="cursor-pointer">{text(`第 ${item.chapterNumber} 章`, `Chapter ${item.chapterNumber}`)} · {Object.keys(item.changes).join('、')}</summary>
+                {Object.entries(item.changes).map(([field, value]) => <div key={field} className="mt-2 grid grid-cols-[6rem_1fr] gap-2"><strong>{field}</strong><span className="whitespace-pre-wrap">{value}</span></div>)}
+              </details>)}
+            </div>
+            {phase === 'drafts' && <p>{text('正在逐章生成候选修稿…', 'Generating candidate revisions chapter by chapter…')}</p>}
+            {phase === 'done' && <p>{text(`规划已提交；候选修稿成功 ${draftSuccess.length} 章，失败 ${draftFailures.length} 章。`, `Plan applied; candidate revisions succeeded for ${draftSuccess.length} chapters and failed for ${draftFailures.length}.`)}</p>}
+            {draftFailures.map(item => <p key={item.chapter} className="text-xs text-[var(--color-error-text)]">{text(`第 ${item.chapter} 章：${item.error}`, `Chapter ${item.chapter}: ${item.error}`)}</p>)}
+          </>}
+          {error && <p className="flex gap-2 text-xs text-[var(--color-error-text)]"><AlertTriangle size={14} />{error}</p>}
+        </div>
+        <div className="flex justify-end gap-2 border-t border-[var(--color-border)] px-5 py-3">
+          {phase === 'generating' || phase === 'drafts'
+            ? <Button variant="outline" onClick={() => { cancelled.current = true }}>{text('当前请求完成后停止', 'Stop after current request')}</Button>
+            : <Button variant="outline" onClick={close}>{text('关闭', 'Close')}</Button>}
+          {phase === 'input' && <Button disabled={!canStart} onClick={() => void generate()}>{text(partial ? '继续生成' : '生成调整方案', partial ? 'Resume generation' : 'Generate plan')}</Button>}
+          {phase === 'preview' && <Button onClick={() => void apply()} disabled={activeRuns.length > 0 || (!!partial?.core.conflicts.length && !acknowledgedConflicts) || (Object.keys(partial?.core.changes ?? {}).length === 0 && (partial?.chapterChanges.length ?? 0) === 0 && (partial?.core.characterChanges.length ?? 0) === 0 && (partial?.core.newNarrativeThreads.length ?? 0) === 0)}>{text('确认并应用规划', 'Confirm and apply plan')}</Button>}
+          {phase === 'done' && draftFailures.length > 0 && snapshot && latestRun && <Button onClick={() => void generateDraftCandidates(snapshot, latestRun, new Set(draftFailures.map(item => item.chapter)))}>{text('重试失败的候选修稿', 'Retry failed candidate revisions')}</Button>}
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}

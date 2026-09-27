@@ -175,6 +175,8 @@ const OUTCOMES = new Set<RuntimeLogOutcome>([
 const SENSITIVE_KEYS = new Set([
   'apikey', 'api_key', 'authorization', 'cookie', 'password', 'secret',
   'token', 'access_token', 'refresh_token', 'privatekey', 'private_key',
+  'idea', 'corechanges', 'characterchanges', 'blueprintchanges',
+  'newnarrativethreads', 'narrativethreads',
 ])
 const SENSITIVE_CONTENT_KEY_SUFFIX = /(?:content|prompt|text|body|excerpt|passage|response|novel|draft|chapter)$/u
 const PATH_SHAPED_PATTERN = /^(?:[A-Za-z]:[\\/]|\\\\|\/[^/]+(?:[\\/][^/]+)+)/u

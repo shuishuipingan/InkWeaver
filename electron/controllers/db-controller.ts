@@ -6,6 +6,8 @@ import { assertRequiredExpectedProjectPath } from '../utils/project-context'
 
 // 导入所有 Repository
 import { ProjectCoreRepository, ProjectCoreData } from '../repositories/project-core-repository'
+import { StoryDirectionRepository } from '../repositories/story-direction-repository'
+import type { StoryDirectionApplyRequest } from '../../src/shared/story-direction'
 import { ProjectClearRepository, ProjectClearOptions } from '../repositories/project-clear-repository'
 import {
   BlueprintRepository,
@@ -59,6 +61,9 @@ type ProjectDatabaseHandler = (event: unknown, ...args: never[]) => unknown
 const MUTATING_DATABASE_CHANNELS = new Set([
   'db:close',
   'db:project-core-update',
+  'db:story-direction-apply',
+  'db:story-direction-save-candidate',
+  'db:story-direction-mark-draft-failed',
   'db:import-global-facts-commit',
   'db:project-clear-generated-data',
   'db:import-run-prepare-inspection',
@@ -497,6 +502,44 @@ export function registerDatabaseController() {
   ipcMain.handle('db:writing-style-history-list', async (_event, expectedProjectPath: string) => {
     assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
     return StyleHistoryRepository.list()
+  })
+
+  ipcMain.handle('db:story-direction-snapshot', async (_event, expectedProjectPath: string) => {
+    assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+    return StoryDirectionRepository.snapshot()
+  })
+
+  ipcMain.handle('db:story-direction-latest-run', async (_event, expectedProjectPath: string) => {
+    assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+    return StoryDirectionRepository.latestRun()
+  })
+
+  ipcMain.handle('db:story-direction-apply', async (_event, request: StoryDirectionApplyRequest, expectedProjectPath: string) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      return { success: true, ...StoryDirectionRepository.apply(request) }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) }
+    }
+  })
+
+  ipcMain.handle('db:story-direction-save-candidate', async (_event, request: Parameters<typeof StoryDirectionRepository.saveCandidate>[0], expectedProjectPath: string) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      return { success: true, revisionId: StoryDirectionRepository.saveCandidate(request) }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) }
+    }
+  })
+
+  ipcMain.handle('db:story-direction-mark-draft-failed', async (_event, runId: string, draftId: number, errorMessage: string, expectedProjectPath: string) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      StoryDirectionRepository.markDraftFailed(runId, draftId, errorMessage)
+      return { success: true }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) }
+    }
   })
 
   ipcMain.handle('db:writing-style-history-record', async (_event, input: {

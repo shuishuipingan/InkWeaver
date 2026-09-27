@@ -63,6 +63,7 @@ import type {
   ChapterDeletionResult,
   DeleteFinalizedChapterRequest,
 } from './chapter-deletion'
+import type { StoryDirectionApplyRequest, StoryDirectionRun, StoryDirectionSnapshot } from './story-direction'
 import type {
   ImportRunChapterSnapshot,
   ImportRunEffectCommitResult,
@@ -756,6 +757,26 @@ export interface DatabaseChannels {
   }
   'db:project-core-update': {
     args: [data: Partial<ProjectCoreData>, expectedProjectPath: string]
+    return: { success: boolean; error?: string }
+  }
+  'db:story-direction-snapshot': {
+    args: [expectedProjectPath: string]
+    return: StoryDirectionSnapshot
+  }
+  'db:story-direction-apply': {
+    args: [request: StoryDirectionApplyRequest, expectedProjectPath: string]
+    return: { success: boolean; snapshot?: StoryDirectionSnapshot; runId?: string; error?: string }
+  }
+  'db:story-direction-latest-run': {
+    args: [expectedProjectPath: string]
+    return: StoryDirectionRun | null
+  }
+  'db:story-direction-save-candidate': {
+    args: [request: { runId: string; draftId: number; content: string; wordCount: number; baseContentHash: string }, expectedProjectPath: string]
+    return: { success: boolean; revisionId?: number; error?: string }
+  }
+  'db:story-direction-mark-draft-failed': {
+    args: [runId: string, draftId: number, error: string, expectedProjectPath: string]
     return: { success: boolean; error?: string }
   }
   'db:writing-style-history-list': {

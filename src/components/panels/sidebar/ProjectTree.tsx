@@ -5,7 +5,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { ChevronRight, ChevronDown, RefreshCw, CheckCircle2, Circle, FolderOpen, Copy, FolderTree, Trash2 } from 'lucide-react'
+import { ChevronRight, ChevronDown, RefreshCw, CheckCircle2, Circle, FolderOpen, Copy, FolderTree, Trash2, Sparkles } from 'lucide-react'
 import { useProjectStore } from '../../../stores/project-store'
 import { useWorkflowStore } from '../../../stores/workflow-store'
 import { useDraftStore } from '../../../stores/draft-store'
@@ -17,6 +17,7 @@ import { EmptyState } from '../../ui/EmptyState'
 import { confirm } from '../../ui/Confirm'
 import { toast } from '../../ui/Toast'
 import ClearProjectDataDialog from '../../dialogs/ClearProjectDataDialog'
+import StoryDirectionDialog from '../../dialogs/StoryDirectionDialog'
 
 
 
@@ -64,6 +65,7 @@ export default function ProjectTree() {
   const [blueprintCount, setBlueprintCount] = useState<number>(-1)
   const [refreshing, setRefreshing] = useState(false)
   const [clearDialogOpen, setClearDialogOpen] = useState(false)
+  const [directionDialogOpen, setDirectionDialogOpen] = useState(false)
   const refreshRequestGate = useRef(new LatestRequestGate())
 
   /** 统一刷新：文件树 + 架构状态 + 草稿列表 + 蓝图数量 */
@@ -128,6 +130,7 @@ export default function ProjectTree() {
           setBlueprintCount(-1)
           setRefreshing(false)
           setClearDialogOpen(false)
+          setDirectionDialogOpen(false)
         }
       })
       return
@@ -258,6 +261,11 @@ export default function ProjectTree() {
         onClose={() => setClearDialogOpen(false)}
         onCleared={refreshAll}
       />
+      <StoryDirectionDialog
+        open={directionDialogOpen}
+        onClose={() => setDirectionDialogOpen(false)}
+        onApplied={refreshAll}
+      />
 
       {/* 1. 小说配置 */}
       <LeafItem
@@ -306,6 +314,12 @@ export default function ProjectTree() {
 
       {/* 2. 故事架构 — 点击标题行打开编辑器，子文件仍可单独点开 */}
       <WorldBuildingGroup archStatus={archStatus} archDone={archDone} onCleared={refreshAll} />
+      <div className="px-3 py-1">
+        <Button variant="outline" size="sm" className="w-full justify-start" disabled={activeRuns.length > 0}
+          onClick={() => setDirectionDialogOpen(true)}>
+          <Sparkles size={13} />{text('AI 全书方向调整', 'AI Story Direction Adjustment')}
+        </Button>
+      </div>
 
       {/* 3. 章节蓝图 — 点击打开编辑器页 */}
       <LeafItem

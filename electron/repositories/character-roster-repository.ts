@@ -21,6 +21,7 @@ import { getProjectDb } from '../database'
 import { CharacterRepository, type CharacterData } from './character-repository'
 import { ensureCharacterRosterSchema } from './character-roster-schema'
 import { CHARACTER_ROLE_LABELS, normalizeCharacterRole } from '../../src/shared/character-role'
+import { replaceCharacterNamesSimultaneously } from '../../src/shared/character-rename-references'
 
 interface CharacterRosterMetaRow {
   schema_version: number
@@ -156,6 +157,7 @@ function isCommitIntent(value: unknown): value is CharacterRosterCommitIntent {
     || value === 'novel_import'
     || value === 'blueprint_sync'
     || value === 'chapter_progress'
+    || value === 'direction_adjustment'
 }
 
 function isManualEditIntent(intent: CharacterRosterCommitIntent): boolean {
@@ -657,12 +659,23 @@ function mergeGeneratedEntriesWithExisting(
 function mergeIncrementalEntriesWithExisting(
   candidates: CharacterRosterEntry[],
   existingEntries: CharacterRosterEntry[],
-  intent: Extract<CharacterRosterCommitIntent, 'blueprint_sync' | 'chapter_progress'>,
+  intent: Extract<CharacterRosterCommitIntent, 'blueprint_sync' | 'chapter_progress' | 'direction_adjustment'>,
 ): CharacterRosterEntry[] {
   const candidateByName = new Map(candidates.map(entry => [entry.name, entry]))
   const mergedExisting = existingEntries.map((existing) => {
     const candidate = candidateByName.get(existing.name)
     if (!candidate) return { ...existing }
+
+    if (intent === 'direction_adjustment') {
+      return {
+        ...existing,
+        personality: candidate.personality,
+        abilities: candidate.abilities,
+        motivation: candidate.motivation,
+        arc: candidate.arc,
+        notes: candidate.notes,
+      }
+    }
 
     // 蓝图同步只附加结构化关系；章节定稿则以本轮已验证的状态补丁推进
     // currentState。其他资料保留已有事实，避免工作流重写人工档案。
@@ -772,6 +785,43 @@ function updateBlueprintReferencesForManualEdit(
       updateBlueprint.run(JSON.stringify(nextNames), blueprint.chapter_number)
     }
   }
+}
+
+function updatePlanningTextReferencesForManualEdit(
+  db: BetterSqlite3.Database,
+  renames: readonly CharacterRosterRename[],
+  protectedNames: readonly string[],
+): void {
+  if (renames.length === 0) return
+  const coreFields = [
+    'premise', 'worldbuilding', 'synopsis', 'core_outline', 'world_setting',
+    'protagonist_profile', 'global_guidance', 'golden_finger',
+    'writing_style', 'reference_works',
+  ]
+  // notes and character_states can project finalized facts; keep that
+  // authority immutable even when planning names change.
+  const blueprintFields = ['title', 'purpose', 'key_events', 'suspense_hook', 'user_guidance']
+  const available = (table: string) => new Set(
+    (db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>).map(column => column.name),
+  )
+  const rewriteTable = (table: string, key: string, fields: string[]) => {
+    const present = fields.filter(field => available(table).has(field))
+    if (present.length === 0) return
+    const rows = db.prepare(`SELECT ${key}, ${present.join(', ')} FROM ${table}`).all() as Array<Record<string, string | number>>
+    for (const row of rows) {
+      const changes = present.flatMap(field => {
+        const before = typeof row[field] === 'string' ? row[field] as string : ''
+        const after = replaceCharacterNamesSimultaneously(before, renames, protectedNames)
+        return after === before ? [] : [{ field, after }]
+      })
+      if (changes.length === 0) continue
+      db.prepare(`UPDATE ${table} SET ${changes.map(change => `${change.field} = ?`).join(', ')} WHERE ${key} = ?`)
+        .run(...changes.map(change => change.after), row[key])
+    }
+  }
+  rewriteTable('project_core', 'id', coreFields)
+  rewriteTable('blueprints', 'chapter_number', blueprintFields)
+  rewriteTable('narrative_thread_plans', 'id', ['title', 'author_intent'])
 }
 
 function fullFactHash(entries: CharacterRosterEntry[]): string {
@@ -972,9 +1022,9 @@ export class CharacterRosterRepository {
       const isLegacyRepair = intent === 'legacy_repair'
       const isLegacyCardsAdoption = intent === 'legacy_cards_adoption'
       const isManualEdit = isManualEditIntent(intent)
-      const isIncremental = intent === 'blueprint_sync' || intent === 'chapter_progress'
+      const isIncremental = intent === 'blueprint_sync' || intent === 'chapter_progress' || intent === 'direction_adjustment'
       const isNovelImport = intent === 'novel_import'
-      if (intent === 'chapter_progress') {
+      if (intent === 'chapter_progress' || intent === 'direction_adjustment') {
         const existingNames = new Set(existingEntries.map(entry => entry.name))
         if (request.entries.some(entry => !existingNames.has(entry.name))) {
           throw new Error('新角色必须先经过候选确认')
@@ -1070,6 +1120,9 @@ export class CharacterRosterRepository {
           db,
           renameByOriginal,
           new Set(entriesWithProvenance.map(entry => entry.name)),
+        )
+        updatePlanningTextReferencesForManualEdit(
+          db, request.renames ?? [], existingEntries.map(entry => entry.name),
         )
       } else if (!isLegacyCardsAdoption) {
         for (const entry of entriesWithProvenance) CharacterRepository.upsert(characterFromEntry(entry))

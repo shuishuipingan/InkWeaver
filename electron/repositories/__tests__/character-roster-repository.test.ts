@@ -280,6 +280,30 @@ describe('CharacterRosterRepository public read/commit seam', () => {
     })
   })
 
+  it('rewrites story architecture and blueprint prose in the same roster rename transaction', () => {
+    db.exec("ALTER TABLE project_core ADD COLUMN premise TEXT DEFAULT ''; ALTER TABLE project_core ADD COLUMN synopsis TEXT DEFAULT ''; ALTER TABLE blueprints ADD COLUMN purpose TEXT DEFAULT ''; ALTER TABLE blueprints ADD COLUMN key_events TEXT DEFAULT ''; ALTER TABLE blueprints ADD COLUMN notes TEXT DEFAULT '';")
+    const initial = CharacterRosterRepository.commit(commitRequest({ intent: 'manual_edit' }))
+    db.prepare("UPDATE project_core SET premise = ?, synopsis = ? WHERE id = 'main'")
+      .run('林舟发现第二人格', '林舟与苏绾同行')
+    db.prepare('INSERT INTO blueprints (chapter_number, characters, purpose, key_events, notes) VALUES (?, ?, ?, ?, ?)')
+      .run(1, JSON.stringify(['林舟']), '林舟认清自己', '林舟与苏绾相遇', '已定稿事实：林舟在这里获救')
+    db.exec("CREATE TABLE narrative_thread_plans (id INTEGER PRIMARY KEY, title TEXT, author_intent TEXT); INSERT INTO narrative_thread_plans (id, title, author_intent) VALUES (1, '林舟的伏笔', '林舟最终与苏绾和解');")
+    CharacterRosterRepository.commit({
+      operationId: 'rename-all-planning-references', expectedRevision: initial.revision,
+      schemaVersion: 1, intent: 'manual_edit',
+      renames: [{ originalName: '林舟', newName: '陆舟' }],
+      entries: initial.snapshot.entries.map(entry => entry.name === '林舟' ? { ...entry, name: '陆舟' } : entry),
+    })
+    expect(db.prepare("SELECT premise, synopsis FROM project_core WHERE id = 'main'").get())
+      .toEqual({ premise: '陆舟发现第二人格', synopsis: '陆舟与苏绾同行' })
+    expect(db.prepare('SELECT purpose, key_events FROM blueprints WHERE chapter_number = 1').get())
+      .toEqual({ purpose: '陆舟认清自己', key_events: '陆舟与苏绾相遇' })
+    expect(db.prepare('SELECT notes FROM blueprints WHERE chapter_number = 1').get())
+      .toEqual({ notes: '已定稿事实：林舟在这里获救' })
+    expect(db.prepare('SELECT title, author_intent FROM narrative_thread_plans WHERE id = 1').get())
+      .toEqual({ title: '陆舟的伏笔', author_intent: '陆舟最终与苏绾和解' })
+  })
+
   it('fails closed when a legacy direct card write makes the ready roster inconsistent', () => {
     const first = CharacterRosterRepository.commit(commitRequest())
     const existing = CharacterRepository.getByName('林舟')!

@@ -114,6 +114,8 @@ export type CharacterRosterCommitIntent =
   | 'blueprint_sync'
   /** 章节定稿后角色状态与新出场角色的原子推进。 */
   | 'chapter_progress'
+  /** Author-confirmed story direction edits to existing character profile fields only. */
+  | 'direction_adjustment'
 
 export interface CharacterRosterRename {
   originalName: string

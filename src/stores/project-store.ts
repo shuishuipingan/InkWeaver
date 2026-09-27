@@ -286,6 +286,9 @@ interface ProjectState {
   saveProject: (expectedProjectSession?: ProjectSessionContext) => Promise<boolean>
   /** 更新小说配置 */
   updateNovelConfig: (config: Partial<NovelConfig>, expectedProjectSession?: ProjectSessionContext) => void
+  /** Reflect a project-core transaction already committed by the main process. */
+  syncCommittedNovelConfig: (config: Partial<NovelConfig>, expectedProjectSession: ProjectSessionContext) => void
+  hasUnsavedNovelConfig: (projectPath: string) => boolean
   /** 放弃指定项目的配置草稿并恢复到已保存基准。 */
   discardNovelConfigDraft: (
     projectPath: string,
@@ -666,6 +669,18 @@ export const useProjectStore = create<ProjectState>()((set, get) => ({
       nextConfig,
     ))
   },
+
+  syncCommittedNovelConfig: (config, expectedProjectSession) => {
+    const project = get().currentProject
+    if (!project || !sameProjectSessionContext(expectedProjectSession, projectSessionContextFromProject(project))) return
+    const nextConfig = { ...project.novelConfig, ...config }
+    set({ currentProject: { ...project, novelConfig: nextConfig } })
+    persistConfigDraftLedger(settleProjectEditorSave(
+      readConfigDraftLedger(), project.path, nextConfig, nextConfig,
+    ))
+  },
+
+  hasUnsavedNovelConfig: (projectPath) => !!getProjectEditorDraft(readConfigDraftLedger(), projectPath),
 
   discardNovelConfigDraft: (projectPath, expectedProjectSession) => {
     if (

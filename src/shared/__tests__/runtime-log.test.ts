@@ -99,6 +99,20 @@ describe('runtime log event contract', () => {
     ]))
   })
 
+  it('redacts story-direction ideas and planning changes from IPC metadata', () => {
+    const event = createRuntimeLogEvent({
+      sequence: 4, sessionId: 'session-a', process: 'main', level: 'info',
+      source: 'ipc', event: 'ipc.db:story-direction-apply', message: '调用 db:story-direction-apply',
+      details: { args: [{ idea: 'private second personality idea', coreChanges: { premise: 'private premise' },
+        blueprintChanges: [{ chapterNumber: 2, changes: { purpose: 'private plot' } }],
+        newNarrativeThreads: [{ title: 'private thread' }] }] },
+    })
+    const serialized = JSON.stringify(event)
+    for (const sensitive of ['private second personality idea', 'private premise', 'private plot', 'private thread']) {
+      expect(serialized).not.toContain(sensitive)
+    }
+  })
+
   it('bounds direct event messages and records that the message was redacted', () => {
     const event = createRuntimeLogEvent({
       sequence: 2,

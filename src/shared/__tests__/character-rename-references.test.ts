@@ -1,7 +1,20 @@
 import { describe, expect, it } from 'vitest'
-import { renameReferencesClean, rewriteRelationshipsAfterRename } from '../character-rename-references'
+import { renameReferencesClean, replaceCharacterNamesSimultaneously, rewriteRelationshipsAfterRename } from '../character-rename-references'
 
 describe('character rename reference rewriting', () => {
+  it('replaces names in planning text once without cascading through new names', () => {
+    expect(replaceCharacterNamesSimultaneously('林舟与林舟儿同行', [
+      { originalName: '林舟', newName: '苏绾' },
+      { originalName: '林舟儿', newName: '顾舟' },
+      { originalName: '苏绾', newName: '闻清' },
+    ])).toBe('苏绾与顾舟同行')
+  })
+
+  it('keeps longer unrenamed character names intact', () => {
+    expect(replaceCharacterNamesSimultaneously('万阳光遇见万阳', [
+      { originalName: '万阳', newName: '楚曜' },
+    ], ['万阳光'])).toBe('万阳光遇见楚曜')
+  })
   it('rewrites JSON array relationship targets without touching unrelated records', () => {
     const input = JSON.stringify([
       { target: '林舟', relation: '好友', sourceChapter: 2 },

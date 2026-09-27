@@ -14,6 +14,27 @@ export interface CharacterRenamePair {
   readonly newName: string
 }
 
+/** One-pass longest-first replacement for author-approved planning text. */
+export function replaceCharacterNamesSimultaneously(
+  text: string,
+  renames: readonly CharacterRenamePair[],
+  protectedNames: readonly string[] = [],
+): string {
+  const replacements = new Map(renames
+    .map(rename => [rename.originalName.trim(), rename.newName.trim()] as const)
+    .filter(([original, next]) => original && next && original !== next))
+  for (const name of protectedNames) {
+    const trimmed = name.trim()
+    if (trimmed && !replacements.has(trimmed)) replacements.set(trimmed, trimmed)
+  }
+  if (replacements.size === 0 || !text) return text
+  const pattern = [...replacements.keys()]
+    .sort((left, right) => right.length - left.length)
+    .map(name => name.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&'))
+    .join('|')
+  return text.replace(new RegExp(pattern, 'gu'), matched => replacements.get(matched) ?? matched)
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }

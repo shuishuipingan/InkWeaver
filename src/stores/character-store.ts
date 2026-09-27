@@ -223,6 +223,7 @@ interface CharacterState {
   ) => Promise<boolean>
   renameCharacter: (name: string, newName: string) => boolean
   discardDraft: (projectPath: string, expectedProjectSession?: ProjectSessionContext) => void
+  hasUnsavedCharacterDraft: (projectPath: string) => boolean
   updateField: <K extends Exclude<keyof CharacterCard, 'name'>>(
     name: string,
     key: K,
@@ -585,6 +586,8 @@ export const useCharacterStore = create<CharacterState>()((set, get) => ({
 
     persistCharacterDraftLedger(discardProjectEditorDraft(ledger, projectPath))
   },
+
+  hasUnsavedCharacterDraft: (projectPath) => !!getProjectEditorDraft(readCharacterDraftLedger(projectPath), projectPath),
 
   updateField: (name, key, value) => {
     const projectSession = currentCharacterProjectSession()

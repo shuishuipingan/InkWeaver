@@ -530,6 +530,7 @@ describe('GenerateDirectoryCommand', () => {
         maxAttempts: 15,
         maxRequestedOutputTokens: 131_072,
         maxRequestedOutputTokensPerAttempt: 16_384,
+        respectIntentOutputCaps: true,
         deadlineMs: 600_000,
       },
     })
@@ -573,6 +574,7 @@ describe('GenerateDirectoryCommand', () => {
         maxAttempts: 23,
         maxRequestedOutputTokens: 131_072,
         maxRequestedOutputTokensPerAttempt: 16_384,
+        respectIntentOutputCaps: true,
         deadlineMs: 600_000,
       },
     })
@@ -741,6 +743,7 @@ describe('GenerateDirectoryCommand', () => {
         maxAttempts: 11,
         maxRequestedOutputTokens: 131_072,
         maxRequestedOutputTokensPerAttempt: 16_384,
+        respectIntentOutputCaps: true,
         deadlineMs: 600_000,
       },
     })
