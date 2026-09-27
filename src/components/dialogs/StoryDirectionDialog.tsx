@@ -145,7 +145,8 @@ export default function StoryDirectionDialog({ open, onClose, onApplied }: Props
     : 0
   const busy = phase === 'generating' || phase === 'applying' || phase === 'drafts'
   const canStart = !!snapshot && !!idea.trim() && idea.length <= 4_000 && startChapter >= 1
-    && endChapter >= startChapter && endChapter <= snapshot.core.totalChapters
+    && endChapter >= startChapter
+    && (!(snapshot.core.totalChapters > 0) || endChapter <= snapshot.core.totalChapters)
     && activeRuns.length === 0 && (estimatedCalls <= 11 || largeRunConfirmed)
 
   const requestModel = async (

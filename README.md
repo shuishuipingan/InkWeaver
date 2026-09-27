@@ -8,7 +8,7 @@
 
 > **把一本长篇小说写成会持续发展的整体。** InkWeaver 是本地优先的 AI 小说创作工作台：它把故事设定、角色状态、章节蓝图、候选草稿、证据化审稿和作者定稿串成一条可追溯的连续写作链。
 
-v1.3.1 修复方向调整将“第二人格定位”等中文字段名误判为无效的问题；审计改为只使用当前草稿和目标章之前本项目已定稿的事实，不再检索拆书知识库里的后续原文。角色状态会按目标章过滤，角色改名还会同步架构与蓝图文本。Windows 与 macOS 桌面安装包随同一 GitHub Release 分发；DSH 插件 tarball 保留在 v1.2.0 Release，本轮不发布 npm。
+v1.3.1 修复项目尚未填写总章数时，全书方向调整窗口误禁用“生成方案”按钮的问题；设定与角色方案现在可先生成，章节范围在总章数配置有效时才受上限限制。审计只参考当前草稿与目标章之前本项目的定稿事实，不再从拆书知识库引用尚未写到的原文。Windows 与 macOS 安装包随同一 GitHub Release 分发；DSH 插件沿用 v1.2.0，不发布 npm。
 
 [下载 v1.3.1](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.3.1) · [三分钟开始第一章](docs/quickstart/README.md) · [全书方向调整指南](docs/features/story-direction-adjustment.md) · [安装 DSH 插件](plugins/inkweaver-dsh/README.md) · [提交问题或建议](https://github.com/shuishuipingan/InkWeaver/issues/new/choose) · [参与讨论](https://github.com/shuishuipingan/InkWeaver/discussions)
 
