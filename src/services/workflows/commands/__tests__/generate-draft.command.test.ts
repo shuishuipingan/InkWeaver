@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { useProjectStore } from '../../../../stores/project-store'
 import { useLocaleStore } from '../../../../stores/locale-store'
 import type { StepCallbacks, WorkflowContext } from '../../../../stores/workflow-store'
+import type { CharacterData } from '../../../../../electron/repositories/character-repository'
 import type {
   LLMFinishReason,
   ModelExecutionLeaseReceipt,
@@ -211,7 +212,11 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
     wordsPerChapter?: number
     wordsTarget?: number
     premise?: string
+    charactersArch?: string
+    synopsis?: string
+    coreOutline?: string
     blueprints?: Array<{ chapterNumber: number; title: string; keyEvents: string }>
+    characterCards?: CharacterData[]
     userGuidance?: string
     writingLanguage?: 'zh-CN' | 'en-US'
     chapterNumber?: number
@@ -242,9 +247,9 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
       if (channel === 'db:project-core-get') {
         return {
           premise: options.premise ?? '故事前提',
-          charactersArch: '',
+          charactersArch: options.charactersArch ?? '',
           worldbuilding: '',
-          synopsis: '',
+          synopsis: options.synopsis ?? '',
         }
       }
       if (channel === 'db:blueprint-get-all') return options.blueprints ?? []
@@ -263,7 +268,8 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
           : null
       }
       if (channel === 'kb:search-writing-context') return options.knowledgeResults ?? []
-      if (channel === 'fs:list-dir' || channel === 'db:character-get-all') return []
+      if (channel === 'db:character-get-all') return options.characterCards ?? []
+      if (channel === 'fs:list-dir') return []
       if (channel === 'db:draft-next-version') return 1
       if (channel === 'db:draft-create') return { success: true, id: 'draft-1' }
       throw new Error(`unexpected IPC: ${channel}`)
@@ -289,6 +295,7 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
           writingLanguage: options.writingLanguage ?? 'zh-CN',
           totalChapters: 10,
           wordsPerChapter: options.wordsPerChapter ?? 5000,
+          coreOutline: options.coreOutline ?? '',
         },
       } as never,
       refreshFileTree: vi.fn().mockResolvedValue(undefined),
@@ -423,8 +430,8 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
     ])
     // 能力优先契约：384K 模型首发用满 (384_000 - 输入估算 - 512 预留)，续写消耗剩余预算。
     expect(completeWithLease.mock.calls.map(([request]) => request.plan.maxOutputTokens)).toEqual([
-      382_232,
-      1_768,
+      382_197,
+      1_803,
     ])
     expect(createRuntime).toHaveBeenCalledWith({ budget: DRAFT_GENERATION_BUDGET })
     expect(invoke).toHaveBeenCalledWith(
@@ -759,7 +766,7 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
     expect(replaceText).not.toHaveBeenLastCalledWith('')
   })
 
-  it('does not locally reject a 30K prompt when lease context evidence is unknown', async () => {
+  it('compacts a long prompt while keeping the target chapter when lease context evidence is unknown', async () => {
     const completeWithLease = vi.fn<GenerationRuntimeEnvironment['completeWithLease']>(async request => {
       void request
       return { content: `${'正文'.repeat(2500)}。`, finishReason: 'stop' }
@@ -789,13 +796,30 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
       runtime,
       premise: '设定'.repeat(15_000),
     })
+    const report = vi.fn()
+    callbacks.setPromptBudgetReport = report
 
     await expect(command.execute({ step: {}, context, callbacks })).resolves.toContain('正文')
 
     expect(completeWithLease).toHaveBeenCalledOnce()
     const physicalRequest = completeWithLease.mock.calls[0]![0]
-    const promptChars = physicalRequest.messages.reduce((sum, message) => sum + message.content.length, 0)
-    expect(promptChars).toBeGreaterThan(30_000)
+    const promptBytes = physicalRequest.messages.reduce(
+      (sum, message) => sum + new TextEncoder().encode(message.content).byteLength,
+      0,
+    )
+    expect(promptBytes).toBeLessThanOrEqual(65_536)
+    expect(physicalRequest.messages[1]?.content).toContain('"chapterNumber": 1')
+    expect(physicalRequest.messages[1]?.content).toContain('设定'.repeat(100))
+    expect(physicalRequest.messages[1]?.content).not.toContain('设定'.repeat(15_000))
+    expect(report).toHaveBeenCalledWith(expect.objectContaining({
+      totalUtf8Bytes: promptBytes,
+      compaction: expect.objectContaining({
+        removedUtf8Bytes: expect.any(Number),
+        sections: expect.arrayContaining([
+          expect.objectContaining({ sectionName: 'story-premise' }),
+        ]),
+      }),
+    }))
     expect(completeWithLease.mock.calls[0]?.[0].plan.maxOutputTokens).toBe(8192)
   })
 
@@ -946,6 +970,78 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
     expect(prompt).not.toMatch(/\{\{(?:chapter_info|future_blueprints|user_guidance)\}\}/u)
     expect(prompt).toContain('第2章 蓝门回声：追查蓝色漆屑与撞击声')
     expect(prompt).toContain('第一章必须以潮湿灯塔开场')
+  })
+
+  it('declares protected chapter evidence and the requested prompt degradation priority', async () => {
+    const card = (name: string, role: CharacterData['role']): CharacterData => ({
+      name,
+      role,
+      gender: '女',
+      age: '31',
+      appearance: `${name}的外貌`,
+      personality: `${name}的性格`,
+      background: `${name}的经历`,
+      abilities: `${name}的能力`,
+      motivation: `${name}的动机`,
+      relationships: '彼此协作',
+      arc: `${name}的成长线`,
+      notes: `${name}的注记`,
+      currentState: {
+        location: '旧港',
+        powerLevel: '常人',
+        physicalState: '无伤',
+        mentalState: '警惕',
+        keyItems: '录音笔',
+        recentEvents: '发现异常',
+        updatedAtChapter: 1,
+      },
+    })
+    const runtime = fakeOutcomes(outcome(`${'正文'.repeat(2500)}。`, 'stop'))
+    const { context, callbacks, command } = setup({
+      runtime,
+      chapterNumber: 2,
+      premise: 'AUTHOR-PREMISE',
+      coreOutline: 'AUTHOR-CORE-OUTLINE',
+      synopsis: 'AUTHOR-SYNOPSIS',
+      charactersArch: 'LEGACY-CHARACTER-GRAPH',
+      characters: ['林岚'],
+      characterCards: [card('林岚', 'protagonist'), card('苏绾', 'supporting')],
+      blueprints: [
+        { chapterNumber: 3, title: '近章', keyEvents: '最近事件' },
+        { chapterNumber: 7, title: '远章', keyEvents: '远期事件' },
+      ],
+    })
+
+    await command.execute({ step: {}, context, callbacks })
+
+    const task = runtime.complete.mock.calls[0]?.[0] as GenerationTask
+    const sections = task.promptBudget?.sections ?? []
+    const section = (name: string) => sections.find(candidate => candidate.sectionName === name)
+    const premise = section('story-premise')
+    const outline = section('core-outline')
+    const synopsis = section('synopsis')
+    const linked = section('linked-cast')
+    const secondary = section('secondary-cast')
+    const distant = section('distant-blueprints')
+    const system = section('system-instructions')
+    const target = section('target-chapter')
+
+    expect(premise?.degradation?.priority).toBeGreaterThan(linked?.degradation?.priority ?? Number.MAX_SAFE_INTEGER)
+    expect(outline?.degradation?.priority).toBeGreaterThan(linked?.degradation?.priority ?? Number.MAX_SAFE_INTEGER)
+    expect(synopsis?.degradation?.priority).toBeGreaterThan(linked?.degradation?.priority ?? Number.MAX_SAFE_INTEGER)
+    expect(linked?.degradation?.priority).toBeGreaterThan(secondary?.degradation?.priority ?? Number.MAX_SAFE_INTEGER)
+    expect(secondary?.degradation?.priority).toBeGreaterThan(distant?.degradation?.priority ?? Number.MAX_SAFE_INTEGER)
+    expect(linked?.degradation?.strategy).toBe('complete-lines')
+    expect(secondary?.degradation?.strategy).toBe('complete-lines')
+    expect(distant?.degradation?.strategy).toBe('complete-lines')
+    expect(system?.degradation).toBeUndefined()
+    expect(target?.degradation).toBeUndefined()
+    expect(task.messages[1]?.content).toContain('AUTHOR-PREMISE')
+    expect(task.messages[1]?.content).toContain('AUTHOR-CORE-OUTLINE')
+    expect(task.messages[1]?.content).toContain('"chapterNumber": 2')
+    expect(task.messages[1]?.content).toContain('林岚的经历')
+    expect(task.messages[1]?.content).toContain('苏绾的成长线')
+    expect(task.messages[1]?.content).toContain('第7章 远章：远期事件')
   })
 
   it('caps an overlong result at a natural boundary before persistence', async () => {

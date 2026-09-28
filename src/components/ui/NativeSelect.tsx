@@ -52,4 +52,4 @@ const NativeSelect = React.forwardRef<HTMLSelectElement, NativeSelectProps>(
 )
 NativeSelect.displayName = 'NativeSelect'
 
-export { NativeSelect, nativeSelectVariants }
+export { NativeSelect }

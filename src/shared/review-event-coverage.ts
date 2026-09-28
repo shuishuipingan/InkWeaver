@@ -7,7 +7,7 @@ export interface BlueprintEventCoverage {
 }
 
 function normalize(value: string): string {
-  return value.replace(/[\s\u3000]+/gu, '').replace(/^[\-*•·\d.)、:：]+/u, '').replace(/[。！？.!?；;]+$/u, '')
+  return value.replace(/[\s\u3000]+/gu, '').replace(/^[-*•·\d.)、:：]+/u, '').replace(/[。！？.!?；;]+$/u, '')
 }
 
 function eventsFromKeyEvents(keyEvents: string): string[] {

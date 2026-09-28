@@ -94,9 +94,9 @@ export default function ImportNovelDialog({ open, onClose }: ImportNovelDialogPr
     const session = captureProjectSession(currentProject)
     if (!session) return
     let active = true
-    void ipc.invokeWithProjectSession(session, 'db:import-run-list-resumable', currentProject.path)
+    void ipc.invokeBackgroundWithProjectSession(session, 'db:import-run-list-resumable', currentProject.path)
       .then(runs => {
-        if (active && isProjectSessionCurrent(session)) {
+        if (active && runs && isProjectSessionCurrent(session)) {
           setResumableState(runs.length > 0 ? { projectLeaseId: session.leaseId, runs } : null)
           setSelectedResumableRunId(selected => (
             runs.some(run => run.id === selected) ? selected : (runs[0]?.id ?? '')
@@ -116,13 +116,13 @@ export default function ImportNovelDialog({ open, onClose }: ImportNovelDialogPr
     const session = captureProjectSession(currentProject)
     if (!session) return
     let active = true
-    void ipc.invokeWithProjectSession(
+    void ipc.invokeBackgroundWithProjectSession(
       session,
       'db:import-run-author-preview',
       inspection.inspectionId,
       currentProject.path,
     ).then(preview => {
-      if (!active || !isProjectSessionCurrent(session)) return
+      if (!preview || !active || !isProjectSessionCurrent(session)) return
       setAuthorPreview(preview)
       if (preview.classification === 'conflict') {
         if (preview.authorityInvalid) {
@@ -979,20 +979,38 @@ function PlanningMaterialImportPanel({
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
 
-  const reload = useCallback(async () => {
-    const session = captureProjectSession(useProjectStore.getState().currentProject)
+  const reload = useCallback(async (expectedSession?: ProjectSessionContext) => {
+    const session = expectedSession ?? captureProjectSession(useProjectStore.getState().currentProject)
     if (!session) return
     try {
-      const rows = await ipc.invokeWithProjectSession(session, 'db:planning-material-list', undefined, session.projectPath)
-      if (isProjectSessionCurrent(session)) setMaterials(rows)
+      const rows = await ipc.invokeBackgroundWithProjectSession(session, 'db:planning-material-list', undefined, session.projectPath)
+      if (rows && isProjectSessionCurrent(session)) setMaterials(rows)
     } catch {
       if (isProjectSessionCurrent(session)) setError(text('无法读取规划资料。', 'Could not load planning materials.'))
     }
   }, [text])
 
   useEffect(() => {
-    if (open) void reload()
-  }, [open, reload])
+    if (!open) return
+    const session = captureProjectSession(useProjectStore.getState().currentProject)
+    if (!session) return
+    let cancelled = false
+    void ipc.invokeBackgroundWithProjectSession(
+      session,
+      'db:planning-material-list',
+      undefined,
+      session.projectPath,
+    )
+      .then(rows => {
+        if (!cancelled && rows && isProjectSessionCurrent(session)) setMaterials(rows)
+      })
+      .catch(() => {
+        if (!cancelled && isProjectSessionCurrent(session)) {
+          setError(text('无法读取规划资料。', 'Could not load planning materials.'))
+        }
+      })
+    return () => { cancelled = true }
+  }, [currentProject?.path, currentProject?.sessionLease, open, text])
 
   const importFile = async (file: File | undefined) => {
     if (!file) return
@@ -1016,7 +1034,7 @@ function PlanningMaterialImportPanel({
       if (!isProjectSessionCurrent(session)) return
       setCandidate(result.material)
       setNotice(text('资料已导入为候选，确认后才会用于蓝图和写作。', 'The material is a candidate; confirm it before it can affect blueprints or writing.'))
-      await reload()
+      await reload(session)
     } catch (cause) {
       if (isProjectSessionCurrent(session)) setError(cause instanceof Error ? cause.message : String(cause))
     } finally {

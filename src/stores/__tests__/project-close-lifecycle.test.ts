@@ -25,6 +25,9 @@ vi.mock('../../services/ipc-client', () => ({
     invokeWithProjectSession: (_context: unknown, channel: string, ...args: unknown[]) => (
       mocks.invoke(channel, ...args)
     ),
+    invokeBackgroundWithProjectSession: (_context: unknown, channel: string, ...args: unknown[]) => (
+      mocks.invoke(channel, ...args)
+    ),
   },
 }))
 

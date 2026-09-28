@@ -5,6 +5,24 @@ import type {
   TokenUsage,
 } from '../../shared/ipc-channels'
 import type { CreativeStrategy, GenerationReasoningStage } from '../../shared/reasoning-types'
+import type {
+  PromptBudgetCompactionReport,
+  PromptBudgetPolicy,
+  PromptBudgetReport,
+  PromptBudgetResultCode,
+  PromptBudgetSection,
+  PromptBudgetSectionReport,
+} from '../../shared/prompt-budget'
+
+export type {
+  PromptBudgetCompactionReport,
+  PromptBudgetCompactionSectionReport,
+  PromptBudgetPolicy,
+  PromptBudgetReport,
+  PromptBudgetResultCode,
+  PromptBudgetSection,
+  PromptBudgetSectionReport,
+} from '../../shared/prompt-budget'
 
 export type GenerationOutput = 'visible-text' | 'structured-data'
 
@@ -28,39 +46,6 @@ export interface GenerationTask {
   responseFormat?: never
   thinking?: never
   plan?: never
-}
-
-export interface PromptBudgetSection {
-  /** Stable, non-sensitive section name used by receipts and localized diagnostics. */
-  sectionName: string
-  /** Index in the final message array where this exact assembled fragment occurs. */
-  messageIndex: number
-  /** Exact fragment from the final assembled request; never copied into reports or logs. */
-  finalText: string
-  /** Optional independent ceiling for one protected evidence section. */
-  limitUtf8Bytes?: number
-}
-
-export interface PromptBudgetPolicy {
-  limitUtf8Bytes: number
-  sections: readonly PromptBudgetSection[]
-}
-
-export interface PromptBudgetSectionReport {
-  sectionName: string
-  utf8Bytes: number
-}
-
-export type PromptBudgetResultCode = 'OK' | 'PROMPT_BUDGET_EXHAUSTED'
-
-/** Safe prompt diagnostics. Prompt text and provider endpoint details are deliberately absent. */
-export interface PromptBudgetReport {
-  totalUtf8Bytes: number
-  limitUtf8Bytes: number
-  reservedOutputTokens: number
-  sections: readonly PromptBudgetSectionReport[]
-  modelId: string
-  errorCode: PromptBudgetResultCode
 }
 
 export interface DefaultModelSnapshot {
@@ -194,6 +179,8 @@ export interface GenerationExecutionOptions {
   signal?: AbortSignal
   /** Provisional provider text. It is never terminal or persistence evidence. */
   onChunk?: (chunk: string) => void
+  /** Safe preflight receipt, delivered before provider dispatch when compaction occurs. */
+  onPromptBudgetPreflight?: (report: PromptBudgetReport) => void
 }
 
 export interface GenerationSessionBudget {
@@ -266,18 +253,19 @@ function utf8Bytes(value: string): number {
   return new TextEncoder().encode(value).byteLength
 }
 
-function createPromptBudgetReport(input: {
-  messages: readonly GenerationMessage[]
-  policy: PromptBudgetPolicy
-  reservedOutputTokens: number
-  modelId: string
-}): PromptBudgetReport {
-  if (!Number.isSafeInteger(input.policy.limitUtf8Bytes) || input.policy.limitUtf8Bytes <= 0) {
-    throw new GenerationHarnessError('INVALID_POLICY', '提示词字节上限必须是正整数。')
-  }
+interface LocatedPromptBudgetSection {
+  policy: PromptBudgetSection
+  start: number
+  end: number
+  text: string
+}
 
-  const cursors = new Map<number, number>()
-  const sectionEvaluations = input.policy.sections.map((section) => {
+function locatePromptBudgetSections(
+  messages: readonly GenerationMessage[],
+  policy: PromptBudgetPolicy,
+): LocatedPromptBudgetSection[] {
+  const occupied = new Map<number, Array<{ start: number; end: number }>>()
+  return policy.sections.map((section) => {
     if (
       !/^[a-z0-9][a-z0-9-]{0,63}$/u.test(section.sectionName)
       || !Number.isSafeInteger(section.messageIndex)
@@ -285,27 +273,229 @@ function createPromptBudgetReport(input: {
       || !section.finalText
       || (section.limitUtf8Bytes !== undefined
         && (!Number.isSafeInteger(section.limitUtf8Bytes) || section.limitUtf8Bytes <= 0))
+      || (section.degradation !== undefined && (
+        !Number.isSafeInteger(section.degradation.priority)
+        || section.degradation.priority < 0
+        || !['utf8-prefix', 'complete-lines', 'json-string'].includes(section.degradation.strategy)
+      ))
     ) {
       throw new GenerationHarnessError('INVALID_POLICY', '提示词预算区段定义无效。')
     }
-    const message = input.messages[section.messageIndex]
+    const message = messages[section.messageIndex]
     if (!message) {
       throw new GenerationHarnessError('INVALID_POLICY', '提示词预算区段未绑定最终请求消息。')
     }
-    const cursor = cursors.get(section.messageIndex) ?? 0
-    const start = message.content.indexOf(section.finalText, cursor)
+    let searchFrom = 0
+    let start = -1
+    while (searchFrom <= message.content.length) {
+      const candidate = message.content.indexOf(section.finalText, searchFrom)
+      if (candidate < 0) break
+      const end = candidate + section.finalText.length
+      const overlapsLocatedSection = (occupied.get(section.messageIndex) ?? []).some(located => (
+        candidate < located.end && end > located.start
+      ))
+      if (!overlapsLocatedSection) {
+        start = candidate
+        break
+      }
+      searchFrom = candidate + 1
+    }
     if (start < 0) {
-      throw new GenerationHarnessError('INVALID_POLICY', '提示词预算区段与最终请求不一致。')
+      throw new GenerationHarnessError(
+        'INVALID_POLICY',
+        `提示词预算区段「${section.sectionName}」与最终请求不一致。`,
+      )
     }
-    cursors.set(section.messageIndex, start + section.finalText.length)
-    return {
-      report: Object.freeze({
-        sectionName: section.sectionName,
-        utf8Bytes: utf8Bytes(section.finalText),
-      }),
-      limitUtf8Bytes: section.limitUtf8Bytes,
-    }
+    const end = start + section.finalText.length
+    const intervals = occupied.get(section.messageIndex) ?? []
+    intervals.push({ start, end })
+    occupied.set(section.messageIndex, intervals)
+    return { policy: section, start, end, text: section.finalText }
   })
+}
+
+function utf8Prefix(value: string, maxUtf8Bytes: number): string {
+  let retained = ''
+  let retainedBytes = 0
+  for (const character of value) {
+    const characterBytes = utf8Bytes(character)
+    if (retainedBytes + characterBytes > maxUtf8Bytes) break
+    retained += character
+    retainedBytes += characterBytes
+  }
+  return retained
+}
+
+function completeLinePrefix(value: string, maxUtf8Bytes: number): string {
+  const lines = value.match(/[^\r\n]*(?:\r\n|\n|\r|$)/gu)?.filter(Boolean) ?? []
+  let retained = ''
+  let retainedBytes = 0
+  for (const line of lines) {
+    const lineBytes = utf8Bytes(line)
+    if (retainedBytes + lineBytes > maxUtf8Bytes) break
+    retained += line
+    retainedBytes += lineBytes
+  }
+  return retained
+}
+
+function jsonStringPrefix(value: string, maxUtf8Bytes: number): string {
+  let source: unknown
+  try {
+    source = JSON.parse(value)
+  } catch {
+    return value
+  }
+  if (typeof source !== 'string') return value
+
+  let inner = ''
+  let retainedBytes = 2
+  for (const character of source) {
+    const escapedCharacter = JSON.stringify(character).slice(1, -1)
+    const characterBytes = utf8Bytes(escapedCharacter)
+    if (retainedBytes + characterBytes > maxUtf8Bytes) break
+    inner += escapedCharacter
+    retainedBytes += characterBytes
+  }
+  return `"${inner}"`
+}
+
+function compactTextForSection(
+  section: PromptBudgetSection,
+  text: string,
+  maxUtf8Bytes: number,
+): string {
+  switch (section.degradation?.strategy) {
+    case 'utf8-prefix':
+      return utf8Prefix(text, maxUtf8Bytes)
+    case 'complete-lines':
+      return completeLinePrefix(text, maxUtf8Bytes)
+    case 'json-string':
+      return jsonStringPrefix(text, maxUtf8Bytes)
+    default:
+      return text
+  }
+}
+
+function compactPromptBudgetSections(input: {
+  messages: readonly GenerationMessage[]
+  policy: PromptBudgetPolicy
+  sections: LocatedPromptBudgetSection[]
+}): {
+  messages: readonly GenerationMessage[]
+  sectionTexts: readonly string[]
+  compaction?: PromptBudgetCompactionReport
+} {
+  const originalTotalUtf8Bytes = input.messages.reduce(
+    (total, message) => total + utf8Bytes(message.content),
+    0,
+  )
+  const originalSectionTexts = input.sections.map(section => section.text)
+  const currentTexts = [...originalSectionTexts]
+  const candidates = input.sections
+    .map((section, index) => ({ section, index }))
+    .filter(({ section }) => section.policy.degradation !== undefined)
+    .sort((left, right) => (
+      left.section.policy.degradation!.priority - right.section.policy.degradation!.priority
+      || left.index - right.index
+    ))
+  let currentTotalUtf8Bytes = originalTotalUtf8Bytes
+
+  const compactSection = (index: number, targetBytes: number): void => {
+    const section = input.sections[index]!
+    const currentText = currentTexts[index]!
+    const currentBytes = utf8Bytes(currentText)
+    if (!section.policy.degradation || targetBytes >= currentBytes) return
+    const nextText = compactTextForSection(section.policy, currentText, targetBytes)
+    const nextBytes = utf8Bytes(nextText)
+    if (nextBytes >= currentBytes) return
+    currentTexts[index] = nextText
+    currentTotalUtf8Bytes -= currentBytes - nextBytes
+  }
+
+  // Enforce explicit per-section ceilings first, while preserving the same
+  // low-priority-first order used for the overall request ceiling.
+  for (const { section, index } of candidates) {
+    const limit = section.policy.limitUtf8Bytes
+    if (limit !== undefined && utf8Bytes(currentTexts[index]!) > limit) {
+      compactSection(index, limit)
+    }
+  }
+
+  if (currentTotalUtf8Bytes > input.policy.limitUtf8Bytes) {
+    for (const { index } of candidates) {
+      if (currentTotalUtf8Bytes <= input.policy.limitUtf8Bytes) break
+      const currentBytes = utf8Bytes(currentTexts[index]!)
+      const excessBytes = currentTotalUtf8Bytes - input.policy.limitUtf8Bytes
+      compactSection(index, Math.max(0, currentBytes - excessBytes))
+    }
+  }
+
+  const compactedSections = input.sections.flatMap((section, index) => {
+    const originalUtf8Bytes = utf8Bytes(originalSectionTexts[index]!)
+    const retainedUtf8Bytes = utf8Bytes(currentTexts[index]!)
+    if (originalUtf8Bytes === retainedUtf8Bytes) return []
+    return [{
+      sectionName: section.policy.sectionName,
+      originalUtf8Bytes,
+      retainedUtf8Bytes,
+      removedUtf8Bytes: originalUtf8Bytes - retainedUtf8Bytes,
+    }]
+  })
+  const compaction = compactedSections.length > 0
+    ? Object.freeze({
+        originalTotalUtf8Bytes,
+        retainedTotalUtf8Bytes: currentTotalUtf8Bytes,
+        removedUtf8Bytes: originalTotalUtf8Bytes - currentTotalUtf8Bytes,
+        sections: Object.freeze(compactedSections),
+      })
+    : undefined
+
+  if (!compaction) {
+    return { messages: input.messages, sectionTexts: currentTexts }
+  }
+
+  const replacements = input.sections
+    .map((section, index) => ({ section, text: currentTexts[index]! }))
+    .filter(({ section, text }) => section.text !== text)
+    .sort((left, right) => (
+      right.section.policy.messageIndex - left.section.policy.messageIndex
+      || right.section.start - left.section.start
+    ))
+  const messages = input.messages.map(message => ({ ...message }))
+  for (const { section, text } of replacements) {
+    const message = messages[section.policy.messageIndex]!
+    message.content = message.content.slice(0, section.start)
+      + text
+      + message.content.slice(section.end)
+  }
+  return {
+    messages,
+    sectionTexts: currentTexts,
+    compaction,
+  }
+}
+
+function createPromptBudgetReport(input: {
+  messages: readonly GenerationMessage[]
+  policy: PromptBudgetPolicy
+  sections: readonly LocatedPromptBudgetSection[]
+  sectionTexts: readonly string[]
+  reservedOutputTokens: number
+  modelId: string
+  compaction?: PromptBudgetCompactionReport
+}): PromptBudgetReport {
+  if (!Number.isSafeInteger(input.policy.limitUtf8Bytes) || input.policy.limitUtf8Bytes <= 0) {
+    throw new GenerationHarnessError('INVALID_POLICY', '提示词字节上限必须是正整数。')
+  }
+
+  const sectionEvaluations = input.sections.map((section, index) => ({
+    report: Object.freeze({
+      sectionName: section.policy.sectionName,
+      utf8Bytes: utf8Bytes(input.sectionTexts[index]!),
+    }),
+    limitUtf8Bytes: section.policy.limitUtf8Bytes,
+  }))
   const sections: PromptBudgetSectionReport[] = sectionEvaluations.map(section => section.report)
 
   const totalUtf8Bytes = input.messages.reduce(
@@ -343,6 +533,7 @@ function createPromptBudgetReport(input: {
     limitUtf8Bytes: effectiveLimitUtf8Bytes,
     reservedOutputTokens: input.reservedOutputTokens,
     sections: Object.freeze(sections),
+    ...(input.compaction ? { compaction: input.compaction } : {}),
     modelId: input.modelId,
     errorCode,
   })
@@ -552,7 +743,6 @@ export function createGenerationHarness(dependencies: {
             )
           }
 
-          const estimatedInputTokens = estimateInputTokens(task.messages)
           // 单次输出上限不压制模型能力：意图预算只作为"应用想限制的软上限"，
           // 当模型能力更大时按模型能力走（max() 使 min() 中由模型能力主导）。
           // 这保证配置了 384K 输出上限的模型真正能用到它的能力。
@@ -562,18 +752,32 @@ export function createGenerationHarness(dependencies: {
             remainingRequestedTokens,
             effectivePerAttemptCap,
           )
-          const promptBudgetCandidate = task.promptBudget
-            ? createPromptBudgetReport({
-                messages: task.messages,
-                policy: task.promptBudget,
-                reservedOutputTokens: intentOutputTokens,
-                modelId: frozenIdentity.id,
-              })
-            : undefined
+          let requestMessages: readonly GenerationMessage[] = task.messages
+          let promptBudgetCandidate: PromptBudgetReport | undefined
+          if (task.promptBudget) {
+            const sections = locatePromptBudgetSections(task.messages, task.promptBudget)
+            const compacted = compactPromptBudgetSections({
+              messages: task.messages,
+              policy: task.promptBudget,
+              sections,
+            })
+            requestMessages = compacted.messages
+            promptBudgetCandidate = createPromptBudgetReport({
+              messages: requestMessages,
+              policy: task.promptBudget,
+              sections,
+              sectionTexts: compacted.sectionTexts,
+              reservedOutputTokens: intentOutputTokens,
+              modelId: frozenIdentity.id,
+              ...(compacted.compaction ? { compaction: compacted.compaction } : {}),
+            })
+            if (compacted.compaction) options?.onPromptBudgetPreflight?.(promptBudgetCandidate)
+          }
           if (promptBudgetCandidate?.errorCode === 'PROMPT_BUDGET_EXHAUSTED') {
             logPromptBudgetReport(promptBudgetCandidate)
             throw new PromptBudgetExceededError(promptBudgetCandidate)
           }
+          const estimatedInputTokens = estimateInputTokens(requestMessages)
           const contextAvailableOutputTokens = capabilities.contextWindowTokens === null
             ? null
             : capabilities.contextWindowTokens - estimatedInputTokens - CONTEXT_SAFETY_RESERVE_TOKENS
@@ -645,7 +849,7 @@ export function createGenerationHarness(dependencies: {
                 creativeStrategy,
                 reasoningStage: task.reasoningStage
                   ?? (task.output === 'structured-data' ? 'planning' : 'drafting'),
-                messages: task.messages.map(message => Object.freeze({ ...message })),
+                messages: requestMessages.map(message => Object.freeze({ ...message })),
                 plan,
                 signal: controller.signal,
                 onChunk: options?.onChunk,

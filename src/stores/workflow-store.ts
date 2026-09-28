@@ -13,7 +13,7 @@ import {
   promptBudgetFailureFromError,
   type PromptBudgetFailureCode,
 } from '../services/generation/prompt-budget-failure'
-import type { PromptBudgetReport } from '../services/generation/generation-harness'
+import type { PromptBudgetReport } from '../shared/prompt-budget'
 import {
   isProjectSessionContext,
   projectSessionContextFromProject,

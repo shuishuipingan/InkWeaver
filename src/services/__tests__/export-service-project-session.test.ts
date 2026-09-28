@@ -202,7 +202,7 @@ describe('exportNovel project session ownership', () => {
       projectSession,
     )).resolves.toEqual({ success: true, path: 'Project A.md' })
 
-    const manifestCall = vi.mocked(ipc.invoke).mock.calls.find(([channel, _grantId, relativePath]) => (
+    const manifestCall = vi.mocked(ipc.invoke).mock.calls.find(([channel, , relativePath]) => (
       channel === 'fs:grant-write-file' && typeof relativePath === 'string' && relativePath.endsWith('.manifest.json')
     ))
     expect(manifestCall).toBeDefined()
@@ -257,7 +257,7 @@ describe('exportNovel project session ownership', () => {
 
   it('fails when the granted directory readback does not match what was written', async () => {
     let relativeReadback = ''
-    vi.mocked(ipc.invoke).mockImplementation((async (channel: string, _grantId?: string, relativePath?: string, _content?: unknown) => {
+    vi.mocked(ipc.invoke).mockImplementation((async (channel: string, _grantId?: string, relativePath?: string) => {
       if (channel === 'fs:grant-write-file') {
         relativeReadback = String(relativePath ?? '')
         return { success: true }

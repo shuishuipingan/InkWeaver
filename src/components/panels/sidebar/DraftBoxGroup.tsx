@@ -120,7 +120,7 @@ function DraftChapterGroup({
     let cancelled = false
     const projectSession = captureProjectSession(currentProject)
     if (!projectSession || !isProjectSessionPath(projectSession, projectKey)) return
-    ipc.invokeWithProjectSession(projectSession, 'db:blueprint-get', chapterNumber, projectKey).then(bp => {
+    ipc.invokeBackgroundWithProjectSession(projectSession, 'db:blueprint-get', chapterNumber, projectKey).then(bp => {
       if (!cancelled && isProjectSessionCurrent(projectSession) && bp?.title) {
         setBpTitle({ projectKey, title: bp.title })
       }

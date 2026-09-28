@@ -41,7 +41,7 @@ describe('ChapterHandoffPanel', () => {
     document.body.append(container)
     root = createRoot(container)
     const onConfirm = vi.fn(async () => {})
-    const text = (zh: string, _en: string) => zh
+    const text = (zh: string) => zh
 
     await act(async () => root.render(
       <ChapterHandoffPanel records={[candidate]} onConfirm={onConfirm} text={text} />,

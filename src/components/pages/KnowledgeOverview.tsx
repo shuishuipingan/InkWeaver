@@ -50,9 +50,10 @@ export default function KnowledgeOverview() {
     const expectedProjectPath = projectSession.projectPath
     try {
       const [documentsResult, statsResult] = await Promise.all([
-        ipc.invokeWithProjectSession(projectSession, 'kb:list-documents', expectedProjectPath),
-        ipc.invokeWithProjectSession(projectSession, 'kb:stats', expectedProjectPath),
+        ipc.invokeBackgroundWithProjectSession(projectSession, 'kb:list-documents', expectedProjectPath),
+        ipc.invokeBackgroundWithProjectSession(projectSession, 'kb:stats', expectedProjectPath),
       ])
+      if (documentsResult === undefined || statsResult === undefined) return
       if (!isProjectSessionCurrent(projectSession)) return
       const docs = unwrapKnowledgeValue(documentsResult)
       const s = unwrapKnowledgeValue(statsResult)
@@ -70,11 +71,12 @@ export default function KnowledgeOverview() {
     if (!projectSession) return
     const expectedProjectPath = projectSession.projectPath
     try {
-      const result = await ipc.invokeWithProjectSession(
+      const result = await ipc.invokeBackgroundWithProjectSession(
         projectSession,
         'kb:get-vector-rebuild-status',
         expectedProjectPath,
       )
+      if (result === undefined) return
       if (!isProjectSessionCurrent(projectSession)) return
       setVectorRebuildStatus(unwrapKnowledgeValue(result))
     } catch (error) {

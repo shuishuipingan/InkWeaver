@@ -42,8 +42,13 @@ const ARCH_FILE_CORE_FIELDS = {
   'synopsis.md': { pathKey: 'synopsis', coreField: 'synopsis' },
 } as const
 
-function runProjectEventTask(label: () => string, task: () => Promise<void>): void {
+function runProjectEventTask(
+  projectSession: ProjectSessionContext,
+  label: () => string,
+  task: () => Promise<void>,
+): void {
   void task().catch((error) => {
+    if (!isProjectSessionCurrent(projectSession)) return
     const message = error instanceof Error ? error.message : String(error)
     const locale = useLocaleStore.getState().locale
     const localizedLabel = label()
@@ -91,6 +96,7 @@ export function initProjectService(): void {
   // 工作流完成 → 刷新文件树 + 草稿（覆盖所有工作流类型）
   disposers.push(
     globalEventBus.on('WORKFLOW_COMPLETE', (payload) => runProjectEventTask(
+      payload.projectSession,
       () => text('工作流完成后的项目刷新失败', 'Could not refresh project data after workflow completion'),
       async () => {
       console.log('[ProjectService] WORKFLOW_COMPLETE 事件触发:', payload.type)
@@ -136,6 +142,7 @@ export function initProjectService(): void {
   // 定稿完成 → 刷新草稿 + 角色 + 文件树 + 同步编辑器 Tab
   disposers.push(
     globalEventBus.on('FINALIZE_COMPLETE', (payload) => runProjectEventTask(
+      payload.projectSession,
       () => text('定稿后的项目刷新失败', 'Could not refresh project data after finalization'),
       async () => {
       const project = useProjectStore.getState().currentProject
@@ -169,6 +176,7 @@ export function initProjectService(): void {
   // 架构后处理完成 → 刷新角色卡
   disposers.push(
     globalEventBus.on('ARCH_POSTPROCESS_UPDATED', (payload) => runProjectEventTask(
+      payload.projectSession,
       () => text('架构后处理刷新失败', 'Could not refresh character cards after architecture post-processing'),
       async () => {
       if (
@@ -184,6 +192,7 @@ export function initProjectService(): void {
   // 角色卡提取失败 → 也刷新角色卡（确保 UI 状态一致）
   disposers.push(
     globalEventBus.on('CHARACTER_EXTRACT_FAILED', (payload) => runProjectEventTask(
+      payload.projectSession,
       () => text('角色卡失败状态刷新失败', 'Could not refresh character-card failure status'),
       async () => {
       if (
@@ -199,6 +208,7 @@ export function initProjectService(): void {
   // 资源刷新请求（由知识库等模块触发）
   disposers.push(
     globalEventBus.on('REFRESH_RESOURCE', (payload) => runProjectEventTask(
+      payload.projectSession,
       () => text('项目资源刷新失败', 'Could not refresh project resources'),
       async () => {
       const projectPath = payload.projectPath
@@ -228,6 +238,7 @@ export function initProjectService(): void {
   // Dirty tabs are kept intact; their owning flow must stop before changing data.
   disposers.push(
     globalEventBus.on('ARCH_FILE_UPDATED', payload => runProjectEventTask(
+      payload.projectSession,
       () => text('架构文档刷新失败', 'Could not refresh architecture documents'),
       async () => {
         if (!isProjectSessionCurrent(payload.projectSession)) return
@@ -239,7 +250,7 @@ export function initProjectService(): void {
           && sameProjectPathKey(tab.projectKey, payload.projectPath)
         ))
         if (matchingTabs.length === 0) return
-        const core = await ipc.invokeWithProjectSession(
+        const core = await ipc.invokeBackgroundWithProjectSession(
           payload.projectSession,
           'db:project-core-get',
           payload.projectPath,

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Check, Plus, Save, RefreshCw, X } from 'lucide-react'
 import { ipc } from '../../services/ipc-client'
 import { useLocaleStore } from '../../stores/locale-store'
@@ -39,6 +39,18 @@ interface WritingPreparationSummary {
   handoff: ChapterHandoffRecord | null
   narrativeThreads: NarrativeThreadView[]
 }
+
+interface StoryContinuityLoadResult {
+  requestKey: string
+  document?: StoryContinuityDocument
+  timeline?: FinalizedContinuityProjection[]
+  volumeProgress?: VolumeProgressSummary[]
+  previousDocuments?: StoryContinuityDocument[]
+  preparation?: WritingPreparationSummary
+  error?: string
+}
+
+const EMPTY_KNOWLEDGE_EVENTS: KnowledgeEvent[] = []
 
 function lines(value: string): string[] {
   return value.split(/\r?\n/gu).map(item => item.trim()).filter(Boolean)
@@ -86,19 +98,37 @@ export default function StoryContinuityPanel({ projectKey, chapterNumber }: Stor
   const characters = useCharacterStore(state => state.characters)
   const characterNames = useMemo(() => characters.map(character => character.name).filter(Boolean), [characters])
   const [document, setDocument] = useState<StoryContinuityDocument>(() => emptyStoryContinuityDocument(chapterNumber))
-  const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
-  const [knowledgeEvents, setKnowledgeEvents] = useState<KnowledgeEvent[]>([])
+  const [knowledgeResult, setKnowledgeResult] = useState<{
+    requestKey: string
+    events: KnowledgeEvent[]
+    reviewEvents: KnowledgeEvent[]
+  } | null>(null)
   const [timeline, setTimeline] = useState<FinalizedContinuityProjection[]>([])
-  const [timelineQueryChapter, setTimelineQueryChapter] = useState(chapterNumber)
+  const [timelineQuerySelection, setTimelineQuerySelection] = useState(() => ({
+    chapterNumber,
+    value: chapterNumber,
+  }))
   const [volumeProgress, setVolumeProgress] = useState<VolumeProgressSummary[]>([])
   const [previousDocuments, setPreviousDocuments] = useState<StoryContinuityDocument[]>([])
-  const [knowledgeReviewEvents, setKnowledgeReviewEvents] = useState<KnowledgeEvent[]>([])
   const [knowledgeUpdatingId, setKnowledgeUpdatingId] = useState<string | null>(null)
   const [extractingScenes, setExtractingScenes] = useState(false)
   const [preparation, setPreparation] = useState<WritingPreparationSummary>({ blueprint: null, handoff: null, narrativeThreads: [] })
+  const [loadedRequestKey, setLoadedRequestKey] = useState('')
+  const [refreshing, setRefreshing] = useState(false)
+  const timelineQueryChapter = timelineQuerySelection.chapterNumber === chapterNumber
+    ? timelineQuerySelection.value
+    : chapterNumber
+  const setTimelineQueryChapter = (value: number) => setTimelineQuerySelection({ chapterNumber, value })
+  const projectSessionKey = currentProject?.id && currentProject.path && currentProject.sessionLease
+    ? `${currentProject.id}\u0000${currentProject.sessionLease}\u0000${currentProject.path}`
+    : ''
+  const characterNamesKey = characterNames.join('\u0000')
+  const requestKey = projectSessionKey && currentProject?.path === projectKey
+    ? `${projectSessionKey}\u0000${chapterNumber}\u0000${characterNamesKey}`
+    : ''
   const chapterCharacterNames = useMemo(() => {
     const blueprintCharacters = normalizedCharacterNames(preparation.blueprint?.characters)
     if (blueprintCharacters.length > 0) return blueprintCharacters
@@ -108,84 +138,131 @@ export default function StoryContinuityPanel({ projectKey, chapterNumber }: Stor
     // confirmed secret.
     return characterNames.length === 1 ? characterNames : []
   }, [characterNames, preparation.blueprint])
+  const chapterCharacterNamesKey = chapterCharacterNames.join('\u0000')
+  const knowledgeRequestKey = requestKey && chapterCharacterNamesKey
+    ? `${requestKey}\u0000${chapterCharacterNamesKey}`
+    : ''
+  const currentKnowledgeResult = knowledgeResult?.requestKey === knowledgeRequestKey
+    ? knowledgeResult
+    : null
+  const knowledgeEvents = currentKnowledgeResult?.events ?? EMPTY_KNOWLEDGE_EVENTS
+  const knowledgeReviewEvents = currentKnowledgeResult?.reviewEvents ?? EMPTY_KNOWLEDGE_EVENTS
 
-  useEffect(() => {
-    setTimelineQueryChapter(chapterNumber)
-  }, [chapterNumber])
-
-  const load = async () => {
-    const session = captureProjectSession(currentProject)
-    if (!session || !isProjectSessionPath(session, projectKey)) return
-    setLoading(true)
-    setError(null)
+  const readChapterContext = useCallback(async (): Promise<StoryContinuityLoadResult | null> => {
+    const session = captureProjectSession(useProjectStore.getState().currentProject)
+    if (!session || !isProjectSessionPath(session, projectKey)) return null
+    const activeRequestKey = `${session.projectId}\u0000${session.leaseId}\u0000${session.projectPath}\u0000${chapterNumber}\u0000${characterNamesKey}`
+    if (activeRequestKey !== requestKey) return null
     try {
       const [next, nextTimeline, allDocuments, blueprints, handoff, narrativeThreads] = await Promise.all([
-        ipc.invokeWithProjectSession(session, 'db:story-continuity-read', chapterNumber, projectKey),
-        ipc.invokeWithProjectSession(session, 'db:continuity-list-before', chapterNumber, projectKey),
-        ipc.invokeWithProjectSession(session, 'db:story-continuity-list-all', projectKey),
-        ipc.invokeWithProjectSession(session, 'db:blueprint-get-all', projectKey),
+        ipc.invokeBackgroundWithProjectSession(session, 'db:story-continuity-read', chapterNumber, projectKey),
+        ipc.invokeBackgroundWithProjectSession(session, 'db:continuity-list-before', chapterNumber, projectKey),
+        ipc.invokeBackgroundWithProjectSession(session, 'db:story-continuity-list-all', projectKey),
+        ipc.invokeBackgroundWithProjectSession(session, 'db:blueprint-get-all', projectKey),
         chapterNumber > 1
-          ? ipc.invokeWithProjectSession(session, 'db:chapter-handoff-latest-before', chapterNumber, projectKey)
+          ? ipc.invokeBackgroundWithProjectSession(session, 'db:chapter-handoff-latest-before', chapterNumber, projectKey)
           : Promise.resolve(null),
-        ipc.invokeWithProjectSession(session, 'db:narrative-thread-list-relevant', {
+        ipc.invokeBackgroundWithProjectSession(session, 'db:narrative-thread-list-relevant', {
           chapterNumber,
           title: '',
           keyEvents: '',
           characters: characterNames,
         }, projectKey),
       ])
-      if (isProjectSessionCurrent(session)) {
-        setDocument(next)
-        setTimeline(nextTimeline)
-        setVolumeProgress(aggregateStoryContinuity([...allDocuments, next]))
-        const previousDocs = (Array.isArray(allDocuments) ? allDocuments : [])
-          .filter((doc: StoryContinuityDocument) => doc.chapterNumber < chapterNumber)
-        setPreviousDocuments(previousDocs)
-        const blueprint = Array.isArray(blueprints)
-          ? blueprints.find(candidate => (candidate as { chapterNumber?: number }).chapterNumber === chapterNumber)
-          : undefined
-        setPreparation({
-          blueprint: blueprint && typeof blueprint === 'object' ? blueprint as unknown as Record<string, unknown> : null,
-          handoff: handoff && typeof handoff === 'object' ? handoff as ChapterHandoffRecord : null,
-          narrativeThreads: Array.isArray(narrativeThreads) ? narrativeThreads as NarrativeThreadView[] : [],
-        })
+      if (
+        !next
+        || !nextTimeline
+        || !allDocuments
+        || !blueprints
+        || handoff === undefined
+        || narrativeThreads === undefined
+        || !isProjectSessionCurrent(session)
+      ) return null
+      const previousDocs = allDocuments.filter(doc => doc.chapterNumber < chapterNumber)
+      const blueprint = blueprints.find(candidate => candidate.chapterNumber === chapterNumber)
+      return {
+        requestKey: activeRequestKey,
+        document: next,
+        timeline: nextTimeline,
+        volumeProgress: aggregateStoryContinuity([...allDocuments, next]),
+        previousDocuments: previousDocs,
+        preparation: {
+          blueprint: blueprint && typeof blueprint === 'object'
+            ? blueprint as unknown as Record<string, unknown>
+            : null,
+          handoff,
+          narrativeThreads,
+        },
       }
     } catch (cause) {
-      if (isProjectSessionCurrent(session)) {
-        setError(String(cause))
-        setTimeline([])
-        setVolumeProgress([])
-        setPreviousDocuments([])
-        setPreparation({ blueprint: null, handoff: null, narrativeThreads: [] })
-      }
-    } finally {
-      if (isProjectSessionCurrent(session)) setLoading(false)
+      if (!isProjectSessionCurrent(session)) return null
+      return { requestKey: activeRequestKey, error: String(cause) }
     }
+  }, [chapterNumber, characterNames, characterNamesKey, projectKey, requestKey])
+
+  const applyChapterContext = (result: StoryContinuityLoadResult) => {
+    if (result.error) {
+      setError(result.error)
+      setTimeline([])
+      setVolumeProgress([])
+      setPreviousDocuments([])
+      setPreparation({ blueprint: null, handoff: null, narrativeThreads: [] })
+    } else if (result.document && result.timeline && result.volumeProgress && result.previousDocuments && result.preparation) {
+      setDocument(result.document)
+      setTimeline(result.timeline)
+      setVolumeProgress(result.volumeProgress)
+      setPreviousDocuments(result.previousDocuments)
+      setPreparation(result.preparation)
+      setError(null)
+    }
+    setLoadedRequestKey(result.requestKey)
   }
 
-  useEffect(() => { void load() }, [chapterNumber, projectKey, currentProject?.sessionLease, characterNames.join('\u0000')])
+  const loading = Boolean(requestKey && loadedRequestKey !== requestKey) || refreshing
 
   useEffect(() => {
-    const session = captureProjectSession(currentProject)
-    if (!session || !isProjectSessionPath(session, projectKey) || chapterCharacterNames.length === 0) {
-      setKnowledgeEvents([])
-      setKnowledgeReviewEvents([])
-      return
-    }
+    let cancelled = false
+    void readChapterContext().then(result => {
+      if (!cancelled && result) applyChapterContext(result)
+    })
+    return () => { cancelled = true }
+  }, [readChapterContext])
+
+  useEffect(() => {
+    if (!knowledgeRequestKey) return
+    const session = captureProjectSession(useProjectStore.getState().currentProject)
+    if (!session || !isProjectSessionPath(session, projectKey)) return
+    const activeRequestKey = `${session.projectId}\u0000${session.leaseId}\u0000${session.projectPath}\u0000${chapterNumber}\u0000${characterNamesKey}\u0000${chapterCharacterNamesKey}`
+    if (activeRequestKey !== knowledgeRequestKey) return
     let cancelled = false
     void Promise.all([
-      ipc.invokeWithProjectSession(session, 'db:knowledge-event-list-for-chapter', chapterCharacterNames, chapterNumber, projectKey),
-      ipc.invokeWithProjectSession(session, 'db:knowledge-event-list-review', chapterCharacterNames, chapterNumber, projectKey),
+      ipc.invokeBackgroundWithProjectSession(session, 'db:knowledge-event-list-for-chapter', chapterCharacterNames, chapterNumber, projectKey),
+      ipc.invokeBackgroundWithProjectSession(session, 'db:knowledge-event-list-review', chapterCharacterNames, chapterNumber, projectKey),
     ])
       .then(([events, reviewEvents]) => {
-        if (!cancelled && isProjectSessionCurrent(session)) {
-          setKnowledgeEvents(events)
-          setKnowledgeReviewEvents(reviewEvents)
+        if (
+          !cancelled
+          && events
+          && reviewEvents
+          && isProjectSessionCurrent(session)
+        ) {
+          setKnowledgeResult({ requestKey: knowledgeRequestKey, events, reviewEvents })
         }
       })
-      .catch(() => { if (!cancelled) setKnowledgeEvents([]) })
+      .catch(() => {
+        if (cancelled || !isProjectSessionCurrent(session)) return
+        setKnowledgeResult({ requestKey: knowledgeRequestKey, events: [], reviewEvents: [] })
+      })
     return () => { cancelled = true }
-  }, [chapterCharacterNames.join('\u0000'), chapterNumber, currentProject?.sessionLease, projectKey])
+  }, [chapterCharacterNames, chapterCharacterNamesKey, characterNamesKey, chapterNumber, knowledgeRequestKey, projectKey, projectSessionKey])
+
+  const refreshChapterContext = () => {
+    setRefreshing(true)
+    setError(null)
+    void readChapterContext().then(result => {
+      if (result) applyChapterContext(result)
+    }).finally(() => setRefreshing(false))
+  }
 
   const updateKnowledgeStatus = async (eventId: string, status: 'confirmed' | 'rejected') => {
     const session = captureProjectSession(currentProject)
@@ -196,9 +273,13 @@ export default function StoryContinuityPanel({ projectKey, chapterNumber }: Stor
       const result = await ipc.invokeWithProjectSession(session, 'db:knowledge-event-status', eventId, status, projectKey)
       if (!result.success || !result.event) throw new Error(result.error || text('更新知情事件失败', 'Could not update the knowledge event'))
       if (!isProjectSessionCurrent(session)) return
-      setKnowledgeReviewEvents(current => current.filter(event => event.eventId !== eventId))
+      setKnowledgeResult(current => current?.requestKey === knowledgeRequestKey
+        ? { ...current, reviewEvents: current.reviewEvents.filter(event => event.eventId !== eventId) }
+        : current)
       if (status === 'confirmed' && knowledgeEventAppliesAtChapter(result.event, chapterNumber)) {
-        setKnowledgeEvents(current => [...current.filter(event => event.eventId !== eventId), result.event!])
+        setKnowledgeResult(current => current?.requestKey === knowledgeRequestKey
+          ? { ...current, events: [...current.events.filter(event => event.eventId !== eventId), result.event!] }
+          : current)
       }
       setNotice(status === 'confirmed'
         ? text('知情事件已确认并可用于本章写作', 'Knowledge event confirmed for this chapter')
@@ -610,7 +691,7 @@ export default function StoryContinuityPanel({ projectKey, chapterNumber }: Stor
         </section>
 
         {notice && <p className="text-xs text-[var(--color-success-text)]">{notice}</p>}
-        <div className="flex justify-end gap-2"><Button variant="outline" size="sm" onClick={() => void load()} disabled={loading || saving}><RefreshCw size={12} />{text('重新读取', 'Reload')}</Button><Button variant="default" size="sm" onClick={() => void save()} disabled={loading || saving}><Save size={12} />{saving ? text('保存中…', 'Saving…') : text('保存工作单', 'Save sheet')}</Button></div>
+        <div className="flex justify-end gap-2"><Button variant="outline" size="sm" onClick={refreshChapterContext} disabled={loading || saving}><RefreshCw size={12} />{text('重新读取', 'Reload')}</Button><Button variant="default" size="sm" onClick={() => void save()} disabled={loading || saving}><Save size={12} />{saving ? text('保存中…', 'Saving…') : text('保存工作单', 'Save sheet')}</Button></div>
       </div>
     </details>
   )

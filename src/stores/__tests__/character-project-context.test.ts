@@ -16,7 +16,11 @@ const { invoke, invokeWithProjectSession } = vi.hoisted(() => ({
 }))
 
 vi.mock('../../services/ipc-client', () => ({
-  ipc: { invoke, invokeWithProjectSession },
+  ipc: {
+    invoke,
+    invokeWithProjectSession,
+    invokeBackgroundWithProjectSession: invokeWithProjectSession,
+  },
 }))
 
 const PROJECT_A = 'C:\\novels\\project-a'

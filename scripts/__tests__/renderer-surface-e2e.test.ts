@@ -305,6 +305,7 @@ describe('renderer surface E2E runner contract', () => {
       imageSkin: 'classic',
       imageDecoded: null,
       workspaceAlpha: 1,
+      workspaceBackgroundImage: 'none',
     }
     const expectedClassic = {
       projectPath: expectedProject,
@@ -315,6 +316,16 @@ describe('renderer surface E2E runner contract', () => {
     }
     expect(() => assertVisualEvidenceObservation(classicObservation, expectedClassic)).not.toThrow()
     expect(() => assertVisualEvidenceObservation({ ...classicObservation, workspaceAlpha: 0.6 }, expectedClassic)).toThrow(/opaque/i)
+
+    const lightGlassObservation = {
+      ...classicObservation,
+      theme: 'light',
+      workspaceAlpha: 0,
+      workspaceBackgroundImage: 'linear-gradient(180deg, rgba(255, 255, 255, 0.4) 0%, rgba(255, 255, 255, 0.3) 100%)',
+    }
+    const expectedLightGlass = { ...expectedClassic, theme: 'light', imageSurface: 'light-glass' }
+    expect(() => assertVisualEvidenceObservation(lightGlassObservation, expectedLightGlass)).not.toThrow()
+    expect(() => assertVisualEvidenceObservation({ ...lightGlassObservation, workspaceBackgroundImage: 'none' }, expectedLightGlass)).toThrow(/gradient/i)
 
     const imageObservation = {
       ...classicObservation,
@@ -346,8 +357,16 @@ describe('renderer surface E2E runner contract', () => {
         page: { selector: '.skin-workspace-page', alpha: 0.60 },
         solid: { selector: '.skin-solid-surface', alpha: 0.88 },
       },
+      customSkinSurfaces: {
+        skinId: 'custom',
+        assetPath: 'build/icon.png',
+        themes: ['light', 'dark'],
+        sidebarAlpha: 0.56,
+        pageAlpha: 0.60,
+        lightSettingsModalAlpha: 0.88,
+      },
       routes: ['project', 'knowledge', 'characters', 'blueprint'],
-      classicMustBeOpaque: true,
+      classicOpaqueThemes: ['galaxy', 'paper', 'dark'],
       visualEvidence: {
         outputEnvironment: 'AI_NOVEL_RENDERER_VISUAL_EVIDENCE_DIR',
         viewport: { width: 1440, height: 900 },
@@ -383,6 +402,11 @@ describe('renderer surface E2E runner contract', () => {
       classicThemeSurfaces: {
         themed: ['light', 'galaxy', 'paper', 'dark'],
         paper: 'paper',
+        lightGlassGradientStops: {
+          default: [0.62, 0.38, 0.50],
+          workspacePage: [0.40, 0.30],
+        },
+        lightGlassStatusbarHover: { color: '#FFFFFF', alpha: 0.92 },
         surfaces: {
           topbar: { selector: '.writer-topbar', token: '--color-titlebar', textToken: '--color-titlebar-text', minHeight: 24 },
           leftRail: { selector: '.writer-left-rail', token: '--color-activity-bar', textToken: '--color-text-secondary', minWidth: 40 },
@@ -401,10 +425,10 @@ describe('renderer surface E2E runner contract', () => {
             statusbar: ['#FCFAF3', '#6E6A5F'], statusbarHover: '#EAE3D2',
           },
           galaxy: {
-            topbar: ['#0A1628', '#8BA4BE'], leftRail: ['#071220', '#8BA4BE'],
-            projectTree: ['#0E1B30', '#E0ECF4'], aiPanel: ['#0E1B30', '#E0ECF4'],
-            taskTable: ['#0E1B30', '#E0ECF4'], workspacePage: ['#091525', '#E0ECF4'],
-            statusbar: ['#071220', '#8BA4BE'], statusbarHover: '#142640',
+            topbar: ['#091424', '#8BA4BE'], leftRail: ['#071220', '#8BA4BE'],
+            projectTree: ['#0D1A2E', '#E0ECF4'], aiPanel: ['#0D1A2E', '#E0ECF4'],
+            taskTable: ['#0D1A2E', '#E0ECF4'], workspacePage: ['#091525', '#E0ECF4'],
+            statusbar: ['rgba(7, 18, 32, 0.86)', '#8BA4BE'], statusbarHover: '#0D1A2E',
           },
           paper: {
             topbar: ['#FCFAF3', '#2B2A26'], leftRail: ['#F0EADA', '#6E6A5F'],
@@ -421,6 +445,15 @@ describe('renderer surface E2E runner contract', () => {
         },
       },
     })
+
+    const customAssetPath = RENDERER_SURFACE_E2E_CONTRACT.customSkinSurfaces.assetPath
+    expect(existsSync(resolve(process.cwd(), customAssetPath))).toBe(true)
+    const trackedAsset = spawnSync('git', ['ls-files', '--error-unmatch', '--', customAssetPath], {
+      cwd: process.cwd(),
+      encoding: 'utf8',
+    })
+    expect(trackedAsset.status).toBe(0)
+    expect(trackedAsset.stdout.trim()).toBe(customAssetPath)
   })
 
   it('keeps visual QA records out of the public repository', () => {

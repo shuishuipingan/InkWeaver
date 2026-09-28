@@ -44,33 +44,30 @@ export function ViewTransition({
     leaving: boolean
   }>({ key: transitionKey, node: children, leaving: false })
 
-  const prevKey = React.useRef(transitionKey)
-
   React.useEffect(() => {
-    if (prevKey.current === transitionKey) return
-    prevKey.current = transitionKey
-
-    if (!exit) {
-      setState({ key: transitionKey, node: children, leaving: false })
-      return
-    }
-
-    // 阶段 1：旧内容退场
-    setState(s => ({ ...s, leaving: true }))
-    // 阶段 2：换入新内容（新 key 触发重挂载 + 入场动画）
+    if (state.key === transitionKey) return
+    // With exit disabled the new child is already derived during render; this
+    // timer only aligns the retained transition snapshot for the next change.
+    // With exit enabled, render derives `leaving` without a cascading update.
     const timer = window.setTimeout(() => {
       setState({ key: transitionKey, node: children, leaving: false })
-    }, exitDurationMs)
+    }, exit ? exitDurationMs : 0)
     return () => window.clearTimeout(timer)
-  }, [transitionKey, children, exit, exitDurationMs])
+  }, [state.key, transitionKey, children, exit, exitDurationMs])
+
+  const visibleState = state.key === transitionKey
+    ? state
+    : exit
+      ? { ...state, leaving: true }
+      : { key: transitionKey, node: children, leaving: false }
 
   return (
     <div className={cn('h-full min-h-0', className)}>
       <div
-        key={state.key}
-        className={cn('h-full min-h-0', state.leaving ? exitClassName : enterClassName)}
+        key={visibleState.key}
+        className={cn('h-full min-h-0', visibleState.leaving ? exitClassName : enterClassName)}
       >
-        {state.node}
+        {visibleState.node}
       </div>
     </div>
   )

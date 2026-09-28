@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, ArrowRight, ExternalLink, RefreshCw, Search } from 'lucide-react'
 import { ipc } from '../../services/ipc-client'
 import { useLocaleStore } from '../../stores/locale-store'
@@ -24,29 +24,69 @@ interface ContinuousReaderProps {
 }
 
 const readerPositionKey = (projectKey: string) => `inkweaver.reader.position:${projectKey}`
+const dismissedQualityKey = (projectKey: string) => `inkweaver.reader.quality-dismissed:${projectKey}`
+
+function readDismissedQuality(projectKey: string): Set<string> {
+  try {
+    const saved = JSON.parse(localStorage.getItem(dismissedQualityKey(projectKey)) ?? '[]')
+    return new Set(Array.isArray(saved)
+      ? saved.filter((item): item is string => typeof item === 'string')
+      : [])
+  } catch {
+    return new Set()
+  }
+}
+
+interface ReaderLoadState {
+  requestKey: string
+  chapters: ReaderChapter[]
+  selectedChapter: number | null
+  error: string | null
+}
+
+const EMPTY_READER_CHAPTERS: ReaderChapter[] = []
 
 export default function ContinuousReader({ projectKey }: ContinuousReaderProps) {
   const text = useLocaleStore(state => state.text)
   const currentProject = useProjectStore(state => state.currentProject)
-  const [chapters, setChapters] = useState<ReaderChapter[]>([])
-  const [selectedChapter, setSelectedChapter] = useState<number | null>(null)
+  const projectSessionKey = currentProject?.id && currentProject.path && currentProject.sessionLease
+    ? `${currentProject.id}\u0000${currentProject.sessionLease}\u0000${currentProject.path}`
+    : ''
+  const requestKey = projectSessionKey && currentProject?.path === projectKey
+    ? projectSessionKey
+    : ''
+  const [loadState, setLoadState] = useState<ReaderLoadState | null>(null)
+  const currentLoadState = loadState?.requestKey === requestKey ? loadState : null
+  const chapters = currentLoadState?.chapters ?? EMPTY_READER_CHAPTERS
+  const selectedChapter = currentLoadState?.selectedChapter ?? null
   const [query, setQuery] = useState('')
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [dismissedQuality, setDismissedQuality] = useState<Set<string>>(new Set())
+  const [refreshingKey, setRefreshingKey] = useState('')
+  const loading = Boolean(requestKey && (!currentLoadState || refreshingKey === requestKey))
+  const error = currentLoadState?.error ?? null
+  const [dismissedQualityState, setDismissedQualityState] = useState(() => ({
+    projectKey,
+    ids: readDismissedQuality(projectKey),
+  }))
+  const dismissedQuality = useMemo(
+    () => dismissedQualityState.projectKey === projectKey
+      ? dismissedQualityState.ids
+      : readDismissedQuality(projectKey),
+    [dismissedQualityState, projectKey],
+  )
   const chapterRefs = useRef(new Map<number, HTMLElement>())
 
-  const load = async () => {
-    const session = captureProjectSession(currentProject)
-    if (!session || !isProjectSessionPath(session, projectKey)) return
-    setLoading(true)
-    setError(null)
+  const readReaderState = useCallback(async (): Promise<ReaderLoadState | null> => {
+    const session = captureProjectSession(useProjectStore.getState().currentProject)
+    if (!session || !isProjectSessionPath(session, projectKey)) return null
+    const activeRequestKey = `${session.projectId}\u0000${session.leaseId}\u0000${session.projectPath}`
+    if (activeRequestKey !== requestKey) return null
     try {
       const [metadata, handoffs, continuity] = await Promise.all([
-        ipc.invokeWithProjectSession(session, 'db:draft-list-all', projectKey),
-        ipc.invokeWithProjectSession(session, 'db:chapter-handoff-list-all', projectKey),
-        ipc.invokeWithProjectSession(session, 'db:continuity-list-all', projectKey),
+        ipc.invokeBackgroundWithProjectSession(session, 'db:draft-list-all', projectKey),
+        ipc.invokeBackgroundWithProjectSession(session, 'db:chapter-handoff-list-all', projectKey),
+        ipc.invokeBackgroundWithProjectSession(session, 'db:continuity-list-all', projectKey),
       ])
+      if (!metadata || !handoffs || !continuity || !isProjectSessionCurrent(session)) return null
       const handoffByChapter = new Map(
         handoffs
           .filter(item => item.status === 'confirmed')
@@ -62,7 +102,8 @@ export default function ContinuousReader({ projectKey }: ContinuousReaderProps) 
       }
       const result: ReaderChapter[] = []
       for (const item of [...latest.values()].sort((left, right) => left.chapterNumber - right.chapterNumber)) {
-        const full = await ipc.invokeWithProjectSession(session, 'db:draft-get-full', item.id, projectKey)
+        const full = await ipc.invokeBackgroundWithProjectSession(session, 'db:draft-get-full', item.id, projectKey)
+        if (full === undefined || !isProjectSessionCurrent(session)) return null
         if (full?.content) result.push({
           id: item.id,
           chapterNumber: item.chapterNumber,
@@ -73,25 +114,27 @@ export default function ContinuousReader({ projectKey }: ContinuousReaderProps) 
           continuity: continuityByChapter.get(item.chapterNumber),
         })
       }
-      if (!isProjectSessionCurrent(session)) return
-      setChapters(result)
       const stored = Number(localStorage.getItem(readerPositionKey(projectKey)))
-      setSelectedChapter(result.some(item => item.chapterNumber === stored) ? stored : result[0]?.chapterNumber ?? null)
+      if (!isProjectSessionCurrent(session)) return null
+      return {
+        requestKey: activeRequestKey,
+        chapters: result,
+        selectedChapter: result.some(item => item.chapterNumber === stored) ? stored : result[0]?.chapterNumber ?? null,
+        error: null,
+      }
     } catch (cause) {
-      if (isProjectSessionCurrent(session)) setError(String(cause))
-    } finally {
-      if (isProjectSessionCurrent(session)) setLoading(false)
+      if (!isProjectSessionCurrent(session)) return null
+      return { requestKey: activeRequestKey, chapters: [], selectedChapter: null, error: String(cause) }
     }
-  }
-
-  useEffect(() => { void load() }, [projectKey, currentProject?.sessionLease])
+  }, [projectKey, requestKey])
 
   useEffect(() => {
-    try {
-      const saved = JSON.parse(localStorage.getItem(`inkweaver.reader.quality-dismissed:${projectKey}`) ?? '[]')
-      setDismissedQuality(new Set(Array.isArray(saved) ? saved.filter((item): item is string => typeof item === 'string') : []))
-    } catch { setDismissedQuality(new Set()) }
-  }, [projectKey])
+    let cancelled = false
+    void readReaderState().then(result => {
+      if (!cancelled && result) setLoadState(result)
+    })
+    return () => { cancelled = true }
+  }, [readReaderState])
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase('en-US')
@@ -105,9 +148,21 @@ export default function ContinuousReader({ projectKey }: ContinuousReaderProps) 
 
   const currentIndex = chapters.findIndex(chapter => chapter.chapterNumber === selectedChapter)
   const jumpTo = (chapterNumber: number) => {
-    setSelectedChapter(chapterNumber)
+    setLoadState(current => current?.requestKey === requestKey
+      ? { ...current, selectedChapter: chapterNumber }
+      : current)
     localStorage.setItem(readerPositionKey(projectKey), String(chapterNumber))
     chapterRefs.current.get(chapterNumber)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+
+  const refresh = () => {
+    if (!requestKey) return
+    setRefreshingKey(requestKey)
+    void readReaderState().then(result => {
+      if (result) setLoadState(result)
+    }).finally(() => {
+      setRefreshingKey(current => current === requestKey ? '' : current)
+    })
   }
 
   const openChapter = (chapter: ReaderChapter) => {
@@ -131,14 +186,14 @@ export default function ContinuousReader({ projectKey }: ContinuousReaderProps) 
         <div className="flex items-center gap-1 text-xs font-semibold"><BookIcon />{text('连续阅读', 'Continuous reader')}</div>
         <div className="ml-auto flex items-center gap-1">
           <label className="flex items-center gap-1 rounded border px-1.5 py-1" style={{ borderColor: 'var(--color-border)' }}><Search size={12} /><input aria-label={text('搜索连读内容', 'Search reader')} value={query} onChange={event => setQuery(event.target.value)} className="w-36 bg-transparent text-xs outline-none" placeholder={text('搜索章节或正文', 'Search chapters or prose')} /></label>
-          <button type="button" className="rounded border p-1.5" style={{ borderColor: 'var(--color-border)' }} onClick={() => void load()} disabled={loading} aria-label={text('刷新连读', 'Refresh reader')}><RefreshCw size={13} className={loading ? 'animate-spin' : ''} /></button>
+          <button type="button" className="rounded border p-1.5" style={{ borderColor: 'var(--color-border)' }} onClick={refresh} disabled={loading} aria-label={text('刷新连读', 'Refresh reader')}><RefreshCw size={13} className={loading ? 'animate-spin' : ''} /></button>
         </div>
       </div>
       {qualityFindings.length > 0 && (
         <details className="border-b px-3 py-2 text-xs" data-reader-quality="true" style={{ borderColor: 'var(--color-border)' }}>
           <summary className="cursor-pointer text-[var(--color-text-secondary)]">{text(`连读提示 · ${qualityFindings.length} 项（仅建议）`, `Reading notes · ${qualityFindings.length} suggestion(s)`)}</summary>
           <div className="mt-2 space-y-1.5">
-            {qualityFindings.map(finding => <div key={finding.id} className="flex items-start gap-2 rounded border px-2 py-1.5" style={{ borderColor: 'var(--color-border)' }}><span className="min-w-0 flex-1 text-[var(--color-text-muted)]">{text(`第${finding.chapterNumbers.join('、')}章可能重复开头或结尾：${finding.evidence}`, `Chapters ${finding.chapterNumbers.join(', ')} may repeat an opening or ending: ${finding.evidence}`)}</span><button type="button" className="shrink-0 text-[var(--color-accent)]" onClick={() => { const next = new Set(dismissedQuality); next.add(finding.id); setDismissedQuality(next); localStorage.setItem(`inkweaver.reader.quality-dismissed:${projectKey}`, JSON.stringify([...next])) }}>{text('保留刻意复沓', 'Keep repetition')}</button></div>)}
+            {qualityFindings.map(finding => <div key={finding.id} className="flex items-start gap-2 rounded border px-2 py-1.5" style={{ borderColor: 'var(--color-border)' }}><span className="min-w-0 flex-1 text-[var(--color-text-muted)]">{text(`第${finding.chapterNumbers.join('、')}章可能重复开头或结尾：${finding.evidence}`, `Chapters ${finding.chapterNumbers.join(', ')} may repeat an opening or ending: ${finding.evidence}`)}</span><button type="button" className="shrink-0 text-[var(--color-accent)]" onClick={() => { const next = new Set(dismissedQuality); next.add(finding.id); setDismissedQualityState({ projectKey, ids: next }); localStorage.setItem(dismissedQualityKey(projectKey), JSON.stringify([...next])) }}>{text('保留刻意复沓', 'Keep repetition')}</button></div>)}
           </div>
         </details>
       )}
@@ -156,7 +211,9 @@ export default function ContinuousReader({ projectKey }: ContinuousReaderProps) 
             return rect.top >= 0 && rect.top < window.innerHeight * 0.45
           })
           if (visible && visible.chapterNumber !== selectedChapter) {
-            setSelectedChapter(visible.chapterNumber)
+            setLoadState(current => current?.requestKey === requestKey
+              ? { ...current, selectedChapter: visible.chapterNumber }
+              : current)
             localStorage.setItem(readerPositionKey(projectKey), String(visible.chapterNumber))
           }
           void event

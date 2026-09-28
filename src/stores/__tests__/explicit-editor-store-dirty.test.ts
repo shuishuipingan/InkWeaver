@@ -22,10 +22,8 @@ const { alertError, invoke } = vi.hoisted(() => ({
 
 vi.mock('../../components/ui/AlertDialog', () => ({ alertError }))
 
-vi.mock('../../services/ipc-client', () => ({
-  ipc: {
-    invoke,
-    invokeWithProjectSession: async (_context: unknown, channel: string, ...args: unknown[]) => {
+vi.mock('../../services/ipc-client', () => {
+  const invokeWithSession = async (_context: unknown, channel: string, ...args: unknown[]) => {
       const result = await invoke(channel, ...args)
       if (channel === 'db:character-roster-read' && Array.isArray(result)) {
         return {
@@ -53,9 +51,15 @@ vi.mock('../../services/ipc-client', () => ({
         }
       }
       return result
+  }
+  return {
+    ipc: {
+      invoke,
+      invokeWithProjectSession: invokeWithSession,
+      invokeBackgroundWithProjectSession: invokeWithSession,
     },
-  },
-}))
+  }
+})
 
 function project(): ProjectData {
   return {

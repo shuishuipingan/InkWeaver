@@ -34,6 +34,7 @@ interface ExportTaskState {
 export default function ExportDialog({ isOpen, onClose }: Props) {
   const currentProject = useProjectStore(s => s.currentProject)
   const [format, setFormat] = useState<ExportFormat>('merged-md')
+  const [includeDrafts, setIncludeDrafts] = useState(true)
   const [includeOutline, setIncludeOutline] = useState(true)
   const [taskState, setTaskState] = useState<ExportTaskState | null>(null)
   const text = useLocaleStore(s => s.text)
@@ -58,7 +59,7 @@ export default function ExportDialog({ isOpen, onClose }: Props) {
     if (!destination || !isProjectSessionCurrent(projectSession)) return
 
     setTaskState({ session: projectSession, exporting: true, result: null })
-    const res = await exportNovel({ format, grantId: destination.grantId, includeOutline }, projectSnapshot, projectSession)
+    const res = await exportNovel({ format, grantId: destination.grantId, includeDrafts, includeOutline }, projectSnapshot, projectSession)
     if (!isProjectSessionCurrent(projectSession)) return
     setTaskState({
       session: projectSession,
@@ -113,6 +114,44 @@ export default function ExportDialog({ isOpen, onClose }: Props) {
               </div>
             ))}
           </div>
+
+          <fieldset className="space-y-2">
+            <legend className="text-xs font-medium text-[var(--color-text-secondary)]">
+              {text('章节范围', 'Chapter content')}
+            </legend>
+            <label className="flex items-start gap-2 text-xs cursor-pointer text-[var(--color-text-secondary)]">
+              <input
+                type="radio"
+                name="export-content-mode"
+                checked={includeDrafts}
+                onChange={() => setIncludeDrafts(true)}
+              />
+              <span>
+                <span className="block text-[var(--color-text)]">
+                  {text('包含最新草稿', 'Include latest drafts')}
+                </span>
+                <span className="block text-[var(--color-text-muted)]">
+                  {text('每章导出最新版本，包含未定稿内容', 'Export the newest version of each chapter, including unfinished drafts')}
+                </span>
+              </span>
+            </label>
+            <label className="flex items-start gap-2 text-xs cursor-pointer text-[var(--color-text-secondary)]">
+              <input
+                type="radio"
+                name="export-content-mode"
+                checked={!includeDrafts}
+                onChange={() => setIncludeDrafts(false)}
+              />
+              <span>
+                <span className="block text-[var(--color-text)]">
+                  {text('仅导出已定稿章节', 'Finalized chapters only')}
+                </span>
+                <span className="block text-[var(--color-text-muted)]">
+                  {text('只导出连续的定稿章节序列', 'Export only the continuous finalized chapter sequence')}
+                </span>
+              </span>
+            </label>
+          </fieldset>
 
           {/* 选项 */}
           <label className="flex items-center gap-2 text-xs cursor-pointer text-[var(--color-text-secondary)]">

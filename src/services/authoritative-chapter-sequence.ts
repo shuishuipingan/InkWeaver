@@ -42,6 +42,27 @@ export async function readAuthoritativeNextChapter(
     'db:draft-authority-sequence',
     projectSession.projectPath,
   )
+  return nextChapterFromSequence(sequence, locale)
+}
+
+/** Read-only variant for UI lifecycle effects that should disappear on session cancellation. */
+export async function readAuthoritativeNextChapterInBackground(
+  projectSession: ProjectSessionContext,
+  locale: WritingLanguage,
+): Promise<number | undefined> {
+  const sequence = await ipc.invokeBackgroundWithProjectSession(
+    projectSession,
+    'db:draft-authority-sequence',
+    projectSession.projectPath,
+  )
+  if (sequence === undefined) return undefined
+  return nextChapterFromSequence(sequence, locale)
+}
+
+function nextChapterFromSequence(
+  sequence: AuthoritativeChapterSequence,
+  locale: WritingLanguage,
+): number {
   if (
     sequence.status === 'invalid'
     || !Number.isSafeInteger(sequence.nextChapterNumber)

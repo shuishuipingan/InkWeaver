@@ -20,7 +20,7 @@ let startWorkflow: ReturnType<typeof vi.fn>
 const originalStartWorkflow = useWorkflowStore.getState().startWorkflow
 
 beforeEach(() => {
-  ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
+  (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
   useProjectStore.setState({
     currentProject: {
       id: SESSION.projectId,

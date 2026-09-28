@@ -26,7 +26,7 @@ import {
   listPendingDirectoryCharacterSyncs,
   retryAllPendingDirectoryCharacterSyncs,
 } from '../../services/workflows/directory-character-sync-recovery'
-import { readAuthoritativeNextChapter } from '../../services/authoritative-chapter-sequence'
+import { readAuthoritativeNextChapter, readAuthoritativeNextChapterInBackground } from '../../services/authoritative-chapter-sequence'
 
 interface Props {
   isOpen: boolean
@@ -119,8 +119,9 @@ export default function DirectoryConfigDialog({ isOpen, onClose, existingCount, 
     const loadAuthority = async () => {
       setAuthorityLoading(true)
       try {
-        const nextChapter = await readAuthoritativeNextChapter(projectSession, locale)
+        const nextChapter = await readAuthoritativeNextChapterInBackground(projectSession, locale)
         if (disposed || !isProjectSessionCurrent(projectSession)) return
+        if (nextChapter === undefined) return
         setAuthoritativeNextChapter(nextChapter)
         const safeAppendStart = Math.max(nextChapter, existingCount + 1)
         setRangeStart(safeAppendStart)
@@ -136,7 +137,7 @@ export default function DirectoryConfigDialog({ isOpen, onClose, existingCount, 
     }
     void loadAuthority()
     return () => { disposed = true }
-  }, [currentProject, isOpen, locale])
+  }, [currentProject, existingCount, isOpen, locale])
 
   if (!currentProject) return null
   const total = currentProject.novelConfig.totalChapters

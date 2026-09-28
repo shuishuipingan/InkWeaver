@@ -39,7 +39,11 @@ export interface RuntimeChildProcessTarget {
   pid?: number
   stdout?: { on(event: string, listener: (data: unknown) => void): unknown }
   stderr?: { on(event: string, listener: (data: unknown) => void): unknown }
-  on(event: string, listener: (...args: any[]) => void): unknown
+  on(
+    event: 'exit' | 'close',
+    listener: (code: number | null, signal: NodeJS.Signals | null) => void,
+  ): unknown
+  on(event: 'error', listener: (error: Error) => void): unknown
 }
 
 export interface RuntimeChildProcessCaptureContext {
@@ -93,6 +97,14 @@ function errorArgument(args: readonly unknown[]): unknown {
   return args.find(value => value instanceof Error)
 }
 
+function reportSinkError(context: RuntimeConsoleCaptureContext, error: unknown): void {
+  try {
+    context.onSinkError?.(error)
+  } catch {
+    // Capture diagnostics must not alter the wrapped console method's behavior.
+  }
+}
+
 function inputFor(method: ConsoleMethod, args: readonly unknown[], context: RuntimeConsoleCaptureContext): RuntimeLogInput {
   const error = errorArgument(args)
   const message = args.map(argumentText).join(' ')
@@ -134,21 +146,16 @@ export function installConsoleCapture(
       try {
         original.apply(target, args)
       } finally {
-        if (!sink && !context.emit) return
-        let event: RuntimeLogEvent
-        try {
-          event = createRuntimeLogEvent(inputFor(method, args, context))
-        } catch (error) {
-          context.onSinkError?.(error)
-          return
-        }
-        try {
-          const result = (sink ?? context.emit)!(event)
-          if (result && typeof (result as Promise<void>).then === 'function') {
-            void (result as Promise<void>).catch(error => context.onSinkError?.(error))
+        if (sink || context.emit) {
+          try {
+            const event = createRuntimeLogEvent(inputFor(method, args, context))
+            const result = (sink ?? context.emit)!(event)
+            if (result && typeof (result as Promise<void>).then === 'function') {
+              void (result as Promise<void>).catch(error => reportSinkError(context, error))
+            }
+          } catch (error) {
+            reportSinkError(context, error)
           }
-        } catch (error) {
-          context.onSinkError?.(error)
         }
       }
     }) as RuntimeConsoleTarget[ConsoleMethod]
@@ -235,7 +242,7 @@ export function installChildProcessCapture(
   }
   target.stdout?.on('data', value => captureStream('stdout', value))
   target.stderr?.on('data', value => captureStream('stderr', value))
-  target.on('exit', (code: number | null, signal: string | null) => {
+  target.on('exit', (code: number | null, signal: NodeJS.Signals | null) => {
     const succeeded = code === 0 && signal === null
     emit({
       ...base,
@@ -248,7 +255,7 @@ export function installChildProcessCapture(
       details: { childId: context.childId, code, signal },
     })
   })
-  target.on('close', (code: number | null, signal: string | null) => {
+  target.on('close', (code: number | null, signal: NodeJS.Signals | null) => {
     emit({
       ...base,
       sequence: context.nextSequence(),
@@ -260,7 +267,7 @@ export function installChildProcessCapture(
       details: { childId: context.childId, code, signal },
     })
   })
-  target.on('error', (error: unknown) => {
+  target.on('error', (error: Error) => {
     emit({
       ...base,
       sequence: context.nextSequence(),

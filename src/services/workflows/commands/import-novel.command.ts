@@ -48,6 +48,7 @@ import {
   buildStructuredSyntaxRepairTask,
   isRepairableDirectJsonSyntaxFailure,
   preservesStructuredJsonEvidence,
+  structuredSyntaxOnlyRepairContract,
 } from '../structured-syntax-repair'
 
 /** 拆分后的章节数据（从 context.data 中传递） */
@@ -596,7 +597,7 @@ export class InferGlobalSettingsCommand extends BaseWorkflowCommand<void> {
         purpose: 'import-inference',
         output: 'structured-data',
         messages: [],
-      }, inferenceContract, rawResult, writingLanguage)
+      }, structuredSyntaxOnlyRepairContract(writingLanguage), rawResult, writingLanguage)
       const repair = await this.callLLMResult(
         repairTask.messages[1].content,
         repairTask.messages[0].content,

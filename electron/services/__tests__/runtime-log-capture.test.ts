@@ -72,6 +72,82 @@ describe('runtime console capture', () => {
     dispose()
   })
 
+  it('rethrows a native console error when capture has no sink', () => {
+    const nativeError = new Error('EPIPE')
+    const target = {
+      log: vi.fn(),
+      info: vi.fn<(...args: unknown[]) => unknown>(() => { throw nativeError }),
+      warn: vi.fn(),
+      error: vi.fn(),
+      debug: vi.fn(),
+    }
+    const dispose = installConsoleCapture(target, undefined, {
+      sessionId: 'session-a', process: 'main', nextSequence: () => 1,
+    })
+
+    let thrown: unknown
+    try { target.info('pipe closed') } catch (error) { thrown = error }
+
+    expect(thrown).toBe(nativeError)
+    dispose()
+  })
+
+  it('preserves a native console error when the failing sink error reporter also throws', () => {
+    const nativeError = new Error('EPIPE')
+    const target = {
+      log: vi.fn(),
+      info: vi.fn<(...args: unknown[]) => unknown>(() => { throw nativeError }),
+      warn: vi.fn(),
+      error: vi.fn(),
+      debug: vi.fn(),
+    }
+    const dispose = installConsoleCapture(
+      target,
+      () => { throw new Error('writer offline') },
+      {
+        sessionId: 'session-a',
+        process: 'main',
+        nextSequence: () => 1,
+        onSinkError: () => { throw new Error('error reporter offline') },
+      },
+    )
+
+    let thrown: unknown
+    try { target.info('pipe closed') } catch (error) { thrown = error }
+
+    expect(thrown).toBe(nativeError)
+    dispose()
+  })
+
+  it('preserves a native console error when an argument cannot be serialized for capture', () => {
+    const nativeError = new Error('EPIPE')
+    const invalidPayloadError = new Error('invalid console payload')
+    const malformed = new Proxy({}, {
+      ownKeys: () => { throw invalidPayloadError },
+    })
+    const target = {
+      log: vi.fn(),
+      info: vi.fn<(...args: unknown[]) => unknown>(() => { throw nativeError }),
+      warn: vi.fn(),
+      error: vi.fn(),
+      debug: vi.fn(),
+    }
+    const captureErrors: unknown[] = []
+    const dispose = installConsoleCapture(target, () => {}, {
+      sessionId: 'session-a',
+      process: 'main',
+      nextSequence: () => 1,
+      onSinkError: error => captureErrors.push(error),
+    })
+
+    let thrown: unknown
+    try { target.info(malformed, 'second argument') } catch (error) { thrown = error }
+
+    expect(thrown).toBe(nativeError)
+    expect(captureErrors).toContain(invalidPayloadError)
+    dispose()
+  })
+
   it('captures child stdout/stderr and lifecycle outcomes as metadata events', () => {
     const listeners = new Map<string, (value?: unknown, value2?: unknown) => void>()
     const child = {

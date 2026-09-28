@@ -292,11 +292,12 @@ export const useCharacterStore = create<CharacterState>()((set, get) => ({
       ) return
     }
     try {
-      const roster = await ipc.invokeWithProjectSession(
+      const roster = await ipc.invokeBackgroundWithProjectSession(
         projectSession,
         'db:character-roster-read',
         requestedProjectKey,
       )
+      if (!roster) return
       if (
         !isCharacterProjectSessionCurrent(projectSession)
         || requestSequence !== characterLoadSequence

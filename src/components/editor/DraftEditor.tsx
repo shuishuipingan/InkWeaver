@@ -83,6 +83,7 @@ function DraftEditorSession({ tabId, filePath, content, projectKey }: Props) {
   const editorTab = useEditorStore(
     state => state.tabs.find(tab => tab.id === tabId && tab.projectKey === projectKey),
   )
+  const editorTabContent = editorTab?.content
   const currentProject = useProjectStore(s => s.currentProject)
   const text = useLocaleStore(s => s.text)
   const locale = useLocaleStore(s => s.locale)
@@ -110,9 +111,9 @@ function DraftEditorSession({ tabId, filePath, content, projectKey }: Props) {
 
   useEffect(() => {
     let cancelled = false
+    const projectSession = captureProjectSession(currentProject)
+    if (!projectSession || !isProjectSessionPath(projectSession, projectKey)) return
     const load = async () => {
-      const projectSession = captureProjectSession(currentProject)
-      if (!projectSession || !isProjectSessionPath(projectSession, projectKey)) return
       const m = await parseDraftMeta(filePath, projectKey, projectSession)
       if (cancelled || !isProjectSessionCurrent(projectSession) || !m) return
       const bps = await ipc.invokeWithProjectSession(
@@ -132,7 +133,11 @@ function DraftEditorSession({ tabId, filePath, content, projectKey }: Props) {
       const reviews = await getReviewsForVersion(chapterDir, m.version, projectKey)
       if (!cancelled && isProjectSessionCurrent(projectSession)) setReviewCount(reviews.length)
     }
-    load()
+    void load().catch(error => {
+      if (!cancelled && isProjectSessionCurrent(projectSession)) {
+        console.warn('[DraftEditor] Passive draft metadata refresh failed:', error)
+      }
+    })
 
     // 数据刷新由 ProjectService 统一处理（FINALIZE_COMPLETE 事件驱动 Store 更新后组件自动重渲染）
 
@@ -143,9 +148,10 @@ function DraftEditorSession({ tabId, filePath, content, projectKey }: Props) {
 
   useEffect(() => {
     let cancelled = false
+    const chapterNumber = meta?.chapterNumber
     const loadHandoffs = async () => {
-      const session = captureProjectSession(currentProject)
-      if (!session || !meta || status !== 'finalized' || !isProjectSessionPath(session, projectKey)) {
+      const session = captureProjectSession(useProjectStore.getState().currentProject)
+      if (!session || chapterNumber === undefined || status !== 'finalized' || !isProjectSessionPath(session, projectKey)) {
         setChapterHandoffs([])
         return
       }
@@ -154,7 +160,7 @@ function DraftEditorSession({ tabId, filePath, content, projectKey }: Props) {
         const records = await ipc.invokeWithProjectSession(
           session,
           'db:chapter-handoff-list-for-chapter',
-          meta.chapterNumber,
+          chapterNumber,
           projectKey,
         )
         if (!cancelled && isProjectSessionCurrent(session)) setChapterHandoffs(records)
@@ -166,36 +172,44 @@ function DraftEditorSession({ tabId, filePath, content, projectKey }: Props) {
     }
     void loadHandoffs()
     return () => { cancelled = true }
-  }, [currentProject?.sessionLease, meta?.chapterNumber, projectKey, status])
+  }, [currentProject?.path, currentProject?.sessionLease, meta?.chapterNumber, projectKey, status])
 
-  const loadCharacterCandidates = useCallback(async () => {
-    const session = captureProjectSession(currentProject)
+  const readCharacterCandidates = useCallback(async () => {
+    const session = captureProjectSession(useProjectStore.getState().currentProject)
     if (!session || !meta || status !== 'finalized' || !isProjectSessionPath(session, projectKey)) {
-      setCharacterCandidates([])
-      return
+      return null
     }
-    setCharacterCandidatesLoading(true)
     try {
-      const sourceText = editorTab?.content ?? content
+      const sourceText = editorTabContent ?? content
       const sourceId = `chapter:${meta.chapterNumber}:draft:${meta.id}`
-      const records = await ipc.invokeWithProjectSession(
+      const records = await ipc.invokeBackgroundWithProjectSession(
         session,
         'db:character-extraction-candidates-list',
         sourceId,
         textFingerprint(sourceText),
         projectKey,
       )
-      if (isProjectSessionCurrent(session)) setCharacterCandidates(records)
+      if (records && isProjectSessionCurrent(session)) return records
+      return null
     } catch {
-      setCharacterCandidates([])
-    } finally {
-      setCharacterCandidatesLoading(false)
+      return isProjectSessionCurrent(session) ? [] : null
     }
-  }, [content, currentProject, editorTab?.content, meta, projectKey, status])
+  }, [content, editorTabContent, meta, projectKey, status])
 
   useEffect(() => {
-    void loadCharacterCandidates()
-  }, [loadCharacterCandidates])
+    let cancelled = false
+    void readCharacterCandidates().then(records => {
+      if (!cancelled && records) setCharacterCandidates(records)
+    })
+    return () => { cancelled = true }
+  }, [readCharacterCandidates])
+
+  const refreshCharacterCandidates = () => {
+    setCharacterCandidatesLoading(true)
+    void readCharacterCandidates().then(records => {
+      if (records) setCharacterCandidates(records)
+    }).finally(() => setCharacterCandidatesLoading(false))
+  }
 
   const isReadonly = status === 'finalized' || status === 'archived'
 
@@ -351,7 +365,8 @@ function DraftEditorSession({ tabId, filePath, content, projectKey }: Props) {
         )
         requireIpcSuccess(statusResult, text('标记人物候选', 'Mark character candidate'))
       }))
-      await loadCharacterCandidates()
+      const refreshedCandidates = await readCharacterCandidates()
+      if (refreshedCandidates) setCharacterCandidates(refreshedCandidates)
       const { useCharacterStore } = await import('../../stores/character-store')
       await useCharacterStore.getState().load(projectKey, session)
       const changeSummary = appliedDiff.map(diff => {
@@ -608,7 +623,7 @@ function DraftEditorSession({ tabId, filePath, content, projectKey }: Props) {
         projectSession.projectPath,
       )
       if (!isProjectSessionCurrent(projectSession)) return
-      const sourceText = editorTab?.content ?? content
+      const sourceText = editorTabContent ?? content
       const sourceId = `chapter:${meta.chapterNumber}:draft:${meta.id}`
       const source = {
         sourceId,
@@ -635,7 +650,7 @@ function DraftEditorSession({ tabId, filePath, content, projectKey }: Props) {
       if (!isProjectSessionCurrent(projectSession)) return
       toast.error(text(`人物提取启动失败：${error}`, `Could not start character extraction: ${error}`))
     }
-  }, [content, currentProject, editorTab?.content, isChapterBusy, meta, projectKey, projectMatches, status, text])
+  }, [content, currentProject, editorTabContent, isChapterBusy, meta, projectKey, projectMatches, status, text])
 
   /** 打开待合并修稿 —— 弹出式合并视图，不占用原草稿 Tab */
   const openPendingRevision = async (rev: RevisionEntry) => {
@@ -956,7 +971,7 @@ function DraftEditorSession({ tabId, filePath, content, projectKey }: Props) {
             candidates={characterCandidates}
             loading={characterCandidatesLoading}
             updatingId={characterCandidateUpdating}
-            onRefresh={() => void loadCharacterCandidates()}
+            onRefresh={refreshCharacterCandidates}
             onStatus={updateCharacterCandidateStatus}
             onApply={applyAcceptedCharacterCandidates}
             text={text}
@@ -972,7 +987,7 @@ function DraftEditorSession({ tabId, filePath, content, projectKey }: Props) {
 
       {meta && status !== 'archived' && (
         <div className="px-3" style={{ borderBottom: '1px solid var(--color-border)' }}>
-          <StoryContinuityPanel projectKey={projectKey} chapterNumber={meta.chapterNumber} />
+          <StoryContinuityPanel key={`${projectKey}:${meta.chapterNumber}`} projectKey={projectKey} chapterNumber={meta.chapterNumber} />
         </div>
       )}
 

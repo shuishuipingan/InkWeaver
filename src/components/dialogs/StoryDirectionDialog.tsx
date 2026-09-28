@@ -123,11 +123,12 @@ export default function StoryDirectionDialog({ open, onClose, onApplied }: Props
       setLargeDraftRunConfirmed(false)
     })
     void Promise.all([
-      ipc.invokeWithProjectSession(projectSession, 'db:story-direction-snapshot', projectSession.projectPath),
-      ipc.invokeWithProjectSession(projectSession, 'db:character-roster-read', projectSession.projectPath),
-      ipc.invokeWithProjectSession(projectSession, 'db:story-direction-latest-run', projectSession.projectPath),
+      ipc.invokeBackgroundWithProjectSession(projectSession, 'db:story-direction-snapshot', projectSession.projectPath),
+      ipc.invokeBackgroundWithProjectSession(projectSession, 'db:character-roster-read', projectSession.projectPath),
+      ipc.invokeBackgroundWithProjectSession(projectSession, 'db:story-direction-latest-run', projectSession.projectPath),
     ]).then(([value, rosterValue, lastRun]) => {
         if (disposed || !isProjectSessionCurrent(projectSession)) return
+        if (!value || !rosterValue || lastRun === undefined) return
         setSnapshot(value)
         setRoster(rosterValue)
         setLatestRun(lastRun)
@@ -136,7 +137,9 @@ export default function StoryDirectionDialog({ open, onClose, onApplied }: Props
         setStartChapter(available[0]?.chapterNumber ?? Math.min(value.core.totalChapters || 1, latestFinalized + 1))
         setEndChapter(available.at(-1)?.chapterNumber ?? Math.max(1, value.core.totalChapters || 1))
       })
-      .catch(reason => { if (!disposed) setError(String(reason)) })
+      .catch(reason => {
+        if (!disposed && isProjectSessionCurrent(projectSession)) setError(String(reason))
+      })
     return () => { disposed = true }
   // Identity, rather than the mutable project object, owns one dialog session.
   }, [open, sessionKey]) // eslint-disable-line react-hooks/exhaustive-deps

@@ -1,5 +1,5 @@
 import type { Locale } from '../../i18n/types'
-import type { PromptBudgetReport } from '../../services/generation/generation-harness'
+import type { PromptBudgetReport } from '../../shared/prompt-budget'
 import type { WorkflowFailureCode } from '../../stores/workflow-store'
 
 export interface WorkflowFailurePresentation {

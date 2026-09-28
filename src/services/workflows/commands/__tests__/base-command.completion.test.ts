@@ -19,6 +19,7 @@ import {
 type ProbeStep =
   | { kind: 'single' }
   | { kind: 'bounded'; contaminateOptions?: boolean }
+  | { kind: 'compaction' }
   | { kind: 'exhaust'; commit: () => void }
 
 class CompletionProbeCommand extends BaseWorkflowCommand<string> {
@@ -55,6 +56,28 @@ class CompletionProbeCommand extends BaseWorkflowCommand<string> {
           params.callbacks,
           { mode: 'replace-structured-output', maxContinuations: 2 },
           options,
+          params.context,
+        )
+      }
+      if (step.kind === 'compaction') {
+        return this.callLLM(
+          'P:Distant context',
+          'S',
+          params.callbacks,
+          {
+            promptBudget: {
+              limitUtf8Bytes: 6,
+              sections: [
+                { sectionName: 'system-instructions', messageIndex: 0, finalText: 'S' },
+                {
+                  sectionName: 'distant-blueprints',
+                  messageIndex: 1,
+                  finalText: 'Distant context',
+                  degradation: { priority: 0, strategy: 'utf8-prefix' },
+                },
+              ],
+            },
+          },
           params.context,
         )
       }
@@ -155,6 +178,43 @@ describe('BaseWorkflowCommand completion boundary', () => {
 
     expect(completeWithLease.mock.calls[0]?.[0].plan.maxOutputTokens).toBe(expectedRequest)
     expect(WORKFLOW_GENERATION_BUDGETS.structured.maxRequestedOutputTokens).toBe(262_144)
+  })
+
+  it('reports compacted byte counts and logs the notice before provider dispatch', async () => {
+    const events: string[] = []
+    let providerPrompt = ''
+    const baseLease = leaseReceipt()
+    const completeWithLease = vi.fn<GenerationRuntimeEnvironment['completeWithLease']>()
+      .mockImplementation(async request => {
+        events.push('provider')
+        providerPrompt = request.messages[1]?.content ?? ''
+        return { content: 'complete', finishReason: 'stop' }
+      })
+    const environment: GenerationRuntimeEnvironment = {
+      snapshotDefaultModelId: () => 'model-a',
+      beginModelExecution: vi.fn().mockResolvedValue(baseLease),
+      completeWithLease,
+      closeModelExecution: vi.fn().mockResolvedValue(undefined),
+    }
+    const report = vi.fn(() => events.push('report'))
+    const log = vi.fn((message: string) => {
+      events.push(`notice:${message}`)
+    })
+
+    await new CompletionProbeCommand(dependenciesFor(environment)).execute({
+      step: { kind: 'compaction' },
+      context,
+      callbacks: { ...callbacks, setPromptBudgetReport: report, log },
+    })
+
+    expect(providerPrompt).toBe('P:Dis')
+    expect(events[0]).toBe('report')
+    expect(events[1]).toContain('提示词已在请求模型前自动压缩')
+    expect(events[2]).toBe('provider')
+    expect(report).toHaveBeenCalledOnce()
+    expect(report).toHaveBeenCalledWith(expect.objectContaining({
+      compaction: expect.objectContaining({ removedUtf8Bytes: 12 }),
+    }))
   })
 
   it.each([

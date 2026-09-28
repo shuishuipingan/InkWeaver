@@ -40,6 +40,7 @@ import {
   planBlueprintGenerationCost,
 } from '../blueprint-batch-policy'
 import { readAuthoritativeNextChapter } from '../../authoritative-chapter-sequence'
+import { formatPromptBudgetCompactionNotice } from '../../generation/prompt-budget-failure'
 
 type CreateDirectoryGenerationRuntime = typeof createGenerationRuntime
 
@@ -414,11 +415,21 @@ export class GenerateDirectoryCommand extends BaseWorkflowCommand<ChapterBluepri
         budget: costPlan.runtimeBudget,
       })
       const batchResult = await runtime.execute(async ({ session }) => {
+        let promptBudgetPreflightReported = false
         const executor = createStructuredBatchExecutor({
           contract,
           session,
           writingLanguage,
-          onAttempt: receipt => this.reportGenerationPromptBudget(callbacks, receipt),
+          onAttempt: receipt => this.reportGenerationPromptBudget(
+            callbacks,
+            receipt,
+            !promptBudgetPreflightReported,
+          ),
+          onPromptBudgetPreflight: report => {
+            promptBudgetPreflightReported = true
+            callbacks.setPromptBudgetReport?.(report)
+            callbacks.log(formatPromptBudgetCompactionNotice(report, context.uiLocale))
+          },
         })
         return executor.execute({
           items: chapterNumbers,

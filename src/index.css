@@ -1420,6 +1420,8 @@
 }
 
 .app-skin-root[data-theme='light'][data-skin-readability='high-contrast'] {
+  --skin-workspace-panel-surface: rgb(from var(--color-sidebar) r g b / 56%);
+  --skin-workspace-page-surface: rgb(from var(--skin-editor-base) r g b / 60%);
   --skin-text-primary: #172033;
   --skin-text-secondary: #34435C;
   --skin-border: #6C7A90;
@@ -1482,7 +1484,8 @@
   background: var(--skin-workspace-panel-surface) !important;
 }
 
-.app-skin-root[data-skin-readability='high-contrast'] .skin-workspace-page {
+.app-skin-root[data-skin-readability='high-contrast'] .skin-workspace-page,
+:root:not(.paper):not(.galaxy):not(.dark) .app-skin-root[data-theme='light'][data-skin-readability='high-contrast'] .skin-workspace-page {
   background: var(--skin-workspace-page-surface) !important;
 }
 
@@ -1507,6 +1510,11 @@
 .app-skin-root[data-skin-readability='high-contrast'] .skin-solid-surface {
   --color-editor-bg: var(--skin-control-surface);
   --color-sidebar: var(--skin-control-surface);
+}
+
+/* Dialog portals live under body, so bridge only the light custom-skin control surface. */
+:root:not(.paper):not(.galaxy):not(.dark):has(.app-skin-root[data-theme='light'][data-skin='custom'][data-skin-readability='high-contrast']) .skin-solid-surface {
+  background-color: rgb(from var(--color-editor-bg) r g b / 88%) !important;
 }
 
 .appearance-theme-grid {
