@@ -1,6 +1,8 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { CheckCircle2, Download, FileText, Files, Type, XCircle } from 'lucide-react'
 import { useProjectStore } from '../../stores/project-store'
+import { useEditorStore } from '../../stores/editor-store'
+import { toast } from '../../stores/notification-store'
 import {
   exportNovel,
   type ExportFormat,
@@ -37,14 +39,20 @@ export default function ExportDialog({ isOpen, onClose }: Props) {
   const [includeDrafts, setIncludeDrafts] = useState(true)
   const [includeOutline, setIncludeOutline] = useState(true)
   const [taskState, setTaskState] = useState<ExportTaskState | null>(null)
+  const [exportLockState, setExportLockState] = useState(false)
+  const exportStartLock = useRef(false)
   const text = useLocaleStore(s => s.text)
   const activeTask = taskState && isProjectSessionCurrent(taskState.session) ? taskState : null
   const exporting = activeTask?.exporting ?? false
+  const exportBusy = exporting || exportLockState
   const result = activeTask?.result ?? null
 
   const handleExport = async () => {
+    if (exportStartLock.current) return
     const projectSession = captureProjectSession(currentProject)
     if (!currentProject || !projectSession) return
+    exportStartLock.current = true
+    setExportLockState(true)
     const projectSnapshot: ExportProjectSnapshot = Object.freeze({
       id: projectSession.projectId,
       sessionLease: projectSession.leaseId,
@@ -55,19 +63,70 @@ export default function ExportDialog({ isOpen, onClose }: Props) {
         targetAudience: currentProject.novelConfig.targetAudience,
       }),
     })
-    const destination = await ipc.invoke('dialog:select-export-directory')
-    if (!destination || !isProjectSessionCurrent(projectSession)) return
-
     setTaskState({ session: projectSession, exporting: true, result: null })
-    const res = await exportNovel({ format, grantId: destination.grantId, includeDrafts, includeOutline }, projectSnapshot, projectSession)
-    if (!isProjectSessionCurrent(projectSession)) return
-    setTaskState({
-      session: projectSession,
-      exporting: false,
-      result: res.success && res.path
-        ? { ...res, path: `${destination.displayName}/${res.path}` }
-        : res,
-    })
+    let result: ExportTaskState['result'] = null
+    let exportServiceStarted = false
+    let exportSnapshotValidated = false
+    try {
+      const draftContentOverrides: Array<{ draftId: number; content: string; baseContent: string }> = []
+      if (includeDrafts) {
+        const dirtyDraftTabs = useEditorStore.getState().tabs.filter(tab => (
+          tab.projectKey === projectSession.projectPath
+          && tab.type === 'chapter'
+          && tab.dirty
+          && tab.draftStatus !== 'finalized'
+          && tab.draftStatus !== 'archived'
+          && (tab.draftId !== undefined || tab.filePath?.startsWith('vela://draft/'))
+        ))
+        for (const tab of dirtyDraftTabs) {
+          const pathId = tab.filePath?.match(/^vela:\/\/draft\/(\d+)$/u)?.[1]
+          const pathDraftId = pathId ? Number(pathId) : undefined
+          const draftId = tab.draftId ?? pathDraftId
+          if (!draftId || pathDraftId !== draftId || typeof tab.content !== 'string'
+            || typeof tab.savedContent !== 'string') {
+            result = {
+              success: false,
+              error: text('存在未保存的草稿无法匹配到数据库版本，请先保存后再导出。',
+                'An unsaved draft could not be matched to a database version. Save it before exporting.'),
+            }
+            return
+          }
+          draftContentOverrides.push({ draftId, content: tab.content, baseContent: tab.savedContent })
+        }
+      }
+
+      const destination = await ipc.invoke('dialog:select-export-directory')
+      if (!destination) return
+      if (!isProjectSessionCurrent(projectSession)) {
+        result = { success: false, error: text('项目已切换，本次导出已取消。', 'The project changed, so this export was canceled.') }
+        return
+      }
+
+      exportServiceStarted = true
+      const receipt = await exportNovel({
+        format, grantId: destination.grantId, includeDrafts, includeOutline,
+        draftContentOverrides,
+        onSnapshotValidated: () => { exportSnapshotValidated = true },
+      }, projectSnapshot, projectSession)
+      result = receipt.success && receipt.path
+        ? { ...receipt, path: `${destination.displayName}/${receipt.path}` }
+        : receipt
+    } catch (error) {
+      result = { success: false, error: String(error) }
+    } finally {
+      exportStartLock.current = false
+      setExportLockState(false)
+      setTaskState(previous => previous?.session.leaseId === projectSession.leaseId
+        ? { ...previous, exporting: false, ...(result ? { result } : {}) }
+        : previous)
+      if (exportServiceStarted && exportSnapshotValidated && result && !isProjectSessionCurrent(projectSession)) {
+        const message = result.success
+          ? text(`「${projectSnapshot.name}」导出完成：${result.path ?? ''}`, `Export for "${projectSnapshot.name}" completed: ${result.path ?? ''}`)
+          : text(`「${projectSnapshot.name}」导出失败：${result.error ?? ''}`, `Export for "${projectSnapshot.name}" failed: ${result.error ?? ''}`)
+        if (result.success) toast.success(message)
+        else toast.error(message)
+      }
+    }
   }
 
   const FORMAT_OPTIONS: Array<{ value: ExportFormat; label: string; desc: string; icon: React.ReactNode }> = [
@@ -172,9 +231,9 @@ export default function ExportDialog({ isOpen, onClose }: Props) {
         </div>
 
         <DialogFooter className="justify-end">
-          <Button variant="default" onClick={handleExport} disabled={exporting}>
+          <Button variant="default" onClick={handleExport} disabled={exportBusy}>
             <Download size={13} />
-            {exporting ? text('导出中...', 'Exporting...') : text('选择目录并导出', 'Choose folder and export')}
+            {exportBusy ? text('导出中...', 'Exporting...') : text('选择目录并导出', 'Choose folder and export')}
           </Button>
         </DialogFooter>
       </DialogContent>

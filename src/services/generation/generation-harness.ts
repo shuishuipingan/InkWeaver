@@ -276,7 +276,7 @@ function locatePromptBudgetSections(
       || (section.degradation !== undefined && (
         !Number.isSafeInteger(section.degradation.priority)
         || section.degradation.priority < 0
-        || !['utf8-prefix', 'complete-lines', 'json-string'].includes(section.degradation.strategy)
+        || !['utf8-prefix', 'complete-lines', 'whole-section', 'json-string'].includes(section.degradation.strategy)
       ))
     ) {
       throw new GenerationHarnessError('INVALID_POLICY', '提示词预算区段定义无效。')
@@ -370,6 +370,8 @@ function compactTextForSection(
       return utf8Prefix(text, maxUtf8Bytes)
     case 'complete-lines':
       return completeLinePrefix(text, maxUtf8Bytes)
+    case 'whole-section':
+      return utf8Bytes(text) <= maxUtf8Bytes ? text : ''
     case 'json-string':
       return jsonStringPrefix(text, maxUtf8Bytes)
     default:
@@ -754,20 +756,34 @@ export function createGenerationHarness(dependencies: {
           )
           let requestMessages: readonly GenerationMessage[] = task.messages
           let promptBudgetCandidate: PromptBudgetReport | undefined
+          let promptBudgetSections: LocatedPromptBudgetSection[] | undefined
+          let promptBudgetCompaction: ReturnType<typeof compactPromptBudgetSections> | undefined
           if (task.promptBudget) {
-            const sections = locatePromptBudgetSections(task.messages, task.promptBudget)
-            const compacted = compactPromptBudgetSections({
+            promptBudgetSections = locatePromptBudgetSections(task.messages, task.promptBudget)
+            promptBudgetCompaction = compactPromptBudgetSections({
               messages: task.messages,
               policy: task.promptBudget,
-              sections,
+              sections: promptBudgetSections,
             })
-            requestMessages = compacted.messages
+            requestMessages = promptBudgetCompaction.messages
+          }
+          const estimatedInputTokens = estimateInputTokens(requestMessages)
+          const contextAvailableOutputTokens = capabilities.contextWindowTokens === null
+            ? null
+            : capabilities.contextWindowTokens - estimatedInputTokens - CONTEXT_SAFETY_RESERVE_TOKENS
+          const maxOutputTokens = Math.max(0, Math.min(
+            intentOutputTokens,
+            contextAvailableOutputTokens ?? Number.POSITIVE_INFINITY,
+          ))
+          if (task.promptBudget) {
+            const sections = promptBudgetSections!
+            const compacted = promptBudgetCompaction!
             promptBudgetCandidate = createPromptBudgetReport({
               messages: requestMessages,
               policy: task.promptBudget,
               sections,
               sectionTexts: compacted.sectionTexts,
-              reservedOutputTokens: intentOutputTokens,
+              reservedOutputTokens: maxOutputTokens,
               modelId: frozenIdentity.id,
               ...(compacted.compaction ? { compaction: compacted.compaction } : {}),
             })
@@ -777,24 +793,13 @@ export function createGenerationHarness(dependencies: {
             logPromptBudgetReport(promptBudgetCandidate)
             throw new PromptBudgetExceededError(promptBudgetCandidate)
           }
-          const estimatedInputTokens = estimateInputTokens(requestMessages)
-          const contextAvailableOutputTokens = capabilities.contextWindowTokens === null
-            ? null
-            : capabilities.contextWindowTokens - estimatedInputTokens - CONTEXT_SAFETY_RESERVE_TOKENS
           if (contextAvailableOutputTokens !== null && contextAvailableOutputTokens <= 0) {
             throw new GenerationHarnessError(
               'CONTEXT_BUDGET_EXHAUSTED',
               '当前生成输入没有安全的输出空间。',
             )
           }
-
-          const maxOutputTokens = Math.min(
-            intentOutputTokens,
-            contextAvailableOutputTokens ?? Number.POSITIVE_INFINITY,
-          )
           const promptBudget = promptBudgetCandidate
-            ? Object.freeze({ ...promptBudgetCandidate, reservedOutputTokens: maxOutputTokens })
-            : undefined
           if (promptBudget) {
             logPromptBudgetReport(promptBudget)
           }

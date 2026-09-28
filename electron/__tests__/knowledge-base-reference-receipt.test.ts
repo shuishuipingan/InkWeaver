@@ -169,8 +169,11 @@ describe('stable reference knowledge receipt', () => {
       data: [{ index: 0, embedding: [0.1, 0.2, 0.3] }],
     }), { status: 200, headers: { 'Content-Type': 'application/json' } })
     let finishFirstEmbedding!: (response: Response) => void
+    let observeFirstFetch!: () => void
+    const firstFetchStarted = new Promise<void>(resolve => { observeFirstFetch = resolve })
     const fetchMock = vi.fn()
       .mockImplementationOnce(() => new Promise<Response>((resolve) => {
+        observeFirstFetch()
         finishFirstEmbedding = resolve
       }))
       .mockImplementation(async () => embeddingResponse())
@@ -190,7 +193,8 @@ describe('stable reference knowledge receipt', () => {
       'openai',
       embeddingModel,
     )
-    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+    await firstFetchStarted
+    expect(fetchMock).toHaveBeenCalledOnce()
 
     vi.setSystemTime(2_101)
     const takeover = ImportRunRepository.startOrResume('single-flight-run', 'renderer-b', 2_101, 10_000)

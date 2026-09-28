@@ -10,6 +10,9 @@ export type PromptBudgetFailureCode = typeof PROMPT_BUDGET_FAILURE_CODE
 
 const SECTION_LABELS: Readonly<Record<string, readonly [string, string]>> = Object.freeze({
   'global-guidance': ['全局指导', 'Global guidance'],
+  'global-guidance-config': ['全局指导', 'Global guidance'],
+  'project-guidance': ['项目专属指导', 'Project-specific guidance'],
+  'confirmed-planning-materials': ['已确认规划资料', 'Confirmed planning materials'],
   'step-guidance': ['步骤指导', 'Step guidance'],
   'reference-works': ['参考作品', 'Reference works'],
   'knowledge-base': ['知识库', 'Knowledge base'],
@@ -36,7 +39,10 @@ const SECTION_LABELS: Readonly<Record<string, readonly [string, string]>> = Obje
 })
 
 function sectionLabel(sectionName: string, locale: Locale): string {
-  const labels = SECTION_LABELS[sectionName]
+  const normalizedSectionName = /^confirmed-planning-material-\d+$/u.test(sectionName)
+    ? 'confirmed-planning-materials'
+    : sectionName
+  const labels = SECTION_LABELS[normalizedSectionName]
   if (!labels) return locale === 'zh-CN' ? '其他结构化上下文' : 'Other structured context'
   return locale === 'zh-CN' ? labels[0] : labels[1]
 }
@@ -76,13 +82,18 @@ export function formatPromptBudgetCompactionNotice(report: PromptBudgetReport, l
 
   const grouped = new Map<string, { removedUtf8Bytes: number; retainedUtf8Bytes: number }>()
   for (const section of compaction.sections) {
-    const totals = grouped.get(section.sectionName) ?? { removedUtf8Bytes: 0, retainedUtf8Bytes: 0 }
+    const label = sectionLabel(section.sectionName, locale)
+    const totals = grouped.get(label) ?? { removedUtf8Bytes: 0, retainedUtf8Bytes: 0 }
     totals.removedUtf8Bytes += section.removedUtf8Bytes
-    totals.retainedUtf8Bytes += section.retainedUtf8Bytes
-    grouped.set(section.sectionName, totals)
+    grouped.set(label, totals)
   }
-  const sectionCounts = [...grouped.entries()].map(([sectionName, totals]) => (
-    `${sectionLabel(sectionName, locale)}: ${locale === 'zh-CN' ? '移除' : 'removed'} `
+  for (const section of report.sections) {
+    const label = sectionLabel(section.sectionName, locale)
+    const totals = grouped.get(label)
+    if (totals) totals.retainedUtf8Bytes += section.utf8Bytes
+  }
+  const sectionCounts = [...grouped.entries()].map(([label, totals]) => (
+    `${label}: ${locale === 'zh-CN' ? '移除' : 'removed'} `
     + `${formatInteger(totals.removedUtf8Bytes, locale)}, ${locale === 'zh-CN' ? '保留' : 'retained'} `
     + `${formatInteger(totals.retainedUtf8Bytes, locale)} ${locale === 'zh-CN' ? '字节' : 'bytes'}`
   )).join(locale === 'zh-CN' ? '；' : '; ')

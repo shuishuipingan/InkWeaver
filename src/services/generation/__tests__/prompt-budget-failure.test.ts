@@ -43,4 +43,28 @@ describe('prompt budget compaction diagnostics', () => {
     expect(failure).toContain('核心大纲')
     expect(failure).toContain('远期章节蓝图')
   })
+
+  it('aggregates retained bytes across all uniquely named planning materials', () => {
+    const report: PromptBudgetReport = {
+      ...compactedReport,
+      sections: [
+        { sectionName: 'confirmed-planning-material-1', utf8Bytes: 0 },
+        { sectionName: 'confirmed-planning-material-2', utf8Bytes: 240 },
+      ],
+      compaction: {
+        originalTotalUtf8Bytes: 400,
+        retainedTotalUtf8Bytes: 240,
+        removedUtf8Bytes: 160,
+        sections: [{
+          sectionName: 'confirmed-planning-material-1',
+          originalUtf8Bytes: 160,
+          retainedUtf8Bytes: 0,
+          removedUtf8Bytes: 160,
+        }],
+      },
+    }
+
+    expect(formatPromptBudgetCompactionNotice(report, 'en-US'))
+      .toContain('Confirmed planning materials: removed 160, retained 240 bytes')
+  })
 })

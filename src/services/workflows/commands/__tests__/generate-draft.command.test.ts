@@ -10,6 +10,8 @@ import type {
 } from '../../../../shared/ipc-channels'
 import type { NarrativeThreadView } from '../../../../shared/narrative-thread'
 import type { ChapterHandoffRecord } from '../../../../shared/chapter-handoff'
+import * as promptTemplateModule from '../../../prompt-templates'
+import type { PromptTemplate } from '../../../prompt-templates'
 import {
   createGenerationRuntime,
   type GenerationRuntime,
@@ -211,6 +213,9 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
     runtime: Pick<ReturnType<typeof fakeRuntime>, 'createRuntime' | 'complete' | 'execute' | 'close'>
     wordsPerChapter?: number
     wordsTarget?: number
+    globalGuidance?: string
+    projectPrompt?: string
+    planningMaterials?: Array<{ name: string; content: string; status: string }>
     premise?: string
     charactersArch?: string
     synopsis?: string
@@ -269,7 +274,14 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
       }
       if (channel === 'kb:search-writing-context') return options.knowledgeResults ?? []
       if (channel === 'db:character-get-all') return options.characterCards ?? []
-      if (channel === 'fs:list-dir') return []
+      if (channel === 'fs:list-dir') {
+        if (String(args[0]).endsWith('/.vela/prompts') && options.projectPrompt) {
+          return [{ isDir: false, name: 'guidance.md', path: `${projectPath}/.vela/prompts/guidance.md` }]
+        }
+        return []
+      }
+      if (channel === 'fs:read-file') return { success: true, content: options.projectPrompt ?? '' }
+      if (channel === 'db:planning-material-list') return options.planningMaterials ?? []
       if (channel === 'db:draft-next-version') return 1
       if (channel === 'db:draft-create') return { success: true, id: 'draft-1' }
       throw new Error(`unexpected IPC: ${channel}`)
@@ -296,6 +308,7 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
           totalChapters: 10,
           wordsPerChapter: options.wordsPerChapter ?? 5000,
           coreOutline: options.coreOutline ?? '',
+          globalGuidance: options.globalGuidance ?? '',
         },
       } as never,
       refreshFileTree: vi.fn().mockResolvedValue(undefined),
@@ -430,8 +443,8 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
     ])
     // 能力优先契约：384K 模型首发用满 (384_000 - 输入估算 - 512 预留)，续写消耗剩余预算。
     expect(completeWithLease.mock.calls.map(([request]) => request.plan.maxOutputTokens)).toEqual([
-      382_197,
-      1_803,
+      382_173,
+      1_827,
     ])
     expect(createRuntime).toHaveBeenCalledWith({ budget: DRAFT_GENERATION_BUDGET })
     expect(invoke).toHaveBeenCalledWith(
@@ -1042,6 +1055,66 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
     expect(task.messages[1]?.content).toContain('林岚的经历')
     expect(task.messages[1]?.content).toContain('苏绾的成长线')
     expect(task.messages[1]?.content).toContain('第7章 远章：远期事件')
+  })
+
+  it('attributes global guidance, project prompts, and confirmed planning materials to the draft byte budget', async () => {
+    const runtime = fakeOutcomes(outcome('自然句。'.repeat(800), 'stop'))
+    const planningMaterials = Array.from({ length: 6 }, (_, index) => ({
+      name: `已确认资料${index + 1}`,
+      content: `资料${index + 1}内容${'甲'.repeat(4000)}`,
+      status: 'confirmed',
+    }))
+    const { context, callbacks, command } = setup({
+      runtime,
+      globalGuidance: '全局硬性指导标记',
+      projectPrompt: '项目专属指导标记\n\n\n\n额外指导\n示例："globalGuidance": "全局硬性指导标记"',
+      planningMaterials,
+      wordsTarget: 500,
+    })
+
+    await command.execute({ step: {}, context, callbacks })
+
+    const task = runtime.complete.mock.calls[0]?.[0] as GenerationTask
+    const sections = task.promptBudget?.sections ?? []
+    expect(sections.find(section => section.sectionName === 'global-guidance')?.degradation).toBeUndefined()
+    expect(sections.find(section => section.sectionName === 'global-guidance-config')?.finalText)
+      .toBe(JSON.stringify('全局硬性指导标记'))
+    expect(sections.find(section => section.sectionName === 'project-guidance')?.degradation).toBeUndefined()
+    const confirmedMaterials = sections.filter(section => section.sectionName.startsWith('confirmed-planning-material-'))
+    expect(confirmedMaterials).toHaveLength(6)
+    expect(confirmedMaterials[0]?.degradation)
+      .toEqual({ priority: expect.any(Number), strategy: 'whole-section' })
+    expect(confirmedMaterials[0]?.finalText).toContain('资料1内容')
+    expect(sections.filter(section => section.sectionName === 'global-guidance')).toHaveLength(1)
+    expect(task.messages[1]?.content).toContain('全局硬性指导标记')
+    expect(task.messages[1]?.content).toContain('项目专属指导标记\n\n额外指导\n示例："globalGuidance": "全局硬性指导标记"')
+    expect(task.messages[1]?.content).toContain('资料1内容')
+  })
+
+  it('attributes every repeated custom-template copy of merged guidance', async () => {
+    const runtime = fakeOutcomes(outcome('自然句。'.repeat(800), 'stop'))
+    const { context, callbacks, command } = setup({
+      runtime,
+      wordsTarget: 500,
+      globalGuidance: '全局预算定位标记',
+      projectPrompt: '项目预算定位标记',
+    })
+    vi.spyOn(promptTemplateModule, 'resolvePromptTemplate').mockResolvedValue({
+      key: 'first_chapter_draft',
+      name: '重复指导模板',
+      description: '',
+      content: '{{global_guidance}}\n\n---\n\n{{global_guidance}}\n\n{{chapter_info}}',
+      systemRole: 'system',
+      variables: { global_guidance: 'global guidance', chapter_info: 'chapter info' },
+    } satisfies PromptTemplate)
+
+    await command.execute({ step: {}, context, callbacks })
+
+    const task = runtime.complete.mock.calls[0]?.[0] as GenerationTask
+    const sections = task.promptBudget?.sections ?? []
+    expect(sections.filter(section => section.sectionName === 'global-guidance')).toHaveLength(2)
+    expect(sections.filter(section => section.sectionName === 'project-guidance')).toHaveLength(2)
+    expect(task.messages[1]?.content.match(/项目预算定位标记/gu)).toHaveLength(2)
   })
 
   it('caps an overlong result at a natural boundary before persistence', async () => {

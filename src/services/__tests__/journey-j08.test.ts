@@ -107,7 +107,18 @@ beforeEach(async () => {
       { id: 1, chapterNumber: 1, chapterTitle: '无蓝图开篇', version: 1, status: 'finalized', wordCount: 5 },
       { id: 2, chapterNumber: 2, chapterTitle: '无蓝图转折', version: 1, status: 'finalized', wordCount: 5 },
     ] as never
-    if (channel === 'db:draft-get-full') return { content: `定稿正文${String(args[0])}` } as never
+    if (channel === 'db:draft-get-full') {
+      const draftId = Number(args[0])
+      return {
+        id: draftId,
+        chapterNumber: draftId,
+        version: 1,
+        chapterTitle: draftId === 1 ? '无蓝图开篇' : '无蓝图转折',
+        status: 'finalized',
+        wordCount: 5,
+        content: `定稿正文${String(draftId)}`,
+      } as never
+    }
     if (channel === 'db:project-core-get') return { synopsis: '无蓝图导出旅程' } as never
     throw new Error(`Unexpected project-session channel: ${channel}`)
   })

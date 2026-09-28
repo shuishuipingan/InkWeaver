@@ -13,6 +13,7 @@ export interface WorkflowFailurePresentation {
 
 const NOVEL_CONFIG_SECTIONS = new Set([
   'global-guidance',
+  'global-guidance-config',
   'reference-works',
   'genre',
   'protagonist-profile',
@@ -31,7 +32,10 @@ function promptBudgetAdjustment(
   report: PromptBudgetReport | undefined,
   locale: Locale,
 ): Pick<WorkflowFailurePresentation, 'guidance' | 'action' | 'actionLabel'> {
-  const sectionName = primaryProtectedSection(report)
+  const primarySectionName = primaryProtectedSection(report)
+  const sectionName = primarySectionName && /^confirmed-planning-material-\d+$/u.test(primarySectionName)
+    ? 'confirmed-planning-materials'
+    : primarySectionName
   if (sectionName && NOVEL_CONFIG_SECTIONS.has(sectionName)) {
     return locale === 'zh-CN'
       ? {
@@ -58,6 +62,20 @@ function promptBudgetAdjustment(
       guidance: locale === 'zh-CN'
         ? '请减少本次使用的知识库内容或缩小检索范围后重试。'
         : 'Reduce the knowledge-base content used for this request or narrow the retrieval scope, then try again.',
+    }
+  }
+  if (sectionName === 'project-guidance') {
+    return {
+      guidance: locale === 'zh-CN'
+        ? '请缩短项目内 .vela/prompts 文件夹中的项目专属指导后重试。'
+        : 'Shorten the project-specific prompt files in `.vela/prompts`, then try again.',
+    }
+  }
+  if (sectionName === 'confirmed-planning-materials') {
+    return {
+      guidance: locale === 'zh-CN'
+        ? '请在规划资料中缩短或取消确认部分资料，或缩小本次写作范围后重试。'
+        : 'Shorten or unconfirm some planning materials, or reduce this writing request, then try again.',
     }
   }
   if (sectionName === 'validated-prefix' || sectionName === 'batch-slot-ids') {

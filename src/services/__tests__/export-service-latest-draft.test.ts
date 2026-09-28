@@ -69,7 +69,13 @@ beforeEach(() => {
   vi.mocked(ipc.invokeWithProjectSession).mockImplementation((async (_session: ProjectSessionContext, channel: string, id?: number) => {
     if (channel === 'db:draft-authority-sequence') return authority as never
     if (channel === 'db:draft-list-all') return drafts as never
-    if (channel === 'db:draft-get-full') return { content: `body-${String(id)}` } as never
+    if (channel === 'db:draft-get-full') return {
+      id,
+      chapterNumber: drafts.find(draft => draft.id === id)?.chapterNumber,
+      version: drafts.find(draft => draft.id === id)?.version,
+      content: `body-${String(id)}`,
+      status: drafts.find(draft => draft.id === id)?.status,
+    } as never
     throw new Error(`Unexpected channel: ${channel}`)
   }) as never)
 })
@@ -97,11 +103,114 @@ describe('exportNovel latest draft selection', () => {
     const selectedIds = vi.mocked(ipc.invokeWithProjectSession).mock.calls
       .filter(call => call[1] === 'db:draft-get-full')
       .map(call => call[2])
-    expect(selectedIds).toEqual([12, 22])
+    expect(selectedIds).toEqual([12, 22, 12, 22])
     const exported = writtenFiles.get('Project A.md') ?? ''
     expect(exported.indexOf('body-12')).toBeLessThan(exported.indexOf('body-22'))
     expect(exported).not.toContain('body-11')
     expect(exported).not.toContain('body-21')
+  })
+
+  it('exports the dirty editor buffer when it belongs to the selected latest draft', async () => {
+    const options = {
+      format: 'merged-md' as const,
+      grantId: 'export-grant',
+      draftContentOverrides: [{ draftId: 22, content: 'unsaved editor buffer', baseContent: 'body-22' }],
+    }
+    authority = sequence('continuous', 1)
+    drafts = [
+      { id: 22, chapterNumber: 1, chapterTitle: '开篇', version: 2, status: 'draft' },
+      { id: 21, chapterNumber: 1, chapterTitle: '开篇', version: 1, status: 'finalized' },
+    ]
+
+    await expect(exportNovel(options, projectSnapshot, projectSession))
+      .resolves.toEqual({ success: true, path: 'Project A.md' })
+
+    const exported = writtenFiles.get('Project A.md') ?? ''
+    expect(exported).toContain('unsaved editor buffer')
+    expect(exported).not.toContain('body-22')
+    expect(exported).not.toContain('body-21')
+  })
+
+  it('refuses a dirty buffer when its database draft changed to a different body after capture', async () => {
+    authority = sequence('empty', 0)
+    drafts = [{ id: 22, chapterNumber: 1, chapterTitle: '开篇', version: 2, status: 'draft' }]
+    vi.mocked(ipc.invokeWithProjectSession).mockImplementation((async (_session: ProjectSessionContext, channel: string) => {
+      if (channel === 'db:draft-authority-sequence') return authority as never
+      if (channel === 'db:draft-list-all') return drafts as never
+      if (channel === 'db:draft-get-full') return {
+        content: 'concurrently saved different text', status: 'draft',
+      } as never
+      throw new Error(`Unexpected channel: ${channel}`)
+    }) as never)
+    const options = {
+      format: 'merged-md' as const, grantId: 'export-grant',
+      draftContentOverrides: [{ draftId: 22, content: 'unsaved editor buffer', baseContent: 'body-22' }],
+    }
+
+    await expect(exportNovel(options, projectSnapshot, projectSession)).resolves.toMatchObject({
+      success: false,
+      error: expect.stringContaining('已在导出期间变化'),
+    })
+    expect(vi.mocked(ipc.invoke).mock.calls.some(([channel]) => channel === 'fs:grant-write-file')).toBe(false)
+  })
+
+  it('does not apply a stale dirty-buffer override to a chapter that became finalized', async () => {
+    authority = sequence('continuous', 1)
+    drafts = [
+      { id: 22, chapterNumber: 1, chapterTitle: '开篇', version: 2, status: 'finalized' },
+      { id: 21, chapterNumber: 1, chapterTitle: '开篇', version: 1, status: 'archived' },
+    ]
+    const options = {
+      format: 'merged-md' as const, grantId: 'export-grant',
+      draftContentOverrides: [{ draftId: 22, content: 'stale unsaved draft', baseContent: 'body-22' }],
+    }
+
+    await expect(exportNovel(options, projectSnapshot, projectSession)).resolves.toMatchObject({ success: true })
+    expect(writtenFiles.get('Project A.md')).toContain('body-22')
+    expect(writtenFiles.get('Project A.md')).not.toContain('stale unsaved draft')
+  })
+
+  it('rejects a concurrent export before it can interleave content and manifest writes', async () => {
+    let signalFirstWriteStarted!: () => void
+    let releaseFirstWrite!: () => void
+    const firstWriteStarted = new Promise<void>(resolve => { signalFirstWriteStarted = resolve })
+    const firstWriteGate = new Promise<void>(resolve => { releaseFirstWrite = resolve })
+    let writeCount = 0
+    vi.mocked(ipc.invoke).mockImplementation((async (channel: string, _grantId?: string, relativePath?: string, content?: unknown) => {
+      if (channel === 'fs:grant-write-file') {
+        writeCount += 1
+        if (writeCount === 1) {
+          signalFirstWriteStarted()
+          await firstWriteGate
+        }
+        if (typeof relativePath === 'string') writtenFiles.set(relativePath, String(content))
+        return { success: true }
+      }
+      if (channel === 'fs:grant-read-file') {
+        return { success: true, content: typeof relativePath === 'string' ? writtenFiles.get(relativePath) ?? '' : '' }
+      }
+      return { success: true }
+    }) as never)
+
+    const firstExport = exportNovel(
+      { format: 'merged-md', grantId: 'export-grant' },
+      projectSnapshot,
+      projectSession,
+    )
+    await firstWriteStarted
+    const secondExport = await exportNovel(
+      { format: 'merged-md', grantId: 'export-grant' },
+      projectSnapshot,
+      projectSession,
+    )
+    releaseFirstWrite()
+
+    await expect(secondExport).toMatchObject({
+      success: false,
+      error: expect.stringContaining('导出任务正在进行'),
+    })
+    await expect(firstExport).resolves.toMatchObject({ success: true })
+    expect(writeCount).toBe(2)
   })
 
   it('exports a continuous draft-only manuscript without finalized authority', async () => {
@@ -120,7 +229,7 @@ describe('exportNovel latest draft selection', () => {
     const selectedIds = vi.mocked(ipc.invokeWithProjectSession).mock.calls
       .filter(call => call[1] === 'db:draft-get-full')
       .map(call => call[2])
-    expect(selectedIds).toEqual([31, 32])
+    expect(selectedIds).toEqual([31, 32, 31, 32])
   })
 
   it('does not treat archived versions as the latest exportable drafts', async () => {
@@ -139,8 +248,82 @@ describe('exportNovel latest draft selection', () => {
     const selectedIds = vi.mocked(ipc.invokeWithProjectSession).mock.calls
       .filter(call => call[1] === 'db:draft-get-full')
       .map(call => call[2])
-    expect(selectedIds).toEqual([35])
+    expect(selectedIds).toEqual([35, 35])
     expect(writtenFiles.get('Project A.md')).not.toContain('body-36')
+  })
+
+  it('refuses a selected draft that became archived after the export plan was read', async () => {
+    authority = sequence('empty', 0)
+    drafts = [{ id: 37, chapterNumber: 1, chapterTitle: '当前稿', version: 2, status: 'draft' }]
+    vi.mocked(ipc.invokeWithProjectSession).mockImplementation((async (_session: ProjectSessionContext, channel: string) => {
+      if (channel === 'db:draft-authority-sequence') return authority as never
+      if (channel === 'db:draft-list-all') return drafts as never
+      if (channel === 'db:draft-get-full') return {
+        content: 'now archived prose', status: 'archived',
+      } as never
+      throw new Error(`Unexpected channel: ${channel}`)
+    }) as never)
+
+    await expect(exportNovel(
+      { format: 'merged-md', grantId: 'export-grant' },
+      projectSnapshot,
+      projectSession,
+    )).resolves.toMatchObject({ success: false, error: expect.stringContaining('已变化') })
+    expect(vi.mocked(ipc.invoke).mock.calls.some(([channel]) => channel === 'fs:grant-write-file')).toBe(false)
+  })
+
+  it('refuses to write when finalized authority changes while chapter bodies are being collected', async () => {
+    authority = sequence('continuous', 1)
+    drafts = [{ id: 38, chapterNumber: 1, chapterTitle: '开篇', version: 1, status: 'finalized' }]
+    let authorityReads = 0
+    vi.mocked(ipc.invokeWithProjectSession).mockImplementation((async (_session: ProjectSessionContext, channel: string) => {
+      if (channel === 'db:draft-authority-sequence') {
+        authorityReads += 1
+        return {
+          ...authority,
+          authorityFingerprint: authorityReads === 1 ? 'a'.repeat(64) : 'b'.repeat(64),
+        } as never
+      }
+      if (channel === 'db:draft-list-all') return drafts as never
+      if (channel === 'db:draft-get-full') return {
+        content: 'finalized prose', status: 'finalized',
+      } as never
+      throw new Error(`Unexpected channel: ${channel}`)
+    }) as never)
+
+    await expect(exportNovel(
+      { format: 'merged-md', grantId: 'export-grant' },
+      projectSnapshot,
+      projectSession,
+    )).resolves.toMatchObject({ success: false, error: expect.stringContaining('导出期间已变化') })
+    expect(authorityReads).toBeGreaterThanOrEqual(2)
+    expect(vi.mocked(ipc.invoke).mock.calls.some(([channel]) => channel === 'fs:grant-write-file')).toBe(false)
+  })
+
+  it('refuses an in-place body edit made after the first draft read', async () => {
+    authority = sequence('empty', 0)
+    drafts = [{ id: 39, chapterNumber: 1, chapterTitle: '当前稿', version: 1, status: 'draft', wordCount: 3 }]
+    let bodyReads = 0
+    vi.mocked(ipc.invokeWithProjectSession).mockImplementation((async (_session: ProjectSessionContext, channel: string) => {
+      if (channel === 'db:draft-authority-sequence') return authority as never
+      if (channel === 'db:draft-list-all') return drafts as never
+      if (channel === 'db:draft-get-full') {
+        bodyReads += 1
+        return {
+          content: bodyReads === 1 ? 'old draft prose' : 'new draft prose',
+          status: 'draft',
+        } as never
+      }
+      throw new Error(`Unexpected channel: ${channel}`)
+    }) as never)
+
+    await expect(exportNovel(
+      { format: 'merged-md', grantId: 'export-grant' },
+      projectSnapshot,
+      projectSession,
+    )).resolves.toMatchObject({ success: false, error: expect.stringContaining('导出期间已变化') })
+    expect(bodyReads).toBe(2)
+    expect(vi.mocked(ipc.invoke).mock.calls.some(([channel]) => channel === 'fs:grant-write-file')).toBe(false)
   })
 
   it('preserves finalized-only export when explicitly selected', async () => {
@@ -158,7 +341,7 @@ describe('exportNovel latest draft selection', () => {
     const selectedIds = vi.mocked(ipc.invokeWithProjectSession).mock.calls
       .filter(call => call[1] === 'db:draft-get-full')
       .map(call => call[2])
-    expect(selectedIds).toEqual([41])
+    expect(selectedIds).toEqual([41, 41])
     expect(writtenFiles.get('Project A.md')).toContain('body-41')
     expect(writtenFiles.get('Project A.md')).not.toContain('body-42')
   })

@@ -67,6 +67,18 @@ describe('AI output failure presentation', () => {
   })
 
   it.each([
+    ['project-guidance', 'Shorten the project-specific prompt files in `.vela/prompts`, then try again.'],
+    ['confirmed-planning-materials', 'Shorten or unconfirm some planning materials, or reduce this writing request, then try again.'],
+    ['confirmed-planning-material-2', 'Shorten or unconfirm some planning materials, or reduce this writing request, then try again.'],
+  ])('explains how to reduce %s without suggesting an unrelated setting', (sectionName, guidance) => {
+    const presentation = presentWorkflowFailure(
+      'prompt_budget_exhausted', 'safe report summary', 'en-US', false, promptBudgetReport(sectionName),
+    )
+    expect(presentation.guidance).toBe(guidance)
+    expect(presentation).not.toHaveProperty('action')
+  })
+
+  it.each([
     ['architecture', 'Shorten the related story-architecture content or reduce this generation scope, then try again.'],
     ['validated-prefix', 'Reduce this structured batch and try again; validated content will not be silently truncated.'],
     ['repair-contract', 'The structured repair contract cannot be safely edited in the interface. Reduce this task scope; if the problem persists, report the result code.'],

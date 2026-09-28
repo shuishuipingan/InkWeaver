@@ -59,6 +59,7 @@ const DRAFT_PROMPT_DEGRADATION_PRIORITY = Object.freeze({
   synopsis: 40,
   linkedCast: 30,
   secondaryCast: 20,
+  confirmedPlanningMaterials: 15,
   distantBlueprints: 10,
 })
 
@@ -66,7 +67,25 @@ interface DraftArchitectureSection {
   sectionName: string
   label: string
   text: string
+  startOffset?: number
   degradation?: PromptBudgetSection['degradation']
+}
+
+function normalizePromptNewlineRuns(value: string): string {
+  return value.replace(/\n{3,}/g, '\n\n').trim()
+}
+
+function promptTextOccurrences(text: string, fragment: string): number[] {
+  if (!fragment) return []
+  const starts: number[] = []
+  let cursor = 0
+  while (cursor <= text.length - fragment.length) {
+    const start = text.indexOf(fragment, cursor)
+    if (start < 0) break
+    starts.push(start)
+    cursor = start + fragment.length
+  }
+  return starts
 }
 
 interface DraftArchitectureContext {
@@ -114,8 +133,32 @@ function promptBudgetSectionsForDraft(input: {
     sectionName: string,
     finalText: string,
     degradation?: PromptBudgetSection['degradation'],
+    startOffset?: number,
   ) => {
     if (!finalText) return
+    if (startOffset !== undefined) {
+      if (input.prompt.slice(startOffset, startOffset + finalText.length) !== finalText) {
+        throw new Error(`草稿提示词预算区段「${sectionName}」没有匹配最终请求。`)
+      }
+      const overlapsLocatedSection = locatedSections.some(({ section, start }) => (
+        section.messageIndex === 1
+        && startOffset < start + section.finalText.length
+        && startOffset + finalText.length > start
+      ))
+      if (overlapsLocatedSection) {
+        throw new Error(`草稿提示词预算区段「${sectionName}」与受保护证据重叠。`)
+      }
+      locatedSections.push({
+        section: {
+          sectionName,
+          messageIndex: 1,
+          finalText,
+          ...(degradation ? { degradation } : {}),
+        },
+        start: startOffset,
+      })
+      return
+    }
     let cursor = 0
     while (cursor < input.prompt.length) {
       const start = input.prompt.indexOf(finalText, cursor)
@@ -146,7 +189,7 @@ function promptBudgetSectionsForDraft(input: {
   }
 
   for (const context of input.contexts) {
-    addOccurrences(context.sectionName, context.text, context.degradation)
+    addOccurrences(context.sectionName, context.text, context.degradation, context.startOffset)
   }
 
   return {
@@ -414,7 +457,18 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
       projectSession,
       writingLanguage,
     )
-    const mergedGuidance = [novelConfig.globalGuidance || '', projectPrompts, planningMaterials.text].filter(Boolean).join('\n\n')
+    const guidanceSections: DraftArchitectureSection[] = [
+      { sectionName: 'global-guidance', label: '', text: normalizePromptNewlineRuns(novelConfig.globalGuidance?.trim() || '') },
+      { sectionName: 'project-guidance', label: '', text: normalizePromptNewlineRuns(projectPrompts) },
+      ...planningMaterials.sections.map((text, index) => ({
+        sectionName: `confirmed-planning-material-${index + 1}`, label: '', text: normalizePromptNewlineRuns(text),
+        degradation: {
+          priority: DRAFT_PROMPT_DEGRADATION_PRIORITY.confirmedPlanningMaterials,
+          strategy: 'whole-section' as const,
+        },
+      })),
+    ].filter(section => section.text)
+    const mergedGuidance = guidanceSections.map(section => section.text).join('\n\n')
 
     const characterContext = await this.readCharacterStates(
       expectedProjectPath,
@@ -686,11 +740,64 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
     }
 
     const prompt = promptBuilder.build()
+    const serializedGlobalGuidance = typeof novelConfig.globalGuidance === 'string'
+      ? JSON.stringify(novelConfig.globalGuidance)
+      : undefined
+    const serializedNovelConfig = JSON.stringify(novelConfig, null, 2)
+    const novelConfigRanges = promptTextOccurrences(prompt, serializedNovelConfig).map(start => ({
+      start,
+      end: start + serializedNovelConfig.length,
+    }))
+    const configEntry = serializedGlobalGuidance
+      ? `"globalGuidance": ${serializedGlobalGuidance}`
+      : undefined
+    const configGuidanceStarts = configEntry
+      ? promptTextOccurrences(prompt, configEntry)
+          .filter(entryStart => novelConfigRanges.some(range => (
+            entryStart >= range.start && entryStart + configEntry.length <= range.end
+          )))
+          .map(start => start + '"globalGuidance": '.length)
+      : []
+    const configGuidanceRanges = configGuidanceStarts.map(start => ({
+      start,
+      end: start + serializedGlobalGuidance!.length,
+    }))
+    const targetChapterStart = prompt.indexOf(JSON.stringify(this.chapterInfo, null, 2))
+    const targetChapterEnd = targetChapterStart + JSON.stringify(this.chapterInfo, null, 2).length
+    const guidanceBlockStarts = mergedGuidance
+      ? promptTextOccurrences(prompt, mergedGuidance).filter(start => {
+          const end = start + mergedGuidance.length
+          const overlapsTarget = targetChapterStart >= 0 && start < targetChapterEnd && end > targetChapterStart
+          const overlapsConfigCopy = configGuidanceRanges.some(range => start < range.end && end > range.start)
+          return !overlapsTarget && !overlapsConfigCopy
+        })
+      : []
+    if (mergedGuidance && guidanceBlockStarts.length === 0) {
+      throw new Error('草稿提示词缺少最终合并指导区段，已阻止生成。')
+    }
+    const locatedGuidanceSections = guidanceBlockStarts.flatMap(blockStart => {
+      let guidanceCursor = blockStart
+      return guidanceSections.map((section, index) => {
+        const result = { ...section, startOffset: guidanceCursor }
+        guidanceCursor += section.text.length + (index + 1 < guidanceSections.length ? 2 : 0)
+        return result
+      })
+    })
+    const globalGuidanceConfigSections = serializedGlobalGuidance && novelConfig.globalGuidance
+      ? configGuidanceStarts.map((startOffset) => ({
+          sectionName: 'global-guidance-config',
+          label: '',
+          text: serializedGlobalGuidance,
+          startOffset,
+        }))
+      : []
     const promptBudget = promptBudgetSectionsForDraft({
       systemPrompt: promptBuilder.getSystemRole(),
       prompt,
       targetChapterText: JSON.stringify(this.chapterInfo, null, 2),
       contexts: [
+        ...globalGuidanceConfigSections,
+        ...locatedGuidanceSections,
         ...draftArchitecture.sections,
         ...(typeof novelConfig.coreOutline === 'string' && novelConfig.coreOutline
           ? [{
@@ -1151,7 +1258,7 @@ ${visibleTail}`,
     projectPath: string,
     projectSession: ProjectSessionContext,
     writingLanguage: WritingLanguage,
-  ): Promise<{ text: string; count: number }> {
+  ): Promise<{ text: string; sections: string[]; count: number }> {
     try {
       const materials = await ipc.invokeWithProjectSession(
         projectSession,
@@ -1162,14 +1269,14 @@ ${visibleTail}`,
       const selected = materials
         .filter(material => material.status === 'confirmed' && material.content.trim())
         .slice(0, 12)
-      const text = selected.map(material => promptLanguageText(
+      const sections = selected.map(material => normalizePromptNewlineRuns(promptLanguageText(
         writingLanguage,
         `【已确认规划资料：${material.name}】\n${material.content.slice(0, 4_000)}`,
         `[Confirmed planning material: ${material.name}]\n${material.content.slice(0, 4_000)}`,
-      )).join('\n\n')
-      return { text, count: selected.length }
+      )))
+      return { text: sections.join('\n\n'), sections, count: selected.length }
     } catch {
-      return { text: '', count: 0 }
+      return { text: '', sections: [], count: 0 }
     }
   }
 

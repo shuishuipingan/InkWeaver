@@ -2,6 +2,20 @@
 
 本文件按用户可见行为记录变更。桌面版本不发布 npm；DSH 插件沿用已发布的 `1.2.0` 包。`1.2.0` 已从同一源码 commit 完成工程验收、三平台资产回读和正式 Release；`1.1.0` 的历史 Release 收据保留在 `docs/upgrade/`，不与 1.2.0 混用。
 
+## 1.3.5 — 2026-09-29
+
+- 章节草稿预算现分别统计全局指导（包括小说配置中的副本和自定义模板中的重复位置）、项目专属提示和已确认规划资料；超长规划资料按整项保留或移除，作者指导和本章证据始终完整。提示词预检报告中的输出 Token 预留数与实际受上下文窗口限制的请求一致；多段指导中的换行整理不会再阻止生成。
+- 默认草稿导出会合并当前打开的最新草稿缓冲区；写出前会重新核对最新版本、草稿正文和定稿指纹，若编辑器快照与数据库草稿在导出期间发生不同变化，或目标版本已定稿，则阻止导出，避免静默丢失修改或覆盖定稿事实。
+- 同一时间仅允许一个导出任务写文件和 manifest；快速重复点击会被立即拦截。选定目录后若切换项目，已验证的导出会用冻结快照完成，避免留下不完整文件；完成或失败时会通知原项目名和结果。
+- 完成全仓质量审计并修复提示词诊断与导出一致性问题；补充相关单元、浏览器及 renderer-surface E2E 覆盖。
+
+## What's changed
+
+- Draft-generation budgets now attribute global guidance (including novel-configuration copies and repeated custom-template positions), project prompts, and confirmed planning materials separately. Oversized planning materials are retained or removed as whole items while author guidance and current-chapter evidence remain protected. Valid multi-paragraph guidance is normalized consistently before budget attribution, and the preflight output-token reservation matches the request after context-window clamping.
+- Draft-inclusive export now uses the current editor buffer for the selected latest draft. Before writing, it rechecks the latest version, exact draft bodies, and finalized-authority fingerprint. If the database version changed after that buffer was captured, or the target version became finalized, export stops rather than silently dropping edits or replacing finalized facts.
+- Only one export may write files and a manifest at a time. Rapid duplicate clicks are blocked before opening a second destination picker. After directory selection, a validated export finishes from its frozen snapshot even if the user switches projects, preventing partial output; a completion or failure notification names the originating project.
+- Completed a repository-wide quality audit and fixed prompt-budget diagnostics and export consistency, with added unit, browser, and renderer-surface E2E coverage.
+
 ## 1.3.4 — 2026-09-28
 
 - AI 批量生成章节名现在可以先应用已生成并勾选的章节，再继续生成剩余章节；应用后更新蓝图快照，避免旧标题候选覆盖新结果。进度显示候选数、已应用数和剩余调用估计。

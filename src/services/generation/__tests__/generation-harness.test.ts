@@ -6,6 +6,7 @@ import {
   createGenerationHarness,
   type CompletionPort,
   type DefaultModelSnapshot,
+  type PromptBudgetReport,
 } from '../generation-harness'
 
 function model(overrides: Partial<ModelProfile> = {}): ModelProfile {
@@ -809,6 +810,57 @@ describe('GenerationHarness', () => {
     expect(complete.mock.calls[0]?.[0].messages[1]?.content).toBe('LINK\n')
   })
 
+  it('drops an entire confirmed planning material instead of keeping partial paragraphs', async () => {
+    const complete = vi.fn<CompletionPort['complete']>().mockResolvedValue({
+      content: 'done',
+      finishReason: 'stop',
+    })
+    const harness = createGenerationHarness({
+      modelSource: {
+        snapshotDefaultModel: () => ({ revision: 'block-compaction', model: model() }),
+      },
+      completionPort: { complete },
+      policy: {
+        maxAttempts: 1,
+        maxRequestedOutputTokens: 4096,
+        maxRequestedOutputTokensPerAttempt: 4096,
+        deadlineMs: 60_000,
+      },
+    })
+    const material = '[Confirmed planning material: premise]\n第一段完整正文\n\n第二段完整正文'
+    const fullUserPrompt = `TARGET chapter evidence\n\n${material}`
+    const expectedUserPrompt = 'TARGET chapter evidence\n\n'
+    const partialMaterialBytes = new TextEncoder().encode(
+      `S${expectedUserPrompt}[Confirmed planning material: premise]\n第一段完整正文`,
+    ).byteLength
+
+    const outcome = await harness.openSession().complete({
+      purpose: 'block-compaction',
+      output: 'visible-text',
+      messages: [
+        { role: 'system', content: 'S' },
+        { role: 'user', content: fullUserPrompt },
+      ],
+      promptBudget: {
+        limitUtf8Bytes: partialMaterialBytes,
+        sections: [
+          { sectionName: 'system-instructions', messageIndex: 0, finalText: 'S' },
+          { sectionName: 'target-chapter', messageIndex: 1, finalText: 'TARGET chapter evidence' },
+          { sectionName: 'confirmed-planning-material-1', messageIndex: 1, finalText: material,
+            degradation: { priority: 0, strategy: 'whole-section' } },
+        ],
+      },
+    })
+
+    expect(complete.mock.calls[0]?.[0].messages[1]?.content).toBe(expectedUserPrompt)
+    expect(outcome.receipt.promptBudget?.compaction?.sections).toEqual([{
+      sectionName: 'confirmed-planning-material-1',
+      originalUtf8Bytes: new TextEncoder().encode(material).byteLength,
+      retainedUtf8Bytes: 0,
+      removedUtf8Bytes: new TextEncoder().encode(material).byteLength,
+    }])
+  })
+
   it('keeps JSON string sections valid when compacting author configuration values', async () => {
     const complete = vi.fn<CompletionPort['complete']>().mockResolvedValue({
       content: 'done',
@@ -911,7 +963,7 @@ describe('GenerationHarness', () => {
       report: {
         totalUtf8Bytes: 100,
         limitUtf8Bytes: 99,
-        reservedOutputTokens: 100,
+        reservedOutputTokens: 0,
         sections: [{ sectionName: 'global-guidance', utf8Bytes: 100 }],
       },
     })
@@ -968,6 +1020,71 @@ describe('GenerationHarness', () => {
     expect(JSON.stringify(outcome.receipt)).not.toContain(authorGuidance)
     expect(JSON.stringify(diagnostic.mock.calls)).not.toContain(authorGuidance)
     diagnostic.mockRestore()
+  })
+
+  it('reports the context-window-clamped output reservation in the compaction preflight', async () => {
+    const complete = vi.fn<CompletionPort['complete']>().mockResolvedValue({
+      content: 'done',
+      finishReason: 'stop',
+    })
+    const harness = createGenerationHarness({
+      modelSource: {
+        snapshotDefaultModel: () => ({
+          revision: 'compaction-output-clamp',
+          model: model({ maxTokens: 4096 }),
+          modelExecutionLeaseId: 'compaction-output-lease',
+          endpointFingerprint: 'compaction-output-endpoint',
+          resolvedCapabilities: {
+            contextWindowTokens: 1_200,
+            maxOutputTokens: 4096,
+            reasoning: false,
+            structuredOutput: true,
+            usage: true,
+            source: {
+              contextWindowTokens: 'verified-provider-preset',
+              maxOutputTokens: 'verified-provider-preset',
+              featureFlags: 'verified-provider-preset',
+            },
+          },
+        }),
+      },
+      completionPort: { complete },
+      policy: {
+        maxAttempts: 1,
+        maxRequestedOutputTokens: 4096,
+        maxRequestedOutputTokensPerAttempt: 4096,
+        deadlineMs: 60_000,
+      },
+    })
+    const targetEvidence = 'TARGET evidence'
+    const optionalContext = 'optional context '.repeat(8)
+    const userPrompt = `${targetEvidence}|${optionalContext}`
+    let preflightReport: PromptBudgetReport | undefined
+
+    const outcome = await harness.openSession().complete({
+      purpose: 'compaction-output-clamp',
+      output: 'visible-text',
+      messages: [
+        { role: 'system', content: 'system policy' },
+        { role: 'user', content: userPrompt },
+      ],
+      promptBudget: {
+        limitUtf8Bytes: new TextEncoder().encode('system policy').length
+          + new TextEncoder().encode(userPrompt).length - 2,
+        sections: [
+          { sectionName: 'system-instructions', messageIndex: 0, finalText: 'system policy' },
+          { sectionName: 'target-chapter', messageIndex: 1, finalText: targetEvidence },
+          { sectionName: 'distant-blueprints', messageIndex: 1, finalText: optionalContext, degradation: { priority: 0, strategy: 'utf8-prefix' } },
+        ],
+      },
+    }, {
+      onPromptBudgetPreflight: report => { preflightReport = report },
+    })
+
+    const physicalOutputReservation = complete.mock.calls[0]?.[0].plan.maxOutputTokens
+    expect(physicalOutputReservation).toBeLessThan(4096)
+    expect(preflightReport?.reservedOutputTokens).toBe(physicalOutputReservation)
+    expect(outcome.receipt.promptBudget?.reservedOutputTokens).toBe(physicalOutputReservation)
   })
 
   it('rejects an invalid per-attempt requested-token cap before opening a session', () => {

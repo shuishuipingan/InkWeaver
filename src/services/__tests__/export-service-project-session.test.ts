@@ -56,13 +56,15 @@ beforeEach(() => {
     }
     return { success: true }
   }) as never)
-  vi.mocked(ipc.invokeWithProjectSession).mockImplementation((async (_session: ProjectSessionContext, channel: string) => {
+  vi.mocked(ipc.invokeWithProjectSession).mockImplementation((async (_session: ProjectSessionContext, channel: string, id?: number) => {
     if (channel === 'db:draft-authority-sequence') return {
       status: 'continuous', lastChapterNumber: 1, nextChapterNumber: 2,
       duplicateChapterNumbers: [], authorityFingerprint: 'a'.repeat(64),
     } as never
     if (channel === 'db:draft-list-all') return [{ id: 1, chapterNumber: 1, chapterTitle: '开篇', version: 1, status: 'finalized', wordCount: 2 }] as never
-    if (channel === 'db:draft-get-full') return { content: 'Final chapter' } as never
+    if (channel === 'db:draft-get-full') return {
+      id: id ?? 1, chapterNumber: 1, version: 1, status: 'finalized', content: 'Final chapter',
+    } as never
     if (channel === 'db:project-core-get') return { synopsis: 'Synopsis' } as never
     throw new Error(`Unexpected channel: ${channel}`)
   }) as never)
@@ -115,7 +117,7 @@ describe('exportNovel project session ownership', () => {
         duplicateChapterNumbers: [], authorityFingerprint: 'a'.repeat(64),
       } as never
       if (channel === 'db:draft-list-all') return [{ id: 1, chapterNumber: 1, chapterTitle: '开篇', version: 1, status: 'finalized', wordCount: 8 }] as never
-      if (channel === 'db:draft-get-full') return { content: finalizedContent } as never
+      if (channel === 'db:draft-get-full') return { content: finalizedContent, status: 'finalized' } as never
       throw new Error(`Unexpected channel: ${channel}`)
     }) as never)
 
@@ -145,7 +147,7 @@ describe('exportNovel project session ownership', () => {
         { id: 21, chapterNumber: 1, chapterTitle: '开篇', version: 1, status: 'finalized', wordCount: 4 },
         { id: 22, chapterNumber: 2, chapterTitle: '转折', version: 1, status: 'finalized', wordCount: 4 },
       ] as never
-      if (channel === 'db:draft-get-full') return { content: `正文${String(args[0])}` } as never
+      if (channel === 'db:draft-get-full') return { content: `正文${String(args[0])}`, status: 'finalized' } as never
       throw new Error(`Unexpected channel: ${channel}`)
     }) as never)
     await expect(exportNovel(
@@ -183,7 +185,7 @@ describe('exportNovel project session ownership', () => {
         duplicateChapterNumbers: [], authorityFingerprint: 'c'.repeat(64),
       } as never
       if (channel === 'db:draft-list-all') return [{ id: 8, chapterNumber: 1, chapterTitle: '开篇', version: 1, status: 'finalized', wordCount: 99 }] as never
-      if (channel === 'db:draft-get-full') return { content: '两词' } as never
+      if (channel === 'db:draft-get-full') return { content: '两词', status: 'finalized' } as never
       throw new Error(`Unexpected channel: ${channel}`)
     }) as never)
 
@@ -238,8 +240,9 @@ describe('exportNovel project session ownership', () => {
       new Promise((resolve) => { resolveBlueprints = resolve }),
     )
 
+    let snapshotValidated = false
     const exporting = exportNovel(
-      { format: 'merged-md', grantId: 'export-grant' },
+      { format: 'merged-md', grantId: 'export-grant', onSnapshotValidated: () => { snapshotValidated = true } },
       projectSnapshot,
       projectSession,
     )
@@ -253,6 +256,48 @@ describe('exportNovel project session ownership', () => {
     })
     expect(ipc.invokeWithProjectSession).toHaveBeenCalledOnce()
     expect(ipc.invoke).not.toHaveBeenCalled()
+    expect(snapshotValidated).toBe(false)
+  })
+
+  it('finishes a validated split export from its frozen snapshot after a project switch during file readback', async () => {
+    const writtenFiles = new Map<string, string>()
+    let switched = false
+    vi.mocked(ipc.invokeWithProjectSession).mockImplementation((async (_session: ProjectSessionContext, channel: string, id?: number) => {
+      if (channel === 'db:draft-authority-sequence') return {
+        status: 'empty', lastChapterNumber: 0, nextChapterNumber: 1,
+        duplicateChapterNumbers: [], authorityFingerprint: 'a'.repeat(64),
+      } as never
+      if (channel === 'db:draft-list-all') return [
+        { id: 11, chapterNumber: 1, chapterTitle: '第一章', version: 1, status: 'draft', wordCount: 3 },
+        { id: 12, chapterNumber: 2, chapterTitle: '第二章', version: 1, status: 'draft', wordCount: 3 },
+      ] as never
+      if (channel === 'db:draft-get-full') return { content: `Draft ${String(id)}`, status: 'draft' } as never
+      throw new Error(`Unexpected channel: ${channel}`)
+    }) as never)
+    vi.mocked(ipc.invoke).mockImplementation((async (channel: string, _grantId?: string, relativePath?: string, content?: unknown) => {
+      if (channel === 'fs:grant-mkdir') return { success: true }
+      if (channel === 'fs:grant-write-file') {
+        if (typeof relativePath === 'string') writtenFiles.set(relativePath, String(content))
+        return { success: true }
+      }
+      if (channel === 'fs:grant-read-file') {
+        if (!switched && typeof relativePath === 'string' && relativePath.includes('/chapter_1.md')) {
+          switched = true
+          setActiveProjectSessionContext({ ...projectSession, leaseId: 'lease-b' })
+        }
+        return { success: true, content: typeof relativePath === 'string' ? writtenFiles.get(relativePath) ?? '' : '' }
+      }
+      return { success: true }
+    }) as never)
+
+    const result = await exportNovel(
+      { format: 'split-md', grantId: 'export-grant' },
+      projectSnapshot,
+      projectSession,
+    )
+    expect(result).toEqual({ success: true, path: expect.any(String) })
+    expect([...writtenFiles.keys()].filter(path => path.endsWith('.md'))).toHaveLength(2)
+    expect([...writtenFiles.keys()].some(path => path.endsWith('.manifest.json'))).toBe(true)
   })
 
   it('fails when the granted directory readback does not match what was written', async () => {

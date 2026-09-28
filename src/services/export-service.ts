@@ -30,8 +30,12 @@ interface ExportOptions {
   grantId: string
   /** 默认包含每章最新版本；关闭后仅导出定稿权威。 */
   includeDrafts?: boolean
+  /** In-memory unsaved buffers for open latest-draft tabs; these are not persisted by export. */
+  draftContentOverrides?: readonly { draftId: number; content: string; baseContent: string }[]
   includeOutline?: boolean
   includeCharacters?: boolean
+  /** Fires once the complete export snapshot passes final pre-write validation. */
+  onSnapshotValidated?: () => void
 }
 
 /** 导出任务冻结的项目展示数据；项目路径本身绝不作为访问凭据。 */
@@ -60,6 +64,7 @@ export interface FinalizedExportPlanChapter {
   chapterNumber: number
   chapterTitle: string
   version: number
+  status: string
   wordCount?: number
 }
 
@@ -113,6 +118,7 @@ export function createFinalizedExportPlan(
       chapterNumber,
       chapterTitle: draft.chapterTitle?.trim() || `第${chapterNumber}章`,
       version: draft.version,
+      status: draft.status,
       ...(typeof draft.wordCount === 'number' ? { wordCount: draft.wordCount } : {}),
     })
   }
@@ -189,6 +195,7 @@ export function createLatestDraftExportPlan(
       chapterNumber,
       chapterTitle: draft.chapterTitle?.trim() || `第${chapterNumber}章`,
       version: draft.version,
+      status: draft.status,
       ...(typeof draft.wordCount === 'number' ? { wordCount: draft.wordCount } : {}),
     }
   })
@@ -203,6 +210,7 @@ function noExportableContentMessage(): string {
 }
 
 const PROJECT_SESSION_CHANGED_ERROR = '项目会话已变化，本次导出已取消'
+let activeExportInProgress = false
 
 function isProjectSessionCurrent(projectSession: ProjectSessionContext): boolean {
   return sameProjectSessionContext(projectSession, getActiveProjectSessionContext())
@@ -219,6 +227,29 @@ function isMatchingProjectSnapshot(
 
 function staleExportResult(): { success: false; error: string } {
   return { success: false, error: PROJECT_SESSION_CHANGED_ERROR }
+}
+
+function changedExportSnapshotResult(): { success: false; error: string } {
+  return {
+    success: false,
+    error: useLocaleStore.getState().text(
+      '项目内容在导出期间已变化，请重新导出。',
+      'The project changed while the export was being prepared. Start a new export.',
+    ),
+  }
+}
+
+function sameExportPlan(left: FinalizedExportPlan, right: FinalizedExportPlan): boolean {
+  if (!left.ok || !right.ok || left.chapters.length !== right.chapters.length) return false
+  return left.chapters.every((chapter, index) => {
+    const candidate = right.chapters[index]
+    return candidate !== undefined
+      && chapter.id === candidate.id
+      && chapter.chapterNumber === candidate.chapterNumber
+      && chapter.chapterTitle === candidate.chapterTitle
+      && chapter.version === candidate.version
+      && chapter.status === candidate.status
+  })
 }
 
 async function contentHash(value: string): Promise<string> {
@@ -254,15 +285,24 @@ export async function exportNovel(
   if (!isMatchingProjectSnapshot(project, projectSession) || !isProjectSessionCurrent(projectSession)) {
     return staleExportResult()
   }
-
   const addLog = useWorkflowStore.getState().addLog
-  addLog('info', `开始导出（${formatLabel(options.format)}）...`)
+  if (activeExportInProgress) {
+    return {
+      success: false,
+      error: useLocaleStore.getState().text(
+        '已有导出任务正在进行，请完成后再导出。',
+        'Another export is already running. Wait for it to finish, then try again.',
+      ),
+    }
+  }
+  activeExportInProgress = true
 
   try {
+    addLog('info', `开始导出（${formatLabel(options.format)}）...`)
     // Planning blueprints may be ahead of, or missing from, the manuscript.
     // Draft-inclusive export uses manuscript versions, while finalized authority
     // still validates any published chapters and its canonical sequence.
-    const authority = await ipc.invokeWithProjectSession(
+    let authority = await ipc.invokeWithProjectSession(
       projectSession,
       'db:draft-authority-sequence',
       projectSession.projectPath,
@@ -285,22 +325,56 @@ export async function exportNovel(
     }
 
     const chapterContents: Array<{ chapterNumber: number; name: string; title: string; content: string; wordCount: number; contentHash: string }> = []
+    const selectedDraftBodies = new Map<number, string>()
     for (const chapter of plan.chapters) {
       const full = await ipc.invokeWithProjectSession(projectSession, 'db:draft-get-full', chapter.id, projectSession.projectPath) as unknown as {
+        id?: unknown
+        chapterNumber?: unknown
+        version?: unknown
         content?: unknown
         wordCount?: unknown
         chapterTitle?: unknown
+        status?: string
       } | null
       if (!isProjectSessionCurrent(projectSession)) return staleExportResult()
-      if (!full || typeof full.content !== 'string' || !full.content.trim()) {
+      if (!full) return changedExportSnapshotResult()
+      if (
+        full.status !== chapter.status
+        || (typeof full.id === 'number' && full.id !== chapter.id)
+        || (typeof full.chapterNumber === 'number' && full.chapterNumber !== chapter.chapterNumber)
+        || (typeof full.version === 'number' && full.version !== chapter.version)
+      ) return changedExportSnapshotResult()
+      if (typeof full.content !== 'string') {
         return { success: false, error: `第 ${chapter.chapterNumber} 章正文为空，无法安全导出` }
       }
-      const computedWordCount = countDraftUnits(full.content)
+      selectedDraftBodies.set(chapter.id, full.content)
+      const draftOverride = options.includeDrafts === false
+        ? undefined
+        : options.draftContentOverrides?.find(candidate => candidate.draftId === chapter.id)
+      const canApplyDraftOverride = Boolean(draftOverride && full
+        && full.status !== 'finalized' && full.status !== 'archived')
+      if (canApplyDraftOverride && (
+        typeof full?.content !== 'string'
+        || (full.content !== draftOverride!.baseContent && full.content !== draftOverride!.content)
+      )) {
+        return {
+          success: false,
+          error: useLocaleStore.getState().text(
+            `第 ${chapter.chapterNumber} 章草稿已在导出期间变化，请重新导出。`,
+            `Chapter ${chapter.chapterNumber} changed during export. Start a new export to include the latest version.`,
+          ),
+        }
+      }
+      const content = canApplyDraftOverride ? draftOverride!.content : full?.content
+      if (!full || typeof content !== 'string' || !content.trim()) {
+        return { success: false, error: `第 ${chapter.chapterNumber} 章正文为空，无法安全导出` }
+      }
+      const computedWordCount = countDraftUnits(content)
       if (computedWordCount <= 0) return { success: false, error: `第 ${chapter.chapterNumber} 章没有可计数正文，无法安全导出` }
       const storedWordCount = typeof full.wordCount === 'number' && full.wordCount > 0
         ? full.wordCount
         : chapter.wordCount
-      if (typeof storedWordCount === 'number' && storedWordCount > 0 && storedWordCount !== computedWordCount) {
+      if (!canApplyDraftOverride && typeof storedWordCount === 'number' && storedWordCount > 0 && storedWordCount !== computedWordCount) {
         return { success: false, error: `第 ${chapter.chapterNumber} 章字数校验失败，无法安全导出` }
       }
       if (typeof full.chapterTitle === 'string' && full.chapterTitle.trim() && full.chapterTitle.trim() !== chapter.chapterTitle) {
@@ -310,14 +384,72 @@ export async function exportNovel(
         chapterNumber: chapter.chapterNumber,
         name: `chapter_${chapter.chapterNumber}.md`,
         title: chapter.chapterTitle,
-        content: full.content,
+        content,
         wordCount: computedWordCount,
-        contentHash: await contentHash(full.content),
+        contentHash: await contentHash(content),
       })
     }
 
     if (!isProjectSessionCurrent(projectSession)) return staleExportResult()
     addLog('info', `找到 ${chapterContents.length} 个章节`)
+
+    let synopsis = ''
+    if (options.format === 'merged-md' && options.includeOutline) {
+      const core = await ipc.invokeWithProjectSession(
+        projectSession,
+        'db:project-core-get',
+        projectSession.projectPath,
+      )
+      if (!isProjectSessionCurrent(projectSession)) return staleExportResult()
+      synopsis = typeof core?.synopsis === 'string' ? core.synopsis : ''
+    }
+
+    // Recheck the manuscript immediately before crossing into granted file I/O.
+    // Once that immutable snapshot is validated, finish it even if the editor
+    // switches projects while a write or readback is pending.
+    const verifiedAuthority = await ipc.invokeWithProjectSession(
+      projectSession,
+      'db:draft-authority-sequence',
+      projectSession.projectPath,
+    )
+    if (!isProjectSessionCurrent(projectSession)) return staleExportResult()
+    const verifiedDrafts = await ipc.invokeWithProjectSession(
+      projectSession,
+      'db:draft-list-all',
+      projectSession.projectPath,
+    ) as unknown as ExportDraftMeta[]
+    if (!isProjectSessionCurrent(projectSession)) return staleExportResult()
+    const verifiedPlan = options.includeDrafts === false
+      ? createFinalizedExportPlan(verifiedAuthority, verifiedDrafts)
+      : createLatestDraftExportPlan(verifiedAuthority, verifiedDrafts)
+    if (verifiedAuthority.authorityFingerprint !== authority.authorityFingerprint
+      || !sameExportPlan(plan, verifiedPlan)) {
+      return changedExportSnapshotResult()
+    }
+    for (const chapter of plan.chapters) {
+      const verifiedFull = await ipc.invokeWithProjectSession(
+        projectSession,
+        'db:draft-get-full',
+        chapter.id,
+        projectSession.projectPath,
+      ) as unknown as {
+        id?: unknown
+        chapterNumber?: unknown
+        version?: unknown
+        content?: unknown
+        status?: string
+      } | null
+      if (!isProjectSessionCurrent(projectSession)) return staleExportResult()
+      if (!verifiedFull || verifiedFull.status !== chapter.status
+        || (typeof verifiedFull.id === 'number' && verifiedFull.id !== chapter.id)
+        || (typeof verifiedFull.chapterNumber === 'number' && verifiedFull.chapterNumber !== chapter.chapterNumber)
+        || (typeof verifiedFull.version === 'number' && verifiedFull.version !== chapter.version)
+        || verifiedFull.content !== selectedDraftBodies.get(chapter.id)) {
+        return changedExportSnapshotResult()
+      }
+    }
+    authority = verifiedAuthority
+    options.onSnapshotValidated?.()
 
     let outputPath = ''
     const projectFileStem = exportFileStem(project.name)
@@ -329,16 +461,8 @@ export async function exportNovel(
         content += `> ${project.novelConfig.genre} · ${project.novelConfig.targetAudience}\n\n---\n\n`
 
         // 可选：包含大纲
-        if (options.includeOutline) {
-          const core = await ipc.invokeWithProjectSession(
-            projectSession,
-            'db:project-core-get',
-            projectSession.projectPath,
-          )
-          if (!isProjectSessionCurrent(projectSession)) return staleExportResult()
-          if (core?.synopsis) {
-            content += core.synopsis + '\n\n---\n\n'
-          }
+        if (synopsis) {
+          content += synopsis + '\n\n---\n\n'
         }
 
         // 章节内容
@@ -348,9 +472,7 @@ export async function exportNovel(
 
         outputPath = `${projectFileStem}.md`
         const writeResult = await ipc.invoke('fs:grant-write-file', options.grantId, outputPath, content)
-        if (!isProjectSessionCurrent(projectSession)) return staleExportResult()
         requireIpcSuccess(writeResult, '写入导出文件')
-        if (!isProjectSessionCurrent(projectSession)) return staleExportResult()
         await verifyWrittenFile(options.grantId, outputPath, content)
         break
       }
@@ -360,14 +482,11 @@ export async function exportNovel(
         // 多余章节/残留文件污染本次结果；manifest 同时记录该目录身份。
         const splitDir = `${projectFileStem}-${Date.now()}-${randomUUID().slice(0, 8)}`
         const mkdirResult = await ipc.invoke('fs:grant-mkdir', options.grantId, splitDir)
-        if (!isProjectSessionCurrent(projectSession)) return staleExportResult()
         requireIpcSuccess(mkdirResult, '创建导出目录')
 
         for (const ch of chapterContents) {
           const writeResult = await ipc.invoke('fs:grant-write-file', options.grantId, `${splitDir}/${ch.name}`, ch.content)
-          if (!isProjectSessionCurrent(projectSession)) return staleExportResult()
           requireIpcSuccess(writeResult, `导出章节 ${ch.name}`)
-          if (!isProjectSessionCurrent(projectSession)) return staleExportResult()
           await verifyWrittenFile(options.grantId, splitDir + '/' + ch.name, ch.content)
         }
 
@@ -394,15 +513,12 @@ export async function exportNovel(
 
         outputPath = `${projectFileStem}.txt`
         const writeResult = await ipc.invoke('fs:grant-write-file', options.grantId, outputPath, content)
-        if (!isProjectSessionCurrent(projectSession)) return staleExportResult()
         requireIpcSuccess(writeResult, '写入导出文件')
-        if (!isProjectSessionCurrent(projectSession)) return staleExportResult()
         await verifyWrittenFile(options.grantId, outputPath, content)
         break
       }
     }
 
-    if (!isProjectSessionCurrent(projectSession)) return staleExportResult()
     const manifest: ExportManifest = {
       schemaVersion: 1,
       projectName: project.name,
@@ -425,9 +541,7 @@ export async function exportNovel(
       `${options.format === 'split-md' ? outputPath : projectFileStem}.manifest.json`,
       JSON.stringify(manifest, null, 2),
     )
-    if (!isProjectSessionCurrent(projectSession)) return staleExportResult()
     requireIpcSuccess(manifestResult, '写入导出清单')
-    if (!isProjectSessionCurrent(projectSession)) return staleExportResult()
     await verifyWrittenFile(
       options.grantId,
       `${options.format === 'split-md' ? outputPath : projectFileStem}.manifest.json`,
@@ -436,9 +550,10 @@ export async function exportNovel(
     addLog('info', `导出完成: ${outputPath}`)
     return { success: true, path: outputPath }
   } catch (error) {
-    if (!isProjectSessionCurrent(projectSession)) return staleExportResult()
     addLog('error', `导出失败: ${error}`)
     return { success: false, error: String(error) }
+  } finally {
+    activeExportInProgress = false
   }
 }
 
