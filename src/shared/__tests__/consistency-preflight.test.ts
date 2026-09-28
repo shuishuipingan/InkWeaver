@@ -130,6 +130,32 @@ describe('findBlueprintContinuityRisks', () => {
     expect(findings[0]?.evidence).toContain('旧码头')
   })
 
+  it('matches location predicates followed by a line break', () => {
+    const findings = findBlueprintContinuityRisks([{
+      ...projection[0]!,
+      facts: [{
+        category: 'character-state' as const,
+        entities: ['顾舟'],
+        statement: '顾舟位于\n旧码头，等待接头人。',
+        sourceChapter: 1,
+        evidence: '顾舟站在旧码头的雨棚下。',
+      }],
+    }], {
+      chapterNumber: 2,
+      title: '车站重逢',
+      role: '发展',
+      purpose: '顾舟等待接头',
+      keyEvents: '顾舟在\n中央车站等待接头人。',
+      characters: ['顾舟'],
+      suspenseHook: '',
+      userGuidance: '',
+      notes: '',
+    }, [])
+
+    expect(findings).toHaveLength(1)
+    expect(findings[0]?.issue.zhCN).toContain('地点冲突')
+  })
+
   it('reports an explicit item ownership conflict between finalized facts and a blueprint', () => {
     const findings = findBlueprintContinuityRisks([{
       ...projection[0]!,
@@ -155,6 +181,32 @@ describe('findBlueprintContinuityRisks', () => {
     expect(findings).toHaveLength(1)
     expect(findings[0]?.issue.zhCN).toContain('红色钥匙')
     expect(findings[0]?.issue.zhCN).toContain('归属')
+  })
+
+  it('matches held-item predicates followed by a line break', () => {
+    const findings = findBlueprintContinuityRisks([{
+      ...projection[0]!,
+      facts: [{
+        category: 'character-state' as const,
+        entities: ['林舟'],
+        statement: '林舟持有\n红色钥匙。',
+        sourceChapter: 1,
+        evidence: '林舟把红色钥匙收进口袋。',
+      }],
+    }], {
+      chapterNumber: 2,
+      title: '钥匙易主',
+      role: '发展',
+      purpose: '沈月寻找钥匙',
+      keyEvents: '沈月拿着\n红色钥匙走进车站。',
+      characters: ['林舟', '沈月'],
+      suspenseHook: '',
+      userGuidance: '',
+      notes: '',
+    }, [])
+
+    expect(findings).toHaveLength(1)
+    expect(findings[0]?.issue.zhCN).toContain('物品归属冲突')
   })
 
   it('reports an explicit story-day conflict when both sources name different days', () => {
@@ -207,6 +259,32 @@ describe('findBlueprintContinuityRisks', () => {
 
     expect(findings).toHaveLength(1)
     expect(findings[0]?.issue.zhCN).toContain('知情')
+  })
+
+  it('matches knowledge predicates separated from the secret by whitespace', () => {
+    const findings = findBlueprintContinuityRisks([{
+      ...projection[0]!,
+      facts: [{
+        category: 'character-state' as const,
+        entities: ['林舟'],
+        statement: '林舟得知\n红门在旧码头。',
+        sourceChapter: 1,
+        evidence: '林舟从密信中得知红门在旧码头。',
+      }],
+    }], {
+      chapterNumber: 2,
+      title: '秘密扩散',
+      role: '发展',
+      purpose: '沈月已经知道\n红门在旧码头',
+      keyEvents: '沈月得知\n红门在旧码头，并改变行动路线。',
+      characters: ['林舟', '沈月'],
+      suspenseHook: '',
+      userGuidance: '',
+      notes: '',
+    }, [])
+
+    expect(findings).toHaveLength(1)
+    expect(findings[0]?.issue.zhCN).toContain('知情范围冲突')
   })
 
   it('maps deterministic findings into the existing review item shape', () => {

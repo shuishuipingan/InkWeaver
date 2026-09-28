@@ -727,7 +727,7 @@ export function registerProjectController() {
       }
       removeRecentProject(projectPath)
       return { success: true }
-    } catch (error) {
+    } catch {
       removeRecentProject(projectPath)
       return { success: true }
     }

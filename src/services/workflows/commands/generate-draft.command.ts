@@ -5,6 +5,7 @@ import { ChapterPromptBuilder } from '../../prompts/prompt-builder'
 import { ipc } from '../../ipc-client'
 import { unwrapKnowledgeValue } from '../../knowledge-service'
 import { projectSessionContextFromProject, sameProjectSessionContext } from '../../../shared/project-session-context'
+import type { CharacterData } from '../../../../electron/repositories/character-repository'
 import type { ProjectSessionContext } from '../../../shared/ipc-channels'
 import { requireWorkflowProjectSession, workflowWritingLanguage } from '../workflow-project-session'
 import {
@@ -24,6 +25,7 @@ import type {
   GenerationOutcome,
   GenerationSession,
 } from '../../generation/generation-harness'
+import type { PromptBudgetPolicy, PromptBudgetSection } from '../../../shared/prompt-budget'
 import type { WritingLanguage } from '../../../shared/writing-language'
 import { factAppliesAtChapter, type FinalizedContinuityProjection } from '../../../shared/finalized-continuity'
 import type { NarrativeThreadView } from '../../../shared/narrative-thread'
@@ -32,6 +34,7 @@ import { countDraftUnits } from '../../../shared/draft-units'
 import { formatChapterHandoff } from '../../chapter-handoff-context'
 import type { ChapterHandoffRecord } from '../../../shared/chapter-handoff'
 import { generationReceiptFromAttempt } from '../../../shared/generation-receipt'
+import { formatPromptBudgetCompactionNotice } from '../../generation/prompt-budget-failure'
 import { formatKnowledgeEventForPrompt, type KnowledgeEvent } from '../../../shared/knowledge-event'
 import {
   selectContextEntries,
@@ -49,6 +52,110 @@ const PREVIOUS_ENDING_MAX_CHARS = 1000
 const PREVIOUS_DRAFT_CONTEXT_MAX_CHARS = 12_000
 const ACTIVE_THREAD_CONTEXT_MAX_CHARS = 1200
 const ACTIVE_THREAD_CONTEXT_MAX_ITEMS = 6
+const MAX_DRAFT_PROMPT_UTF8_BYTES = 65_536
+const DRAFT_PROMPT_DEGRADATION_PRIORITY = Object.freeze({
+  premise: 50,
+  coreOutline: 50,
+  synopsis: 40,
+  linkedCast: 30,
+  secondaryCast: 20,
+  distantBlueprints: 10,
+})
+
+interface DraftArchitectureSection {
+  sectionName: string
+  label: string
+  text: string
+  degradation?: PromptBudgetSection['degradation']
+}
+
+interface DraftArchitectureContext {
+  text: string
+  sections: DraftArchitectureSection[]
+}
+
+interface DraftCharacterContext {
+  linked: string
+  secondary: string
+  text: string
+}
+
+function promptBudgetSectionsForDraft(input: {
+  systemPrompt: string
+  prompt: string
+  targetChapterText: string
+  contexts: readonly DraftArchitectureSection[]
+}): PromptBudgetPolicy {
+  const locatedSections: Array<{ section: PromptBudgetSection; start: number }> = []
+  if (input.systemPrompt) {
+    locatedSections.push({
+      section: {
+        sectionName: 'system-instructions',
+        messageIndex: 0,
+        finalText: input.systemPrompt,
+      },
+      start: 0,
+    })
+  }
+  const targetChapterStart = input.prompt.indexOf(input.targetChapterText)
+  if (!input.targetChapterText || targetChapterStart < 0) {
+    throw new Error('章节提示缺少受保护的目标章节证据，已阻止生成。')
+  }
+  locatedSections.push({
+    section: {
+      sectionName: 'target-chapter',
+      messageIndex: 1,
+      finalText: input.targetChapterText,
+    },
+    start: targetChapterStart,
+  })
+
+  const addOccurrences = (
+    sectionName: string,
+    finalText: string,
+    degradation?: PromptBudgetSection['degradation'],
+  ) => {
+    if (!finalText) return
+    let cursor = 0
+    while (cursor < input.prompt.length) {
+      const start = input.prompt.indexOf(finalText, cursor)
+      if (start < 0) break
+      const end = start + finalText.length
+      const overlapsClaimedSection = locatedSections.some(({ section, start: claimedStart }) => (
+        section.messageIndex === 1
+        && start < claimedStart + section.finalText.length
+        && end > claimedStart
+      ))
+      if (overlapsClaimedSection) {
+        // Repeated phrases inside protected evidence or an already-attributed
+        // context section must not create a second, overlapping policy entry.
+        cursor = start + 1
+        continue
+      }
+      locatedSections.push({
+        section: {
+          sectionName,
+          messageIndex: 1,
+          finalText,
+          ...(degradation ? { degradation } : {}),
+        },
+        start,
+      })
+      cursor = start + finalText.length
+    }
+  }
+
+  for (const context of input.contexts) {
+    addOccurrences(context.sectionName, context.text, context.degradation)
+  }
+
+  return {
+    limitUtf8Bytes: MAX_DRAFT_PROMPT_UTF8_BYTES,
+    sections: locatedSections
+      .sort((left, right) => left.section.messageIndex - right.section.messageIndex || left.start - right.start)
+      .map(({ section }) => section),
+  }
+}
 export function sanitizeDraftText(text: string): string {
   const cleaned = stripThinkingTags(text)
     .replace(/^\s*(?:点我继续生成后续内容|继续生成后续内容|请点击继续|未完待续)\s*$/gmi, '')
@@ -292,7 +399,11 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
 
     callbacks.log('拼装章节上下文 (强类型注入中)...')
 
-    const architecture = await this.readArchitecture(expectedProjectPath, projectSession)
+    const architectureContext = await this.readArchitecture(
+      expectedProjectPath,
+      projectSession,
+      writingLanguage,
+    )
     const projectPrompts = await this.readProjectPrompts(
       expectedProjectPath,
       projectSession,
@@ -305,10 +416,11 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
     )
     const mergedGuidance = [novelConfig.globalGuidance || '', projectPrompts, planningMaterials.text].filter(Boolean).join('\n\n')
 
-    const characterState = await this.readCharacterStates(
+    const characterContext = await this.readCharacterStates(
       expectedProjectPath,
       projectSession,
       writingLanguage,
+      this.chapterInfo.characters,
     )
     let futureBlueprintsStr = promptLanguageText(
       writingLanguage,
@@ -331,6 +443,26 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
     } catch { /* 忽略 */ }
 
     const isFirstChapter = this.chapterInfo.chapterNumber === 1
+    const draftArchitecture = isFirstChapter && (characterContext.linked || characterContext.secondary)
+      ? {
+          text: [architectureContext.text, characterContext.text].filter(Boolean).join('\n\n---\n\n'),
+          sections: [
+            ...architectureContext.sections,
+            ...(characterContext.linked ? [{
+              sectionName: 'linked-cast',
+              label: '',
+              text: characterContext.linked,
+              degradation: { priority: DRAFT_PROMPT_DEGRADATION_PRIORITY.linkedCast, strategy: 'complete-lines' as const },
+            }] : []),
+            ...(characterContext.secondary ? [{
+              sectionName: 'secondary-cast',
+              label: '',
+              text: characterContext.secondary,
+              degradation: { priority: DRAFT_PROMPT_DEGRADATION_PRIORITY.secondaryCast, strategy: 'complete-lines' as const },
+            }] : []),
+          ],
+        }
+      : architectureContext
     const templateKey = isFirstChapter ? 'first_chapter_draft' : 'next_chapter_draft'
     const template = await resolvePromptTemplate(templateKey, projectSession, writingLanguage)
     if (!template) throw new Error(`未找到模板: ${templateKey}`)
@@ -341,7 +473,7 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
     // ==========================================
     const promptBuilder = new ChapterPromptBuilder(template, writingLanguage)
       // ---- 缓存命中区（跨章稳定，前缀对齐）----
-      .withArchitecture(architecture)
+      .withArchitecture(draftArchitecture.text)
       .withGlobalGuidance(mergedGuidance)
       .withWritingStyle(novelConfig.writingStyle || '')
       .withNovelConfig(novelConfig)
@@ -483,10 +615,10 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
       }
 
       context.data.contextReceipt = extendContextReceipt(chapterTimeline.receipt, [
-        contextReceiptEntry('fixed-rules:architecture', 'fixed-rules', '故事架构', architecture),
+        contextReceiptEntry('fixed-rules:architecture', 'fixed-rules', '故事架构', draftArchitecture.text),
         contextReceiptEntry('fixed-rules:guidance', 'fixed-rules', '全局写作要求', mergedGuidance),
         contextReceiptEntry('fixed-rules:style', 'fixed-rules', '文风约束', novelConfig.writingStyle || ''),
-        contextReceiptEntry('character-state:current', 'character-state', '角色状态档案', characterState),
+        contextReceiptEntry('character-state:current', 'character-state', '角色状态档案', characterContext.text),
         contextReceiptEntry('active-thread:relevant', 'active-thread', '相关活跃叙事线', activeThreads.text),
         contextReceiptEntry('knowledge-search:current', 'knowledge-search', '知识库检索片段', filteredContext),
         contextReceiptEntry(
@@ -541,7 +673,7 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
       promptBuilder
         // ---- 缓存命中区续（要点时间线按序追加，前缀对齐）----
         .withGlobalSummary([chapterTimeline.text, activeThreads.text, knowledgeEvents.text].filter(Boolean).join('\n\n'))
-        .withCharacterStates(characterState)
+        .withCharacterStates(characterContext.text)
         .withChapterHandoff(formatChapterHandoff(chapterHandoff, writingLanguage))
         // ---- 缓存失效区（逐章变化）----
         .withPreviousEnding(savedCandidateContext || previousEnding || promptLanguageText(
@@ -554,6 +686,40 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
     }
 
     const prompt = promptBuilder.build()
+    const promptBudget = promptBudgetSectionsForDraft({
+      systemPrompt: promptBuilder.getSystemRole(),
+      prompt,
+      targetChapterText: JSON.stringify(this.chapterInfo, null, 2),
+      contexts: [
+        ...draftArchitecture.sections,
+        ...(typeof novelConfig.coreOutline === 'string' && novelConfig.coreOutline
+          ? [{
+              sectionName: 'core-outline',
+              label: '',
+              text: JSON.stringify(novelConfig.coreOutline),
+              degradation: { priority: DRAFT_PROMPT_DEGRADATION_PRIORITY.coreOutline, strategy: 'json-string' as const },
+            }]
+          : []),
+        ...(characterContext.linked && !isFirstChapter ? [{
+          sectionName: 'linked-cast',
+          label: '',
+          text: characterContext.linked,
+          degradation: { priority: DRAFT_PROMPT_DEGRADATION_PRIORITY.linkedCast, strategy: 'complete-lines' as const },
+        }] : []),
+        ...(characterContext.secondary && !isFirstChapter ? [{
+          sectionName: 'secondary-cast',
+          label: '',
+          text: characterContext.secondary,
+          degradation: { priority: DRAFT_PROMPT_DEGRADATION_PRIORITY.secondaryCast, strategy: 'complete-lines' as const },
+        }] : []),
+        {
+          sectionName: 'distant-blueprints',
+          label: '',
+          text: futureBlueprintsStr,
+          degradation: { priority: DRAFT_PROMPT_DEGRADATION_PRIORITY.distantBlueprints, strategy: 'complete-lines' as const },
+        },
+      ],
+    })
     const targetChars = normalizeChapterWordsTarget(this.chapterInfo.wordsTarget, novelConfig.wordsPerChapter)
     const maxDraftChars = maxDraftCharsForTarget(targetChars)
 
@@ -585,8 +751,13 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
                 { role: 'system', content: promptBuilder.getSystemRole() },
                 { role: 'user', content: prompt },
               ],
+              promptBudget,
             }, {
               signal: cancellation.signal,
+              onPromptBudgetPreflight: report => {
+                callbacks.setPromptBudgetReport?.(report)
+                callbacks.log(formatPromptBudgetCompactionNotice(report, context.uiLocale))
+              },
               onChunk: chunk => {
                 if (!previewActive || context.cancelled) return
                 rawPreview += chunk
@@ -909,14 +1080,42 @@ ${visibleTail}`,
   }
 
   // --- 抽取自原文件的辅助方法 ---
-  private async readArchitecture(projectPath: string, projectSession: ProjectSessionContext): Promise<string> {
+  private async readArchitecture(
+    projectPath: string,
+    projectSession: ProjectSessionContext,
+    writingLanguage: WritingLanguage,
+  ): Promise<DraftArchitectureContext> {
     const core = await ipc.invokeWithProjectSession(projectSession, 'db:project-core-get', projectPath)
-    const parts: string[] = []
-    if (core?.premise) parts.push(core.premise.trim())
-    if (core?.charactersArch) parts.push(core.charactersArch.trim())
-    if (core?.worldbuilding) parts.push(core.worldbuilding.trim())
-    if (core?.synopsis) parts.push(core.synopsis.trim())
-    return parts.join('\n\n---\n\n')
+    const candidates: DraftArchitectureSection[] = [
+      {
+        sectionName: 'story-premise',
+        label: promptLanguageText(writingLanguage, '故事前提', 'Story premise'),
+        text: core?.premise?.trim() || '',
+        degradation: { priority: DRAFT_PROMPT_DEGRADATION_PRIORITY.premise, strategy: 'utf8-prefix' },
+      },
+      {
+        sectionName: 'secondary-cast',
+        label: promptLanguageText(writingLanguage, '角色图谱', 'Character graph'),
+        text: core?.charactersArch?.trim() || '',
+        degradation: { priority: DRAFT_PROMPT_DEGRADATION_PRIORITY.secondaryCast, strategy: 'complete-lines' },
+      },
+      {
+        sectionName: 'worldbuilding',
+        label: promptLanguageText(writingLanguage, '世界观', 'Worldbuilding'),
+        text: core?.worldbuilding?.trim() || '',
+      },
+      {
+        sectionName: 'synopsis',
+        label: promptLanguageText(writingLanguage, '剧情概要', 'Synopsis'),
+        text: core?.synopsis?.trim() || '',
+        degradation: { priority: DRAFT_PROMPT_DEGRADATION_PRIORITY.synopsis, strategy: 'utf8-prefix' },
+      },
+    ]
+    const sections = candidates.filter(section => section.text)
+    return {
+      sections,
+      text: sections.map(section => `【${section.label}】\n${section.text}`).join('\n\n---\n\n'),
+    }
   }
 
   private async readProjectPrompts(
@@ -978,37 +1177,76 @@ ${visibleTail}`,
     projectPath: string,
     projectSession: ProjectSessionContext,
     writingLanguage: WritingLanguage,
-  ): Promise<string> {
+    linkedNames: readonly string[],
+  ): Promise<DraftCharacterContext> {
     try {
-      const allChars = await ipc.invokeWithProjectSession(projectSession, 'db:character-get-all', projectPath)
-      const states: string[] = []
-      for (const card of allChars) {
-        if (card.name && card.currentState) {
-          const cs = card.currentState
-          states.push(promptLanguageText(
-            writingLanguage,
-            `${card.name}（${card.role || '未知'}）| `
-              + `境界：${cs.powerLevel || '未知'} | `
-              + `位置：${cs.location || '未知'} | `
-              + `身体：${cs.physicalState || '正常'} | `
-              + `心理：${cs.mentalState || '正常'} | `
-              + `道具：${cs.keyItems || '无'} | `
-              + `最近：第${cs.updatedAtChapter || 0}章 ${cs.recentEvents || ''}`,
-            `${card.name} (${card.role || 'unknown'}) | `
-              + `power: ${cs.powerLevel || 'unknown'} | `
-              + `location: ${cs.location || 'unknown'} | `
-              + `physical: ${cs.physicalState || 'normal'} | `
-              + `mental: ${cs.mentalState || 'normal'} | `
-              + `key items: ${cs.keyItems || 'none'} | `
-              + `recent: chapter ${cs.updatedAtChapter || 0} ${cs.recentEvents || ''}`,
-          ))
-        }
+      const cards = await ipc.invokeWithProjectSession(projectSession, 'db:character-get-all', projectPath)
+      const linkedNameSet = new Set(linkedNames)
+      const linkedCards = cards.filter(card => card.name && linkedNameSet.has(card.name))
+      const secondaryCards = cards.filter(card => card.name && !linkedNameSet.has(card.name))
+      const currentState = (card: CharacterData) => card.currentState
+        ? {
+            location: card.currentState.location,
+            powerLevel: card.currentState.powerLevel,
+            physicalState: card.currentState.physicalState,
+            mentalState: card.currentState.mentalState,
+            keyItems: card.currentState.keyItems,
+            recentEvents: card.currentState.recentEvents,
+            updatedAtChapter: card.currentState.updatedAtChapter,
+          }
+        : undefined
+      const linkedLines = linkedCards.map(card => {
+        const state = currentState(card)
+        return JSON.stringify({
+          name: card.name,
+          role: card.role,
+          gender: card.gender,
+          age: card.age,
+          appearance: card.appearance,
+          personality: card.personality,
+          background: card.background,
+          abilities: card.abilities,
+          motivation: card.motivation,
+          relationships: card.relationships,
+          arc: card.arc,
+          notes: card.notes,
+          ...(state ? { currentState: state } : {}),
+        })
+      })
+      const secondaryLines = secondaryCards.map(card => {
+        const state = currentState(card)
+        return JSON.stringify({
+          name: card.name,
+          role: card.role,
+          ...(card.arc ? { arc: card.arc } : {}),
+          ...(state ? {
+            currentState: {
+              location: state.location,
+              keyItems: state.keyItems,
+              recentEvents: state.recentEvents,
+              updatedAtChapter: state.updatedAtChapter,
+            },
+          } : {}),
+        })
+      })
+      const linked = linkedLines.length > 0
+        ? `${promptLanguageText(writingLanguage, '【本章关联角色卡】', '[Linked character cards]')}\n${linkedLines.join('\n')}`
+        : ''
+      const secondary = secondaryLines.length > 0
+        ? `${promptLanguageText(writingLanguage, '【次要角色简表】', '[Secondary character summaries]')}\n${secondaryLines.join('\n')}`
+        : ''
+      const text = [linked, secondary].filter(Boolean).join('\n\n')
+      return {
+        linked,
+        secondary,
+        text: text || promptLanguageText(writingLanguage, '（暂无角色状态档案）', '(no character state records)'),
       }
-      return states.length > 0
-        ? promptLanguageText(writingLanguage, `【角色状态档案】\n${states.join('\n')}`, `[Character state records]\n${states.join('\n')}`)
-        : promptLanguageText(writingLanguage, '（暂无角色状态档案）', '(no character state records)')
     } catch {
-      return promptLanguageText(writingLanguage, '（角色状态档案读取失败）', '(character state records unavailable)')
+      return {
+        linked: '',
+        secondary: '',
+        text: promptLanguageText(writingLanguage, '（角色状态档案读取失败）', '(character state records unavailable)'),
+      }
     }
   }
 

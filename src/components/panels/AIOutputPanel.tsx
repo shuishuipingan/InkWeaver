@@ -15,12 +15,13 @@ import {
   sameProjectSessionContext,
 } from '../../shared/project-session-context'
 import type { ProjectSessionContext } from '../../shared/ipc-channels'
-import type { PromptBudgetReport } from '../../services/generation/generation-harness'
+import type { PromptBudgetReport } from '../../shared/prompt-budget'
 import type { ContextReceipt } from '../../shared/context-receipt'
 import type { GenerationReceiptSummary } from '../../shared/generation-receipt'
 import MarkdownContent from '../ui/MarkdownContent'
 import { PanelHeader } from '../ui/PanelHeader'
 import { presentWorkflowFailure } from './ai-output-failure-presentation'
+import { formatPromptBudgetCompactionNotice } from '../../services/generation/prompt-budget-failure'
 
 /**
  * 右侧面板「AI 输出」视图
@@ -216,6 +217,17 @@ function ActiveRunView({
 
       {run.contextReceipt && <ContextReceiptSummary receipt={run.contextReceipt} locale={locale} />}
       {run.generationReceipt && <GenerationReceiptSummaryBlock receipt={run.generationReceipt} locale={locale} />}
+      {run.status === 'running' && run.promptBudgetReport?.compaction && (
+        <div
+          className="mx-2 mb-2 rounded-md border px-2 py-1.5 text-[0.68rem]"
+          role="status"
+          aria-live="polite"
+          data-prompt-budget-preflight="true"
+          style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }}
+        >
+          {formatPromptBudgetCompactionNotice(run.promptBudgetReport, locale)}
+        </div>
+      )}
 
       {/* 滚动内容区 */}
       <div
@@ -343,6 +355,9 @@ function ContextReceiptSummary({ receipt, locale }: { receipt: ContextReceipt; l
 
 function GenerationReceiptSummaryBlock({ receipt, locale }: { receipt: GenerationReceiptSummary; locale: 'zh-CN' | 'en-US' }) {
   const usage = receipt.usage
+  const compactionNotice = receipt.promptBudget
+    ? formatPromptBudgetCompactionNotice(receipt.promptBudget, locale)
+    : ''
   return (
     <div className="mx-2 mb-2 rounded-md border px-2 py-1.5 text-[0.68rem]" data-generation-receipt="true" style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }}>
       <div className="flex flex-wrap gap-x-2 gap-y-0.5">
@@ -351,6 +366,11 @@ function GenerationReceiptSummaryBlock({ receipt, locale }: { receipt: Generatio
         <span>{locale === 'en-US' ? 'budget' : '预算'} {receipt.cumulativeRequestedOutputTokens}/{receipt.maxRequestedOutputTokens}</span>
         <span>{locale === 'en-US' ? 'usage' : '实际用量'}: {usage?.totalTokens ?? (locale === 'en-US' ? 'unavailable' : '未知')}</span>
       </div>
+      {compactionNotice && (
+        <div className="mt-1" role="status" aria-live="polite" data-prompt-budget-compaction="true">
+          {compactionNotice}
+        </div>
+      )}
     </div>
   )
 }

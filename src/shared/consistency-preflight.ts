@@ -61,7 +61,7 @@ function isExplicitTerminalSubject(statement: string, entity: string): boolean {
 function explicitLocation(statement: string, entity: string): string | undefined {
   const subject = escapeRegExp(entity)
   const match = new RegExp(
-    `${subject}.{0,24}?(?:位于|在|处于)\s*([^，。；,.;\\n]+)`,
+    `${subject}.{0,24}?(?:位于|在|处于)\\s*([^，。；,.;\\n]+)`,
     'u',
   ).exec(statement)
   return match?.[1]?.trim() || undefined
@@ -70,7 +70,7 @@ function explicitLocation(statement: string, entity: string): string | undefined
 function explicitHeldItem(statement: string, entity: string): string | undefined {
   const subject = escapeRegExp(entity)
   const match = new RegExp(
-    `${subject}.{0,20}?(?:持有|拥有|拿着|握着|获得|得到)\s*([^，。；,.;\\n]+?)(?=[，。；,.;\\n]|走进|走向|进入|离开|回到|来到|$)`,
+    `${subject}.{0,20}?(?:持有|拥有|拿着|握着|获得|得到)\\s*([^，。；,.;\\n]+?)(?=[，。；,.;\\n]|走进|走向|进入|离开|回到|来到|$)`,
     'u',
   ).exec(statement)
   return match?.[1]?.trim() || undefined
@@ -90,7 +90,7 @@ function explicitStoryDay(statement: string, entity: string): number | undefined
 function explicitKnowledge(statement: string, entity: string): string | undefined {
   const subject = escapeRegExp(entity)
   const match = new RegExp(
-    `${subject}.{0,20}?(?:知道|得知|获悉|听说)\s*[“"「]?([^，。；,.;”"」\\n]+)`,
+    `${subject}.{0,20}?(?:知道|得知|获悉|听说)\\s*[“"「]?([^，。；,.;”"」\\n]+)`,
     'u',
   ).exec(statement)
   return match?.[1]?.trim() || undefined
@@ -328,4 +328,3 @@ export function findMissingCharacterStateFindings(
       },
     }))
 }
-

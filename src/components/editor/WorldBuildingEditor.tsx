@@ -80,11 +80,12 @@ export default function WorldBuildingEditor({ projectKey }: { projectKey: string
     const projectPath = projectSession.projectPath
     const requestId = archStatusRequestGate.current.begin()
     setLoading(true)
-    const core = await ipc.invokeWithProjectSession(
+    const core = await ipc.invokeBackgroundWithProjectSession(
       projectSession,
       'db:project-core-get',
       projectPath,
     )
+    if (core === undefined) return
     const status: Record<string, boolean> = {
       premise: (core?.premise?.length ?? 0) > 50,
       characters: rosterSnapshot?.status === 'ready',

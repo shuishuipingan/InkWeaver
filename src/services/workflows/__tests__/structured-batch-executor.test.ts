@@ -925,7 +925,8 @@ describe('StructuredBatchExecutor seam', () => {
         },
       })
       const repairPrompt = task.messages.map(message => message.content).join('\n')
-      expect(repairPrompt).toContain('"items":[1]')
+      expect(repairPrompt).toContain('原输出合同会在语法修复后由应用端重新校验')
+      expect(repairPrompt).not.toContain('"items":[1]')
       expect(repairPrompt).toContain('{"blueprints":[{"chapterNumber":1')
       expect(repairPrompt).toContain('完整替代 JSON')
       return {
@@ -1049,6 +1050,77 @@ describe('StructuredBatchExecutor seam', () => {
     expect(result).not.toHaveProperty('content')
     expect(JSON.stringify(result.receipt)).not.toContain(injected)
     expect(complete).toHaveBeenCalledTimes(2)
+  })
+
+  it('uses a short fallback syntax contract when the original task contains 38KB of duplicated context', async () => {
+    const physicalRepair = vi.fn<Parameters<typeof createGenerationHarness>[0]['completionPort']['complete']>()
+      .mockResolvedValue({ content: blueprintJson([1]), finishReason: 'stop' })
+    const repairHarness = createGenerationHarness({
+      modelSource: {
+        snapshotDefaultModel: () => ({
+          revision: 'fallback-repair-contract',
+          model: {
+            id: 'fallback-repair-model',
+            name: 'Fallback repair model',
+            provider: 'custom',
+            protocol: 'openai',
+            modelName: 'fallback-repair-model',
+            apiKey: 'test-only',
+            baseUrl: 'https://example.invalid/v1',
+            temperature: 0.7,
+            maxTokens: 100,
+            purposes: ['generation'],
+          },
+        }),
+      },
+      completionPort: { complete: physicalRepair },
+      policy: {
+        maxAttempts: 1,
+        maxRequestedOutputTokens: 100,
+        maxRequestedOutputTokensPerAttempt: 100,
+        deadlineMs: 60_000,
+      },
+    })
+    const candidate = blueprintJson([1])
+    const malformed = candidate.slice(0, -2)
+    const originalTaskContext = '巨大架构正文'.repeat(2_120) + 'abcdefghijklmnopq'
+    expect(new TextEncoder().encode(originalTaskContext).byteLength).toBe(38_177)
+    let initial = true
+    const complete = vi.fn<GenerationSession['complete']>(async (task, options) => {
+      if (initial) {
+        initial = false
+        return {
+          status: 'completed',
+          content: malformed,
+          finishReason: 'stop',
+          receipt: attemptReceipt(1, 100, 100, 'stop'),
+        }
+      }
+      return repairHarness.openSession().complete(task, options)
+    })
+    const executor = createStructuredBatchExecutor({
+      contract: {
+        ...blueprintContract,
+        buildTask: () => ({
+          purpose: 'large-fallback-contract-task',
+          output: 'structured-data',
+          messages: [
+            { role: 'system', content: 'SYSTEM CONTRACT' },
+            { role: 'user', content: originalTaskContext },
+          ],
+        }),
+      },
+      session: { complete },
+    })
+
+    const result = await executor.execute({ items: [1], limits: { maxBatchItems: 1 } })
+
+    const repairPrompt = physicalRepair.mock.calls[0]?.[0].messages[1]?.content ?? ''
+    expect(result).toMatchObject({ ok: true, items: [{ chapterNumber: 1, title: '第1章' }] })
+    expect(repairPrompt).not.toContain('巨大架构正文')
+    expect(repairPrompt).toContain(malformed)
+    expect(repairPrompt.length).toBeLessThan(1000)
+    expect(physicalRepair).toHaveBeenCalledOnce()
   })
 
   it('rejects syntax repair that splits one primitive token into two values', async () => {

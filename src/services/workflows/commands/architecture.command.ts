@@ -25,6 +25,7 @@ import {
   type CharacterRosterEntry,
 } from '../../../shared/character-roster'
 import { createStructuredBatchExecutor, type StructuredBatchContract } from '../structured-batch-executor'
+import { formatPromptBudgetCompactionNotice } from '../../generation/prompt-budget-failure'
 
 // --- 基础工具库 ---
 
@@ -861,11 +862,21 @@ export class GenerateCharactersCommand extends BaseWorkflowCommand<string> {
         return undefined
       },
     }
+    let detailPromptBudgetPreflightReported = false
     const detailExecution = await createStructuredBatchExecutor({
       contract: detailContract,
       session: this.requireGenerationExecution().session,
       writingLanguage,
-      onAttempt: receipt => this.reportGenerationPromptBudget(callbacks, receipt),
+      onAttempt: receipt => this.reportGenerationPromptBudget(
+        callbacks,
+        receipt,
+        !detailPromptBudgetPreflightReported,
+      ),
+      onPromptBudgetPreflight: report => {
+        detailPromptBudgetPreflightReported = true
+        callbacks.setPromptBudgetReport?.(report)
+        callbacks.log(formatPromptBudgetCompactionNotice(report, context.uiLocale))
+      },
     }).execute({
       items: manifest,
       limits: { maxBatchItems: CHARACTER_DETAIL_BATCH_SIZE },

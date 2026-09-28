@@ -753,12 +753,13 @@ export const useProjectStore = create<ProjectState>()((set, get) => ({
     const projectPath = project.path
     const projectSessionEpoch = expectedProjectSessionEpoch ?? state.projectSessionEpoch
     const requestId = ++refreshFileTreeRequestSequence
-    const tree = await ipc.invokeWithProjectSession(
+    const tree = await ipc.invokeBackgroundWithProjectSession(
       projectSession,
       'fs:list-dir',
       projectPath,
       projectPath,
     )
+    if (!tree) return
     if (
       requestId !== refreshFileTreeRequestSequence
       || !sameProjectSessionContext(

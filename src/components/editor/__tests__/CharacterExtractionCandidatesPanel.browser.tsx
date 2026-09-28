@@ -32,7 +32,7 @@ describe('CharacterExtractionCandidatesPanel', () => {
     document.body.append(container)
     root = createRoot(container)
     const onStatus = vi.fn(async () => {})
-    const text = (zh: string, _en: string) => zh
+    const text = (zh: string) => zh
 
     await act(async () => root.render(
       <CharacterExtractionCandidatesPanel
@@ -58,7 +58,7 @@ describe('CharacterExtractionCandidatesPanel', () => {
     document.body.append(container)
     root = createRoot(container)
     const onApply = vi.fn(async () => {})
-    const text = (zh: string, _en: string) => zh
+    const text = (zh: string) => zh
     await act(async () => root.render(
       <CharacterExtractionCandidatesPanel
         candidates={[{ ...candidate, candidateId: 'ambiguous-ui-1', name: '林舟', disposition: 'ambiguous', status: 'accepted' }]}
@@ -89,7 +89,7 @@ describe('CharacterExtractionCandidatesPanel', () => {
     container = document.createElement('div')
     document.body.append(container)
     root = createRoot(container)
-    const text = (zh: string, _en: string) => zh
+    const text = (zh: string) => zh
     await act(async () => root.render(
       <CharacterExtractionCandidatesPanel
         candidates={[{
@@ -116,7 +116,7 @@ describe('CharacterExtractionCandidatesPanel', () => {
     container = document.createElement('div')
     document.body.append(container)
     root = createRoot(container)
-    const text = (zh: string, _en: string) => zh
+    const text = (zh: string) => zh
     await act(async () => root.render(
       <CharacterExtractionCandidatesPanel
         candidates={[{

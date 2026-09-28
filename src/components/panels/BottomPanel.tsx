@@ -263,18 +263,16 @@ function WorkflowRecoveryReceipts() {
     () => projectSessionContextFromProject(currentProject),
     [currentProject],
   )
-  const [checkpoints, setCheckpoints] = useState<WorkflowRecoveryCheckpoint[]>([])
+  const [, setCheckpointRevision] = useState(0)
   const [resumingRunId, setResumingRunId] = useState<string | null>(null)
-
-  useEffect(() => {
-    setCheckpoints(session ? listWorkflowRecoveryCheckpoints(session.projectPath) : [])
-  }, [session?.projectPath, session?.leaseId])
+  const projectPath = session?.projectPath
+  const checkpoints = projectPath ? listWorkflowRecoveryCheckpoints(projectPath) : []
 
   if (checkpoints.length === 0) return null
 
   const remove = (runId: string) => {
     clearWorkflowRecoveryCheckpoint(runId)
-    setCheckpoints(current => current.filter(checkpoint => checkpoint.runId !== runId))
+    setCheckpointRevision(current => current + 1)
   }
 
   const resumeRecoverableWorkflow = async (checkpoint: WorkflowRecoveryCheckpoint) => {
@@ -866,7 +864,7 @@ export function LogsView() {
     if (autoScroll && logScrollRef.current) {
       logScrollRef.current.scrollTop = logScrollRef.current.scrollHeight
     }
-  }, [displayLogs.length, autoScroll])
+  }, [autoScroll, displayLogs.length, logScrollRef])
 
   const levelColor = (level: string) => {
     switch (level) {

@@ -572,6 +572,293 @@ describe('GenerationHarness', () => {
     expect(failure).not.toHaveProperty('receipt')
   })
 
+  it('degrades lower-priority sections first and reports exact UTF-8 byte changes', async () => {
+    const events: string[] = []
+    const system = 'OUTPUT CONTRACT'
+    const premise = 'PREMISE'
+    const linked = 'LINK'
+    const secondary = 'SEC'
+    const distant = 'FAR'
+    const user = `${premise}|${linked}|${secondary}|${distant}`
+    const fullRequestBytes = new TextEncoder().encode(system).byteLength
+      + new TextEncoder().encode(user).byteLength
+    const complete = vi.fn<CompletionPort['complete']>().mockImplementation(async () => {
+      events.push('provider')
+      return { content: 'done', finishReason: 'stop' }
+    })
+    const harness = createGenerationHarness({
+      modelSource: {
+        snapshotDefaultModel: () => ({ revision: 'priority-compaction', model: model() }),
+      },
+      completionPort: { complete },
+      policy: {
+        maxAttempts: 1,
+        maxRequestedOutputTokens: 4096,
+        maxRequestedOutputTokensPerAttempt: 4096,
+        deadlineMs: 60_000,
+      },
+    })
+
+    const outcome = await harness.openSession().complete({
+      purpose: 'priority-compaction',
+      output: 'visible-text',
+      messages: [
+        { role: 'system', content: system },
+        { role: 'user', content: user },
+      ],
+      promptBudget: {
+        limitUtf8Bytes: fullRequestBytes - 6,
+        sections: [
+          { sectionName: 'system-instructions', messageIndex: 0, finalText: system },
+          { sectionName: 'story-premise', messageIndex: 1, finalText: premise, degradation: { priority: 40, strategy: 'utf8-prefix' } },
+          { sectionName: 'linked-cast', messageIndex: 1, finalText: linked, degradation: { priority: 30, strategy: 'utf8-prefix' } },
+          { sectionName: 'secondary-cast', messageIndex: 1, finalText: secondary, degradation: { priority: 20, strategy: 'utf8-prefix' } },
+          { sectionName: 'distant-blueprints', messageIndex: 1, finalText: distant, degradation: { priority: 10, strategy: 'utf8-prefix' } },
+        ],
+      },
+    }, {
+      onPromptBudgetPreflight: report => {
+        expect(report.compaction?.removedUtf8Bytes).toBe(6)
+        events.push('preflight')
+      },
+    })
+
+    const physicalMessages = complete.mock.calls[0]?.[0].messages ?? []
+    expect(events).toEqual(['preflight', 'provider'])
+    expect(physicalMessages[0]?.content).toBe(system)
+    expect(physicalMessages[1]?.content).toBe(`${premise}|${linked}||`)
+    expect(outcome.receipt.promptBudget).toMatchObject({
+      totalUtf8Bytes: fullRequestBytes - 6,
+      compaction: {
+        originalTotalUtf8Bytes: fullRequestBytes,
+        removedUtf8Bytes: 6,
+        sections: [
+          { sectionName: 'secondary-cast', originalUtf8Bytes: 3, retainedUtf8Bytes: 0, removedUtf8Bytes: 3 },
+          { sectionName: 'distant-blueprints', originalUtf8Bytes: 3, retainedUtf8Bytes: 0, removedUtf8Bytes: 3 },
+        ],
+      },
+    })
+  })
+
+  it('locates protected chapter evidence when policy sections are declared out of prompt order', async () => {
+    const complete = vi.fn<CompletionPort['complete']>().mockResolvedValue({
+      content: 'done',
+      finishReason: 'stop',
+    })
+    const harness = createGenerationHarness({
+      modelSource: {
+        snapshotDefaultModel: () => ({ revision: 'out-of-order-sections', model: model() }),
+      },
+      completionPort: { complete },
+      policy: {
+        maxAttempts: 1,
+        maxRequestedOutputTokens: 4096,
+        maxRequestedOutputTokensPerAttempt: 4096,
+        deadlineMs: 60_000,
+      },
+    })
+
+    await harness.openSession().complete({
+      purpose: 'out-of-order-sections',
+      output: 'visible-text',
+      messages: [
+        { role: 'system', content: 'SYSTEM' },
+        { role: 'user', content: 'ARCHITECTURE\nCHAPTER EVIDENCE' },
+      ],
+      promptBudget: {
+        limitUtf8Bytes: 1024,
+        sections: [
+          { sectionName: 'system-instructions', messageIndex: 0, finalText: 'SYSTEM' },
+          { sectionName: 'target-chapter', messageIndex: 1, finalText: 'CHAPTER EVIDENCE' },
+          { sectionName: 'story-premise', messageIndex: 1, finalText: 'ARCHITECTURE', degradation: { priority: 40, strategy: 'utf8-prefix' } },
+        ],
+      },
+    })
+
+    expect(complete).toHaveBeenCalledOnce()
+    expect(complete.mock.calls[0]?.[0].messages[1]?.content).toBe('ARCHITECTURE\nCHAPTER EVIDENCE')
+  })
+
+  it('fails before provider use when protected material alone exceeds the limit after compaction', async () => {
+    const complete = vi.fn<CompletionPort['complete']>()
+    const onPreflight = vi.fn()
+    const harness = createGenerationHarness({
+      modelSource: {
+        snapshotDefaultModel: () => ({ revision: 'protected-compaction', model: model() }),
+      },
+      completionPort: { complete },
+      policy: {
+        maxAttempts: 1,
+        maxRequestedOutputTokens: 4096,
+        maxRequestedOutputTokensPerAttempt: 4096,
+        deadlineMs: 60_000,
+      },
+    })
+
+    await expect(harness.openSession().complete({
+      purpose: 'protected-overflow',
+      output: 'structured-data',
+      messages: [
+        { role: 'system', content: 'IMMUTABLE SYSTEM CONTRACT' },
+        { role: 'user', content: 'TARGET evidence|degradable context' },
+      ],
+      promptBudget: {
+        limitUtf8Bytes: 10,
+        sections: [
+          { sectionName: 'system-instructions', messageIndex: 0, finalText: 'IMMUTABLE SYSTEM CONTRACT' },
+          { sectionName: 'target-chapter', messageIndex: 1, finalText: 'TARGET evidence' },
+          { sectionName: 'distant-blueprints', messageIndex: 1, finalText: 'degradable context', degradation: { priority: 0, strategy: 'utf8-prefix' } },
+        ],
+      },
+    }, { onPromptBudgetPreflight: onPreflight })).rejects.toMatchObject({
+      name: 'PromptBudgetExceededError',
+      report: {
+        errorCode: 'PROMPT_BUDGET_EXHAUSTED',
+        compaction: { removedUtf8Bytes: 18 },
+      },
+    })
+
+    expect(onPreflight).toHaveBeenCalledOnce()
+    expect(complete).not.toHaveBeenCalled()
+  })
+
+  it('never splits a multibyte code point while compacting a UTF-8 prefix', async () => {
+    const complete = vi.fn<CompletionPort['complete']>().mockResolvedValue({
+      content: 'done',
+      finishReason: 'stop',
+    })
+    const harness = createGenerationHarness({
+      modelSource: {
+        snapshotDefaultModel: () => ({ revision: 'utf8-compaction', model: model() }),
+      },
+      completionPort: { complete },
+      policy: {
+        maxAttempts: 1,
+        maxRequestedOutputTokens: 4096,
+        maxRequestedOutputTokensPerAttempt: 4096,
+        deadlineMs: 60_000,
+      },
+    })
+
+    const outcome = await harness.openSession().complete({
+      purpose: 'utf8-compaction',
+      output: 'visible-text',
+      messages: [{ role: 'user', content: 'AéB' }],
+      promptBudget: {
+        limitUtf8Bytes: 2,
+        sections: [{
+          sectionName: 'distant-blueprints',
+          messageIndex: 0,
+          finalText: 'AéB',
+          degradation: { priority: 0, strategy: 'utf8-prefix' },
+        }],
+      },
+    })
+
+    expect(complete.mock.calls[0]?.[0].messages[0]?.content).toBe('A')
+    expect(outcome.receipt.promptBudget).toMatchObject({
+      totalUtf8Bytes: 1,
+      compaction: {
+        removedUtf8Bytes: 3,
+        sections: [{
+          sectionName: 'distant-blueprints',
+          originalUtf8Bytes: 4,
+          retainedUtf8Bytes: 1,
+          removedUtf8Bytes: 3,
+        }],
+      },
+    })
+  })
+
+  it('keeps complete context records when a degradable section uses line boundaries', async () => {
+    const complete = vi.fn<CompletionPort['complete']>().mockResolvedValue({
+      content: 'done',
+      finishReason: 'stop',
+    })
+    const harness = createGenerationHarness({
+      modelSource: {
+        snapshotDefaultModel: () => ({ revision: 'line-compaction', model: model() }),
+      },
+      completionPort: { complete },
+      policy: {
+        maxAttempts: 1,
+        maxRequestedOutputTokens: 4096,
+        maxRequestedOutputTokensPerAttempt: 4096,
+        deadlineMs: 60_000,
+      },
+    })
+
+    await harness.openSession().complete({
+      purpose: 'line-compaction',
+      output: 'visible-text',
+      messages: [
+        { role: 'system', content: 'S' },
+        { role: 'user', content: 'LINK\nEXTRA\n' },
+      ],
+      promptBudget: {
+        limitUtf8Bytes: 6,
+        sections: [{
+          sectionName: 'linked-cast',
+          messageIndex: 1,
+          finalText: 'LINK\nEXTRA\n',
+          degradation: { priority: 20, strategy: 'complete-lines' },
+        }],
+      },
+    })
+
+    expect(complete.mock.calls[0]?.[0].messages[1]?.content).toBe('LINK\n')
+  })
+
+  it('keeps JSON string sections valid when compacting author configuration values', async () => {
+    const complete = vi.fn<CompletionPort['complete']>().mockResolvedValue({
+      content: 'done',
+      finishReason: 'stop',
+    })
+    const source = '{"coreOutline":"AéB"}'
+    const fullBytes = new TextEncoder().encode(source).byteLength
+    const harness = createGenerationHarness({
+      modelSource: {
+        snapshotDefaultModel: () => ({ revision: 'json-string-compaction', model: model() }),
+      },
+      completionPort: { complete },
+      policy: {
+        maxAttempts: 1,
+        maxRequestedOutputTokens: 4096,
+        maxRequestedOutputTokensPerAttempt: 4096,
+        deadlineMs: 60_000,
+      },
+    })
+
+    const outcome = await harness.openSession().complete({
+      purpose: 'json-string-compaction',
+      output: 'visible-text',
+      messages: [{ role: 'user', content: source }],
+      promptBudget: {
+        limitUtf8Bytes: fullBytes - 1,
+        sections: [{
+          sectionName: 'core-outline',
+          messageIndex: 0,
+          finalText: '"AéB"',
+          degradation: { priority: 40, strategy: 'json-string' },
+        }],
+      },
+    })
+
+    const compacted = complete.mock.calls[0]?.[0].messages[0]?.content ?? ''
+    expect(JSON.parse(compacted)).toEqual({ coreOutline: 'Aé' })
+    expect(outcome.receipt.promptBudget).toMatchObject({
+      totalUtf8Bytes: fullBytes - 1,
+      compaction: {
+        sections: [{
+          sectionName: 'core-outline',
+          originalUtf8Bytes: 6,
+          retainedUtf8Bytes: 5,
+          removedUtf8Bytes: 1,
+        }],
+      },
+    })
+  })
+
   it('reports a protected byte overflow before the generic context-window failure', async () => {
     const complete = vi.fn<CompletionPort['complete']>().mockResolvedValue({
       content: 'recovered',

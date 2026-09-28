@@ -17,35 +17,39 @@ export default function WritingStyleHistoryPanel({ projectKey }: { projectKey: s
   const updateNovelConfig = useProjectStore(state => state.updateNovelConfig)
   const saveProject = useProjectStore(state => state.saveProject)
   const text = useLocaleStore(state => state.text)
-  const [records, setRecords] = useState<WritingStyleHistoryRecord[]>([])
-  const [loading, setLoading] = useState(false)
+  const projectSessionKey = currentProject?.id && currentProject.path && currentProject.sessionLease
+    ? `${currentProject.id}\u0000${currentProject.sessionLease}\u0000${currentProject.path}`
+    : ''
+  const requestKey = projectSessionKey && currentProject?.path === projectKey ? projectSessionKey : ''
+  const [loadResult, setLoadResult] = useState<{
+    requestKey: string
+    records: WritingStyleHistoryRecord[]
+    error: string | null
+  } | null>(null)
+  const currentResult = loadResult?.requestKey === requestKey ? loadResult : null
+  const records = currentResult?.records ?? []
+  const error = currentResult?.error ?? null
+  const loading = Boolean(requestKey && !currentResult)
   const [applying, setApplying] = useState(false)
-  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    const session = captureProjectSession(currentProject)
-    if (!session || !isProjectSessionPath(session, projectKey)) {
-      setRecords([])
-      return
-    }
+    if (!requestKey) return
+    const session = captureProjectSession(useProjectStore.getState().currentProject)
+    if (!session || !isProjectSessionPath(session, projectKey)) return
+    const activeRequestKey = `${session.projectId}\u0000${session.leaseId}\u0000${session.projectPath}`
+    if (activeRequestKey !== requestKey) return
     let cancelled = false
-    setLoading(true)
-    setError(null)
-    void ipc.invokeWithProjectSession(session, 'db:writing-style-history-list', projectKey)
+    void ipc.invokeBackgroundWithProjectSession(session, 'db:writing-style-history-list', projectKey)
       .then(result => {
         if (cancelled || !isProjectSessionCurrent(session)) return
-        setRecords(Array.isArray(result) ? result : [])
+        if (result) setLoadResult({ requestKey, records: result, error: null })
       })
       .catch(cause => {
         if (cancelled || !isProjectSessionCurrent(session)) return
-        setError(String(cause))
-      })
-      .finally(() => {
-        if (cancelled || !isProjectSessionCurrent(session)) return
-        setLoading(false)
+        setLoadResult({ requestKey, records: [], error: String(cause) })
       })
     return () => { cancelled = true }
-  }, [currentProject?.sessionLease, projectKey])
+  }, [projectKey, projectSessionKey, requestKey])
 
   if (records.length === 0 && !loading && !error) return null
 
@@ -53,7 +57,9 @@ export default function WritingStyleHistoryPanel({ projectKey }: { projectKey: s
     const session = captureProjectSession(currentProject)
     if (!session || !isProjectSessionPath(session, projectKey) || applying) return
     setApplying(true)
-    setError(null)
+    setLoadResult(current => current?.requestKey === requestKey
+      ? { ...current, error: null }
+      : current)
     try {
       updateNovelConfig({ writingStyle: nextStyle }, session)
       const saved = await saveProject(session)
@@ -62,6 +68,9 @@ export default function WritingStyleHistoryPanel({ projectKey }: { projectKey: s
       toast.success(text('已应用并保存该文风版本。', 'Applied and saved this style version.'))
     } catch (cause) {
       if (!isProjectSessionCurrent(session)) return
+      setLoadResult(current => current?.requestKey === requestKey
+        ? { ...current, error: String(cause) }
+        : current)
       toast.error(String(cause))
     } finally {
       if (isProjectSessionCurrent(session)) setApplying(false)

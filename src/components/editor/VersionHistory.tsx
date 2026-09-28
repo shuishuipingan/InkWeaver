@@ -35,12 +35,12 @@ export default function VersionHistory({ projectKey }: { projectKey: string }) {
     if (!projectSession || !isProjectSessionPath(projectSession, projectKey)) return
     setLoading(true)
     try {
-      const blueprints = await ipc.invokeWithProjectSession(
+      const blueprints = await ipc.invokeBackgroundWithProjectSession(
         projectSession,
         'db:blueprint-get-all',
         projectSession.projectPath,
       )
-      if (!isProjectSessionCurrent(projectSession)) return
+      if (!blueprints || !isProjectSessionCurrent(projectSession)) return
       setChapters(blueprints.map(c => ({
         id: String(c.chapterNumber),
         chapter_number: c.chapterNumber,
@@ -68,13 +68,13 @@ export default function VersionHistory({ projectKey }: { projectKey: string }) {
     try {
       const chapterNumber = Number.parseInt(chapterId, 10)
       if (!Number.isFinite(chapterNumber)) return
-      const drafts = await ipc.invokeWithProjectSession(
+      const drafts = await ipc.invokeBackgroundWithProjectSession(
         projectSession,
         'db:draft-list',
         chapterNumber,
         projectSession.projectPath,
       )
-      if (!isProjectSessionCurrent(projectSession)) return
+      if (!drafts || !isProjectSessionCurrent(projectSession)) return
       setVersions(drafts.map(draft => ({
         id: draft.id,
         version: draft.version,

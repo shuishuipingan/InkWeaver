@@ -3,9 +3,11 @@ import {
   GenerationHarnessError,
   PromptBudgetExceededError,
   type GenerationAttemptReceipt,
+  type GenerationExecutionOptions,
   type GenerationSession,
   type GenerationTask,
 } from '../generation/generation-harness'
+import type { PromptBudgetReport } from '../../shared/prompt-budget'
 import {
   structuredContractDiagnostic,
   type StructuredContractDiagnostic,
@@ -15,6 +17,7 @@ import {
   buildStructuredSyntaxRepairTask,
   isRepairableDirectJsonSyntaxFailure,
   preservesStructuredJsonEvidence,
+  structuredSyntaxOnlyRepairContract,
 } from './structured-syntax-repair'
 
 export type StructuredItemKey = string | number
@@ -153,6 +156,7 @@ export function createStructuredBatchExecutor<TInput, TOutput>(dependencies: {
   session: Pick<GenerationSession, 'complete'>
   writingLanguage: WritingLanguage
   onAttempt?: (receipt: GenerationAttemptReceipt) => void
+  onPromptBudgetPreflight?: (report: PromptBudgetReport) => void
   onSplit?: (input: { items: readonly TInput[]; failure: StructuredBatchFailure }) => void
   onUnknownFinishRetry?: (input: { items: readonly TInput[]; strategy: 'retry' | 'split' }) => void
 }): StructuredBatchExecutor<TInput, TOutput> {
@@ -166,6 +170,17 @@ export function createStructuredBatchExecutor<TInput, TOutput>(dependencies: {
 
   return {
     async execute(input) {
+      const completeWithPreflight = (
+        task: GenerationTask,
+        options: GenerationExecutionOptions = {},
+      ) => session.complete(task, {
+        ...options,
+        signal: options.signal ?? input.signal,
+        onPromptBudgetPreflight: report => {
+          options.onPromptBudgetPreflight?.(report)
+          dependencies.onPromptBudgetPreflight?.(report)
+        },
+      })
       const attemptReceipts: GenerationAttemptReceipt[] = []
       const receipt: StructuredBatchReceipt = {
         calls: 0,
@@ -246,7 +261,7 @@ export function createStructuredBatchExecutor<TInput, TOutput>(dependencies: {
         }
 
         let activeTask: GenerationTask = task
-        let outcome = await session.complete(activeTask, { signal: input.signal })
+        let outcome = await completeWithPreflight(activeTask)
         recordAttempt(outcome.receipt)
         if (input.signal?.aborted) {
           throw new ExecutionFailure({
@@ -290,10 +305,7 @@ export function createStructuredBatchExecutor<TInput, TOutput>(dependencies: {
               message: '紧凑单项任务必须请求 structured-data 输出',
             })
           }
-          outcome = await session.complete(
-            compactTask,
-            { signal: input.signal },
-          )
+          outcome = await completeWithPreflight(compactTask)
           activeTask = compactTask
           recordAttempt(outcome.receipt)
           if (input.signal?.aborted) {
@@ -326,7 +338,7 @@ export function createStructuredBatchExecutor<TInput, TOutput>(dependencies: {
               message: '结构化封装重试必须请求 structured-data 输出',
             })
           }
-          outcome = await session.complete(retryTask, { signal: input.signal })
+          outcome = await completeWithPreflight(retryTask)
           activeTask = retryTask
           recordAttempt(outcome.receipt)
           if (input.signal?.aborted) {
@@ -351,7 +363,7 @@ export function createStructuredBatchExecutor<TInput, TOutput>(dependencies: {
         ) {
           unknownFinishRecoveryUsed = true
           dependencies.onUnknownFinishRetry?.({ items: [...items], strategy: 'retry' })
-          outcome = await session.complete(activeTask, { signal: input.signal })
+          outcome = await completeWithPreflight(activeTask)
           recordAttempt(outcome.receipt)
           if (input.signal?.aborted) {
             throw new ExecutionFailure({
@@ -396,12 +408,10 @@ export function createStructuredBatchExecutor<TInput, TOutput>(dependencies: {
         let candidateContent = outcome.content
         let syntaxRepairApplied = false
         if (outcome.status === 'completed' && isRepairableDirectJsonSyntaxFailure(candidateContent)) {
-          const originalContract = task.messages
-            .map(message => `[${message.role}]\n${message.content}`)
-            .join('\n\n')
           let repairContract: string
           try {
-            repairContract = contract.syntaxRepairContract?.({ items: [...items] }) ?? originalContract
+            repairContract = contract.syntaxRepairContract?.({ items: [...items] })
+              ?? structuredSyntaxOnlyRepairContract(writingLanguage)
           } catch {
             throw new ExecutionFailure({
               code: 'invalid_output',
@@ -418,9 +428,8 @@ export function createStructuredBatchExecutor<TInput, TOutput>(dependencies: {
           }
           repairUsed = true
           syntaxRepairApplied = true
-          const repaired = await session.complete(
+          const repaired = await completeWithPreflight(
             buildStructuredSyntaxRepairTask(task, repairContract, outcome.content, writingLanguage),
-            { signal: input.signal },
           )
           recordAttempt(repaired.receipt)
           if (input.signal?.aborted || repaired.finishReason === 'cancelled') {
@@ -519,10 +528,10 @@ export function createStructuredBatchExecutor<TInput, TOutput>(dependencies: {
           receipt.semanticRepairCallCount = (receipt.semanticRepairCallCount ?? 0) + 1
           let repaired: Awaited<ReturnType<typeof session.complete>> | undefined
           try {
-            repaired = await session.complete({
+            repaired = await completeWithPreflight({
               ...repairPlan.task,
               reasoningStage: 'planning',
-            }, { signal: input.signal })
+            })
             recordAttempt(repaired.receipt)
           } catch (repairRequestError) {
             const cancellation = input.signal?.aborted

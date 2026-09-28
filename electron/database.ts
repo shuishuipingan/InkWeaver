@@ -31,6 +31,10 @@ export function initProjectDatabase(projectPath: string, importSourceSecret?: Bu
   projectDb = new Database(dbPath)
   projectDb.pragma('journal_mode = WAL')
   projectDb.pragma('foreign_keys = ON')
+  // Windows antivirus scanners and concurrent background readers can hold
+  // short-lived locks. Make the five-second wait explicit rather than relying
+  // on the native driver's current default.
+  projectDb.pragma('busy_timeout = 5000')
 
   // 创建表结构
   createTables(projectDb, importSourceSecret)

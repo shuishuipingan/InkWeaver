@@ -127,7 +127,7 @@ function DonutChart({ title, icon: Icon, rows }: {
       const pct = (v.tokens / total) * 100
       return { name, value: v, startAngle, endAngle, x1, y1, x2, y2, largeArc, pct, color: SEGMENT_COLORS[i % SEGMENT_COLORS.length] }
     })
-  }, [rows, total])
+  }, [rows, total, CX, CY])
 
   if (total <= 0 || segments.length === 0) {
     return (
@@ -219,7 +219,7 @@ export default function StatsView() {
 
   const visibleData = data && sameProjectSessionContext(data.projectSession, projectSession) ? data : null
   const stats = visibleData?.stats ?? null
-  const history = visibleData?.history ?? []
+  const history = useMemo(() => visibleData?.history ?? [], [visibleData])
 
   const load = useMemo(() => () => {
     if (!projectSession) { requestGate.invalidate(); return }

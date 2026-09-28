@@ -34,7 +34,6 @@ describe('UI project session gates', () => {
   it('uses frozen-session IPC for UI mutations instead of recapturing by path', () => {
     const mutationSurfaces = [
       'src/components/pages/KnowledgeOverview.tsx',
-      'src/components/panels/KnowledgePanel.tsx',
       'src/components/editor/ArchFileViewer.tsx',
       'src/components/dialogs/BatchChapterCreationDialog.tsx',
       'src/components/dialogs/ChapterCreationDialog.tsx',
@@ -61,7 +60,7 @@ describe('UI project session gates', () => {
 
     expect(exportDialog).toContain('const projectSession = captureProjectSession(currentProject)')
     expect(exportDialog).toContain("await ipc.invoke('dialog:select-export-directory')")
-    expect(exportDialog).toContain('exportNovel({ format, grantId: destination.grantId, includeOutline }, projectSnapshot, projectSession)')
+    expect(exportDialog).toContain('exportNovel({ format, grantId: destination.grantId, includeDrafts, includeOutline }, projectSnapshot, projectSession)')
     expect(clearDialog).toContain('const projectSession = captureProjectSession(currentProject)')
     expect(clearDialog).toContain('clearProjectData(selected, projectSession)')
   })

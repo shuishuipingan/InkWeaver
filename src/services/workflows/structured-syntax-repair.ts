@@ -9,6 +9,18 @@ export function structuredRepairUtf8Bytes(value: string): number {
   return new TextEncoder().encode(value).byteLength
 }
 
+/**
+ * The original output contract is checked by the application after syntax
+ * repair, so the fallback repair prompt needs only this short instruction.
+ */
+export function structuredSyntaxOnlyRepairContract(writingLanguage: WritingLanguage): string {
+  return promptLanguageText(
+    writingLanguage,
+    '原输出合同会在语法修复后由应用端重新校验。只修复候选 JSON 语法，并保留所有字段名与标量值。',
+    'The application revalidates the original output contract after syntax repair. Repair candidate JSON syntax only, preserving every field name and scalar value.',
+  )
+}
+
 export function isRepairableDirectJsonSyntaxFailure(content: string): boolean {
   const candidate = content.trim()
   if (!/^[{[]/u.test(candidate)) return false

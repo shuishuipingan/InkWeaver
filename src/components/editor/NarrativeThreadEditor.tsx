@@ -160,12 +160,12 @@ export default function NarrativeThreadEditor({
     if (!session || !isProjectSessionPath(session, projectKey)) return
     try {
       const [nextThreads, drafts, nextBlueprints, nextContinuityDocuments] = await Promise.all([
-        ipc.invokeWithProjectSession(session, 'db:narrative-thread-list', projectKey),
-        ipc.invokeWithProjectSession(session, 'db:draft-list-all', projectKey),
-        ipc.invokeWithProjectSession(session, 'db:blueprint-get-all', projectKey),
-        ipc.invokeWithProjectSession(session, 'db:story-continuity-list-all', projectKey),
+        ipc.invokeBackgroundWithProjectSession(session, 'db:narrative-thread-list', projectKey),
+        ipc.invokeBackgroundWithProjectSession(session, 'db:draft-list-all', projectKey),
+        ipc.invokeBackgroundWithProjectSession(session, 'db:blueprint-get-all', projectKey),
+        ipc.invokeBackgroundWithProjectSession(session, 'db:story-continuity-list-all', projectKey),
       ])
-      if (!isProjectSessionCurrent(session)) return
+      if (!nextThreads || !drafts || !nextBlueprints || !nextContinuityDocuments || !isProjectSessionCurrent(session)) return
       const finalized = drafts.filter(draft => draft.status === 'finalized')
       setFinalizedDrafts(finalized)
       setThreads(nextThreads)

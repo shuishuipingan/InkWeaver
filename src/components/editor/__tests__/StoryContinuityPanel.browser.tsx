@@ -21,7 +21,7 @@ let knowledgeEventsFixture: unknown[]
 let currentDocumentFixture: ReturnType<typeof emptyStoryContinuityDocument>
 
 beforeEach(() => {
-  ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
+  (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
   useProjectStore.setState({ currentProject: { id: SESSION.projectId, sessionLease: SESSION.leaseId, path: PROJECT_PATH, novelConfig: { writingLanguage: 'zh-CN' } } as never })
   useCharacterStore.setState({ characters: [], loaded: false, dataProjectKey: null, dataProjectSession: null } as never)
   setActiveProjectSessionContext(SESSION)
@@ -230,7 +230,7 @@ describe('StoryContinuityPanel', () => {
     timelineFixtures = []
     reviewEvents = []
     finalizedContent = null
-    invoke = vi.fn(async (channel: string, ..._args: unknown[]) => {
+    invoke = vi.fn(async (channel: string) => {
       if (channel === 'db:narrative-thread-list-relevant') {
         return [{ id: 3, title: '灯塔暗语', type: 'mystery', targetStartChapter: 2, targetEndChapter: 6, authorIntent: '逐步揭示', status: 'progressing', dormantChapters: 5, overdue: true, events: [], createdAt: '2026-09-07T00:00:00.000Z', updatedAt: '2026-09-07T00:00:00.000Z' }]
       }

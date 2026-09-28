@@ -1,8 +1,8 @@
 import type { Locale } from '../../i18n/types'
 import {
   PromptBudgetExceededError,
-  type PromptBudgetReport,
 } from './generation-harness'
+import type { PromptBudgetReport } from '../../shared/prompt-budget'
 
 export const PROMPT_BUDGET_FAILURE_CODE = 'prompt_budget_exhausted' as const
 
@@ -14,6 +14,11 @@ const SECTION_LABELS: Readonly<Record<string, readonly [string, string]>> = Obje
   'reference-works': ['参考作品', 'Reference works'],
   'knowledge-base': ['知识库', 'Knowledge base'],
   'story-premise': ['故事前提', 'Story premise'],
+  'core-outline': ['核心大纲', 'Core outline'],
+  synopsis: ['剧情概要', 'Synopsis'],
+  'linked-cast': ['本章关联角色卡', 'Linked character cards'],
+  'secondary-cast': ['次要角色', 'Secondary characters'],
+  'distant-blueprints': ['远期章节蓝图', 'Distant blueprints'],
   genre: ['作品类型', 'Genre'],
   'protagonist-profile': ['主角设定', 'Protagonist profile'],
   'identity-manifest': ['角色身份清单', 'Character identity manifest'],
@@ -48,19 +53,44 @@ export function formatPromptBudgetFailure(report: PromptBudgetReport, locale: Lo
     .map(section => `${sectionLabel(section.sectionName, locale)} ${formatInteger(section.utf8Bytes, locale)}`)
     .join(locale === 'zh-CN' ? '、' : ', ')
 
-  if (locale === 'zh-CN') {
-    return [
+  const summary = locale === 'zh-CN'
+    ? [
       `提示词共 ${formatInteger(report.totalUtf8Bytes, locale)} UTF-8 字节，超过上限 ${formatInteger(report.limitUtf8Bytes, locale)} 字节；输出保留空间为 ${formatInteger(report.reservedOutputTokens, locale)} tokens。`,
       `主要占用：${contributors}。`,
       `模型：${report.modelId}；结果码：${report.errorCode}。`,
     ].join('')
-  }
+    : [
+      `The prompt uses ${formatInteger(report.totalUtf8Bytes, locale)} UTF-8 bytes, exceeding the ${formatInteger(report.limitUtf8Bytes, locale)}-byte limit; ${formatInteger(report.reservedOutputTokens, locale)} tokens are reserved for output. `,
+      `Top contributors: ${contributors}. `,
+      `Model: ${report.modelId}; result code: ${report.errorCode}.`,
+    ].join('')
 
-  return [
-    `The prompt uses ${formatInteger(report.totalUtf8Bytes, locale)} UTF-8 bytes, exceeding the ${formatInteger(report.limitUtf8Bytes, locale)}-byte limit; ${formatInteger(report.reservedOutputTokens, locale)} tokens are reserved for output. `,
-    `Top contributors: ${contributors}. `,
-    `Model: ${report.modelId}; result code: ${report.errorCode}.`,
-  ].join('')
+  const compactionNotice = formatPromptBudgetCompactionNotice(report, locale)
+  return compactionNotice ? `${summary} ${compactionNotice}` : summary
+}
+
+/** Formats safe compaction counts for a preflight log or generation receipt. */
+export function formatPromptBudgetCompactionNotice(report: PromptBudgetReport, locale: Locale): string {
+  const compaction = report.compaction
+  if (!compaction) return ''
+
+  const grouped = new Map<string, { removedUtf8Bytes: number; retainedUtf8Bytes: number }>()
+  for (const section of compaction.sections) {
+    const totals = grouped.get(section.sectionName) ?? { removedUtf8Bytes: 0, retainedUtf8Bytes: 0 }
+    totals.removedUtf8Bytes += section.removedUtf8Bytes
+    totals.retainedUtf8Bytes += section.retainedUtf8Bytes
+    grouped.set(section.sectionName, totals)
+  }
+  const sectionCounts = [...grouped.entries()].map(([sectionName, totals]) => (
+    `${sectionLabel(sectionName, locale)}: ${locale === 'zh-CN' ? '移除' : 'removed'} `
+    + `${formatInteger(totals.removedUtf8Bytes, locale)}, ${locale === 'zh-CN' ? '保留' : 'retained'} `
+    + `${formatInteger(totals.retainedUtf8Bytes, locale)} ${locale === 'zh-CN' ? '字节' : 'bytes'}`
+  )).join(locale === 'zh-CN' ? '；' : '; ')
+
+  if (locale === 'zh-CN') {
+    return `提示词已在请求模型前自动压缩：移除 ${formatInteger(compaction.removedUtf8Bytes, locale)} UTF-8 字节，最终保留 ${formatInteger(compaction.retainedTotalUtf8Bytes, locale)} 字节。区段：${sectionCounts}。`
+  }
+  return `Prompt context was automatically compacted before the model request: removed ${formatInteger(compaction.removedUtf8Bytes, locale)} UTF-8 bytes and retained ${formatInteger(compaction.retainedTotalUtf8Bytes, locale)} bytes. Sections: ${sectionCounts}.`
 }
 
 export function promptBudgetFailureFromError(

@@ -1,4 +1,4 @@
-import { useRef, useEffect, useMemo, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import { useRef, useEffect, useMemo, useState, useCallback, type PointerEvent as ReactPointerEvent } from 'react'
 import { Maximize2, RotateCcw, Tag, ZoomIn, ZoomOut } from 'lucide-react'
 import {
   parseRelationshipEdges,
@@ -112,12 +112,12 @@ export default function RelationshipGraph({ characters, projectKey, onOpenEviden
   const [edgeLabelsOn, setEdgeLabelsOn] = useState<boolean | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [relationFilter, setRelationFilter] = useState<RelationKind | 'all'>('all')
+  const [pinnedNames, setPinnedNames] = useState<Set<string>>(() => new Set())
   const [focusDepth, setFocusDepth] = useState<0 | 1 | 2>(1)
   const [historyChapterFilter, setHistoryChapterFilter] = useState<number | 'all'>('all')
   const [historyCompareFrom, setHistoryCompareFrom] = useState<number | 'all'>('all')
   const [historyCompareTo, setHistoryCompareTo] = useState<number | 'all'>('all')
   const [layoutEpoch, setLayoutEpoch] = useState(0)
-  const [pinVersion, setPinVersion] = useState(0)
   const [tooltip, setTooltip] = useState<{
     x: number
     y: number
@@ -234,7 +234,7 @@ export default function RelationshipGraph({ characters, projectKey, onOpenEviden
   const effectiveEdgeLabels = edgeLabelsOn ?? visibleGraph.edges.length <= EDGE_LABEL_AUTO_LIMIT
   const accessibleRows = useMemo(
     () => relationshipListRows(visibleGraph.characters, visibleGraph.edges),
-    [pinVersion, visibleGraph.characters, visibleGraph.edges],
+    [visibleGraph.characters, visibleGraph.edges],
   )
   const relationshipHistoryRows = useMemo(
     () => visibleGraph.edges
@@ -269,7 +269,7 @@ export default function RelationshipGraph({ characters, projectKey, onOpenEviden
   }, [historyCompareFrom, historyCompareTo, relationshipHistoryRows])
   const layoutStorageKey = projectKey ? `inkweaver.relationship-layout:${projectKey}` : null
 
-  const readStoredLayout = (): { positions: Record<string, { x: number; y: number }>; pinned: string[] } => {
+  const readStoredLayout = useCallback((): { positions: Record<string, { x: number; y: number }>; pinned: string[] } => {
     if (!layoutStorageKey) return { positions: {}, pinned: [] }
     try {
       const value = JSON.parse(localStorage.getItem(layoutStorageKey) ?? '{}') as { positions?: Record<string, { x?: unknown; y?: unknown }>; pinned?: unknown }
@@ -280,9 +280,9 @@ export default function RelationshipGraph({ characters, projectKey, onOpenEviden
       const pinned = Array.isArray(value.pinned) ? value.pinned.filter((name): name is string => typeof name === 'string') : []
       return { positions, pinned }
     } catch { return { positions: {}, pinned: [] } }
-  }
+  }, [layoutStorageKey])
 
-  const persistLayout = (nodes: readonly CharacterNode[]) => {
+  const persistLayout = useCallback((nodes: readonly CharacterNode[]) => {
     if (!layoutStorageKey || nodes.length === 0) return
     try {
       localStorage.setItem(layoutStorageKey, JSON.stringify({
@@ -290,11 +290,12 @@ export default function RelationshipGraph({ characters, projectKey, onOpenEviden
         pinned: [...pinnedNamesRef.current],
       }))
     } catch { /* presentation state is best-effort */ }
-  }
+  }, [layoutStorageKey])
 
   const resetLayout = () => {
     if (layoutStorageKey) localStorage.removeItem(layoutStorageKey)
     pinnedNamesRef.current = new Set()
+    setPinnedNames(new Set())
     setLayoutEpoch(value => value + 1)
   }
 
@@ -344,11 +345,7 @@ export default function RelationshipGraph({ characters, projectKey, onOpenEviden
       const nodeNames = new Map<string, CharacterNode>()
       const storedLayout = readStoredLayout()
       pinnedNamesRef.current = new Set(storedLayout.pinned)
-      // The accessible list derives its pin marker from the ref, so refresh
-      // that projection after a remount restores persisted pins. Without this
-      // render tick the canvas nodes are pinned correctly but the keyboard/list
-      // surface looks unpinned until the user toggles another node.
-      setPinVersion(value => value + 1)
+      setPinnedNames(new Set(storedLayout.pinned))
 
       // 初始布局：黄金角螺旋/圆环铺满整个画布（内容空间 = 2 × CSS，半轴 w/h 即铺满 CSS 全宽高）
       nodesRef.current = visibleGraph.characters.map((c, i) => {
@@ -804,7 +801,7 @@ export default function RelationshipGraph({ characters, projectKey, onOpenEviden
       cancelAnimationFrame(animRef.current)
       drawRef.current = null
     }
-  }, [layoutEpoch, visibleGraph.characters, visibleGraph.edges])
+  }, [layoutEpoch, persistLayout, readStoredLayout, visibleGraph.characters, visibleGraph.edges])
 
   // 屏幕 CSS 坐标 → 内容坐标（见文件头注释的反解公式）
   const screenToContent = (screenX: number, screenY: number, w: number, h: number) => {
@@ -983,10 +980,10 @@ export default function RelationshipGraph({ characters, projectKey, onOpenEviden
     if (next.has(name)) next.delete(name)
     else next.add(name)
     pinnedNamesRef.current = next
+    setPinnedNames(next)
     const node = nodesRef.current.find(candidate => candidate.name === name)
     if (node) node.pinned = next.has(name)
     persistLayout(nodesRef.current)
-    setPinVersion(value => value + 1)
     drawRef.current?.()
   }
 
@@ -1268,7 +1265,7 @@ export default function RelationshipGraph({ characters, projectKey, onOpenEviden
                 onDoubleClick={() => togglePinnedFromAccessibleList(row.name)}
                 title={text('单击聚焦，双击固定/取消固定节点', 'Click to focus; double-click to pin or unpin')}
               >
-                <span className="truncate">{pinnedNamesRef.current.has(row.name) ? '📌 ' : ''}{row.name}</span>
+                <span className="truncate">{pinnedNames.has(row.name) ? '📌 ' : ''}{row.name}</span>
                 <span className="shrink-0 tabular-nums text-[var(--color-text-muted)]">{row.degree}</span>
               </button>
             ))}

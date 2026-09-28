@@ -15,7 +15,7 @@ import {
 import { guardChapterWriting } from '../../services/workflow-guards'
 import { ipc } from '../../services/ipc-client'
 import { requireIpcSuccess } from '../../services/ipc-result'
-import { readAuthoritativeNextChapter } from '../../services/authoritative-chapter-sequence'
+import { readAuthoritativeNextChapter, readAuthoritativeNextChapterInBackground } from '../../services/authoritative-chapter-sequence'
 import { readConsistencyPreflight, type ConsistencyPreflightResult } from '../../services/consistency-preflight'
 import {
   Dialog, DialogContent, DialogHeader, DialogFooter, DialogTitle, DialogDescription,
@@ -137,9 +137,9 @@ function ChapterCreationDialogSession({ isOpen, onClose, prefill }: Props) {
     if (!isOpen) return
     const session = captureProjectSession(currentProject)
     if (!session) return
-    void ipc.invokeWithProjectSession(session, 'db:consistency-exemption-list', session.projectPath)
+    void ipc.invokeBackgroundWithProjectSession(session, 'db:consistency-exemption-list', session.projectPath)
       .then(exemptions => {
-        if (isProjectSessionCurrent(session) && exemptions.some(item => !item.revoked)) {
+        if (exemptions && isProjectSessionCurrent(session) && exemptions.some(item => !item.revoked)) {
           setConsistencyPreflight({ findings: [], exemptions })
         }
       })
@@ -164,12 +164,13 @@ function ChapterCreationDialogSession({ isOpen, onClose, prefill }: Props) {
     /** 从项目本地 .vela/chapter_creation_log.json 读取上次参数。 */
     const loadLastParams = async (nextChapterNumber: number) => {
       try {
-        const result = await ipc.invokeWithProjectSession(
+        const result = await ipc.invokeBackgroundWithProjectSession(
           projectSession,
           'fs:read-json',
           `${projectPath}/${CREATION_LOG_REL}`,
           projectPath,
         )
+        if (result === undefined) return
         if (!isCurrentRequest()) return
         if (result.success && result.data) {
           const log = result.data as {
@@ -205,7 +206,9 @@ function ChapterCreationDialogSession({ isOpen, onClose, prefill }: Props) {
       setAuthorityLoading(true)
       let nextChapterNumber: number
       try {
-        nextChapterNumber = await readAuthoritativeNextChapter(projectSession, locale)
+        const nextChapter = await readAuthoritativeNextChapterInBackground(projectSession, locale)
+        if (nextChapter === undefined || !isCurrentRequest()) return
+        nextChapterNumber = nextChapter
       } catch (error) {
         if (!isCurrentRequest()) return
         setAuthorityError(error instanceof Error ? error.message : String(error))

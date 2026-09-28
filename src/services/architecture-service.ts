@@ -37,18 +37,18 @@ export async function checkArchStatus(
   }
 
   const [core, roster] = await Promise.all([
-    ipc.invokeWithProjectSession(
+    ipc.invokeBackgroundWithProjectSession(
       projectSession,
       'db:project-core-get',
       projectSession.projectPath,
     ),
-    ipc.invokeWithProjectSession(
+    ipc.invokeBackgroundWithProjectSession(
       projectSession,
       'db:character-roster-read',
       projectSession.projectPath,
     ),
   ])
-  if (!core) return status
+  if (!core || !roster) return status
 
   // 长度 > 50 才算真正已生成，前端可以直接用长度判断
   status.premise = (core.premise?.length ?? 0) > 50
@@ -70,18 +70,18 @@ export async function checkArchStatusWithWordCount(projectSession: ProjectSessio
   const wordCounts: Record<string, number> = { premise: 0, characters: 0, worldbuilding: 0, synopsis: 0 }
 
   const [core, roster] = await Promise.all([
-    ipc.invokeWithProjectSession(
+    ipc.invokeBackgroundWithProjectSession(
       projectSession,
       'db:project-core-get',
       projectSession.projectPath,
     ),
-    ipc.invokeWithProjectSession(
+    ipc.invokeBackgroundWithProjectSession(
       projectSession,
       'db:character-roster-read',
       projectSession.projectPath,
     ),
   ])
-  if (!core) return { status, wordCounts }
+  if (!core || !roster) return { status, wordCounts }
 
   const check = (key: ArchStepKey, content: string | undefined | null) => {
     const len = content?.length ?? 0
@@ -102,16 +102,12 @@ export async function checkArchStatusWithWordCount(projectSession: ProjectSessio
  * 获取蓝图数量
  */
 export async function getBlueprintCount(projectSession: ProjectSessionContext): Promise<number> {
-  try {
-    const blueprints = await ipc.invokeWithProjectSession(
-      projectSession,
-      'db:blueprint-get-all',
-      projectSession.projectPath,
-    )
-    return blueprints.length
-  } catch {
-    return 0
-  }
+  const blueprints = await ipc.invokeBackgroundWithProjectSession(
+    projectSession,
+    'db:blueprint-get-all',
+    projectSession.projectPath,
+  )
+  return blueprints?.length ?? 0
 }
 
 /**

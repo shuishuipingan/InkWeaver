@@ -9,6 +9,7 @@
 import { ipc } from './ipc-client'
 import { requireIpcSuccess } from './ipc-result'
 import { useWorkflowStore } from '../stores/workflow-store'
+import { useLocaleStore } from '../stores/locale-store'
 import type { ProjectSessionContext } from '../shared/ipc-channels'
 import type { AuthoritativeChapterSequence } from '../shared/author-manuscript-import'
 import { countDraftUnits } from '../shared/draft-units'
@@ -27,6 +28,8 @@ interface ExportOptions {
   format: ExportFormat
   /** 由主进程选择目录后签发的受限授权，绝不是绝对路径。 */
   grantId: string
+  /** 默认包含每章最新版本；关闭后仅导出定稿权威。 */
+  includeDrafts?: boolean
   includeOutline?: boolean
   includeCharacters?: boolean
 }
@@ -62,7 +65,7 @@ export interface FinalizedExportPlanChapter {
 
 export type FinalizedExportPlan =
   | { ok: true; chapters: FinalizedExportPlanChapter[] }
-  | { ok: false; error: string }
+  | { ok: false; error: string; reason?: 'empty-content' }
 
 export interface ExportManifest {
   schemaVersion: 1
@@ -117,6 +120,86 @@ export function createFinalizedExportPlan(
   return unexpected
     ? { ok: false, error: '定稿事实超出连续权威章节范围，无法安全导出' }
     : { ok: true, chapters }
+}
+
+/**
+ * Selects exactly one highest-version record per chapter, then validates the
+ * complete canonical chapter range. Finalized authority remains a hard safety
+ * boundary even when a newer candidate is selected for export.
+ */
+export function createLatestDraftExportPlan(
+  authority: AuthoritativeChapterSequence,
+  drafts: readonly ExportDraftMeta[],
+): FinalizedExportPlan {
+  if (authority.status === 'invalid') {
+    return { ok: false, error: '权威定稿章节序列存在缺章或重复，无法安全导出' }
+  }
+  if (!Number.isSafeInteger(authority.lastChapterNumber) || authority.lastChapterNumber < 0) {
+    return { ok: false, error: '权威定稿章节序列无效，无法安全导出' }
+  }
+
+  if (authority.status === 'continuous') {
+    const finalizedPlan = createFinalizedExportPlan(authority, drafts)
+    if (!finalizedPlan.ok) return finalizedPlan
+  } else if (drafts.some(draft => draft.status === 'finalized')) {
+    return { ok: false, error: '权威定稿章节序列与定稿事实不匹配，无法安全导出' }
+  }
+
+  const latestByChapter = new Map<number, ExportDraftMeta>()
+  for (const draft of drafts.filter(candidate => candidate.status !== 'archived')) {
+    if (!Number.isSafeInteger(draft.chapterNumber) || draft.chapterNumber < 1) {
+      return { ok: false, error: '草稿包含无效章节编号，无法安全导出' }
+    }
+    if (!Number.isSafeInteger(draft.version) || draft.version < 1) {
+      return { ok: false, error: `第 ${draft.chapterNumber} 章包含无效版本，无法安全导出` }
+    }
+    const current = latestByChapter.get(draft.chapterNumber)
+    if (current?.version === draft.version) {
+      return { ok: false, error: `第 ${draft.chapterNumber} 章存在重复版本，无法安全导出` }
+    }
+    if (!current || draft.version > current.version) {
+      latestByChapter.set(draft.chapterNumber, draft)
+    }
+  }
+
+  let lastChapterNumber = authority.lastChapterNumber
+  const chapterNumbers = [...latestByChapter.keys()].sort((left, right) => left - right)
+  for (const chapterNumber of chapterNumbers) {
+    if (chapterNumber > lastChapterNumber) lastChapterNumber = chapterNumber
+  }
+  if (lastChapterNumber < 1) {
+    return { ok: false, error: '没有可导出的定稿章节或草稿。', reason: 'empty-content' }
+  }
+
+  let expectedChapterNumber = 1
+  for (const chapterNumber of chapterNumbers) {
+    if (chapterNumber > expectedChapterNumber) {
+      return { ok: false, error: `导出章节序列缺少第 ${expectedChapterNumber} 章，无法安全导出` }
+    }
+    if (chapterNumber === expectedChapterNumber) expectedChapterNumber += 1
+  }
+  if (expectedChapterNumber <= lastChapterNumber) {
+    return { ok: false, error: `导出章节序列缺少第 ${expectedChapterNumber} 章，无法安全导出` }
+  }
+
+  const chapters = chapterNumbers.map(chapterNumber => {
+    const draft = latestByChapter.get(chapterNumber)!
+    return {
+      id: draft.id,
+      chapterNumber,
+      chapterTitle: draft.chapterTitle?.trim() || `第${chapterNumber}章`,
+      version: draft.version,
+      ...(typeof draft.wordCount === 'number' ? { wordCount: draft.wordCount } : {}),
+    }
+  })
+  return { ok: true, chapters }
+}
+
+function noExportableContentMessage(): string {
+  return useLocaleStore.getState().text(
+    '没有可导出的定稿章节或草稿。请先完成定稿或保存至少一章草稿。',
+    'There are no finalized chapters or drafts to export. Finalize content or save at least one draft first.',
+  )
 }
 
 const PROJECT_SESSION_CHANGED_ERROR = '项目会话已变化，本次导出已取消'
@@ -177,7 +260,8 @@ export async function exportNovel(
 
   try {
     // Planning blueprints may be ahead of, or missing from, the manuscript.
-    // Export is therefore enumerated exclusively from finalized authority.
+    // Draft-inclusive export uses manuscript versions, while finalized authority
+    // still validates any published chapters and its canonical sequence.
     const authority = await ipc.invokeWithProjectSession(
       projectSession,
       'db:draft-authority-sequence',
@@ -190,8 +274,15 @@ export async function exportNovel(
       projectSession.projectPath,
     ) as unknown as ExportDraftMeta[]
     if (!isProjectSessionCurrent(projectSession)) return staleExportResult()
-    const plan = createFinalizedExportPlan(authority, allDrafts)
-    if (!plan.ok) return { success: false, error: plan.error }
+    const plan = options.includeDrafts === false
+      ? createFinalizedExportPlan(authority, allDrafts)
+      : createLatestDraftExportPlan(authority, allDrafts)
+    if (!plan.ok) {
+      return {
+        success: false,
+        error: plan.reason === 'empty-content' ? noExportableContentMessage() : plan.error,
+      }
+    }
 
     const chapterContents: Array<{ chapterNumber: number; name: string; title: string; content: string; wordCount: number; contentHash: string }> = []
     for (const chapter of plan.chapters) {
@@ -226,7 +317,7 @@ export async function exportNovel(
     }
 
     if (!isProjectSessionCurrent(projectSession)) return staleExportResult()
-    addLog('info', `找到 ${chapterContents.length} 个已定稿章节`)
+    addLog('info', `找到 ${chapterContents.length} 个章节`)
 
     let outputPath = ''
     const projectFileStem = exportFileStem(project.name)

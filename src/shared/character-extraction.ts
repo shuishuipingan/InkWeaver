@@ -72,7 +72,7 @@ function textValue(value: unknown): string | undefined {
 
 function parseJsonRoot(text: string): unknown {
   const cleaned = text.replace(/```json?\s*/giu, '').replace(/```/gu, '').trim()
-  const start = cleaned.search(/[\[{]/u)
+  const start = cleaned.search(/[{\x5B]/u)
   const end = Math.max(cleaned.lastIndexOf('}'), cleaned.lastIndexOf(']'))
   if (start < 0 || end <= start) throw new Error('人物提取结果不是 JSON')
   return JSON.parse(cleaned.slice(start, end + 1)) as unknown

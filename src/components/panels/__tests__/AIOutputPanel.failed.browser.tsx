@@ -7,7 +7,7 @@ import { useLocaleStore } from '../../../stores/locale-store'
 import { useProjectStore } from '../../../stores/project-store'
 import { useEditorStore } from '../../../stores/editor-store'
 import AIOutputPanel from '../AIOutputPanel'
-import type { PromptBudgetReport } from '../../../services/generation/generation-harness'
+import type { PromptBudgetReport } from '../../../shared/prompt-budget'
 
 const originalWorkflowState = useWorkflowStore.getState()
 const originalLocaleState = useLocaleStore.getState()
@@ -183,6 +183,95 @@ describe('AIOutputPanel prompt budget failure', () => {
     expect(useEditorStore.getState().tabs).toEqual(expect.arrayContaining([
       expect.objectContaining({ type: 'config', projectKey: 'C:\\novels\\prompt-budget' }),
     ]))
+  })
+
+  it('shows the safe preflight compaction summary on a generation receipt', async () => {
+    const report: PromptBudgetReport = {
+      totalUtf8Bytes: 990,
+      limitUtf8Bytes: 900,
+      reservedOutputTokens: 512,
+      sections: [
+        { sectionName: 'core-outline', utf8Bytes: 80 },
+        { sectionName: 'distant-blueprints', utf8Bytes: 10 },
+      ],
+      compaction: {
+        originalTotalUtf8Bytes: 1_040,
+        retainedTotalUtf8Bytes: 990,
+        removedUtf8Bytes: 50,
+        sections: [
+          { sectionName: 'core-outline', originalUtf8Bytes: 100, retainedUtf8Bytes: 80, removedUtf8Bytes: 20 },
+          { sectionName: 'distant-blueprints', originalUtf8Bytes: 40, retainedUtf8Bytes: 10, removedUtf8Bytes: 30 },
+        ],
+      },
+      modelId: 'model-a',
+      errorCode: 'OK',
+    }
+    const run: WorkflowRun = {
+      ...failedChapterDraft(),
+      generationReceipt: {
+        modelId: 'model-a',
+        attempt: 1,
+        cumulativeRequestedOutputTokens: 512,
+        maxRequestedOutputTokens: 4096,
+        maxRequestedOutputTokensPerAttempt: 4096,
+        promptBudget: report,
+      },
+    }
+    useWorkflowStore.setState({ history: [run] })
+
+    await act(async () => {
+      root?.render(<AIOutputPanel />)
+    })
+    const failedRun = Array.from(container?.querySelectorAll('button') ?? [])
+      .find(button => button.textContent?.includes('第 1 章：初入魔窟'))
+    await act(async () => failedRun?.click())
+
+    const notice = container?.querySelector('[data-prompt-budget-compaction="true"]')
+    expect(notice?.textContent).toContain('移除 50 UTF-8 字节')
+    expect(notice?.textContent).toContain('保留 990 字节')
+    expect(notice?.textContent).toContain('核心大纲')
+    expect(notice?.textContent).toContain('远期章节蓝图')
+  })
+
+  it('shows the compaction notice while the workflow is still running', async () => {
+    const report: PromptBudgetReport = {
+      totalUtf8Bytes: 990,
+      limitUtf8Bytes: 900,
+      reservedOutputTokens: 512,
+      sections: [{ sectionName: 'distant-blueprints', utf8Bytes: 10 }],
+      compaction: {
+        originalTotalUtf8Bytes: 1_040,
+        retainedTotalUtf8Bytes: 990,
+        removedUtf8Bytes: 50,
+        sections: [{
+          sectionName: 'distant-blueprints',
+          originalUtf8Bytes: 60,
+          retainedUtf8Bytes: 10,
+          removedUtf8Bytes: 50,
+        }],
+      },
+      modelId: 'model-a',
+      errorCode: 'OK',
+    }
+    const completedRun = failedChapterDraft()
+    const run: WorkflowRun = {
+      ...completedRun,
+      status: 'running',
+      promptBudgetReport: report,
+      steps: completedRun.steps.map(step => ({ ...step, status: 'running', error: undefined, failureCode: undefined })),
+    }
+    useWorkflowStore.setState({ activeRuns: [], history: [run] })
+
+    await act(async () => {
+      root?.render(<AIOutputPanel />)
+    })
+    const runningRun = Array.from(container?.querySelectorAll('button') ?? [])
+      .find(button => button.textContent?.includes('第 1 章：初入魔窟'))
+    await act(async () => runningRun?.click())
+
+    const notice = container?.querySelector('[data-prompt-budget-preflight="true"]')
+    expect(notice?.textContent).toContain('移除 50 UTF-8 字节')
+    expect(notice?.textContent).toContain('远期章节蓝图')
   })
 
   it.each([

@@ -36,9 +36,10 @@ export default function KnowledgePanel() {
     const expectedProjectPath = projectSession.projectPath
     try {
       const [documentsResult, statsResult] = await Promise.all([
-        ipc.invokeWithProjectSession(projectSession, 'kb:list-documents', expectedProjectPath),
-        ipc.invokeWithProjectSession(projectSession, 'kb:stats', expectedProjectPath),
+        ipc.invokeBackgroundWithProjectSession(projectSession, 'kb:list-documents', expectedProjectPath),
+        ipc.invokeBackgroundWithProjectSession(projectSession, 'kb:stats', expectedProjectPath),
       ])
+      if (documentsResult === undefined || statsResult === undefined) return
       if (!isProjectSessionCurrent(projectSession)) return
       const docs = unwrapKnowledgeValue(documentsResult)
       const s = unwrapKnowledgeValue(statsResult)
@@ -100,13 +101,13 @@ export default function KnowledgePanel() {
           }
 
           try {
-            const res = await ipc.invokeWithProjectSession(
+            const res = await ipc.invokeBackgroundWithProjectSession(
               projectSession,
               'fs:read-file',
               doc.filePath,
               expectedProjectPath,
             )
-            if (res.success && res.content) {
+            if (res?.success && res.content) {
               const firstLine = res.content.split('\n').find((l: string) => l.trim())
               if (firstLine) {
                 title = firstLine.replace(/^#+\s*/, '').trim() || title

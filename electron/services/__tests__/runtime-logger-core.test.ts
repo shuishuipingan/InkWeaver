@@ -6,7 +6,7 @@ import type { RuntimeLogWriterLike } from '../runtime-logger-core'
 
 function writer() {
   return {
-    append: vi.fn<RuntimeLogWriterLike['append']>(async (_event: RuntimeLogEvent) => ({ persisted: true, eventId: 'event' })),
+    append: vi.fn<RuntimeLogWriterLike['append']>(async () => ({ persisted: true, eventId: 'event' })),
     flush: vi.fn(async () => undefined),
     status: vi.fn(() => ({
       persistenceState: 'healthy' as const,

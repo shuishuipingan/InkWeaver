@@ -12,7 +12,7 @@ let container: HTMLDivElement
 let invoke: ReturnType<typeof vi.fn>
 
 beforeEach(() => {
-  ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
+  (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
   useProjectStore.setState({ currentProject: { id: SESSION.projectId, sessionLease: SESSION.leaseId, path: PROJECT_PATH, novelConfig: { writingLanguage: 'zh-CN' } } as never })
   setActiveProjectSessionContext(SESSION)
   const records = [
@@ -50,6 +50,18 @@ afterEach(async () => {
 })
 
 describe('ContinuousReader', () => {
+  it('does not show a loading state when there is no active project session', async () => {
+    setActiveProjectSessionContext(null)
+    useProjectStore.setState({ currentProject: null })
+
+    await act(async () => root.render(<ContinuousReader projectKey={PROJECT_PATH} />))
+
+    const refresh = container.querySelector<HTMLButtonElement>('button[aria-label="刷新连读"]')
+    expect(refresh).not.toBeNull()
+    expect(refresh?.disabled).toBe(false)
+    expect(refresh?.querySelector('.animate-spin')).toBeNull()
+  })
+
   it('loads finalized chapters as one readable stream and preserves chapter navigation', async () => {
     await act(async () => root.render(<ContinuousReader projectKey={PROJECT_PATH} />))
     await vi.waitFor(() => expect(container.querySelector('[data-continuous-reader="true"]')).not.toBeNull())

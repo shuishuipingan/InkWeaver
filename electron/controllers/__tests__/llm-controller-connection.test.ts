@@ -9,13 +9,23 @@ const mocks = vi.hoisted(() => ({
   generate: vi.fn(),
   generateStream: vi.fn(),
   send: vi.fn(),
+  windowDestroyed: false,
+  webContentsDestroyed: false,
   logCall: vi.fn(),
   assertCurrentProjectContext: vi.fn(),
   models: [] as ModelProfile[],
 }))
 
 vi.mock('electron', () => ({
-  BrowserWindow: { fromWebContents: vi.fn(() => ({ webContents: { send: mocks.send } })) },
+  BrowserWindow: {
+    fromWebContents: vi.fn(() => ({
+      isDestroyed: () => mocks.windowDestroyed,
+      webContents: {
+        send: mocks.send,
+        isDestroyed: () => mocks.webContentsDestroyed,
+      },
+    })),
+  },
   ipcMain: {
     handle: vi.fn((channel: string, handler: IpcHandler) => {
       mocks.handlers.set(channel, handler)
@@ -108,6 +118,13 @@ beforeAll(() => {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mocks.windowDestroyed = false
+  mocks.webContentsDestroyed = false
+  mocks.send.mockImplementation(() => {
+    if (mocks.windowDestroyed || mocks.webContentsDestroyed) {
+      throw new Error('Cannot send to destroyed webContents')
+    }
+  })
   mocks.generate.mockImplementation(async (
     _model: ModelProfile,
     _messages: unknown,
@@ -615,4 +632,73 @@ describe('llm project statistics', () => {
       errorMessage: 'finish:unknown',
     }))
   })
+})
+
+describe('llm stream delivery during window teardown', () => {
+  const projectSession = {
+    projectId: 'project-A',
+    projectPath: 'C:/projects/A',
+    leaseId: 'lease-A',
+  }
+
+  type StreamCallbacks = {
+    onChunk(chunk: string): void
+    onDone(fullText: string): void
+    onError(error: string): void
+  }
+
+  it.each([
+    { callback: 'onChunk', destroyedTarget: 'window' },
+    { callback: 'onDone', destroyedTarget: 'window' },
+    { callback: 'onError', destroyedTarget: 'window' },
+    { callback: 'onChunk', destroyedTarget: 'webContents' },
+    { callback: 'onDone', destroyedTarget: 'webContents' },
+    { callback: 'onError', destroyedTarget: 'webContents' },
+  ] as const)(
+    'handles $callback after the $destroyedTarget is destroyed and completes bookkeeping once',
+    async ({ callback, destroyedTarget }) => {
+      mocks.models = [deepSeekModel]
+      let streamCallbacks: StreamCallbacks | undefined
+      mocks.generateStream.mockImplementationOnce((
+        _model: ModelProfile,
+        _messages: unknown,
+        options: StreamCallbacks,
+      ) => { streamCallbacks = options })
+      const requestId = `destroyed-${destroyedTarget}-${callback}`
+      const generateHandler = mocks.handlers.get('llm:generate-stream')
+      if (!generateHandler) throw new Error('Missing llm:generate-stream handler')
+
+      await expect(generateHandler({ sender: {} }, requestId, {
+        modelId: deepSeekModel.id,
+        messages: [{ role: 'user', content: 'write' }],
+        purpose: 'draft',
+        projectSession,
+      })).resolves.toEqual({ requestId, started: true })
+      if (!streamCallbacks) throw new Error('Missing stream callbacks')
+
+      if (destroyedTarget === 'window') mocks.windowDestroyed = true
+      else mocks.webContentsDestroyed = true
+
+      const invokeSelectedCallback = () => {
+        if (callback === 'onChunk') streamCallbacks?.onChunk('delta')
+        else if (callback === 'onDone') streamCallbacks?.onDone('done')
+        else streamCallbacks?.onError('provider failed')
+      }
+
+      expect(invokeSelectedCallback).not.toThrow()
+      expect(mocks.send).not.toHaveBeenCalled()
+
+      if (callback === 'onError') {
+        expect(() => streamCallbacks?.onError('provider failed again')).not.toThrow()
+      } else {
+        expect(() => streamCallbacks?.onDone('done again')).not.toThrow()
+      }
+      expect(mocks.send).not.toHaveBeenCalled()
+      expect(mocks.logCall).toHaveBeenCalledOnce()
+
+      const cancelHandler = mocks.handlers.get('llm:cancel')
+      if (!cancelHandler) throw new Error('Missing llm:cancel handler')
+      await expect(cancelHandler({}, requestId)).resolves.toEqual({ success: false })
+    },
+  )
 })

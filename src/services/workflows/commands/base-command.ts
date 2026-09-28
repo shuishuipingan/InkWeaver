@@ -11,8 +11,8 @@ import {
   GenerationAttemptError,
   type GenerationAttemptReceipt,
   type GenerationSession,
-  type PromptBudgetPolicy,
 } from '../../generation/generation-harness'
+import type { PromptBudgetPolicy, PromptBudgetReport } from '../../../shared/prompt-budget'
 import type { GenerationReasoningStage } from '../../../shared/reasoning-types'
 import {
   completeBoundedCompletion,
@@ -23,6 +23,7 @@ import {
 import { workflowUiText, workflowWritingLanguage } from '../workflow-project-session'
 import { runtimeLog } from '../../runtime-log'
 import { generationReceiptFromAttempt } from '../../../shared/generation-receipt'
+import { formatPromptBudgetCompactionNotice } from '../../generation/prompt-budget-failure'
 
 export interface CommandExecuteParams {
   step: unknown
@@ -286,6 +287,7 @@ export abstract class BaseWorkflowCommand<TResult = string> {
       throw new Error('生成调用上下文与当前命令执行期不一致。')
     }
     callbacks.setProgress(10)
+    let promptBudgetPreflightReported = false
     try {
       const outcome = await execution.session.complete({
         purpose: options?.purpose ?? 'workflow',
@@ -296,8 +298,15 @@ export abstract class BaseWorkflowCommand<TResult = string> {
           { role: 'user', content: prompt },
         ],
         ...(options?.promptBudget ? { promptBudget: options.promptBudget } : {}),
-      }, { signal: execution.signal })
-      this.reportGenerationPromptBudget(callbacks, outcome.receipt)
+      }, {
+        signal: execution.signal,
+        onPromptBudgetPreflight: (report: PromptBudgetReport) => {
+          promptBudgetPreflightReported = true
+          callbacks.setPromptBudgetReport?.(report)
+          callbacks.log(formatPromptBudgetCompactionNotice(report, context?.uiLocale ?? 'zh-CN'))
+        },
+      })
+      this.reportGenerationPromptBudget(callbacks, outcome.receipt, !promptBudgetPreflightReported)
       this.assertNotCancelled(context)
       const content = this.stripThinkingTags(outcome.content)
       callbacks.appendText(content)
@@ -309,7 +318,7 @@ export abstract class BaseWorkflowCommand<TResult = string> {
       }
     } catch (error) {
       if (error instanceof GenerationAttemptError) {
-        this.reportGenerationPromptBudget(callbacks, error.receipt)
+        this.reportGenerationPromptBudget(callbacks, error.receipt, !promptBudgetPreflightReported)
       }
       if (context?.cancelled || (
         typeof error === 'object'
@@ -328,8 +337,9 @@ export abstract class BaseWorkflowCommand<TResult = string> {
   protected reportGenerationPromptBudget(
     callbacks: StepCallbacks,
     receipt: GenerationAttemptReceipt,
+    reportPromptBudget = true,
   ): void {
-    if (receipt.promptBudget) callbacks.setPromptBudgetReport?.(receipt.promptBudget)
+    if (reportPromptBudget && receipt.promptBudget) callbacks.setPromptBudgetReport?.(receipt.promptBudget)
     callbacks.setGenerationReceipt?.(generationReceiptFromAttempt(receipt))
   }
 

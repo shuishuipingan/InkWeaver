@@ -6,7 +6,7 @@ import { useWorkflowStore } from '../../stores/workflow-store'
 import { ipc } from '../../services/ipc-client'
 import { collectContinuityImpact, type ContinuityImpactItem } from '../../services/continuity-impact'
 import { createContinuityRebuildWorkflow } from '../../services/workflows/continuity-rebuild-workflow'
-import { captureProjectSession, isProjectSessionPath } from '../project-session-gate'
+import { captureProjectSession, isProjectSessionCurrent, isProjectSessionPath } from '../project-session-gate'
 import { Button } from '../ui/Button'
 import { toast } from '../ui/Toast'
 
@@ -15,6 +15,9 @@ interface ContinuityImpactPanelProps {
   changedChapter: number
 }
 
+const EMPTY_ITEMS: ContinuityImpactItem[] = []
+const EMPTY_SELECTION = new Set<string>()
+
 /**
  * Read-only impact surface for historical edits. Rebuild selection is kept in
  * local UI state until a source-bound rebuild job is explicitly confirmed.
@@ -22,44 +25,67 @@ interface ContinuityImpactPanelProps {
 export default function ContinuityImpactPanel({ projectKey, changedChapter }: ContinuityImpactPanelProps) {
   const text = useLocaleStore(state => state.text)
   const currentProject = useProjectStore(state => state.currentProject)
-  const [items, setItems] = useState<ContinuityImpactItem[]>([])
-  const [selected, setSelected] = useState<Set<string>>(new Set())
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const projectSessionKey = currentProject?.id && currentProject.path && currentProject.sessionLease
+    ? `${currentProject.id}\u0000${currentProject.sessionLease}\u0000${currentProject.path}`
+    : ''
+  const requestKey = projectSessionKey
+    && currentProject?.path === projectKey
+    && changedChapter > 0
+    ? `${projectSessionKey}\u0000${changedChapter}`
+    : ''
+  const [loadResult, setLoadResult] = useState<{
+    requestKey: string
+    items: ContinuityImpactItem[]
+    selected: Set<string>
+    error: string | null
+  } | null>(null)
+  const currentResult = loadResult?.requestKey === requestKey ? loadResult : null
+  const items = currentResult?.items ?? EMPTY_ITEMS
+  const selected = currentResult?.selected ?? EMPTY_SELECTION
+  const loading = Boolean(requestKey && !currentResult)
+  const error = currentResult?.error ?? null
   const [starting, setStarting] = useState(false)
 
   useEffect(() => {
-    const session = captureProjectSession(currentProject)
-    if (!session || !isProjectSessionPath(session, projectKey) || changedChapter < 1) {
-      setItems([])
-      return
-    }
+    if (!requestKey) return
+    const session = captureProjectSession(useProjectStore.getState().currentProject)
+    if (!session || !isProjectSessionPath(session, projectKey)) return
+    const activeRequestKey = `${session.projectId}\u0000${session.leaseId}\u0000${session.projectPath}\u0000${changedChapter}`
+    if (activeRequestKey !== requestKey) return
     let cancelled = false
-    setLoading(true)
-    setError(null)
     void (async () => {
       try {
         const [projections, handoffs, threadPlans] = await Promise.all([
-          ipc.invokeWithProjectSession(session, 'db:continuity-list-all', projectKey),
-          ipc.invokeWithProjectSession(session, 'db:chapter-handoff-list-all', projectKey),
-          ipc.invokeWithProjectSession(session, 'db:narrative-thread-list', projectKey),
+          ipc.invokeBackgroundWithProjectSession(session, 'db:continuity-list-all', projectKey),
+          ipc.invokeBackgroundWithProjectSession(session, 'db:chapter-handoff-list-all', projectKey),
+          ipc.invokeBackgroundWithProjectSession(session, 'db:narrative-thread-list', projectKey),
         ])
-        if (cancelled) return
+        if (
+          !projections
+          || !handoffs
+          || !threadPlans
+          || cancelled
+          || !isProjectSessionCurrent(session)
+        ) return
         const next = collectContinuityImpact(changedChapter, {
           projections,
           handoffs,
           threadPlans,
         })
-        setItems(next)
-        setSelected(new Set(next.map(item => item.id)))
+        setLoadResult({
+          requestKey,
+          items: next,
+          selected: new Set(next.map(item => item.id)),
+          error: null,
+        })
       } catch (cause) {
-        if (!cancelled) setError(String(cause))
-      } finally {
-        if (!cancelled) setLoading(false)
+        if (!cancelled && isProjectSessionCurrent(session)) {
+          setLoadResult({ requestKey, items: [], selected: new Set(), error: String(cause) })
+        }
       }
     })()
     return () => { cancelled = true }
-  }, [changedChapter, currentProject, projectKey])
+  }, [changedChapter, projectKey, projectSessionKey, requestKey])
 
   const selectedCount = useMemo(() => [...selected].filter(id => items.some(item => item.id === id)).length, [items, selected])
   const startRebuild = () => {
@@ -127,11 +153,12 @@ export default function ContinuityImpactPanel({ projectKey, changedChapter }: Co
                 <input
                   type="checkbox"
                   checked={selected.has(item.id)}
-                  onChange={() => setSelected(current => {
-                    const next = new Set(current)
+                  onChange={() => setLoadResult(current => {
+                    if (!current || current.requestKey !== requestKey) return current
+                    const next = new Set(current.selected)
                     if (next.has(item.id)) next.delete(item.id)
                     else next.add(item.id)
-                    return next
+                    return { ...current, selected: next }
                   })}
                   aria-label={item.label}
                 />

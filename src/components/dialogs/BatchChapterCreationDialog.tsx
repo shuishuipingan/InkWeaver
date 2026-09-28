@@ -24,7 +24,7 @@ import {
   isProjectSessionCurrent,
 } from '../project-session-gate'
 import type { ModelProfile } from '../../shared/ipc-channels'
-import { readAuthoritativeNextChapter } from '../../services/authoritative-chapter-sequence'
+import { readAuthoritativeNextChapter, readAuthoritativeNextChapterInBackground } from '../../services/authoritative-chapter-sequence'
 import { readConsistencyPreflight, type ConsistencyPreflightResult } from '../../services/consistency-preflight'
 import { requireIpcSuccess } from '../../services/ipc-result'
 import ConsistencyPreflightPanel from './ConsistencyPreflightPanel'
@@ -123,8 +123,9 @@ function BatchChapterCreationDialogSession({ isOpen, startChapterNumber, onClose
     const loadAuthority = async () => {
       setAuthorityLoading(true)
       try {
-        const nextChapter = await readAuthoritativeNextChapter(projectSession, locale)
+        const nextChapter = await readAuthoritativeNextChapterInBackground(projectSession, locale)
         if (disposed || !isProjectSessionCurrent(projectSession)) return
+        if (nextChapter === undefined) return
         setAuthoritativeStart(nextChapter)
         setAuthorityError(null)
       } catch (cause) {
@@ -143,9 +144,9 @@ function BatchChapterCreationDialogSession({ isOpen, startChapterNumber, onClose
     if (!isOpen) return
     const session = captureProjectSession(currentProject)
     if (!session) return
-    void ipc.invokeWithProjectSession(session, 'db:consistency-exemption-list', session.projectPath)
+    void ipc.invokeBackgroundWithProjectSession(session, 'db:consistency-exemption-list', session.projectPath)
       .then(exemptions => {
-        if (isProjectSessionCurrent(session) && exemptions.some(item => !item.revoked)) {
+        if (exemptions && isProjectSessionCurrent(session) && exemptions.some(item => !item.revoked)) {
           setConsistencyPreflight({ findings: [], exemptions })
         }
       })

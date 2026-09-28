@@ -151,9 +151,14 @@ export default function ProjectTree() {
   const workflowKey = activeRuns.map(r => `${r.id}:${r.status}|${r.steps.map(s => s.status).join(',')}`).join(';')
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => {
-    if (!currentProject) return
+    const projectSession = captureProjectSession(currentProject)
+    if (!projectSession) return
     if (debounceRef.current) clearTimeout(debounceRef.current)
     debounceRef.current = setTimeout(() => {
+      if (
+        !isProjectSessionCurrent(projectSession)
+        || useProjectStore.getState().projectSessionEpoch !== projectSessionEpoch
+      ) return
       refreshAll()
     }, 80)
     return () => {
@@ -161,7 +166,7 @@ export default function ProjectTree() {
     }
     // 依赖 path 字符串而非 currentProject 对象引用
     //    避免 updateNovelConfig 改变对象引用后触发不必要的 refreshAll
-  }, [workflowKey, currentProject?.path, refreshAll]) // eslint-disable-line react-hooks/exhaustive-deps -- currentProject 对象引用变化不触发，仅 path 变化需响应
+  }, [workflowKey, currentProject?.path, currentProject?.sessionLease, projectSessionEpoch, refreshAll]) // eslint-disable-line react-hooks/exhaustive-deps -- 项目身份变化时取消旧刷新
 
   if (!currentProject) {
     return (

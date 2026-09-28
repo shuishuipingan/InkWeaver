@@ -23,6 +23,9 @@ vi.mock('../ipc-client', () => ({
     invokeWithProjectSession: (_projectSession: unknown, channel: string, ...args: unknown[]) => (
       mocks.invoke(channel, ...args)
     ),
+    invokeBackgroundWithProjectSession: (_projectSession: unknown, channel: string, ...args: unknown[]) => (
+      mocks.invoke(channel, ...args)
+    ),
   },
 }))
 
@@ -177,6 +180,37 @@ describe('ProjectService REFRESH_RESOURCE project identity', () => {
     expect(draftLoad).toHaveBeenCalledWith(projectBPath, {
       projectId: 'B', leaseId: 'lease-B', projectPath: projectBPath,
     })
+  })
+
+  it('does not publish a passive refresh failure after its project session closes', async () => {
+    const sessionA = { projectId: 'A', leaseId: 'lease-A', projectPath: projectAPath }
+    let rejectCharacterLoad: ((reason?: unknown) => void) | undefined
+    useProjectStore.setState({
+      currentProject: {
+        id: 'A', name: 'A', path: projectAPath, sessionLease: sessionA.leaseId, novelConfig: {},
+      } as never,
+    })
+    vi.spyOn(useCharacterStore.getState(), 'load').mockImplementation(() => new Promise<void>((_resolve, reject) => {
+      rejectCharacterLoad = reject
+    }))
+    const notice = vi.fn()
+    const unsubscribe = globalEventBus.on('SYSTEM_NOTICE', notice)
+    initProjectService()
+
+    globalEventBus.emit('REFRESH_RESOURCE', {
+      resources: ['characterCards'],
+      projectPath: projectAPath,
+      projectSession: sessionA,
+    })
+    await vi.waitFor(() => expect(rejectCharacterLoad).toBeTypeOf('function'))
+
+    useProjectStore.setState({ currentProject: null })
+    rejectCharacterLoad?.(new Error('project session lease expired'))
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(notice).not.toHaveBeenCalled()
+    unsubscribe()
   })
 
   it('drops opening results and PROJECT_CHANGED after reopening the same path with a new lease', async () => {

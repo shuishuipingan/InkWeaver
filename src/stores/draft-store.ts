@@ -146,7 +146,8 @@ export const useDraftStore = create<DraftState>()((set, get) => ({
 
     try {
       // 直接调用后端 DB 获取列表，返回的结构已经转换为兼容的 DraftMeta 格式
-      const list = await ipc.invokeWithProjectSession(projectSession, 'db:draft-list', chapterNumber, projectPath)
+      const list = await ipc.invokeBackgroundWithProjectSession(projectSession, 'db:draft-list', chapterNumber, projectPath)
+      if (!list) return
       if (
         requestId !== loadAllDraftsRequestSequence
         || !sameProjectSessionContext(
@@ -200,7 +201,8 @@ export const useDraftStore = create<DraftState>()((set, get) => ({
       loadingProjectSession: projectSession,
     }))
     try {
-      const drafts = await ipc.invokeWithProjectSession(projectSession, 'db:draft-list-all', projectPath)
+      const drafts = await ipc.invokeBackgroundWithProjectSession(projectSession, 'db:draft-list-all', projectPath)
+      if (!drafts) return
       const newDraftsByChapter: DraftsByChapter = {}
 
       for (const draft of drafts) {

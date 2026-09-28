@@ -26,8 +26,16 @@ export const RENDERER_SURFACE_E2E_CONTRACT = Object.freeze({
     page: Object.freeze({ selector: '.skin-workspace-page', alpha: 0.60 }),
     solid: Object.freeze({ selector: '.skin-solid-surface', alpha: 0.88 }),
   }),
+  customSkinSurfaces: Object.freeze({
+    skinId: 'custom',
+    assetPath: 'build/icon.png',
+    themes: Object.freeze(['light', 'dark']),
+    sidebarAlpha: 0.56,
+    pageAlpha: 0.60,
+    lightSettingsModalAlpha: 0.88,
+  }),
   routes: Object.freeze(['project', 'knowledge', 'characters', 'blueprint']),
-  classicMustBeOpaque: true,
+  classicOpaqueThemes: Object.freeze(['galaxy', 'paper', 'dark']),
   visualEvidence: Object.freeze({
     outputEnvironment: 'AI_NOVEL_RENDERER_VISUAL_EVIDENCE_DIR',
     viewport: Object.freeze({ width: 1440, height: 900 }),
@@ -63,6 +71,11 @@ export const RENDERER_SURFACE_E2E_CONTRACT = Object.freeze({
   classicThemeSurfaces: Object.freeze({
     themed: Object.freeze(['light', 'galaxy', 'paper', 'dark']),
     paper: 'paper',
+    lightGlassGradientStops: Object.freeze({
+      default: Object.freeze([0.62, 0.38, 0.50]),
+      workspacePage: Object.freeze([0.40, 0.30]),
+    }),
+    lightGlassStatusbarHover: Object.freeze({ color: '#FFFFFF', alpha: 0.92 }),
     surfaces: Object.freeze({
       topbar: Object.freeze({ selector: '.writer-topbar', token: '--color-titlebar', textToken: '--color-titlebar-text', minHeight: 24 }),
       leftRail: Object.freeze({ selector: '.writer-left-rail', token: '--color-activity-bar', textToken: '--color-text-secondary', minWidth: 40 }),
@@ -81,10 +94,10 @@ export const RENDERER_SURFACE_E2E_CONTRACT = Object.freeze({
         statusbar: Object.freeze(['#FCFAF3', '#6E6A5F']), statusbarHover: '#EAE3D2',
       }),
       galaxy: Object.freeze({
-        topbar: Object.freeze(['#0A1628', '#8BA4BE']), leftRail: Object.freeze(['#071220', '#8BA4BE']),
-        projectTree: Object.freeze(['#0E1B30', '#E0ECF4']), aiPanel: Object.freeze(['#0E1B30', '#E0ECF4']),
-        taskTable: Object.freeze(['#0E1B30', '#E0ECF4']), workspacePage: Object.freeze(['#091525', '#E0ECF4']),
-        statusbar: Object.freeze(['#071220', '#8BA4BE']), statusbarHover: '#142640',
+        topbar: Object.freeze(['#091424', '#8BA4BE']), leftRail: Object.freeze(['#071220', '#8BA4BE']),
+        projectTree: Object.freeze(['#0D1A2E', '#E0ECF4']), aiPanel: Object.freeze(['#0D1A2E', '#E0ECF4']),
+        taskTable: Object.freeze(['#0D1A2E', '#E0ECF4']), workspacePage: Object.freeze(['#091525', '#E0ECF4']),
+        statusbar: Object.freeze(['rgba(7, 18, 32, 0.86)', '#8BA4BE']), statusbarHover: '#0D1A2E',
       }),
       paper: Object.freeze({
         topbar: Object.freeze(['#FCFAF3', '#2B2A26']), leftRail: Object.freeze(['#F0EADA', '#6E6A5F']),
@@ -201,7 +214,11 @@ function createIsolatedFixture() {
   // 通过原生选择器写入的同一持久清单边界，预置仓库内的 PNG。
   // 这样无需自动操作系统对话框，仍能覆盖真实主进程服务、IPC、
   // Blob URL、渲染器解码及自定义图片皮肤的重启恢复路径。
-  const customSource = join(repositoryRoot, 'public', 'logos', 'logo.png')
+  const customSource = resolve(repositoryRoot, RENDERER_SURFACE_E2E_CONTRACT.customSkinSurfaces.assetPath)
+  assert.ok(
+    existsSync(customSource),
+    `Renderer surface E2E custom-skin fixture asset is missing: ${RENDERER_SURFACE_E2E_CONTRACT.customSkinSurfaces.assetPath}`,
+  )
   const customBytes = readFileSync(customSource)
   const customDimensions = pngDimensions(customBytes)
   const revision = createHash('sha256').update(customBytes).digest('hex')
@@ -397,7 +414,13 @@ export function assertVisualEvidenceObservation(observation, expected) {
   )
   assert.equal(observation.theme, expected.theme, 'Visual evidence restored a different theme')
   assert.equal(observation.imageSkin, expected.imageSkin, 'Visual evidence restored a different image skin')
-  if ((expected.imageSurface ?? 'decoded') === 'opaque') {
+  if (expected.imageSurface === 'light-glass') {
+    assertLightGlassGradient(
+      observation.workspaceBackgroundImage,
+      RENDERER_SURFACE_E2E_CONTRACT.classicThemeSurfaces.lightGlassGradientStops.workspacePage,
+      'Light classic visual evidence workspace',
+    )
+  } else if ((expected.imageSurface ?? 'decoded') === 'opaque') {
     assert.equal(observation.workspaceAlpha, 1, 'Classic visual evidence workspace must remain opaque')
   } else {
     assert.equal(observation.imageDecoded, true, 'Visual evidence background image must decode')
@@ -430,6 +453,7 @@ async function assertCurrentVisualEvidenceState(page, fixture, launchStartedAt, 
     imageSkin: await root.getAttribute('data-skin'),
     imageDecoded,
     workspaceAlpha: computedColorAlpha(workspace.backgroundColor),
+    workspaceBackgroundImage: workspace.backgroundImage,
   }
   assertVisualEvidenceObservation(observation, {
     projectPath: fixture.projectRoot,
@@ -488,6 +512,7 @@ async function computedSurface(page, selector, label, { minWidth = 100, minHeigh
     const bounds = element.getBoundingClientRect()
     return {
       backgroundColor: style.backgroundColor,
+      backgroundImage: style.backgroundImage,
       color: style.color,
       width: bounds.width,
       height: bounds.height,
@@ -508,23 +533,71 @@ async function computedTokenColor(page, token) {
   }, token)
 }
 
-function assertColorMatches(actualColor, expectedColor, label) {
+function assertColorMatches(actualColor, expectedColor, label, expectedAlpha = 1) {
   const actual = computedRgbChannels(actualColor)
   const expected = computedRgbChannels(expectedColor)
   for (let index = 0; index < expected.length; index += 1) {
     assertClose(actual[index], expected[index], TEXT_CHANNEL_TOLERANCE, `${label} channel ${index + 1}`)
   }
-  assert.equal(computedColorAlpha(actualColor), 1, `${label} must remain opaque`)
+  if (expectedAlpha === 1) {
+    assert.equal(computedColorAlpha(actualColor), 1, `${label} must remain opaque`)
+  } else {
+    assertClose(computedColorAlpha(actualColor), expectedAlpha, IMAGE_SKIN_ALPHA_TOLERANCE, `${label} alpha`)
+  }
+}
+
+function assertLightGlassGradient(backgroundImage, expectedStops, label) {
+  assert.match(backgroundImage, /^linear-gradient\(/, `${label} must render its light glass gradient`)
+  const colors = backgroundImage.match(/rgba?\([^)]+\)/g) ?? []
+  assert.equal(colors.length, expectedStops.length, `${label} gradient stop count`)
+  for (const [index, color] of colors.entries()) {
+    const channels = computedRgbChannels(color)
+    for (let channelIndex = 0; channelIndex < 3; channelIndex += 1) {
+      assertClose(channels[channelIndex], 255, TEXT_CHANNEL_TOLERANCE, `${label} gradient stop ${index + 1} white channel ${channelIndex + 1}`)
+    }
+    assertClose(computedColorAlpha(color), expectedStops[index], IMAGE_SKIN_ALPHA_TOLERANCE, `${label} gradient stop ${index + 1} alpha`)
+  }
 }
 
 async function assertSurfaceAlpha(page, surfaceName, expectedAlpha, label) {
   const selector = RENDERER_SURFACE_E2E_CONTRACT.surfaces[surfaceName].selector
   const surface = await computedSurface(page, selector, label)
+  const alpha = computedColorAlpha(surface.backgroundColor)
+  let detail = ''
+  if (Math.abs(alpha - expectedAlpha) > IMAGE_SKIN_ALPHA_TOLERANCE) {
+    const diagnostics = await page.locator(selector).first().evaluate(element => {
+      const style = getComputedStyle(element)
+      const root = element.closest('.app-skin-root')
+      const appRoot = document.querySelector('.app-skin-root')
+      const mainRegion = root?.querySelector('.app-skin-main-region')
+      return {
+        theme: root?.getAttribute('data-theme') ?? appRoot?.getAttribute('data-theme'),
+        skin: root?.getAttribute('data-skin') ?? appRoot?.getAttribute('data-skin'),
+        readability: root?.getAttribute('data-skin-readability') ?? appRoot?.getAttribute('data-skin-readability'),
+        documentRootClass: document.documentElement.className,
+        customLightSurfaceSelectorMatches: document.documentElement.matches(
+          ":root:has(.app-skin-root[data-theme='light'][data-skin='custom'][data-skin-readability='high-contrast'])",
+        ),
+        className: element.className,
+        inlineStyle: element.getAttribute('style'),
+        background: style.background,
+        transitionProperty: style.transitionProperty,
+        transitionDuration: style.transitionDuration,
+        backgroundPriority: style.getPropertyPriority('background'),
+        backgroundColorPriority: style.getPropertyPriority('background-color'),
+        workspacePageSurface: style.getPropertyValue('--skin-workspace-page-surface').trim(),
+        editorBase: style.getPropertyValue('--skin-editor-base').trim(),
+        editorBg: style.getPropertyValue('--color-editor-bg').trim(),
+        mainEditorBg: mainRegion ? getComputedStyle(mainRegion).getPropertyValue('--color-editor-bg').trim() : null,
+      }
+    })
+    detail = `; surface tokens ${JSON.stringify(diagnostics)}`
+  }
   assertClose(
-    computedColorAlpha(surface.backgroundColor),
+    alpha,
     expectedAlpha,
     IMAGE_SKIN_ALPHA_TOLERANCE,
-    `${label} computed background alpha (${surface.backgroundColor})`,
+    `${label} computed background alpha (${surface.backgroundColor})${detail}`,
   )
   return surface
 }
@@ -548,7 +621,7 @@ async function openAppearanceSettings(page) {
 
 async function closeSettings(page) {
   const modal = page.locator('.skin-solid-surface').first()
-  await modal.click({ position: { x: 4, y: 4 } })
+  await page.keyboard.press('Escape')
   await modal.waitFor({ state: 'detached', timeout: RUNNER_TIMEOUT_MS })
 }
 
@@ -592,18 +665,46 @@ async function assertImageSkinThemes(page) {
     await selectTheme(page, theme)
     const sidebar = await assertSurfaceAlpha(page, 'sidebar', 0.56, `${theme} sidebar`)
     const workspacePage = await assertSurfaceAlpha(page, 'page', 0.60, `${theme} workspace page`)
-    const solid = await assertSurfaceAlpha(page, 'solid', 0.88, `${theme} settings modal`)
     assertTextColor(sidebar.color, theme, `${theme} sidebar text`)
     assertTextColor(workspacePage.color, theme, `${theme} workspace text`)
     evidence.push({
       theme,
       sidebar: sidebar.backgroundColor,
       page: workspacePage.backgroundColor,
-      solid: solid.backgroundColor,
       sidebarText: sidebar.color,
       pageText: workspacePage.color,
     })
   }
+  return evidence
+}
+
+async function assertCustomSkinSurfaceThemes(page) {
+  const contract = RENDERER_SURFACE_E2E_CONTRACT.customSkinSurfaces
+  const evidence = []
+  await selectImageSkin(page, contract.skinId)
+
+  for (const [themeIndex, theme] of contract.themes.entries()) {
+    await selectTheme(page, theme)
+    if (theme === 'light') {
+      await page.locator(RENDERER_SURFACE_E2E_CONTRACT.surfaces.solid.selector).first().evaluate(async element => {
+        const transitions = element.getAnimations().filter(animation => 'transitionProperty' in animation)
+        await Promise.all(transitions.map(animation => animation.finished.catch(() => undefined)))
+      })
+      await assertSurfaceAlpha(page, 'solid', contract.lightSettingsModalAlpha, 'light custom-skin settings modal')
+    }
+    await closeSettings(page)
+    const root = page.locator('.app-skin-root')
+    assert.equal(await root.getAttribute('data-skin'), contract.skinId, `${theme} high-contrast custom skin must be active`)
+    assert.equal(await root.getAttribute('data-theme'), theme, `${theme} high-contrast custom skin must use the requested theme`)
+    const sidebar = await assertSurfaceAlpha(page, 'sidebar', contract.sidebarAlpha, `${theme} custom-skin sidebar`)
+    const workspacePage = await assertSurfaceAlpha(page, 'page', contract.pageAlpha, `${theme} custom-skin workspace page`)
+    const image = page.locator('.app-skin-background-image')
+    await image.waitFor({ state: 'visible', timeout: RUNNER_TIMEOUT_MS })
+    assert.ok(await image.evaluate(element => element.complete && element.naturalWidth > 0), `${theme} custom-skin background image must decode`)
+    evidence.push({ theme, sidebar: sidebar.backgroundColor, page: workspacePage.backgroundColor })
+    if (themeIndex < contract.themes.length - 1) await openAppearanceSettings(page)
+  }
+
   return evidence
 }
 
@@ -637,20 +738,33 @@ async function assertClassicThemeSurfaces(page, visualEvidenceDirectory, fixture
       const surface = await computedSurface(page, contract.selector, `${theme} classic ${surfaceName}`, contract)
       const expectedBackground = await computedTokenColor(page, contract.token)
       const expectedText = await computedTokenColor(page, contract.textToken)
-      assertColorMatches(surface.backgroundColor, expectedBackground, `${theme} classic ${surfaceName} background`)
+      const isLightGlass = theme === 'light'
+      if (isLightGlass) {
+        const expectedStops = surfaceName === 'workspacePage'
+          ? RENDERER_SURFACE_E2E_CONTRACT.classicThemeSurfaces.lightGlassGradientStops.workspacePage
+          : RENDERER_SURFACE_E2E_CONTRACT.classicThemeSurfaces.lightGlassGradientStops.default
+        assertLightGlassGradient(surface.backgroundImage, expectedStops, `${theme} classic ${surfaceName}`)
+      } else {
+        const expectedAlpha = theme === 'galaxy' && surfaceName === 'statusbar' ? 0.86 : 1
+        assertColorMatches(surface.backgroundColor, expectedBackground, `${theme} classic ${surfaceName} background`, expectedAlpha)
+      }
       assertColorMatches(surface.color, expectedText, `${theme} classic ${surfaceName} text`)
       const [approvedBackground, approvedText] = approvedComputed[theme][surfaceName]
-      assertColorMatches(surface.backgroundColor, approvedBackground, `${theme} classic ${surfaceName} approved background`)
+      if (!isLightGlass) {
+        const expectedAlpha = theme === 'galaxy' && surfaceName === 'statusbar' ? 0.86 : 1
+        assertColorMatches(surface.backgroundColor, approvedBackground, `${theme} classic ${surfaceName} approved background`, expectedAlpha)
+      }
       assertColorMatches(surface.color, approvedText, `${theme} classic ${surfaceName} approved text`)
       themeEvidence.surfaces[surfaceName] = {
         background: surface.backgroundColor,
+        backgroundImage: surface.backgroundImage,
         text: surface.color,
       }
     }
     await assertCurrentVisualEvidenceState(page, fixture, launchStartedAt, {
       theme,
       imageSkin: 'classic',
-      imageSurface: 'opaque',
+      imageSurface: RENDERER_SURFACE_E2E_CONTRACT.classicOpaqueThemes.includes(theme) ? 'opaque' : 'light-glass',
     })
     const screenshot = await captureVisualEvidence(page, visualEvidenceDirectory, {
       theme,
@@ -679,7 +793,6 @@ async function assertClassicThemeSurfaces(page, visualEvidenceDirectory, fixture
       true,
       `${theme} classic statusbar clickable segment must receive the hover state`,
     )
-    const expectedHover = await computedTokenColor(page, statusbarHover.token)
     const hoverState = await clickableSegment.evaluate(element => {
       const style = getComputedStyle(element)
       return {
@@ -690,8 +803,19 @@ async function assertClassicThemeSurfaces(page, visualEvidenceDirectory, fixture
       }
     })
     const hoverLabel = `${theme} classic statusbar clickable hover background (var=${hoverState.themeHover}, inline=${hoverState.inlineStyle}, background=${hoverState.background})`
-    assertColorMatches(hoverState.backgroundColor, expectedHover, hoverLabel)
-    assertColorMatches(hoverState.backgroundColor, approvedComputed[theme].statusbarHover, `${theme} classic approved statusbar hover`)
+    if (theme === 'light') {
+      const expectedHover = RENDERER_SURFACE_E2E_CONTRACT.classicThemeSurfaces.lightGlassStatusbarHover
+      const actualChannels = computedRgbChannels(hoverState.backgroundColor)
+      const expectedChannels = computedRgbChannels(expectedHover.color)
+      for (let index = 0; index < expectedChannels.length; index += 1) {
+        assertClose(actualChannels[index], expectedChannels[index], TEXT_CHANNEL_TOLERANCE, `${hoverLabel} channel ${index + 1}`)
+      }
+      assertClose(computedColorAlpha(hoverState.backgroundColor), expectedHover.alpha, IMAGE_SKIN_ALPHA_TOLERANCE, hoverLabel)
+    } else {
+      const expectedHover = await computedTokenColor(page, statusbarHover.token)
+      assertColorMatches(hoverState.backgroundColor, expectedHover, hoverLabel)
+      assertColorMatches(hoverState.backgroundColor, approvedComputed[theme].statusbarHover, `${theme} classic approved statusbar hover`)
+    }
     const actualHover = hoverState.backgroundColor
     themeEvidence.statusbarHover = actualHover
     evidence.push(themeEvidence)
@@ -921,6 +1045,8 @@ async function runRendererSurfaceE2e() {
         throw new Error(`${error instanceof Error ? error.message : String(error)}\nRenderer state: ${JSON.stringify(rendererState)}\n${detail}`)
       }
       await openAppearanceSettings(page)
+      const customSkinSurfaceThemes = await assertCustomSkinSurfaceThemes(page)
+      await openAppearanceSettings(page)
       await selectImageSkin(page, 'anime')
       const themes = await assertImageSkinThemes(page)
       await closeSettings(page)
@@ -976,6 +1102,7 @@ async function runRendererSurfaceE2e() {
         kind: 'renderer-surface-e2e',
         imageSkin: 'anime',
         themes,
+        customSkinSurfaceThemes,
         routes,
         classic: {
           themes: classicThemes,

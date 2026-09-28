@@ -239,6 +239,14 @@ export function registerLLMController() {
       recordCancelled: () => recordOnce({ success: false, error: 'cancelled' }),
     })
     const win = BrowserWindow.fromWebContents(event.sender)
+    const sendToWindow = (channel: string, payload: unknown): void => {
+      if (!win || win.isDestroyed() || win.webContents.isDestroyed()) return
+      try {
+        win.webContents.send(channel, payload)
+      } catch {
+        // The window can be destroyed after the lifecycle checks and before send.
+      }
+    }
 
     const provider = LLMFactory.getProvider(model)
     
@@ -246,7 +254,7 @@ export function registerLLMController() {
     provider.generateStream(model, request.messages, {
       ...generationParameters,
       signal: abortController.signal,
-      onChunk: (chunk: string) => win?.webContents.send('llm:stream-chunk', { requestId, chunk }),
+      onChunk: (chunk: string) => sendToWindow('llm:stream-chunk', { requestId, chunk }),
       onDiagnostics: diagnostics => {
         if (diagnostics.normalizedFinishReason === 'stop' && !diagnostics.fallbackAttempted) return
         const message = diagnostics.fallbackAttempted && diagnostics.normalizedFinishReason === 'stop'
@@ -277,7 +285,7 @@ export function registerLLMController() {
           usage,
         })
         recordOnce({ success, usage, error: success ? undefined : `finish:${terminalReason}` })
-        win?.webContents.send('llm:stream-done', {
+        sendToWindow('llm:stream-done', {
           requestId,
           fullText,
           usage,
@@ -292,7 +300,7 @@ export function registerLLMController() {
           elapsedMs: Date.now() - streamStartedAt,
         })
         recordOnce({ success: false, error })
-        win?.webContents.send('llm:stream-error', { requestId, error })
+        sendToWindow('llm:stream-error', { requestId, error })
         activeStreams.delete(requestId)
       },
     })
