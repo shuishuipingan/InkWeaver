@@ -176,6 +176,8 @@ describe('macOS ARM64 cloud build workflow contract', () => {
     expect(vectorRunnerSource).toContain('Packaged vector smoke timed out after 90 seconds')
     expect(vectorRunnerElectronStub).toContain('export const ipcMain')
     expect(vectorRunnerElectronStub).toContain('handle() {}')
+    expect(vectorRunnerElectronStub).toContain('export const dialog')
+    expect(vectorRunnerElectronStub).toContain('export const shell')
     expect(manifestScript).toContain('finalizeReleaseEvidence')
     expect(manifestScript).toContain('AI_NOVEL_RELEASE_EVIDENCE_ROOT')
   })
