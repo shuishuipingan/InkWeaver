@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+const { runtimeLoggerMock } = vi.hoisted(() => ({
+  runtimeLoggerMock: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+}))
+vi.mock('../services/runtime-logger', () => ({ runtimeLogger: runtimeLoggerMock }))
+
 import { embedGemini, embedOpenAI, generateEmbeddings } from '../embedding'
 import { BUILTIN_PRESETS } from '../../src/shared/provider-presets'
 
@@ -22,6 +27,7 @@ function openAIEmbedding(index: number) {
 
 afterEach(() => {
   vi.unstubAllGlobals()
+  vi.clearAllMocks()
 })
 
 describe('embedding batch response contract', () => {
@@ -137,6 +143,42 @@ describe('embedding batch response contract', () => {
     expect((error as Error).message).toContain('检查 Base URL')
     expect((error as Error).message).toContain('网关')
     expect((error as Error).message).toContain('鉴权')
+    expect((error as Error).message).not.toContain(bodyMarker)
+  })
+
+  it('writes safe provider and batch metadata to the runtime log when an embedding request fails', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('payment required', { status: 402 })))
+
+    await expect(generateEmbeddings(['private manuscript text'], 'openai', model, 8))
+      .rejects.toThrow('HTTP 402')
+
+    expect(runtimeLoggerMock.error).toHaveBeenCalledWith(
+      'embedding',
+      '向量化批次失败',
+      expect.objectContaining({ provider: 'OpenAI', batchIndex: 1, batchCount: 1, inputCount: 1, httpStatus: 402 }),
+      expect.objectContaining({ operation: 'embedding.batch', outcome: 'failed' }),
+    )
+    const serializedLogArguments = JSON.stringify(runtimeLoggerMock.error.mock.calls)
+    expect(serializedLogArguments).not.toContain('private manuscript text')
+    expect(serializedLogArguments).not.toContain(model.apiKey)
+    expect(serializedLogArguments).not.toContain(model.baseUrl)
+  })
+
+  it.each([
+    ['OpenAI', embedOpenAI],
+    ['Gemini', embedGemini],
+  ] as const)('%s explains HTTP 402 as a billing or gateway quota rejection', async (_provider, embed) => {
+    const bodyMarker = 'UPSTREAM-PAYMENT-BODY-MUST-NOT-LEAK'
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(bodyMarker, {
+      status: 402,
+      headers: { 'content-type': 'application/json' },
+    })))
+
+    const error = await embed(['第一段'], model).catch((reason: unknown) => reason)
+
+    expect(error).toBeInstanceOf(Error)
+    expect((error as Error).message).toContain('HTTP 402')
+    expect((error as Error).message).toMatch(/余额|计费|额度|billing|balance|quota/i)
     expect((error as Error).message).not.toContain(bodyMarker)
   })
 
@@ -263,6 +305,11 @@ describe('embedding batch response contract', () => {
 
     await expect(generateEmbeddings(['第一段', '第二段', '第三段'], 'openai', model, 2)).rejects.toThrow(
       /OpenAI Embedding 响应无效.*第 3 个向量.*1 维.*期望 2 维/,
+    )
+    expect(runtimeLoggerMock.error).toHaveBeenCalledWith(
+      'embedding', '向量化结果聚合校验失败',
+      expect.objectContaining({ provider: 'OpenAI', batchCount: 2, inputCount: 3, outputCount: 3 }),
+      expect.objectContaining({ operation: 'embedding.aggregate', outcome: 'failed' }),
     )
   })
 })

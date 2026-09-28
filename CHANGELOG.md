@@ -2,6 +2,24 @@
 
 本文件按用户可见行为记录变更。桌面版本不发布 npm；DSH 插件沿用已发布的 `1.2.0` 包。`1.2.0` 已从同一源码 commit 完成工程验收、三平台资产回读和正式 Release；`1.1.0` 的历史 Release 收据保留在 `docs/upgrade/`，不与 1.2.0 混用。
 
+## 1.3.4 — 2026-09-28
+
+- AI 批量生成章节名现在可以先应用已生成并勾选的章节，再继续生成剩余章节；应用后更新蓝图快照，避免旧标题候选覆盖新结果。进度显示候选数、已应用数和剩余调用估计。
+- AI 角色名预览允许个别角色保留原名，只要其他名字有变化且最终名称不冲突；空名和重复名仍会阻止应用。
+- 导入推演遇到缺失或格式无效的角色备注时，会加上明确的待补充提示后继续合同校验；角色卡已达 8 张上限时，会把未闭合关系线索保存在对应备注中，不再发出必然超限的补卡请求。
+- 全书方向调整会在确认按钮禁用时说明具体原因，可返回修改方案；大批次成本估计也会计入最多可能生成的候选修稿请求，并提示缩批重试可能增加调用。
+- Embedding HTTP 402 会提示检查服务账号计费、余额或网关额度；向量请求按批写入脱敏运行日志，不记录正文、提示词、API Key 或 Base URL。知识库普通导入仍可在向量服务不可用时降级为全文检索。
+- 角色名替换、章节名批处理、全书方向调整和导入恢复新增运行阶段日志，便于追踪请求、部分完成、应用与拒绝原因。
+
+## What's changed
+
+- AI batch chapter titles can now be applied as soon as selected candidates are ready, before every batch finishes. The updated blueprint snapshot is used for subsequent batches, and progress shows generated, applied, and remaining counts.
+- Character rename previews allow an individual character to keep the original name while other characters are renamed, provided the final roster stays unique. Empty and duplicate names still block the apply action.
+- Import inference fills missing or malformed character notes with an explicit follow-up reminder. At the eight-card limit, unresolved relationship clues are preserved in the source character's notes instead of requesting an impossible extra card.
+- Story-direction confirmation explains why applying is blocked and offers a return-to-edit path. Large-run estimates include the upper bound for draft-candidate requests and warn that smaller-batch retries may add calls.
+- HTTP 402 embedding failures now point to account billing, balance, or gateway quota checks. Embedding batches write privacy-safe runtime events without manuscript text, prompts, API keys, or Base URLs. Ordinary knowledge imports can still fall back to full-text search when vector service is unavailable.
+- Added runtime events for character renaming, title batches, whole-book direction adjustment, and import recovery so requests, partial completion, application, and rejection reasons are traceable.
+
 ## 1.3.3 — 2026-09-28
 
 - 全书方向调整支持作者明确提出的术语映射，例如“幽狼换成凤凰，黑虫系统换成智虫”。确认后会同步更新小说文本配置、角色卡、蓝图角色引用、规划文本和叙事线索；未定稿正文只创建可逐章审阅的候选修稿，定稿正文与章节事实备注保持不变。

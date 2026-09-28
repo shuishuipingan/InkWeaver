@@ -10,6 +10,7 @@
 
 import { normalizeEmbeddingOptions } from '../src/shared/embedding-options'
 import { EmbeddingResponseValidationError } from './services/embedding-response-error'
+import { runtimeLogger } from './services/runtime-logger'
 
 const RELEASE_SMOKE_BASE_URL_PREFIX = 'vela-release-smoke://'
 
@@ -35,10 +36,18 @@ async function parseEmbeddingJsonResponse(
   }
 }
 
+class EmbeddingHttpError extends Error {
+  constructor(readonly provider: 'OpenAI' | 'Gemini', readonly status: number, message: string) {
+    super(message)
+    this.name = 'EmbeddingHttpError'
+  }
+}
+
 function embeddingHttpError(provider: 'OpenAI' | 'Gemini', status: number): never {
-  throw new Error(
-    `${provider} Embedding 调用失败（HTTP ${status}）。请检查 Base URL、网关或鉴权。`,
-  )
+  const message = status === 402
+    ? `${provider} Embedding 调用失败（HTTP 402）。该状态通常表示服务商或兼容网关的余额、计费或请求额度不足；请检查服务账号用量、支付状态及网关额度。`
+    : `${provider} Embedding 调用失败（HTTP ${status}）。请检查 Base URL、网关或鉴权。`
+  throw new EmbeddingHttpError(provider, status, message)
 }
 
 function validateEmbeddingVectors(
@@ -327,18 +336,56 @@ export async function generateEmbeddings(
     ? (protocol === 'gemini' ? 100 : 50)
     : normalizeEmbeddingOptions({ batchSize: configuredBatchSize }).batchSize
   const results: number[][] = []
+  const provider = protocol === 'gemini' ? 'Gemini' : 'OpenAI'
+  const batchCount = Math.ceil(texts.length / batchSize)
 
   for (let i = 0; i < texts.length; i += batchSize) {
     assertActive?.()
     const batch = texts.slice(i, i + batchSize)
-    const embeddings = protocol === 'gemini'
-      ? await embedGemini(batch, model)
-      : await embedOpenAI(batch, model)
-    assertActive?.()
-    results.push(...embeddings)
+    const batchIndex = Math.floor(i / batchSize) + 1
+    const details = {
+      provider,
+      modelName: model.modelName || (protocol === 'gemini' ? 'text-embedding-004' : 'text-embedding-3-small'),
+      batchIndex,
+      batchCount,
+      inputCount: batch.length,
+    }
+    const context = { operation: 'embedding.batch', outcome: 'started' as const }
+    runtimeLogger.info('embedding', '向量化批次开始', details, context)
+    try {
+      const embeddings = protocol === 'gemini'
+        ? await embedGemini(batch, model)
+        : await embedOpenAI(batch, model)
+      assertActive?.()
+      results.push(...embeddings)
+      runtimeLogger.info('embedding', '向量化批次完成', {
+        ...details,
+        outputCount: embeddings.length,
+        dimension: embeddings[0]?.length ?? 0,
+      }, { ...context, outcome: 'succeeded' })
+    } catch (error) {
+      runtimeLogger.error('embedding', '向量化批次失败', {
+        ...details,
+        errorType: error instanceof Error ? error.name : 'UnknownError',
+        ...(error instanceof EmbeddingHttpError ? { httpStatus: error.status } : {}),
+      }, { ...context, outcome: 'failed' })
+      throw error
+    }
   }
 
-  return validateEmbeddingVectors(protocol === 'gemini' ? 'Gemini' : 'OpenAI', results)
+  try {
+    return validateEmbeddingVectors(provider, results)
+  } catch (error) {
+    runtimeLogger.error('embedding', '向量化结果聚合校验失败', {
+      provider,
+      modelName: model.modelName || (protocol === 'gemini' ? 'text-embedding-004' : 'text-embedding-3-small'),
+      batchCount,
+      inputCount: texts.length,
+      outputCount: results.length,
+      errorType: error instanceof Error ? error.name : 'UnknownError',
+    }, { operation: 'embedding.aggregate', outcome: 'failed' })
+    throw error
+  }
 }
 
 // ===== 文本分块 =====

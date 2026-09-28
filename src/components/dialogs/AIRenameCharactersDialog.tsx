@@ -16,6 +16,7 @@ import {
   isProjectSessionCurrent,
 } from '../project-session-gate'
 import { useLocaleStore } from '../../stores/locale-store'
+import { runtimeLog } from '../../services/runtime-log'
 
 type RenameRow = CharacterRenameRow
 
@@ -73,8 +74,10 @@ export default function AIRenameCharactersDialog({ onClose }: { onClose: () => v
   )
   const previewTargets = renames.map(row => row.to.trim())
   const previewHasInvalidNames = renames.length !== characters.length
-    || previewTargets.some((target, index) => !target || currentNames.has(target)
+    || previewTargets.some((target, index) => !target
+      || (target !== renames[index]?.from && currentNames.has(target))
       || previewTargets.indexOf(target) !== index)
+  const hasRenameChanges = renames.some(row => row.to.trim() !== row.from)
 
   const generate = useCallback(async () => {
     if (!currentProject || !projectSession) return
@@ -84,6 +87,15 @@ export default function AIRenameCharactersDialog({ onClose }: { onClose: () => v
     }
     setStep('generating')
     setError(null)
+    runtimeLog.info('character-rename', '全角色改名方案生成开始', {
+      characterCount: characters.length,
+      batchCount: chunkCharacterRenameRoster(characters).length,
+      styleHintProvided: Boolean(styleHint.trim()),
+      replaceDrafts: replaceProse,
+    }, {
+      projectId: projectSession.projectId, projectSessionId: projectSession.leaseId,
+      operation: 'character-rename.generate', outcome: 'started',
+    })
     const config = currentProject.novelConfig
     const settingBrief = [
       config.genre && `类型：${config.genre}`,
@@ -142,39 +154,92 @@ export default function AIRenameCharactersDialog({ onClose }: { onClose: () => v
           from: String(r.from ?? ''), to: String(r.to ?? ''), reason: String(r.reason ?? ''),
         }))
       }
-      for (const batch of chunkCharacterRenameRoster(characters)) {
+      const batches = chunkCharacterRenameRoster(characters)
+      for (const [batchIndex, batch] of batches.entries()) {
+        runtimeLog.info('character-rename', '改名映射批次请求开始', {
+          batchIndex: batchIndex + 1, batchCount: batches.length, characterCount: batch.length,
+        }, {
+          projectId: projectSession.projectId, projectSessionId: projectSession.leaseId,
+          operation: 'character-rename.generate-batch', outcome: 'started',
+        })
         rows.push(...await generateUniqueCharacterRenameBatch(
           batch, currentNames, new Set(rows.map(row => row.to)), generateBatch,
         ))
+        runtimeLog.info('character-rename', '改名映射批次请求完成', {
+          batchIndex: batchIndex + 1, batchCount: batches.length, mappedCount: rows.length,
+        }, {
+          projectId: projectSession.projectId, projectSessionId: projectSession.leaseId,
+          operation: 'character-rename.generate-batch', outcome: 'succeeded',
+        })
       }
       if (!isProjectSessionCurrent(projectSession)) return
       setRenames(rows)
       setStep('preview')
+      runtimeLog.info('character-rename', '全角色改名方案生成完成', {
+        mappingCount: rows.length,
+        unchangedCount: rows.filter(row => row.to.trim() === row.from).length,
+      }, {
+        projectId: projectSession.projectId, projectSessionId: projectSession.leaseId,
+        operation: 'character-rename.generate', outcome: 'succeeded',
+      })
     } catch (e) {
+      runtimeLog.error('character-rename', '全角色改名方案生成失败', {
+        errorType: e instanceof Error ? e.name : 'UnknownError',
+        characterCount: characters.length,
+      }, {
+        projectId: projectSession.projectId, projectSessionId: projectSession.leaseId,
+        operation: 'character-rename.generate', outcome: 'failed',
+      })
       setError(String(e))
       setStep('input')
     }
-  }, [characters, currentProject, projectSession, styleHint, text, currentNames])
+  }, [characters, currentProject, projectSession, replaceProse, styleHint, text, currentNames])
 
   const apply = useCallback(async () => {
     if (!currentProject || !projectSession) return
     if (previewHasInvalidNames) {
+      runtimeLog.warn('character-rename', '改名应用被预检拒绝', { reason: 'invalid-or-duplicate-name' }, {
+        projectId: projectSession.projectId, projectSessionId: projectSession.leaseId,
+        operation: 'character-rename.apply', outcome: 'rejected',
+      })
       setError(text('新名字缺失或重复，请修改后再应用。', 'New names are missing or duplicated. Edit them before applying.'))
       return
     }
     const valid = renames.filter(r => r.to.trim() && r.to.trim() !== r.from)
-    if (valid.length === 0) return
+    if (valid.length === 0) {
+      runtimeLog.warn('character-rename', '改名应用被预检拒绝', { reason: 'no-name-changes' }, {
+        projectId: projectSession.projectId, projectSessionId: projectSession.leaseId,
+        operation: 'character-rename.apply', outcome: 'rejected',
+      })
+      setError(text('至少更改一个角色名；单个角色可以保留原名。', 'Change at least one character name. Individual characters may keep their original names.'))
+      return
+    }
     if (useProjectStore.getState().hasUnsavedNovelConfig(currentProject.path)) {
+      runtimeLog.warn('character-rename', '改名应用被未保存配置阻止', { dirtyConfig: true }, {
+        projectId: projectSession.projectId, projectSessionId: projectSession.leaseId,
+        operation: 'character-rename.apply', outcome: 'rejected',
+      })
       setError(text('项目配置仍有未保存修改，请先保存后再替换角色名。', 'Save or discard pending project settings before replacing character names.'))
       return
     }
-    if (useEditorStore.getState().tabs.some(tab => tab.projectKey === currentProject.path
-      && tab.dirty && ['config', 'chapter-card', 'world-building', 'arch-file'].includes(tab.type))) {
+    const dirtyTabs = useEditorStore.getState().tabs.filter(tab => tab.projectKey === currentProject.path
+      && tab.dirty && ['config', 'chapter-card', 'world-building', 'arch-file'].includes(tab.type))
+    if (dirtyTabs.length > 0) {
+      runtimeLog.warn('character-rename', '改名应用被未保存编辑阻止', { dirtyTabCount: dirtyTabs.length }, {
+        projectId: projectSession.projectId, projectSessionId: projectSession.leaseId,
+        operation: 'character-rename.apply', outcome: 'rejected',
+      })
       setError(text('配置、蓝图或架构页仍有未保存修改，请先保存后再替换角色名。', 'Save or discard pending settings, blueprint, or architecture edits before replacing character names.'))
       return
     }
     setStep('applying')
     setError(null)
+    runtimeLog.info('character-rename', '应用角色名替换开始', {
+      changedCharacterCount: valid.length, replaceDrafts: replaceProse,
+    }, {
+      projectId: projectSession.projectId, projectSessionId: projectSession.leaseId,
+      operation: 'character-rename.apply', outcome: 'started',
+    })
     try {
       // 1) 走角色卡本地改名 + 草稿账本（链式改名已由 store 处理）
       for (const r of valid) {
@@ -260,7 +325,20 @@ export default function AIRenameCharactersDialog({ onClose }: { onClose: () => v
         finalizedSkipped,
       })
       setStep('done')
+      runtimeLog.info('character-rename', '应用角色名替换完成', {
+        renamedCharacterCount: valid.length, changedDraftCount: proseChapters,
+        finalizedSkipped,
+      }, {
+        projectId: projectSession.projectId, projectSessionId: projectSession.leaseId,
+        operation: 'character-rename.apply', outcome: 'succeeded',
+      })
     } catch (e) {
+      runtimeLog.error('character-rename', '应用角色名替换失败', {
+        errorType: e instanceof Error ? e.name : 'UnknownError', changedCharacterCount: valid.length,
+      }, {
+        projectId: projectSession.projectId, projectSessionId: projectSession.leaseId,
+        operation: 'character-rename.apply', outcome: 'failed',
+      })
       setError(String(e))
       setStep('preview')
     }
@@ -347,9 +425,9 @@ export default function AIRenameCharactersDialog({ onClose }: { onClose: () => v
           {step === 'preview' && (
             <div className="space-y-1.5">
               {renames.map((r, i) => {
-                const collision = currentNames.has(r.to.trim())
+                const collision = (r.to.trim() !== r.from && currentNames.has(r.to.trim()))
                   || renames.some((other, index) => index !== i && other.to.trim() === r.to.trim())
-                const invalid = !r.to.trim() || r.to.trim() === r.from || collision
+                const invalid = !r.to.trim() || collision
                 return (
                   <div key={r.from} className="flex items-center gap-2 text-xs">
                     <span className="w-24 shrink-0 truncate" style={{ color: 'var(--color-text)' }} title={r.from}>{r.from}</span>
@@ -371,7 +449,12 @@ export default function AIRenameCharactersDialog({ onClose }: { onClose: () => v
               {previewHasInvalidNames && (
                 <p className="text-[0.7rem] flex items-center gap-1" style={{ color: 'var(--color-accent)' }}>
                   <AlertTriangle size={12} />
-                  {text('存在空名字、与原名相同或与其他角色重名的新名字，请修改后再应用。', 'Some names are empty, unchanged, or collide with existing characters.')}
+                  {text('存在空名字或与其他角色重名的新名字，请修改后再应用；个别角色可以保留原名。', 'Some names are empty or collide with existing characters. Individual characters may keep their original names.')}
+                </p>
+              )}
+              {!previewHasInvalidNames && !hasRenameChanges && (
+                <p className="text-[0.7rem]" style={{ color: 'var(--color-text-muted)' }}>
+                  {text('至少更改一个角色名；个别角色可以保留原名。', 'Change at least one name; individual characters can keep their original names.')}
                 </p>
               )}
             </div>
@@ -423,7 +506,7 @@ export default function AIRenameCharactersDialog({ onClose }: { onClose: () => v
               <Button variant="ghost" onClick={() => setStep('input')}>{text('上一步', 'Back')}</Button>
               <Button
                 onClick={apply}
-                disabled={previewHasInvalidNames}
+                disabled={previewHasInvalidNames || !hasRenameChanges}
               >
                 <Replace size={13} /> {text('应用改名', 'Apply renames')}
               </Button>

@@ -156,6 +156,117 @@ it('requires acknowledgement of finalized-fact conflicts before applying', async
   await expect.element(page.getByRole('button', { name: '确认并应用规划' })).not.toBeDisabled()
 })
 
+it('explains a no-change plan and lets the author return to edit instead of leaving a disabled confirmation', async () => {
+  const normalInvoke = invoke.getMockImplementation()!
+  invoke.mockImplementation(async (...args: unknown[]) => {
+    if (args[0] === 'llm:generate' && (args[1] as { purpose: string }).purpose === 'story-direction-global') {
+      return { success: true, finishReason: 'stop', content: JSON.stringify({
+        coreChanges: {}, characterChanges: [], newNarrativeThreads: [],
+        terminologyReplacements: [], summary: '没有必要变更', conflicts: [],
+      }) }
+    }
+    if (args[0] === 'llm:generate' && (args[1] as { purpose: string }).purpose === 'story-direction-blueprints') {
+      return { success: true, finishReason: 'stop', content: JSON.stringify({ changes: [] }) }
+    }
+    return normalInvoke(...args)
+  })
+  await act(async () => root?.render(<StoryDirectionDialog open onClose={vi.fn()} onApplied={vi.fn()} />))
+  await expect.element(page.getByText(/将分析 1 章/)).toBeVisible()
+  await act(async () => page.getByPlaceholder(/主角有第二人格/).fill('只想看看是否需要改动'))
+  await act(async () => page.getByRole('button', { name: '生成调整方案' }).click())
+
+  await expect.element(page.getByRole('button', { name: '确认并应用规划' })).toBeDisabled()
+  await expect.element(page.getByRole('status').getByText(/当前方案没有可提交的变更/u)).toBeVisible()
+  await act(async () => page.getByRole('button', { name: '返回修改' }).click())
+  await expect.element(page.getByPlaceholder(/主角有第二人格/)).toBeVisible()
+  expect(invoke.mock.calls.some(([channel]) => channel === 'db:story-direction-apply')).toBe(false)
+})
+
+it('shows the unsaved-project guard before the author tries to apply a direction plan', async () => {
+  useProjectStore.setState({ hasUnsavedNovelConfig: () => true })
+  await act(async () => root?.render(<StoryDirectionDialog open onClose={vi.fn()} onApplied={vi.fn()} />))
+  await expect.element(page.getByText(/将分析 1 章/)).toBeVisible()
+  await act(async () => page.getByPlaceholder(/主角有第二人格/).fill('主角有第二人格'))
+  await act(async () => page.getByRole('button', { name: '生成调整方案' }).click())
+
+  await expect.element(page.getByRole('button', { name: '确认并应用规划' })).toBeDisabled()
+  await expect.element(page.getByRole('status').getByText(/未保存编辑。保存后返回并重新生成方案/u)).toBeVisible()
+  await act(async () => page.getByRole('button', { name: '返回修改' }).click())
+  expect(invoke.mock.calls.some(([channel]) => channel === 'db:story-direction-apply')).toBe(false)
+})
+
+it('includes possible draft-candidate calls in the large-run confirmation before starting', async () => {
+  const normalInvoke = invoke.getMockImplementation()!
+  const largeSnapshot: StoryDirectionSnapshot = {
+    ...snapshot,
+    core: { ...snapshot.core, totalChapters: 12 },
+    blueprints: Array.from({ length: 12 }, (_, index) => ({
+      chapterNumber: index + 1, title: `章节${index + 1}`, role: '发展',
+      purpose: `第${index + 1}章目的`, keyEvents: `第${index + 1}章事件`,
+      characters: ['主角'], suspenseHook: '', userGuidance: '', notes: '', notesUpdatedAt: '',
+    })),
+    drafts: Array.from({ length: 12 }, (_, index) => ({
+      id: index + 1, chapterNumber: index + 1, version: 1, status: 'draft' as const,
+    })),
+  }
+  invoke.mockImplementation(async (...args: unknown[]) => args[0] === 'db:story-direction-snapshot'
+    ? largeSnapshot : normalInvoke(...args))
+
+  await act(async () => root?.render(<StoryDirectionDialog open onClose={vi.fn()} onApplied={vi.fn()} />))
+  await expect.element(page.getByText(/将分析 12 章/)).toBeVisible()
+  await act(async () => page.getByPlaceholder(/主角有第二人格/).fill('主角有第二人格'))
+  const runButton = page.getByRole('button', { name: '生成调整方案' })
+  await expect.element(page.getByText(/预计调用模型约 17 次（含最多 12 章候选修稿/u)).toBeVisible()
+  await expect.element(runButton).toBeDisabled()
+  await act(async () => page.getByRole('checkbox', { name: /我知道本次预计调用模型约 17 次/u }).click())
+  await expect.element(runButton).not.toBeDisabled()
+})
+
+it('asks again when enabling candidate drafts in preview raises the full run above the call threshold', async () => {
+  const normalInvoke = invoke.getMockImplementation()!
+  const largeSnapshot: StoryDirectionSnapshot = {
+    ...snapshot,
+    core: { ...snapshot.core, totalChapters: 45 },
+    blueprints: Array.from({ length: 45 }, (_, index) => ({
+      chapterNumber: index + 1, title: `章节${index + 1}`, role: '发展',
+      purpose: `第${index + 1}章目的`, keyEvents: `第${index + 1}章事件`,
+      characters: ['主角'], suspenseHook: '', userGuidance: '', notes: '', notesUpdatedAt: '',
+    })),
+    drafts: Array.from({ length: 45 }, (_, index) => ({
+      id: index + 1, chapterNumber: index + 1, version: 1, status: 'draft' as const,
+    })),
+  }
+  invoke.mockImplementation(async (...args: unknown[]) => {
+    if (args[0] === 'db:story-direction-snapshot') return largeSnapshot
+    if (args[0] === 'llm:generate') {
+      const request = args[1] as { purpose: string; messages: Array<{ content: string }> }
+      if (request.purpose === 'story-direction-blueprints') {
+        const prompt = JSON.parse(request.messages[1]!.content) as { chapters: Array<{ chapterNumber: number }> }
+        return { success: true, finishReason: 'stop', content: JSON.stringify({
+          changes: prompt.chapters.some(chapter => chapter.chapterNumber === 2)
+            ? [{ chapterNumber: 2, changes: { purpose: '第二人格帮助主角脱险' } }]
+            : [],
+        }) }
+      }
+    }
+    return normalInvoke(...args)
+  })
+
+  await act(async () => root?.render(<StoryDirectionDialog open onClose={vi.fn()} onApplied={vi.fn()} />))
+  await expect.element(page.getByText(/将分析 45 章/)).toBeVisible()
+  await act(async () => page.getByPlaceholder(/主角有第二人格/).fill('主角有第二人格'))
+  await act(async () => page.getByRole('checkbox', { name: /为受影响的未定稿正文生成候选修稿/ }).click())
+  await expect.element(page.getByRole('button', { name: '生成调整方案' })).not.toBeDisabled()
+  await act(async () => page.getByRole('button', { name: '生成调整方案' }).click())
+  await expect.element(page.getByText(/受影响章节（1 章）/)).toBeVisible()
+
+  await act(async () => page.getByRole('checkbox', { name: /为约 1 章未定稿正文生成候选修稿/ }).click())
+  await expect.element(page.getByRole('button', { name: '确认并应用规划' })).toBeDisabled()
+  await expect.element(page.getByRole('status').getByText(/全流程预计约 12 次模型调用/u)).toBeVisible()
+  await act(async () => page.getByRole('checkbox', { name: /我知道全流程预计约调用模型 12 次/u }).click())
+  await expect.element(page.getByRole('button', { name: '确认并应用规划' })).not.toBeDisabled()
+})
+
 it('resumes pending candidate revisions after reopening the dialog', async () => {
   appliedRun = {
     id: 'test-run', idea: '主角有第二人格', modelId: 'model',

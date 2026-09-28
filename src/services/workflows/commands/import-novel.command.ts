@@ -22,6 +22,7 @@ import { promptLanguageText } from '../../prompt-language'
 import { createStructuredBatchExecutor, type StructuredBatchContract } from '../structured-batch-executor'
 import type { ChapterBlueprint } from '../directory-workflow'
 import { retryDirectoryCharacterSync } from '../directory-character-sync-recovery'
+import { runtimeLog } from '../../runtime-log'
 import type {
   BlueprintRangeCommitReceipt,
   BlueprintRangeCommitRequest,
@@ -135,15 +136,17 @@ function assertExactImportEndpointDeltaKeys(
 
 function unresolvedImportRelationshipTargets(root: Record<string, unknown>, text: UiText): string[] {
   const cards = importInferenceCards(root, text)
-  const names = new Set(cards.map(card => card.name).filter((name): name is string => typeof name === 'string'))
+  const names = new Set(cards.map(card => typeof card.name === 'string' ? card.name.trim() : '')
+    .filter(Boolean))
   const unresolved = new Set<string>()
   for (const card of cards) {
-    const cardName = typeof card.name === 'string' ? card.name : undefined
+    const cardName = typeof card.name === 'string' ? card.name.trim() : undefined
     const relationships = card.relationships
     if (!Array.isArray(relationships)) continue
     for (const relationship of relationships) {
       if (!isRecord(relationship) || typeof relationship.target !== 'string') continue
-      if (relationship.target !== cardName && !names.has(relationship.target)) unresolved.add(relationship.target)
+      const target = relationship.target.trim()
+      if (target && target !== cardName && !names.has(target)) unresolved.add(target)
     }
   }
   if (unresolved.size === 0) {
@@ -279,6 +282,50 @@ export class InferGlobalSettingsCommand extends BaseWorkflowCommand<void> {
   ): Promise<ImportInferenceResult> {
     const writingLanguage = workflowWritingLanguage(context)
     const text = (zhCNText: string, enUSText: string) => workflowUiText(context, zhCNText, enUSText)
+    let originalRoot: Record<string, unknown>
+    try {
+      originalRoot = parseImportInferenceJsonObject(rawResult)
+    } catch {
+      return decodeImportInferenceJson(rawResult)
+    }
+
+    const cardsValue = originalRoot.characterCards
+    let missingNotesCount = 0
+    if (Array.isArray(cardsValue)) {
+      const fallbackNote = text(
+        '导入时未提供备注；请在角色卡中补充。',
+        'No import note was supplied; add details in the character card if needed.',
+      )
+      originalRoot = {
+        ...originalRoot,
+        characterCards: cardsValue.map(card => {
+          if (!isRecord(card)) return card
+          if (typeof card.notes !== 'string' || !card.notes.trim()) {
+            missingNotesCount += 1
+            return { ...card, notes: fallbackNote }
+          }
+          return card
+        }),
+      }
+    }
+    if (missingNotesCount > 0) {
+      callbacks.log(text(
+        `已为 ${missingNotesCount} 张缺少备注的角色卡补上待补充提示，继续合同校验。`,
+        `Added an explicit follow-up note to ${missingNotesCount} character card(s) with missing notes, then continued contract validation.`,
+      ))
+      runtimeLog.warn('import-inference', '缺少角色备注，已补入待补充提示', {
+        cardCount: Array.isArray(cardsValue) ? cardsValue.length : 0,
+        filledNotesCount: missingNotesCount,
+      }, {
+        projectId: context.projectSession?.projectId,
+        projectSessionId: context.projectSession?.leaseId,
+        runId: context.runId,
+        operation: 'import.inference.notes-recovered',
+        outcome: 'succeeded',
+      })
+    }
+
+    rawResult = JSON.stringify(originalRoot)
     try {
       return decodeImportInferenceJson(rawResult)
     } catch (error) {
@@ -288,19 +335,73 @@ export class InferGlobalSettingsCommand extends BaseWorkflowCommand<void> {
       }
     }
 
-    const originalRoot = parseImportInferenceJsonObject(rawResult)
     const unresolvedTargets = unresolvedImportRelationshipTargets(originalRoot, text)
     const originalCardCount = importInferenceCards(originalRoot, text).length
     if (originalCardCount + unresolvedTargets.length > MAX_IMPORT_INFERENCE_CHARACTER_CARDS) {
-      throw new Error(text(
-        '导入推演受限补卡校正会超过 8 张角色卡上限，已拒绝额外模型请求',
-        'The bounded import correction would exceed the eight-card limit, so the extra model request was rejected.',
+      const cards = importInferenceCards(originalRoot, text)
+      const names = new Set(cards.map(card => typeof card.name === 'string' ? card.name.trim() : '')
+        .filter(Boolean))
+      let preservedClueCount = 0
+      const reconciledRoot = {
+        ...originalRoot,
+        characterCards: cards.map(card => {
+          const cardName = typeof card.name === 'string' ? card.name.trim() : ''
+          if (!Array.isArray(card.relationships)) return card
+          const dangling = card.relationships.filter(relationship => isRecord(relationship)
+            && typeof relationship.target === 'string'
+            && relationship.target.trim() !== cardName
+            && !names.has(relationship.target.trim()))
+          if (dangling.length === 0) return card
+          const retained = card.relationships.filter(relationship => !dangling.includes(relationship))
+          const clueNotes = dangling.map(relationship => {
+            if (!isRecord(relationship)) return ''
+            preservedClueCount += 1
+            return text(
+              `待确认关系线索：${String(relationship.target).trim()}（${String(relationship.relation).trim()}）`,
+              `Unresolved relationship clue: ${String(relationship.target).trim()} (${String(relationship.relation).trim()})`,
+            )
+          }).filter(Boolean)
+          const existingNotes = typeof card.notes === 'string' ? card.notes.trim() : ''
+          return {
+            ...card,
+            relationships: retained,
+            notes: [existingNotes, ...clueNotes].filter(Boolean).join('\n'),
+          }
+        }),
+      }
+      callbacks.log(text(
+        `角色卡已达 ${originalCardCount} 张上限；已将 ${preservedClueCount} 条未闭合关系保留为待确认备注后继续。`,
+        `The ${originalCardCount}-card limit is already full; preserved ${preservedClueCount} unresolved relationship clue(s) in notes and continued.`,
       ))
+      runtimeLog.warn('import-inference', '角色卡达到上限，未闭合关系已保留为待确认备注', {
+        characterCardCount: originalCardCount,
+        unresolvedTargetCount: unresolvedTargets.length,
+        preservedClueCount,
+        modelCorrectionRequested: false,
+      }, {
+        projectId: context.projectSession?.projectId,
+        projectSessionId: context.projectSession?.leaseId,
+        runId: context.runId,
+        operation: 'import.inference.relationship-cap-recovery',
+        outcome: 'succeeded',
+      })
+      return decodeImportInferenceJson(JSON.stringify(reconciledRoot))
     }
     callbacks.log(text(
       `导入推演关系端点缺少 ${unresolvedTargets.length} 张角色卡，正在执行一次受限补卡校正`,
       `${unresolvedTargets.length} relationship ${unresolvedTargets.length === 1 ? 'endpoint is' : 'endpoints are'} missing a character card; running one bounded correction`,
     ))
+    runtimeLog.warn('import-inference', '关系端点缺少角色卡，开始受限补卡校正', {
+      characterCardCount: originalCardCount,
+      unresolvedTargetCount: unresolvedTargets.length,
+      correctionRequestCount: 1,
+    }, {
+      projectId: context.projectSession?.projectId,
+      projectSessionId: context.projectSession?.leaseId,
+      runId: context.runId,
+      operation: 'import.inference.relationship-recovery',
+      outcome: 'started',
+    })
     const correction = await this.callLLMResult(
       promptLanguageText(
         writingLanguage,
@@ -353,6 +454,16 @@ export class InferGlobalSettingsCommand extends BaseWorkflowCommand<void> {
         ...parseImportEndpointCorrectionDelta(correction.content, unresolvedTargets, text),
       ],
     }
+    runtimeLog.info('import-inference', '受限关系端点补卡校正完成', {
+      characterCardCount: originalCardCount + unresolvedTargets.length,
+      recoveredCardCount: unresolvedTargets.length,
+    }, {
+      projectId: context.projectSession?.projectId,
+      projectSessionId: context.projectSession?.leaseId,
+      runId: context.runId,
+      operation: 'import.inference.relationship-recovery',
+      outcome: 'succeeded',
+    })
     return decodeImportInferenceJson(JSON.stringify(correctedRoot))
   }
 

@@ -208,8 +208,8 @@ afterEach(() => {
 })
 
 describe('InferGlobalSettingsCommand relationship endpoint recovery', () => {
-  it('fails closed without correction when missing endpoint cards would exceed the eight-card contract', async () => {
-    const invoke = stubNoCommitIpc()
+  it('preserves an unresolved relationship clue in character notes when eight cards already fill the contract', async () => {
+    const invoke = stubSuccessfulImportIpc()
     const initial = validInference()
     initial.characterCards = [
       card('陆舟', 'protagonist'),
@@ -224,12 +224,46 @@ describe('InferGlobalSettingsCommand relationship endpoint recovery', () => {
     initial.characterCards[0].relationships.push({ target: '韩烁', relation: '旧债牵连' })
     const generateStream = respondWith([initial])
 
-    await expect(new InferGlobalSettingsCommand().execute({ step: {}, context: createContext(), callbacks }))
-      .rejects.toThrow(/角色卡|8|补卡校正/)
+    await new InferGlobalSettingsCommand().execute({ step: {}, context: createContext(), callbacks })
 
     expect(generateStream).toHaveBeenCalledOnce()
-    expect(invoke.mock.calls.map(([channel]) => channel).filter(ch => ch !== 'runtime:log')).not.toContain('db:import-global-facts-commit')
-    expect(invoke.mock.calls.map(([channel]) => channel).filter(ch => ch !== 'runtime:log')).not.toContain('db:character-roster-read')
+    expect(invoke).toHaveBeenLastCalledWith(
+      'db:import-global-facts-commit',
+      expect.objectContaining({
+        characterEntries: expect.arrayContaining([
+          expect.objectContaining({
+            name: '陆舟',
+            relationships: [],
+            notes: expect.stringContaining('韩烁（旧债牵连）'),
+          }),
+        ]),
+      }),
+      'C:\\tmp\\vela-import-test',
+      expect.objectContaining({ projectId: 'project-1' }),
+    )
+  })
+
+  it('fills omitted or malformed character notes with an explicit import placeholder', async () => {
+    const invoke = stubSuccessfulImportIpc()
+    const initial = validInference()
+    delete (initial.characterCards[1] as unknown as Record<string, unknown>).notes
+    ;(initial.characterCards[2] as unknown as Record<string, unknown>).notes = null
+    const generateStream = respondWith([initial])
+
+    await new InferGlobalSettingsCommand().execute({ step: {}, context: createContext(), callbacks })
+
+    expect(generateStream).toHaveBeenCalledOnce()
+    expect(invoke).toHaveBeenLastCalledWith(
+      'db:import-global-facts-commit',
+      expect.objectContaining({
+        characterEntries: expect.arrayContaining([
+          expect.objectContaining({ name: '苏绾', notes: expect.stringMatching(/导入时未提供备注|No import note was supplied/u) }),
+          expect.objectContaining({ name: '顾岩', notes: expect.stringMatching(/导入时未提供备注|No import note was supplied/u) }),
+        ]),
+      }),
+      'C:\\tmp\\vela-import-test',
+      expect.objectContaining({ projectId: 'project-1' }),
+    )
   })
 
   it('adds only missing endpoint cards from a strict delta through one bounded correction before the atomic global-facts commit', async () => {
