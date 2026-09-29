@@ -195,7 +195,7 @@ function containerScript(cases, token) {
 }
 
 function runContainerGroup(runtime, releaseRoot, cases, token) {
-  const args = ['run', '--rm', '--platform', 'linux/amd64', '--mount', 'type=bind,src=' + releaseRoot + ',dst=/artifacts,readonly']
+  const args = ['run', '--rm', '--interactive', '--platform', 'linux/amd64', '--mount', 'type=bind,src=' + releaseRoot + ',dst=/artifacts,readonly']
   if (existsSync('/dev/fuse')) args.push('--device', '/dev/fuse', '--cap-add', 'SYS_ADMIN', '--security-opt', 'apparmor:unconfined')
   args.push(cases[0].image, 'bash', '-s')
   const result = spawnSync(runtime, args, {

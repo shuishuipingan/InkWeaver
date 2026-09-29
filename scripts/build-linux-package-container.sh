@@ -6,7 +6,7 @@ node_binary="$(readlink -f "$(command -v node)")"
 node_root="$(dirname "$(dirname "$node_binary")")"
 build_image='ubuntu:22.04@sha256:829f6df217bcbae2b371026e81711d1a787c61b2967ad09d015063663ebafbf7'
 
-docker run --rm --platform linux/amd64 \
+docker run --rm --interactive --platform linux/amd64 \
   --volume "$GITHUB_WORKSPACE:$GITHUB_WORKSPACE" \
   --volume "$node_root:/host-node:ro" \
   --workdir "$GITHUB_WORKSPACE" \

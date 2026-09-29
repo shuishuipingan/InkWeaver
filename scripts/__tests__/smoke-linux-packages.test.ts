@@ -35,6 +35,7 @@ describe('Linux package smoke contract', () => {
     expect(source).toContain('Xvfb :99')
     expect(source).toContain('export DISPLAY=:99')
     expect(source).not.toContain('xvfb-run')
+    expect(source).toContain("['run', '--rm', '--interactive', '--platform'")
   })
 
   it('rejects incomplete, failed, or unsupported-distro observations', () => {
