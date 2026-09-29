@@ -30,4 +30,22 @@ describe('Linux desktop package metadata', () => {
     expect(postInstallScript).toContain('chown root:root "$sandbox_path"')
     expect(postInstallScript).toContain('chmod 4755 "$sandbox_path"')
   })
+
+  it('builds AppImage separately without the privileged sandbox helper', () => {
+    const configText = readFileSync(path.join(repositoryRoot, 'electron-builder.json5'), 'utf8')
+      .replace(/^\/\/[^\r\n]*(?:\r?\n|$)/, '')
+    const config = JSON.parse(configText) as { linux?: { afterPack?: string } }
+    const packageJson = JSON.parse(readFileSync(path.join(repositoryRoot, 'package.json'), 'utf8')) as {
+      scripts?: Record<string, string>
+    }
+    const hook = 'scripts/linux-appimage-after-pack.cjs'
+
+    expect(config.linux?.afterPack).toBe(hook)
+    expect(packageJson.scripts?.['build:linux:artifacts']).toContain('electron-builder --linux deb rpm --x64 --publish never')
+    expect(packageJson.scripts?.['build:linux:artifacts']).toContain('AI_NOVEL_LINUX_APPIMAGE_BUILD=1 electron-builder --linux AppImage --x64 --publish never')
+    const appImageHook = readFileSync(path.join(repositoryRoot, hook), 'utf8')
+    expect(appImageHook).toContain('AI_NOVEL_LINUX_APPIMAGE_BUILD')
+    expect(appImageHook).toContain('chrome-sandbox')
+    expect(appImageHook).toContain("await rm(path.join(context.appOutDir, 'chrome-sandbox')")
+  })
 })

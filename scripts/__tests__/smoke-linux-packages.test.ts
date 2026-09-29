@@ -61,7 +61,7 @@ describe('Linux package smoke contract', () => {
     expect(source).toContain('Xvfb :99')
     expect(source).toContain('export DISPLAY=:99')
     expect(source).not.toContain('xvfb-run')
-    expect(source).toContain("['run', '--rm', '--interactive', '--platform'")
+    expect(source).toContain("'run', '--rm', '--interactive', '--platform'")
   })
 
   it('probes AppImage extraction independently and launches the packaged desktop as an unprivileged user', () => {
@@ -73,6 +73,8 @@ describe('Linux package smoke contract', () => {
     expect(source).toContain('runuser -u nobody -- env')
     expect(source).toContain('--appimage-extract-and-run --ai-novel-release-desktop-smoke=')
     expect(source).toContain('desktopEvidenceById')
+    expect(source).toContain("'--security-opt', 'seccomp=unconfined'")
+    expect(source).toContain("'--security-opt', 'apparmor=unconfined'")
   })
 
   it('emits syntax-valid Bash for each distro-specific package smoke group', () => {

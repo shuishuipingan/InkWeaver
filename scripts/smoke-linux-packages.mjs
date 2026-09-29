@@ -237,8 +237,12 @@ export function createLinuxSmokeContainerScript(cases, tokens) {
 }
 
 function runContainerGroup(runtime, releaseRoot, cases, tokens) {
-  const args = ['run', '--rm', '--interactive', '--platform', 'linux/amd64', '--mount', 'type=bind,src=' + releaseRoot + ',dst=/artifacts,readonly']
-  if (existsSync('/dev/fuse')) args.push('--device', '/dev/fuse', '--cap-add', 'SYS_ADMIN', '--security-opt', 'apparmor:unconfined')
+  const args = [
+    'run', '--rm', '--interactive', '--platform', 'linux/amd64',
+    '--security-opt', 'seccomp=unconfined', '--security-opt', 'apparmor=unconfined',
+    '--mount', 'type=bind,src=' + releaseRoot + ',dst=/artifacts,readonly',
+  ]
+  if (existsSync('/dev/fuse')) args.push('--device', '/dev/fuse', '--cap-add', 'SYS_ADMIN')
   args.push(cases[0].image, 'bash', '-s')
   const result = spawnSync(runtime, args, {
     input: createLinuxSmokeContainerScript(cases, tokens), encoding: 'utf8', timeout: 20 * 60 * 1000, maxBuffer: 32 * 1024 * 1024,
