@@ -58,4 +58,17 @@ describe('Linux x64 desktop qualification workflow', () => {
     expect(buildScript).toContain('--env HOST_GID=')
     expect(buildScript).toContain('chown -R "$HOST_UID:$HOST_GID" release')
   })
+
+  it('temporarily enables and restores host user namespaces for the isolated Electron sandbox smoke', () => {
+    const workflow = readFileSync(workflowPath, 'utf8')
+    const enableStep = workflow.indexOf('name: Enable Linux user namespaces for packaged sandbox smoke')
+    const restoreStep = workflow.indexOf('name: Restore Linux user namespace settings', enableStep)
+
+    expect(enableStep).toBeGreaterThanOrEqual(0)
+    expect(restoreStep).toBeGreaterThan(enableStep)
+    expect(workflow.slice(enableStep, restoreStep)).toContain('user.max_user_namespaces')
+    expect(workflow.slice(enableStep, restoreStep)).toContain('kernel.apparmor_restrict_unprivileged_userns')
+    expect(workflow.slice(restoreStep)).toContain('if: ${{ always() }}')
+    expect(workflow.slice(restoreStep)).toContain('sudo sysctl -w "$name=$value"')
+  })
 })

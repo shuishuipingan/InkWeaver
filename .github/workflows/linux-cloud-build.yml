@@ -94,10 +94,39 @@ jobs:
           AI_NOVEL_RELEASE_EVIDENCE_COMMAND_TIMEOUT_MS: '3600000'
         run: node scripts/release-evidence-v2.mjs record --evidence-root "$AI_NOVEL_RELEASE_EVIDENCE_ROOT" --step build-linux-x64-package -- bash scripts/build-linux-package-container.sh
 
+      - name: Enable Linux user namespaces for packaged sandbox smoke
+        run: |
+          set -euo pipefail
+          backup="$RUNNER_TEMP/inkweaver-userns-sysctls.env"
+          : > "$backup"
+          for name in user.max_user_namespaces kernel.unprivileged_userns_clone kernel.apparmor_restrict_unprivileged_userns; do
+            value="$(sysctl -n "$name" 2>/dev/null || true)"
+            if [[ -n "$value" ]]; then
+              printf '%s=%s\n' "$name" "$value" >> "$backup"
+              target=1
+              if [[ "$name" == 'user.max_user_namespaces' ]]; then target=15000; fi
+              sudo sysctl -w "$name=$target"
+            fi
+          done
+          runuser -u nobody -- unshare --user --map-root-user true
+
       - name: Install and launch packages on Ubuntu, Debian, and Fedora
         env:
           AI_NOVEL_RELEASE_EVIDENCE_COMMAND_TIMEOUT_MS: '3600000'
         run: node scripts/release-evidence-v2.mjs record --evidence-root "$AI_NOVEL_RELEASE_EVIDENCE_ROOT" --step linux-package-smoke -- node scripts/smoke-linux-packages.mjs --release-root "release/$AI_NOVEL_RELEASE_VERSION" --evidence-root "$AI_NOVEL_RELEASE_EVIDENCE_ROOT" --version "$AI_NOVEL_RELEASE_VERSION"
+
+      - name: Restore Linux user namespace settings
+        if: ${{ always() }}
+        run: |
+          set -euo pipefail
+          backup="$RUNNER_TEMP/inkweaver-userns-sysctls.env"
+          if [[ -f "$backup" ]]; then
+            while IFS='=' read -r name value; do
+              [[ -n "$name" && -n "$value" ]] || continue
+              sudo sysctl -w "$name=$value"
+            done < "$backup"
+            rm -f "$backup"
+          fi
 
       - name: Record verified host toolchain
         run: |
