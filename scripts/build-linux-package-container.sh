@@ -14,6 +14,7 @@ docker run --rm --interactive --platform linux/amd64 \
 set -euo pipefail
 export PATH="/host-node/bin:$PATH"
 export DEBIAN_FRONTEND=noninteractive
+export CI=true
 test "$(node --version)" = 'v22.23.1'
 apt-get update -qq
 apt-get install -y -qq build-essential python3 pkg-config libsecret-1-dev libgtk-3-dev libnss3 libasound2 libxss1
