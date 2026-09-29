@@ -17,6 +17,7 @@ export DEBIAN_FRONTEND=noninteractive
 test "$(node --version)" = 'v22.23.1'
 apt-get update -qq
 apt-get install -y -qq build-essential python3 pkg-config libsecret-1-dev libgtk-3-dev libnss3 libasound2 libxss1
+corepack enable --install-directory /usr/local/bin
 corepack prepare pnpm@11.11.0 --activate
 test "$(pnpm --version)" = '11.11.0'
 pnpm install --frozen-lockfile --reporter=append-only

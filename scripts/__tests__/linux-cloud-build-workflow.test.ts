@@ -21,6 +21,7 @@ describe('Linux x64 desktop qualification workflow', () => {
     expect(workflow).toContain('runs-on: ubuntu-24.04')
     expect(buildScript).toContain('829f6df217bcbae2b371026e81711d1a787c61b2967ad09d015063663ebafbf7')
     expect(buildScript).toContain('docker run --rm --interactive --platform')
+    expect(buildScript).toContain('corepack enable --install-directory /usr/local/bin')
     expect(buildScript).toContain('pnpm run build:linux:artifacts')
     expect(workflow).toContain('pnpm run test:browser')
     expect(workflow).toContain('pnpm test')
