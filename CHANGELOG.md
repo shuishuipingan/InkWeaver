@@ -2,6 +2,14 @@
 
 本文件按用户可见行为记录变更。桌面版本不发布 npm；DSH 插件沿用已发布的 `1.2.0` 包。`1.2.0` 已从同一源码 commit 完成工程验收、三平台资产回读和正式 Release；`1.1.0` 的历史 Release 收据保留在 `docs/upgrade/`，不与 1.2.0 混用。
 
+## 1.3.6 — 2026-09-29
+
+- 修复 AI 一键替换角色名在模型回显空白或引号变体时误报“未知或重复的原名”。每个批次现在用稳定角色编号绑定改名；仅当原名变体唯一时才接受旧式名称回显，歧义映射仍会被拒绝。
+
+## What's changed
+
+- Fixed AI character renaming when a model echoes an original name with incidental whitespace or quote variations. Each request batch now assigns stable slot IDs and binds each proposed new name to its exact source character. Legacy name-only responses are accepted only when the source-name variant is unambiguous.
+
 ## 1.3.5 — 2026-09-29
 
 - 章节草稿预算现分别统计全局指导（包括小说配置中的副本和自定义模板中的重复位置）、项目专属提示和已确认规划资料；超长规划资料按整项保留或移除，作者指导和本章证据始终完整。提示词预检报告中的输出 Token 预留数与实际受上下文窗口限制的请求一致；多段指导中的换行整理不会再阻止生成。
