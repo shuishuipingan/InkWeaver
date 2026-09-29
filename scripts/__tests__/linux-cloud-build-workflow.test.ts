@@ -50,4 +50,12 @@ describe('Linux x64 desktop qualification workflow', () => {
 
     expect(buildScript).toMatch(/apt-get install[^\r\n]*\brpm\b/)
   })
+
+  it('returns container-built release files to the host runner before qualification writes', () => {
+    const buildScript = readFileSync(buildScriptPath, 'utf8')
+
+    expect(buildScript).toContain('--env HOST_UID=')
+    expect(buildScript).toContain('--env HOST_GID=')
+    expect(buildScript).toContain('chown -R "$HOST_UID:$HOST_GID" release')
+  })
 })
