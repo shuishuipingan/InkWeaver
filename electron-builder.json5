@@ -80,6 +80,7 @@
   "linux": {
     "target": ["AppImage", "deb", "rpm"],
     "artifactName": "inkweaver-linux-x64-${version}.${ext}",
+    "maintainer": "InkWeaver Maintainers <shuishuipingan@users.noreply.github.com>",
     "category": "Office",
     "icon": "build/icon.png"
   }
