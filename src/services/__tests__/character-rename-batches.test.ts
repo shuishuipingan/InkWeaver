@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { CharacterRenameLengthError, chunkCharacterRenameRoster, findQuoteWrappedNameCollisions, generateUniqueCharacterRenameBatch, validateCharacterRenameBatch } from '../character-rename-batches'
+import { CharacterRenameLengthError, bindCharacterRenameBatchSlots, chunkCharacterRenameRoster, findQuoteWrappedNameCollisions, generateUniqueCharacterRenameBatch, validateCharacterRenameBatch } from '../character-rename-batches'
 
 describe('character rename batches', () => {
   it('includes every character beyond the former 40-character cutoff', () => {
@@ -15,6 +15,69 @@ describe('character rename batches', () => {
     expect(() => validateCharacterRenameBatch(expected, [
       { from: '甲', to: '丙', reason: '' }, { from: '乙', to: '丙', reason: '' },
     ], new Set(expected))).toThrow(/重复/)
+  })
+
+  it('matches source names after trimming incidental model whitespace', () => {
+    const expected = ['沈笑笑', '任双']
+
+    expect(validateCharacterRenameBatch(expected, [
+      { from: ' 沈笑笑 ', to: '顾长宁', reason: '' },
+      { from: '\n任双\t', to: '温照野', reason: '' },
+    ], new Set(expected)).map(row => row.from)).toEqual(expected)
+  })
+
+  it('matches a uniquely quoted source echo but rejects ambiguous quote aliases', () => {
+    expect(validateCharacterRenameBatch(['“云花”'], [
+      { from: '云花', to: '谢临川', reason: '' },
+    ], new Set(['“云花”'])).map(row => row.from)).toEqual(['“云花”'])
+
+    expect(() => validateCharacterRenameBatch(['云花', '“云花”'], [
+      { from: '云花', to: '谢临川', reason: '' },
+      { from: '云花', to: '顾星野', reason: '' },
+    ], new Set(['云花', '“云花”']))).toThrow(/未知或重复的原名/u)
+  })
+
+  it('binds response rows by stable batch slot when quote-wrapped names are ambiguous', () => {
+    const roster = [{ name: '沈笑笑' }, { name: '"沈笑笑"' }, { name: '“云花”' }]
+    const rows = bindCharacterRenameBatchSlots(roster, [
+      { slotId: 'R2', from: '沈笑笑', to: '贺兰清', reason: '' },
+      { slotId: 'R1', from: '沈笑笑', to: '云知微', reason: '' },
+      { slotId: 'R3', from: '云花', to: '谢临川', reason: '' },
+    ])
+
+    expect(rows.map(row => row.from)).toEqual(['沈笑笑', '"沈笑笑"', '“云花”'])
+    expect(rows.map(row => row.to)).toEqual(['云知微', '贺兰清', '谢临川'])
+  })
+
+  it('uses stable slots before validating model rows with aliased original names', async () => {
+    const roster = [{ name: '沈笑笑' }, { name: '"沈笑笑"' }]
+    const rows = await generateUniqueCharacterRenameBatch(
+      roster,
+      new Set(roster.map(character => character.name)),
+      new Set(),
+      async () => [
+        { slotId: 'R2', from: '沈笑笑', to: '贺兰清', reason: '' },
+        { slotId: 'R1', from: '沈笑笑', to: '云知微', reason: '' },
+      ],
+    )
+
+    expect(rows.map(row => row.from)).toEqual(['沈笑笑', '"沈笑笑"'])
+    expect(rows.map(row => row.to)).toEqual(['云知微', '贺兰清'])
+  })
+
+  it('rejects unknown, duplicate, or incomplete stable batch slots', () => {
+    const roster = [{ name: '甲' }, { name: '乙' }]
+    expect(() => bindCharacterRenameBatchSlots(roster, [
+      { slotId: 'R1', from: '甲', to: '丙', reason: '' },
+      { slotId: 'R3', from: '乙', to: '丁', reason: '' },
+    ])).toThrow(/未知/u)
+    expect(() => bindCharacterRenameBatchSlots(roster, [
+      { slotId: 'R1', from: '甲', to: '丙', reason: '' },
+      { slotId: 'R1', from: '乙', to: '丁', reason: '' },
+    ])).toThrow(/重复/u)
+    expect(() => bindCharacterRenameBatchSlots(roster, [
+      { slotId: 'R1', from: '甲', to: '丙', reason: '' },
+    ])).toThrow(/缺少/u)
   })
 
   it('regenerates only the conflicting batch with accepted names forbidden', async () => {

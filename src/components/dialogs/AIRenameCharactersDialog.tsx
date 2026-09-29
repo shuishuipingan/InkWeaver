@@ -111,10 +111,10 @@ export default function AIRenameCharactersDialog({ onClose }: { onClose: () => v
       if (!modelId) throw new Error(text('请先配置默认创作模型', 'Configure a default writing model first'))
       const rows: RenameRow[] = []
       const generateBatch = async (batch: typeof characters, forbiddenNames: Set<string>): Promise<RenameRow[]> => {
-        const rosterLines = batch.map(c => {
+        const rosterLines = batch.map((c, index) => {
           const brief = [c.gender, c.age, c.role, c.personality?.slice(0, 40)]
             .filter(Boolean).join(' / ')
-          return `- ${c.name}${brief ? `（${brief}）` : ''}`
+          return `- [R${index + 1}] ${c.name}${brief ? `（${brief}）` : ''}`
         }).join('\n')
         const user = [
           text(`作品设定：${settingBrief || '未提供'}`, `Setting: ${settingBrief || 'not provided'}`),
@@ -125,8 +125,8 @@ export default function AIRenameCharactersDialog({ onClose }: { onClose: () => v
             ? text(`以下新名已被占用或本轮不可使用：${[...forbiddenNames].join('、')}`, `These new names are unavailable: ${[...forbiddenNames].join(', ')}`)
             : '',
           text('只为本批列出的角色生成名字，逐个完整返回。', 'Return one complete mapping for each character in this batch only.'),
-          text('输出 JSON：{"renames":[{"from":"原名","to":"新名","reason":"一句话理由"}]}。',
-            'Output JSON: {"renames":[{"from":"old","to":"new","reason":"one line"}]}.'),
+          text('每个角色的 R 编号必须原样返回且不可重复；from 仅作回显。输出 JSON：{"renames":[{"slotId":"R1","from":"原名","to":"新名","reason":"一句话理由"}]}。',
+            'Return each R slot ID unchanged and exactly once; from is only an echo. Output JSON: {"renames":[{"slotId":"R1","from":"old","to":"new","reason":"one line"}]}.'),
           text('新名符合设定，不含原名的字或近音，不与其他角色重名。',
             'New names must fit the setting, avoid old characters and similar sounds, and be unique.'),
         ].filter(Boolean).join('\n')
@@ -148,10 +148,11 @@ export default function AIRenameCharactersDialog({ onClose }: { onClose: () => v
           if (res.finishReason === 'length') throw new CharacterRenameLengthError(message)
           throw new Error(message)
         }
-        const parsed = extractJson(res.content) as { renames?: Array<{ from?: unknown; to?: unknown; reason?: unknown }> }
+        const parsed = extractJson(res.content) as { renames?: Array<{ slotId?: unknown; from?: unknown; to?: unknown; reason?: unknown }> }
         if (!Array.isArray(parsed.renames)) throw new Error(text('AI 未返回改名列表', 'AI did not return a rename list'))
         return parsed.renames.map(r => ({
           from: String(r.from ?? ''), to: String(r.to ?? ''), reason: String(r.reason ?? ''),
+          ...(r.slotId === undefined ? {} : { slotId: String(r.slotId) }),
         }))
       }
       const batches = chunkCharacterRenameRoster(characters)
