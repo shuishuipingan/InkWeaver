@@ -131,7 +131,7 @@ function readOptions(args) {
   return result
 }
 
-function containerScript(cases, tokens) {
+export function createLinuxSmokeContainerScript(cases, tokens) {
   const rows = cases.map(testCase => [testCase.id, testCase.format, testCase.distro, testCase.distroVersion, testCase.artifact, testCase.image].join('|')).join('\n')
   const fedora = cases[0].distro === 'fedora'
   const debian = cases[0].distro === 'debian'
@@ -184,7 +184,6 @@ function containerScript(cases, tokens) {
     '      if [ "$fuse_exit" -eq 0 ] && grep -q \'"kind":"packaged-vector-smoke"\' "$smoke_root/fuse.log"; then appimage_mode=fuse; appimage_fuse_status=passed; fi',
     '    else appimage_fuse_status=unavailable',
     '    fi',
-    '  else appimage_fuse_status=""',
     '  fi',
     '  set +e',
     '  if [ "$case_format" = "appimage" ] && [ "$appimage_mode" = "extract-and-run" ]; then',
@@ -242,7 +241,7 @@ function runContainerGroup(runtime, releaseRoot, cases, tokens) {
   if (existsSync('/dev/fuse')) args.push('--device', '/dev/fuse', '--cap-add', 'SYS_ADMIN', '--security-opt', 'apparmor:unconfined')
   args.push(cases[0].image, 'bash', '-s')
   const result = spawnSync(runtime, args, {
-    input: containerScript(cases, tokens), encoding: 'utf8', timeout: 20 * 60 * 1000, maxBuffer: 32 * 1024 * 1024,
+    input: createLinuxSmokeContainerScript(cases, tokens), encoding: 'utf8', timeout: 20 * 60 * 1000, maxBuffer: 32 * 1024 * 1024,
   })
   if (result.error) throw result.error
   assert(result.status === 0, 'Linux package smoke container failed for ' + cases[0].image + ': ' + String(result.stderr || result.stdout || '').slice(-6000))

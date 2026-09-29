@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
@@ -6,6 +7,7 @@ import {
   createLinuxSmokeCases,
   validateLinuxSmokeResults,
 } from '../smoke-linux-packages.mjs'
+import * as linuxSmokeModule from '../smoke-linux-packages.mjs'
 
 function createValidLinuxSmokeResults() {
   return createLinuxSmokeCases('1.3.6').map(testCase => ({
@@ -71,6 +73,26 @@ describe('Linux package smoke contract', () => {
     expect(source).toContain('runuser -u nobody -- env')
     expect(source).toContain('--appimage-extract-and-run --ai-novel-release-desktop-smoke=')
     expect(source).toContain('desktopEvidenceById')
+  })
+
+  it('emits syntax-valid Bash for each distro-specific package smoke group', () => {
+    const createContainerScript = (linuxSmokeModule as unknown as {
+      createLinuxSmokeContainerScript: (cases: ReturnType<typeof createLinuxSmokeCases>, tokens: { vector: string; desktop: string }) => string
+    }).createLinuxSmokeContainerScript
+    const groups = new Map<string, ReturnType<typeof createLinuxSmokeCases>>()
+    for (const testCase of createLinuxSmokeCases('1.3.6')) {
+      groups.set(testCase.image, [...(groups.get(testCase.image) ?? []), testCase])
+    }
+
+    expect(typeof createContainerScript).toBe('function')
+    for (const cases of groups.values()) {
+      const result = spawnSync('bash', ['-n'], {
+        input: createContainerScript(cases, { vector: 'a'.repeat(32), desktop: 'b'.repeat(32) }),
+        encoding: 'utf8',
+      })
+      expect(result.error?.message).toBeUndefined()
+      expect(result.status, result.stderr).toBe(0)
+    }
   })
 
   it('rejects incomplete, failed, or unsupported-distro observations', () => {
