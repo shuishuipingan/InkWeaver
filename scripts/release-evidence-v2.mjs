@@ -835,6 +835,7 @@ function validateLinuxReceipt(receipt, name, bundleRoot, version) {
         assert(['fuse', 'extract-and-run'].includes(observed.appImageMode), `Linux AppImage vector-smoke mode is invalid: ${testCase.id}`)
         assert(['passed', 'failed', 'unavailable'].includes(observed.appImageFuseStatus), `Linux AppImage FUSE observation is invalid: ${testCase.id}`)
         assert(observed.appImageExtractionExitCode === 0, `Linux AppImage extraction smoke failed: ${testCase.id}`)
+        assert(observed.userNamespaceSandboxReady === true, `Linux AppImage user namespace sandbox is unavailable: ${testCase.id}`)
         if (observed.appImageFuseStatus === 'passed') assert(observed.appImageMode === 'fuse', `Linux AppImage FUSE evidence conflicts with its vector-smoke mode: ${testCase.id}`)
         else assert(observed.appImageMode === 'extract-and-run', `Linux AppImage fallback evidence conflicts with its vector-smoke mode: ${testCase.id}`)
       } else {

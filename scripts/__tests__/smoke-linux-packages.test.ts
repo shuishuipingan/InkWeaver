@@ -29,6 +29,7 @@ function createValidLinuxSmokeResults() {
     desktopRendererLoaded: true,
     desktopPreloadApiReady: true,
     desktopAppRootReady: true,
+    userNamespaceSandboxReady: true,
     cleanupSucceeded: true,
   }))
 }
@@ -72,6 +73,8 @@ describe('Linux package smoke contract', () => {
     expect(source).toContain('AI_NOVEL_RELEASE_DESKTOP_SMOKE_TOKEN')
     expect(source).toContain('runuser -u nobody -- env')
     expect(source).toContain('--appimage-extract-and-run --ai-novel-release-desktop-smoke=')
+    expect(source).toContain('unshare --user --map-root-user true')
+    expect(source).toContain("'--sysctl', 'user.max_user_namespaces=15000'")
     expect(source).toContain('desktopEvidenceById')
     expect(source).toContain("'--security-opt', 'seccomp=unconfined'")
     expect(source).toContain("'--security-opt', 'apparmor=unconfined'")
@@ -119,6 +122,7 @@ describe('Linux package smoke contract', () => {
       desktopRendererLoaded: true,
       desktopPreloadApiReady: true,
       desktopAppRootReady: true,
+      userNamespaceSandboxReady: true,
       cleanupSucceeded: true,
     }))
 
@@ -173,5 +177,14 @@ describe('Linux package smoke contract', () => {
       .toEqual(expect.arrayContaining([
         expect.objectContaining({ appImageFuseStatus: 'failed', appImageMode: 'extract-and-run', appImageExtractionExitCode: 0 }),
       ]))
+  })
+
+  it('requires an unprivileged user namespace for sandboxed AppImage desktop startup', () => {
+    const results = createValidLinuxSmokeResults()
+    for (const result of results.filter(candidate => candidate.format === 'appimage')) {
+      result.userNamespaceSandboxReady = false
+    }
+
+    expect(() => validateLinuxSmokeResults(results)).toThrow(/user namespace sandbox unavailable/)
   })
 })

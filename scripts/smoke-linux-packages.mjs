@@ -79,6 +79,7 @@ export function validateLinuxSmokeResults(results, expectedVersion) {
       assert(result.appImageMode === 'fuse' || result.appImageMode === 'extract-and-run', 'Linux AppImage launch mode is invalid: ' + testCase.id)
       assert(['passed', 'failed', 'unavailable'].includes(result.appImageFuseStatus), 'Linux AppImage FUSE observation is invalid: ' + testCase.id)
       assert(Number.isInteger(result.appImageExtractionExitCode) && result.appImageExtractionExitCode === 0, 'Linux AppImage extract-and-run smoke failed: ' + testCase.id)
+      assert(result.userNamespaceSandboxReady === true, 'Linux AppImage user namespace sandbox unavailable: ' + testCase.id)
       if (result.appImageFuseStatus === 'passed') assert(result.appImageMode === 'fuse', 'Linux AppImage FUSE result does not match its vector-smoke mode: ' + testCase.id)
       if (result.appImageFuseStatus !== 'passed') assert(result.appImageMode === 'extract-and-run', 'Linux AppImage fallback mode does not match its FUSE result: ' + testCase.id)
     } else {
@@ -102,6 +103,7 @@ export function validateLinuxSmokeResults(results, expectedVersion) {
       desktopRendererLoaded: result.desktopRendererLoaded,
       desktopPreloadApiReady: result.desktopPreloadApiReady,
       desktopAppRootReady: result.desktopAppRootReady,
+      userNamespaceSandboxReady: result.userNamespaceSandboxReady,
       cleanupSucceeded: result.cleanupSucceeded,
     }
   })
@@ -157,6 +159,8 @@ export function createLinuxSmokeContainerScript(cases, tokens) {
     'sleep 1',
     'kill -0 "$xvfb_pid"',
     'export DISPLAY=:99',
+    'user_namespace_sandbox_ready=false',
+    'if runuser -u nobody -- unshare --user --map-root-user true >/dev/null 2>&1; then user_namespace_sandbox_ready=true; fi',
     'export AI_NOVEL_RELEASE_SMOKE=1 AI_NOVEL_RELEASE_SMOKE_TOKEN=' + tokens.vector,
     'export AI_NOVEL_RELEASE_DESKTOP_SMOKE=1 AI_NOVEL_RELEASE_DESKTOP_SMOKE_TOKEN=' + tokens.desktop,
     'glibc_version="$(getconf GNU_LIBC_VERSION | awk \'{print $2}\')"',
@@ -164,6 +168,7 @@ export function createLinuxSmokeContainerScript(cases, tokens) {
     'required_glibc() { readelf --dyn-syms --wide "$1" | grep -oE "GLIBC_[0-9]+(\\.[0-9]+)+" | sed "s/GLIBC_//" | sort -V | tail -n 1 || true; }',
     'while IFS="|" read -r case_id case_format case_distro case_distro_version case_artifact case_image; do',
     '  [ -n "$case_id" ] || continue',
+    '  if [ "$case_format" = "appimage" ] && [ "$user_namespace_sandbox_ready" != true ]; then echo "AppImage sandbox qualification requires unprivileged user namespaces." >&2; exit 1; fi',
     '  package_path="/artifacts/$case_artifact"',
     '  appimage_mode=""',
     '  appimage_fuse_status=""',
@@ -232,7 +237,7 @@ export function createLinuxSmokeContainerScript(cases, tokens) {
     'kill "$xvfb_pid" 2>/dev/null || true',
     'rm -rf "$smoke_root"',
     '[ ! -e "$smoke_root" ]',
-    'printf "GROUP_RESULT|%s|%s|true|%s\\n" "' + cases[0].image + '" "$glibc_version" "$os_release"',
+    'printf "GROUP_RESULT|%s|%s|true|%s|%s\\n" "' + cases[0].image + '" "$glibc_version" "$os_release" "$user_namespace_sandbox_ready"',
   ].join('\n')
 }
 
@@ -240,6 +245,7 @@ function runContainerGroup(runtime, releaseRoot, cases, tokens) {
   const args = [
     'run', '--rm', '--interactive', '--platform', 'linux/amd64',
     '--security-opt', 'seccomp=unconfined', '--security-opt', 'apparmor=unconfined',
+    '--sysctl', 'user.max_user_namespaces=15000',
     '--mount', 'type=bind,src=' + releaseRoot + ',dst=/artifacts,readonly',
   ]
   if (existsSync('/dev/fuse')) args.push('--device', '/dev/fuse', '--cap-add', 'SYS_ADMIN')
@@ -254,7 +260,7 @@ function runContainerGroup(runtime, releaseRoot, cases, tokens) {
   assert(imageInspection.status === 0 && /^sha256:[a-f0-9]{64}$/i.test(String(imageInspection.stdout).trim()), 'Unable to record immutable Linux smoke image digest: ' + cases[0].image)
   const groupLine = lines.find(line => line.startsWith('GROUP_RESULT|'))
   assert(groupLine, 'Linux package smoke container produced no final receipt for ' + cases[0].image)
-  const [, image, glibcVersion, cleanup, osRelease] = groupLine.split('|')
+  const [, image, glibcVersion, cleanup, osRelease, userNamespaceSandbox] = groupLine.split('|')
   const desktopEvidenceById = new Map(lines.filter(line => line.startsWith('DESKTOP_EVIDENCE|')).map(line => {
     const separator = line.indexOf('|', 'DESKTOP_EVIDENCE|'.length)
     assert(separator > 0, 'Linux desktop smoke evidence line is invalid: ' + cases[0].image)
@@ -280,6 +286,7 @@ function runContainerGroup(runtime, releaseRoot, cases, tokens) {
       desktopRendererLoaded: desktopEvidence.rendererLoaded === true,
       desktopPreloadApiReady: desktopEvidence.preloadApiReady === true,
       desktopAppRootReady: desktopEvidence.appRootReady === true,
+      userNamespaceSandboxReady: userNamespaceSandbox === 'true',
       cleanupSucceeded: cleanup === 'true',
     }
   })
@@ -318,12 +325,12 @@ function writeAcceptanceReceipts(evidenceRoot, releaseRoot, smokeEvidence, vecto
       id, format, distro, distroVersion, image, imageDigest, osRelease, glibcVersion, glibcRequirements,
       launchExitCode, appImageMode, appImageFuseStatus, appImageExtractionExitCode, desktopLaunchMode,
       desktopLaunchExitCode, desktopWindowReady, desktopRendererLoaded, desktopPreloadApiReady,
-      desktopAppRootReady, cleanupSucceeded,
+      desktopAppRootReady, userNamespaceSandboxReady, cleanupSucceeded,
     }) => ({
       id, format, distro, distroVersion, image, imageDigest, osRelease, glibcVersion, glibcRequirements,
       launchExitCode, appImageMode, appImageFuseStatus, appImageExtractionExitCode, desktopLaunchMode,
       desktopLaunchExitCode, desktopWindowReady, desktopRendererLoaded, desktopPreloadApiReady,
-      desktopAppRootReady, cleanupSucceeded,
+      desktopAppRootReady, userNamespaceSandboxReady, cleanupSucceeded,
     })),
   }, [
     'Every packaged launch completed the token-gated database smoke.',
