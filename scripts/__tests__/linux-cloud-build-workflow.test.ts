@@ -44,4 +44,10 @@ describe('Linux x64 desktop qualification workflow', () => {
     expect(workflow).toContain('dispatch_inputs=')
     expect(workflow).toContain('--dispatch-inputs-json "$dispatch_inputs"')
   })
+
+  it('installs the rpm builder before packaging the rpm target', () => {
+    const buildScript = readFileSync(buildScriptPath, 'utf8')
+
+    expect(buildScript).toMatch(/apt-get install[^\r\n]*\brpm\b/)
+  })
 })

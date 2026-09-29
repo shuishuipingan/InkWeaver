@@ -22,7 +22,7 @@ export CI=true
 export SSL_CERT_FILE=/host-ca-certificates.crt
 test "$(node --version)" = 'v22.23.1'
 apt-get update -qq
-apt-get install -y -qq ca-certificates build-essential python3 pkg-config libsecret-1-dev libgtk-3-dev libnss3 libasound2 libxss1
+apt-get install -y -qq ca-certificates build-essential python3 pkg-config libsecret-1-dev libgtk-3-dev libnss3 libasound2 libxss1 rpm
 update-ca-certificates
 corepack enable --install-directory /usr/local/bin
 corepack prepare pnpm@11.11.0 --activate
