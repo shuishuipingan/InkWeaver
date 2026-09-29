@@ -245,7 +245,6 @@ function runContainerGroup(runtime, releaseRoot, cases, tokens) {
   const args = [
     'run', '--rm', '--interactive', '--platform', 'linux/amd64',
     '--security-opt', 'seccomp=unconfined', '--security-opt', 'apparmor=unconfined',
-    '--sysctl', 'user.max_user_namespaces=15000',
     '--mount', 'type=bind,src=' + releaseRoot + ',dst=/artifacts,readonly',
   ]
   if (existsSync('/dev/fuse')) args.push('--device', '/dev/fuse', '--cap-add', 'SYS_ADMIN')

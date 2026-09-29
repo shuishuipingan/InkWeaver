@@ -74,7 +74,7 @@ describe('Linux package smoke contract', () => {
     expect(source).toContain('runuser -u nobody -- env')
     expect(source).toContain('--appimage-extract-and-run --ai-novel-release-desktop-smoke=')
     expect(source).toContain('unshare --user --map-root-user true')
-    expect(source).toContain("'--sysctl', 'user.max_user_namespaces=15000'")
+    expect(source).not.toContain("'--sysctl', 'user.max_user_namespaces=15000'")
     expect(source).toContain('desktopEvidenceById')
     expect(source).toContain("'--security-opt', 'seccomp=unconfined'")
     expect(source).toContain("'--security-opt', 'apparmor=unconfined'")
