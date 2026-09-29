@@ -20,7 +20,7 @@ function strictJson(rawBytes, label) {
 }
 
 export function normalizeLegacyReceipt({ platform, relativePath, rawBytes }) {
-  assert(platform === 'windows' || platform === 'macos', 'platform must equal windows or macos')
+  assert(platform === 'windows' || platform === 'macos' || platform === 'linux', 'platform must equal windows, macos, or linux')
   const receipt = strictJson(rawBytes, relativePath)
   assert(receipt && typeof receipt === 'object' && !Array.isArray(receipt), `${relativePath} must contain an object`)
   assert(receipt.accepted === true, `${relativePath} must have accepted=true`)
@@ -32,6 +32,10 @@ export function normalizeLegacyReceipt({ platform, relativePath, rawBytes }) {
     assert(receipt.platform === 'darwin', `${relativePath} has an unknown legacy platform classification`)
     sourceClassification.platform = receipt.platform
     normalized.platform = 'macos'
+  } else if (platform === 'linux') {
+    assert(receipt.platform === 'linux' && receipt.arch === 'x64', `${relativePath} has an unknown Linux platform or architecture classification`)
+    sourceClassification.platform = receipt.platform
+    normalized.platform = 'linux'
   } else if (receipt.platform !== undefined) {
     assert(receipt.platform === 'windows', `${relativePath} platform classification is invalid`)
   }
@@ -47,6 +51,9 @@ export function normalizeLegacyReceipt({ platform, relativePath, rawBytes }) {
       )
       sourceClassification.signingStatus = receipt.status
       normalized.status = 'unsigned'
+    } else if (platform === 'linux') {
+      assert(receipt.status === 'unsigned' && receipt.direct?.status === 'unsigned', 'Linux package signing must be explicitly observed as unsigned')
+      sourceClassification.signingStatus = receipt.status
     } else {
       assert(receipt.status === 'signed' || receipt.status === 'unsigned', 'Windows signing status must be signed or unsigned')
     }

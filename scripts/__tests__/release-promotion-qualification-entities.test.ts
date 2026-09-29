@@ -2,6 +2,8 @@ import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
+  assertContractBindings,
+  assertQualificationRun,
   extractReleaseNotes,
   parseQualificationRuns,
   validatePromotionProfile,
@@ -35,22 +37,32 @@ describe('desktop promotion qualification entities', () => {
     expect(() => extractReleaseNotes(changelog, '1.3.4')).toThrow(/CHANGELOG.md/u)
   })
 
-  it('requires independent Windows, Apple Silicon, and Intel qualification run identities', () => {
+  it('requires independent Windows, Apple Silicon, Intel, and Linux x64 qualification run identities', () => {
     const validated = validatePromotionProfile(profile)
     const entities = Object.keys(validated.platforms).sort()
-    expect(entities).toEqual(['macos-arm64', 'macos-x64', 'windows'])
+    expect(entities).toEqual(['linux-x64', 'macos-arm64', 'macos-x64', 'windows'])
 
     const runs = parseQualificationRuns(JSON.stringify({
       windows: { runId: 101, attempt: 1, artifactId: 201 },
       'macos-arm64': { runId: 102, attempt: 1, artifactId: 202 },
       'macos-x64': { runId: 103, attempt: 1, artifactId: 203 },
+      'linux-x64': { runId: 104, attempt: 2, artifactId: 204 },
     }), entities)
 
     expect(runs).toEqual({
       'macos-arm64': { runId: 102, attempt: 1, artifactId: 202 },
       'macos-x64': { runId: 103, attempt: 1, artifactId: 203 },
+      'linux-x64': { runId: 104, attempt: 2, artifactId: 204 },
       windows: { runId: 101, attempt: 1, artifactId: 201 },
     })
+    expect(validated.releaseAssets.filter(asset => asset.platform === 'linux-x64').map(asset => asset.name)).toEqual([
+      'inkweaver-linux-x64-{version}.AppImage',
+      'inkweaver-linux-x64-{version}.AppImage.sha256',
+      'inkweaver-linux-x64-{version}.deb',
+      'inkweaver-linux-x64-{version}.deb.sha256',
+      'inkweaver-linux-x64-{version}.rpm',
+      'inkweaver-linux-x64-{version}.rpm.sha256',
+    ])
     expect(validated.releaseAssets.filter(asset => asset.platform === 'macos-arm64').map(asset => asset.name))
       .toEqual([
         'inkweaver-mac-arm64-{version}-installer.dmg',
@@ -75,6 +87,33 @@ describe('desktop promotion qualification entities', () => {
     expect(() => parseQualificationRuns(JSON.stringify({
       windows: { runId: 101, attempt: 1, artifactId: 201 },
       macos: { runId: 102, attempt: 1, artifactId: 202 },
-    }), ['windows', 'macos-arm64', 'macos-x64'])).toThrow('qualification run mapping keys must be exactly')
+    }), ['windows', 'macos-arm64', 'macos-x64', 'linux-x64'])).toThrow('qualification run mapping keys must be exactly')
+
+    const profileWithoutLinux = structuredClone(profile)
+    delete profileWithoutLinux.platforms['linux-x64']
+    profileWithoutLinux.releaseAssets = profileWithoutLinux.releaseAssets.filter((asset: { platform: string }) => asset.platform !== 'linux-x64')
+    expect(() => validatePromotionProfile(profileWithoutLinux)).toThrow('release profile must require exactly Windows, macOS ARM64, macOS x64, and Linux x64 qualifications')
+  })
+
+  it('rejects a Linux qualification whose commit or raw contract/profile bindings drift', () => {
+    const expectedSha = 'a'.repeat(40)
+    expect(() => assertQualificationRun({
+      run: { head_sha: 'b'.repeat(40), run_attempt: 1, status: 'completed', conclusion: 'success', path: profile.platforms['linux-x64'].qualificationWorkflow },
+      expectedSha,
+      expectedAttempt: 1,
+      expectedWorkflow: profile.platforms['linux-x64'].qualificationWorkflow,
+    })).toThrow('qualification head SHA mismatch')
+
+    const contractHash = 'c'.repeat(64)
+    const profileHash = 'd'.repeat(64)
+    const binding = {
+      manifest: { contractRawBytesSha256: contractHash, profileRawBytesSha256: profileHash },
+      manifestRecords: new Map([['release-contract.json', { digest: contractHash }]]),
+      ledger: { contractRawBytesSha256: contractHash, profileRawBytesSha256: profileHash },
+      profileRawBytesSha256: profileHash,
+    }
+    expect(() => assertContractBindings(binding)).not.toThrow()
+    expect(() => assertContractBindings({ ...binding, profileRawBytesSha256: 'e'.repeat(64) }))
+      .toThrow('current release profile raw-byte hash mismatch')
   })
 })

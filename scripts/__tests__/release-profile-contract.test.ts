@@ -15,6 +15,7 @@ describe('desktop release profile contract', () => {
     expect(existsSync(promotionScriptPath)).toBe(true)
     const validator = readFileSync(validatorPath, 'utf8')
     const promotion = readFileSync(promotionScriptPath, 'utf8')
+    expect(validator).toContain("'linux-x64'")
     expect(validator).toContain("'macos-arm64'")
     expect(validator).toContain("'macos-x64'")
     expect(promotion).toContain('qualification manifest entity mismatch')
@@ -90,6 +91,20 @@ describe('desktop release profile contract', () => {
         'acceptance/signing.json',
       ],
     })
+    expect(profile.platforms['linux-x64']).toMatchObject({
+      qualificationWorkflow: '.github/workflows/linux-cloud-build.yml',
+      artifactName: 'qualified-linux-x64',
+      architectures: ['x64'],
+      retentionDays: 14,
+      acceptanceReceipts: [
+        'acceptance/install.json',
+        'acceptance/launch.json',
+        'acceptance/native-abi.json',
+        'acceptance/packaged-smoke.json',
+        'acceptance/signing.json',
+      ],
+      signingPolicy: { mode: 'allow-unsigned-with-disclosure', disclosureRequired: true },
+    })
     expect(profile.releaseAssets).toEqual([
       { name: 'inkweaver-setup-{version}.exe', platform: 'windows', role: 'installer' },
       { name: 'inkweaver-setup-{version}.exe.blockmap', platform: 'windows', role: 'update-metadata' },
@@ -98,6 +113,12 @@ describe('desktop release profile contract', () => {
       { name: 'inkweaver-mac-arm64-{version}-installer.dmg.sha256', platform: 'macos-arm64', role: 'checksum' },
       { name: 'inkweaver-mac-x64-{version}-installer.dmg', platform: 'macos-x64', role: 'installer' },
       { name: 'inkweaver-mac-x64-{version}-installer.dmg.sha256', platform: 'macos-x64', role: 'checksum' },
+      { name: 'inkweaver-linux-x64-{version}.AppImage', platform: 'linux-x64', role: 'installer' },
+      { name: 'inkweaver-linux-x64-{version}.AppImage.sha256', platform: 'linux-x64', role: 'checksum' },
+      { name: 'inkweaver-linux-x64-{version}.deb', platform: 'linux-x64', role: 'installer' },
+      { name: 'inkweaver-linux-x64-{version}.deb.sha256', platform: 'linux-x64', role: 'checksum' },
+      { name: 'inkweaver-linux-x64-{version}.rpm', platform: 'linux-x64', role: 'installer' },
+      { name: 'inkweaver-linux-x64-{version}.rpm.sha256', platform: 'linux-x64', role: 'checksum' },
     ])
     expect(profile.promotion).toEqual({
       workflow: '.github/workflows/cross-platform-runtime-artifact-promotion.yml',

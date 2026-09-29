@@ -5,11 +5,16 @@ import { fileURLToPath } from 'node:url'
 
 const scriptPath = fileURLToPath(import.meta.url)
 const MACOS_QUALIFICATION_ENTITIES = new Set(['macos-arm64', 'macos-x64'])
+const QUALIFICATION_ENTITIES = new Set(['linux-x64', ...MACOS_QUALIFICATION_ENTITIES])
 const packagedMacosEvidence = [
   'qualification/packaged-vector-smoke.json',
   'qualification/packaged-official-homepage-smoke.json',
   'qualification/packaged-skin-smoke.json',
   'qualification/macos-dmg-smoke.json',
+]
+const packagedLinuxEvidence = [
+  'qualification/linux-package-smoke.json',
+  'qualification/packaged-vector-smoke.json',
 ]
 
 function assert(condition, message) {
@@ -61,7 +66,7 @@ function copyExact(sourceRoot, destinationRoot, relativePath) {
 }
 
 export function projectLegacyQualificationBundle({ platform, version, sourceRoot, outputRoot, profilePath }) {
-  assert(MACOS_QUALIFICATION_ENTITIES.has(platform), 'legacy qualification projection requires a specific macOS architecture entity')
+  assert(QUALIFICATION_ENTITIES.has(platform), 'legacy qualification projection requires a supported Linux or macOS architecture entity')
   assert(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version), 'version is invalid')
   const resolvedSourceRoot = path.resolve(sourceRoot)
   const resolvedOutputRoot = path.resolve(outputRoot)
@@ -71,7 +76,8 @@ export function projectLegacyQualificationBundle({ platform, version, sourceRoot
     .filter(asset => asset.platform === platform)
     .map(asset => asset.name.replaceAll('{version}', version))
   const acceptance = profile.platforms[platform].acceptanceReceipts.map(relativePath => `qualification/${safeRelativePath(relativePath, 'Acceptance receipt')}`)
-  const evidence = ['qualification/release-contract.json', 'qualification/run-ledger.json', ...acceptance, ...packagedMacosEvidence]
+  const packagedEvidence = platform === 'linux-x64' ? packagedLinuxEvidence : packagedMacosEvidence
+  const evidence = ['qualification/release-contract.json', 'qualification/run-ledger.json', ...acceptance, ...packagedEvidence]
   const manifestFile = regularSource(resolvedSourceRoot, 'manifest.json')
   const manifest = JSON.parse(readFileSync(manifestFile, 'utf8'))
   const expectedArchitecture = profile.platforms[platform]?.architectures?.[0]

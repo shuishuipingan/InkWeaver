@@ -6,6 +6,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it } from 'vitest'
 import { canonicalPnpmLockfileSha256 } from '../canonical-pnpm-lockfile-hash.mjs'
+import { createLinuxSmokeCases, validateLinuxSmokeResults } from '../smoke-linux-packages.mjs'
 
 const testDirectory = path.dirname(fileURLToPath(import.meta.url))
 const repositoryRoot = path.resolve(testDirectory, '..', '..')
@@ -64,6 +65,189 @@ afterEach(() => {
 })
 
 describe('release evidence v2 CLI', () => {
+  it('freezes Linux x64 qualification with all three package formats and receipt paths', () => {
+    const evidenceRoot = fixture()
+    const commit = 'f'.repeat(40)
+    const dispatchInputs = {
+      expected_sha: commit,
+      release_tag: `v${releaseVersion}`,
+      release_version: releaseVersion,
+      profile_path: '.release/release-profile.json',
+    }
+
+    const result = spawnSync(process.execPath, [
+      evidenceScript,
+      'init',
+      '--platform', 'linux-x64',
+      '--evidence-root', evidenceRoot,
+      '--repository', 'shuishuipingan/InkWeaver',
+      '--commit', commit,
+      '--run-id', '105',
+      '--run-attempt', '1',
+      '--runner-label', 'ubuntu-24.04',
+      '--image-os', 'ubuntu24',
+      '--image-version', '20260901.1',
+      '--expected-node-version', process.versions.node,
+      '--expected-pnpm-version', '11.11.0',
+      '--workflow-path', '.github/workflows/linux-cloud-build.yml',
+      '--workflow-name', 'Linux x64 cloud package qualification',
+      '--actor', 'release-operator',
+      '--event', 'workflow_dispatch',
+      '--dispatch-inputs-json', JSON.stringify(dispatchInputs),
+    ], { cwd: repositoryRoot, encoding: 'utf8' })
+
+    expect(result.status, result.stderr).toBe(0)
+    const contract = JSON.parse(readFileSync(path.join(evidenceRoot, 'release-contract.json'), 'utf8'))
+    expect(contract.frozen).toMatchObject({
+      platform: 'linux-x64',
+      workflow: {
+        path: '.github/workflows/linux-cloud-build.yml',
+        name: 'Linux x64 cloud package qualification',
+        dispatchInputs,
+      },
+      artifactSet: [
+        { path: `release/${releaseVersion}/inkweaver-linux-x64-${releaseVersion}.AppImage`, role: 'appimage' },
+        { path: `release/${releaseVersion}/inkweaver-linux-x64-${releaseVersion}.AppImage.sha256`, role: 'appimage-checksum' },
+        { path: `release/${releaseVersion}/inkweaver-linux-x64-${releaseVersion}.deb`, role: 'deb' },
+        { path: `release/${releaseVersion}/inkweaver-linux-x64-${releaseVersion}.deb.sha256`, role: 'deb-checksum' },
+        { path: `release/${releaseVersion}/inkweaver-linux-x64-${releaseVersion}.rpm`, role: 'rpm' },
+        { path: `release/${releaseVersion}/inkweaver-linux-x64-${releaseVersion}.rpm.sha256`, role: 'rpm-checksum' },
+      ],
+      acceptance: {
+        evidenceFiles: [
+          'qualification/acceptance/install.json',
+          'qualification/acceptance/launch.json',
+          'qualification/acceptance/native-abi.json',
+          'qualification/acceptance/packaged-smoke.json',
+          'qualification/acceptance/signing.json',
+        ],
+      },
+    })
+  })
+
+  it('finalizes Linux package, checksum, smoke, and unsigned disclosure evidence as one exact bundle', () => {
+    const evidenceRoot = fixture()
+    const releaseRoot = fixture()
+    const commit = '9'.repeat(40)
+    const version = releaseVersion
+    const dispatchInputs = {
+      expected_sha: commit,
+      release_tag: `v${releaseVersion}`,
+      release_version: releaseVersion,
+      profile_path: '.release/release-profile.json',
+    }
+    const init = spawnSync(process.execPath, [
+      evidenceScript, 'init', '--platform', 'linux-x64', '--evidence-root', evidenceRoot,
+      '--repository', 'shuishuipingan/InkWeaver', '--commit', commit, '--run-id', '106', '--run-attempt', '1',
+      '--runner-label', 'ubuntu-24.04', '--image-os', 'ubuntu24', '--image-version', '20260901.1',
+      '--expected-node-version', process.versions.node, '--expected-pnpm-version', '11.11.0',
+      '--workflow-path', '.github/workflows/linux-cloud-build.yml', '--workflow-name', 'Linux x64 cloud package qualification',
+      '--actor', 'release-operator', '--event', 'workflow_dispatch', '--dispatch-inputs-json', JSON.stringify(dispatchInputs),
+    ], { cwd: repositoryRoot, encoding: 'utf8' })
+    expect(init.status, init.stderr).toBe(0)
+
+    const expectedCases = createLinuxSmokeCases(version)
+    const smokeCases = expectedCases.map(testCase => ({
+      ...testCase,
+      imageDigest: `sha256:${'a'.repeat(64)}`,
+      osRelease: testCase.distro === 'ubuntu' ? 'Ubuntu 22.04.5 LTS' : testCase.distro === 'debian' ? 'Debian GNU/Linux 13 (trixie)' : 'Fedora Linux 44',
+      glibcVersion: testCase.distro === 'ubuntu' ? '2.35' : testCase.distro === 'debian' ? '2.41' : '2.42',
+      glibcRequirements: { electron: '2.35', betterSqlite3: '2.31', lanceDb: '2.34' },
+      installExitCode: 0,
+      launchExitCode: 0,
+      nativeSqliteValue: 1,
+      nativeLanceDbOperationSucceeded: true,
+      appImageMode: testCase.format === 'appimage' ? 'extract-and-run' : null,
+      cleanupSucceeded: true,
+    }))
+    const smokeEvidence = validateLinuxSmokeResults(smokeCases)
+    const vectorEvidence = {
+      schemaVersion: 1,
+      kind: 'packaged-vector-smoke',
+      nativeBindings: { betterSqlite3: { binding: 'better-sqlite3', operation: 'SELECT 1', value: 1 } },
+      projectA: { semanticResultCount: 1 },
+      projectB: { sameFingerprintRebuilt: true },
+    }
+    mkdirSync(path.join(releaseRoot, 'qualification'), { recursive: true })
+    writeJson(path.join(releaseRoot, 'qualification', 'linux-package-smoke.json'), smokeEvidence)
+    writeJson(path.join(releaseRoot, 'qualification', 'packaged-vector-smoke.json'), vectorEvidence)
+    for (const artifact of expectedCases.filter(testCase => testCase.format !== 'appimage' || testCase.distro === 'ubuntu').map(testCase => testCase.artifact)) {
+      writeFileSync(path.join(releaseRoot, artifact), `package:${artifact}`, 'utf8')
+    }
+    for (const step of [
+      'install-locked-dependencies', 'install-playwright-chromium', 'renderer-browser-tests',
+      'test-suite', 'build-linux-x64-package', 'linux-package-smoke',
+    ]) {
+      const recorded = spawnSync(process.execPath, [evidenceScript, 'record', '--evidence-root', evidenceRoot, '--step', step, '--', process.execPath, '-e', ''], { cwd: repositoryRoot, encoding: 'utf8' })
+      expect(recorded.status, recorded.stderr).toBe(0)
+    }
+
+    const receipt = (kind: string, direct: Record<string, unknown>, extra: Record<string, unknown> = {}) => ({
+      schemaVersion: 2, kind: `linux-${kind}`, platform: 'linux', arch: 'x64', accepted: true,
+      observations: [`Direct Linux ${kind} qualification observation`], direct, ...extra,
+    })
+    const architecture = { target: 'x64', runnerMachine: 'x86_64' }
+    const acceptanceRoot = path.join(evidenceRoot, 'acceptance')
+    writeJson(path.join(acceptanceRoot, 'install.json'), receipt('install', {
+      architecture,
+      cases: smokeEvidence.cases.map(({ id, format, distro, distroVersion, image, imageDigest, osRelease, artifact, installExitCode }) => ({ id, format, distro, distroVersion, image, imageDigest, osRelease, artifact, installExitCode })),
+    }))
+    writeJson(path.join(acceptanceRoot, 'launch.json'), receipt('launch', {
+      architecture,
+      cases: smokeEvidence.cases.map(({ id, image, imageDigest, osRelease, glibcVersion, glibcRequirements, launchExitCode, appImageMode, cleanupSucceeded }) => ({ id, image, imageDigest, osRelease, glibcVersion, glibcRequirements, launchExitCode, appImageMode, cleanupSucceeded })),
+    }))
+    writeJson(path.join(acceptanceRoot, 'native-abi.json'), receipt('native-abi', {
+      architecture,
+      betterSqlite3: vectorEvidence.nativeBindings.betterSqlite3,
+      lanceDb: { binding: '@lancedb/lancedb-linux-x64-gnu', projectA: true, projectBBackfill: true },
+    }))
+    writeJson(path.join(acceptanceRoot, 'packaged-smoke.json'), receipt('packaged-smoke', {
+      architecture, evidenceCount: 2, evidenceKinds: ['linux-package-smoke', 'packaged-vector-smoke'],
+    }, { evidence: [
+      { kind: 'linux-package-smoke', path: 'qualification/linux-package-smoke.json', sha256: sha256(path.join(releaseRoot, 'qualification', 'linux-package-smoke.json')) },
+      { kind: 'packaged-vector-smoke', path: 'qualification/packaged-vector-smoke.json', sha256: sha256(path.join(releaseRoot, 'qualification', 'packaged-vector-smoke.json')) },
+    ] }))
+    writeJson(path.join(acceptanceRoot, 'signing.json'), receipt('signing', {
+      architecture, status: 'unsigned', distributionImpact: 'Unsigned Linux packages; verify the SHA-256 checksum before installation.',
+    }, {
+      status: 'unsigned', validationResult: 'No Linux package signing identity is configured.',
+      unsignedDistributionImpact: 'Unsigned Linux packages; verify the SHA-256 checksum before installation.',
+    }))
+
+    const finalized = spawnSync(process.execPath, [evidenceScript, 'finalize', '--platform', 'linux-x64', '--evidence-root', evidenceRoot, '--release-root', releaseRoot], { cwd: repositoryRoot, encoding: 'utf8' })
+    expect(finalized.status, finalized.stderr).toBe(0)
+    for (const artifact of ['AppImage', 'deb', 'rpm']) {
+      const packageName = `inkweaver-linux-x64-${version}.${artifact}`
+      expect(existsSync(path.join(releaseRoot, `${packageName}.sha256`))).toBe(true)
+      expect(readFileSync(path.join(releaseRoot, `${packageName}.sha256`), 'utf8')).toContain(packageName)
+    }
+    const manifest = JSON.parse(readFileSync(path.join(releaseRoot, 'manifest.json'), 'utf8'))
+    expect(manifest).toMatchObject({ platform: 'linux-x64', architecture: 'x64', version })
+    expect(manifest.artifacts).toHaveLength(6)
+
+    const verifyArguments = [
+      evidenceScript, 'verify-bundle', '--platform', 'linux-x64', '--bundle-root', releaseRoot,
+      '--expected-commit', commit,
+      '--expected-lockfile-sha256', canonicalPnpmLockfileSha256(path.join(repositoryRoot, 'pnpm-lock.yaml')),
+      '--version', version, '--run-attempt', '1',
+    ]
+    const verified = spawnSync(process.execPath, verifyArguments, { cwd: repositoryRoot, encoding: 'utf8' })
+    expect(verified.status, verified.stderr).toBe(0)
+    expect(JSON.parse(verified.stdout)).toMatchObject({ platform: 'linux-x64', releaseFiles: expect.arrayContaining([`inkweaver-linux-x64-${version}.AppImage`, `inkweaver-linux-x64-${version}.deb`, `inkweaver-linux-x64-${version}.rpm`]) })
+
+    const lockfileMismatch = spawnSync(process.execPath, [
+      ...verifyArguments.filter((argument, index) => argument !== '--expected-lockfile-sha256' && verifyArguments[index - 1] !== '--expected-lockfile-sha256'),
+      '--expected-lockfile-sha256', '0'.repeat(64),
+    ], { cwd: repositoryRoot, encoding: 'utf8' })
+    expect(lockfileMismatch.status).not.toBe(0)
+    expect(lockfileMismatch.stderr).toContain('canonical lockfile hash does not match')
+
+    rmSync(path.join(releaseRoot, `inkweaver-linux-x64-${version}.rpm`))
+    const missingRpm = spawnSync(process.execPath, verifyArguments, { cwd: repositoryRoot, encoding: 'utf8' })
+    expect(missingRpm.status).not.toBe(0)
+    expect(missingRpm.stderr).toContain('Qualification bundle file set is not exact')
+  }, 15_000)
+
   it('freezes a Windows qualification contract before build work and binds the ledger to its raw hash', () => {
     const evidenceRoot = fixture()
     const commit = 'a'.repeat(40)

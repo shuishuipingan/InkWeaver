@@ -74,3 +74,27 @@ describe('GitHub 1.2.0 release asset contract', () => {
     expect(`${run.stdout}${run.stderr}`).toMatch(/request failed|fetch failed/u)
   })
 })
+
+describe('GitHub 1.3.6 Linux desktop release asset contract', () => {
+  it('requires all 13 Windows, macOS, and Linux release assets', () => {
+    const version = '1.3.6'
+    const names = expectedReleaseAssetNames(version)
+    expect(names).toHaveLength(13)
+    expect(names.slice(-6)).toEqual([
+      'inkweaver-linux-x64-1.3.6.AppImage',
+      'inkweaver-linux-x64-1.3.6.AppImage.sha256',
+      'inkweaver-linux-x64-1.3.6.deb',
+      'inkweaver-linux-x64-1.3.6.deb.sha256',
+      'inkweaver-linux-x64-1.3.6.rpm',
+      'inkweaver-linux-x64-1.3.6.rpm.sha256',
+    ])
+    const assets = names.map((name, index) => {
+      const bytes = Buffer.from(`linux-release-asset-${index}`)
+      return { name, size: bytes.length, digest: `sha256:${createHash('sha256').update(bytes).digest('hex')}` }
+    })
+    expect(verifyGithubReleaseAssetContract({
+      expectedVersion: version,
+      release: { tag_name: 'v1.3.6', draft: false, prerelease: false, assets },
+    })).toMatchObject({ ok: true, missing: [], invalid: [], assets: names })
+  })
+})

@@ -69,11 +69,13 @@ Expected: lockfile resolves the pinned Linux binding and all package contract te
 - Create: `scripts/smoke-linux-packages.mjs`
 - Create: `scripts/__tests__/smoke-linux-packages.test.ts`
 - Modify: `scripts/release-evidence-v2.mjs`
+- Modify: `electron/services/release-vector-smoke.ts`
+- Test: `electron/services/__tests__/release-vector-smoke.test.ts`
 - Test: `scripts/__tests__/release-evidence-v2.test.ts`
 
 - [ ] **Step 1: Write failing Linux receipt and smoke-contract tests**
 
-Cover `.deb` installation and launch on Ubuntu 22.04 and Debian 13, `.rpm` installation and launch on Fedora 44, AppImage launch on all three, native `better-sqlite3`/LanceDB loading, cleanup, and required JSON evidence fields.
+Cover `.deb` installation and launch on Ubuntu 22.04 and Debian 13, `.rpm` installation and launch on Fedora 44, AppImage launch on all three, native `better-sqlite3`/LanceDB loading and operations, cleanup, and required JSON evidence fields. Extend the packaged vector smoke receipt with a successful in-memory SQLite `SELECT 1` result so the Linux qualification proves both native database engines execute.
 
 - [ ] **Step 2: Run the focused tests to verify they fail**
 
@@ -83,7 +85,7 @@ Expected: FAIL because the evidence system currently has no Linux platform profi
 
 - [ ] **Step 3: Implement deterministic package smoke helpers**
 
-Create an explicit-mode smoke driver that installs the `.deb` on Ubuntu 22.04 and Debian 13, the `.rpm` on Fedora 44, and launches the AppImage on all three. Use isolated home/XDG data directories and Xvfb for Electron startup. Record package name/version, distro image identity, glibc version, exit status, native-binding results, and cleanup status; never include user data.
+Create an explicit-mode smoke driver that installs the `.deb` on Ubuntu 22.04 and Debian 13, the `.rpm` on Fedora 44, and launches the AppImage on all three. Use isolated home/XDG data directories and Xvfb to launch the packaged app in the existing token-gated release-smoke mode. Record package name/version, distro image identity, glibc version, exit status, native-binding results, and cleanup status; never include user data.
 
 - [ ] **Step 4: Verify the glibc and AppImage runtime floor**
 

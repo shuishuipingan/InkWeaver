@@ -78,8 +78,9 @@
     "deleteAppDataOnUninstall": false
   },
   "linux": {
-    "target": ["AppImage"],
-    "artifactName": "${productName}-Linux-${version}.${ext}",
-    "category": "Office"
+    "target": ["AppImage", "deb", "rpm"],
+    "artifactName": "inkweaver-linux-x64-${version}.${ext}",
+    "category": "Office",
+    "icon": "build/icon.png"
   }
 }

@@ -2,13 +2,21 @@
 
 本文件按用户可见行为记录变更。桌面版本不发布 npm；DSH 插件沿用已发布的 `1.2.0` 包。`1.2.0` 已从同一源码 commit 完成工程验收、三平台资产回读和正式 Release；`1.1.0` 的历史 Release 收据保留在 `docs/upgrade/`，不与 1.2.0 混用。
 
-## 1.3.6 — 2026-09-29
+## 1.3.6 — 2026-09-30
 
 - 修复 AI 一键替换角色名在模型回显空白或引号变体时误报“未知或重复的原名”。每个批次现在用稳定角色编号绑定改名；仅当原名变体唯一时才接受旧式名称回显，歧义映射仍会被拒绝。
+- Linux x64 桌面版新增 AppImage、deb、rpm 三种安装包及各自的 SHA-256 文件，和 Windows、macOS 一起从同一 Release 获取；推广前必须通过 Linux 运行资格验证。
+- Linux 下载文件名为 inkweaver-linux-x64-1.3.6.AppImage、inkweaver-linux-x64-1.3.6.deb 和 inkweaver-linux-x64-1.3.6.rpm；每个文件都有对应的 .sha256 校验文件。
+- Linux 资格覆盖 Ubuntu 22.04 上的 deb 和 AppImage、Debian 13 上的 deb 和 AppImage、Fedora 44 上的 rpm 和 AppImage。构建基线使用 glibc 2.35；资格验证约束打包文件所需的最高 glibc 符号不高于此版本。
+- AppImage 可在 FUSE 可用时直接启动；无 FUSE 时支持 --appimage-extract-and-run。Linux 安装包未签名，发布包附 SHA-256 校验文件。
 
 ## What's changed
 
 - Fixed AI character renaming when a model echoes an original name with incidental whitespace or quote variations. Each request batch now assigns stable slot IDs and binds each proposed new name to its exact source character. Legacy name-only responses are accepted only when the source-name variant is unambiguous.
+- Added Linux x64 AppImage, deb, and rpm packages with a separate SHA-256 sidecar for each; they ship in the same Release as Windows and macOS, and Linux runtime qualification is required before promotion.
+- The exact Linux package filenames are inkweaver-linux-x64-1.3.6.AppImage, inkweaver-linux-x64-1.3.6.deb, and inkweaver-linux-x64-1.3.6.rpm; each has a matching .sha256 sidecar.
+- Linux qualification covers deb and AppImage on Ubuntu 22.04, deb and AppImage on Debian 13, and rpm and AppImage on Fedora 44. The build baseline uses glibc 2.35 and qualification rejects packaged binaries requiring a newer glibc symbol.
+- The AppImage runs directly when FUSE is available and supports --appimage-extract-and-run otherwise. Linux packages are unsigned and include SHA-256 checksum files.
 
 ## 1.3.5 — 2026-09-29
 

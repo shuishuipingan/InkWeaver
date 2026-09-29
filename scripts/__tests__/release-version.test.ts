@@ -7,7 +7,7 @@ describe('v1.3.6 release metadata', () => {
     expect(pkg.version).toBe('1.3.6')
   })
 
-  it('resolves the release tag and exact seven-asset contract from the package version', () => {
+  it('resolves the release tag and exact thirteen-asset contract from the package version', () => {
     const pkg = JSON.parse(readFileSync('package.json', 'utf8')) as { version: string }
     const profile = JSON.parse(readFileSync('.release/release-profile.json', 'utf8')) as {
       releaseAssets: Array<{ name: string }>
@@ -22,7 +22,12 @@ describe('v1.3.6 release metadata', () => {
       'inkweaver-mac-arm64-1.3.6-installer.dmg.sha256',
       'inkweaver-mac-x64-1.3.6-installer.dmg',
       'inkweaver-mac-x64-1.3.6-installer.dmg.sha256',
-
+      'inkweaver-linux-x64-1.3.6.AppImage',
+      'inkweaver-linux-x64-1.3.6.AppImage.sha256',
+      'inkweaver-linux-x64-1.3.6.deb',
+      'inkweaver-linux-x64-1.3.6.deb.sha256',
+      'inkweaver-linux-x64-1.3.6.rpm',
+      'inkweaver-linux-x64-1.3.6.rpm.sha256',
     ])
   })
 
@@ -45,11 +50,24 @@ describe('v1.3.6 release metadata', () => {
       '更准确的失败提示',
       'macOS Apple Silicon',
       'macOS Intel',
-      '七项资产',
+      '13 项资产',
       '未代码签名',
       '未公证',
+      'Ubuntu 22.04',
+      'Debian 13',
+      'Fedora 44',
+      'glibc 2.35',
+      '.AppImage',
+      '.deb',
+      '.rpm',
+      '--appimage-extract-and-run',
+      '未签名',
     ]) {
       expect(chineseReadme).toContain(expected)
+    }
+
+    for (const untested of ['Ubuntu 20.04', 'Ubuntu 24.04', 'Debian 12', 'Fedora 43', 'Fedora 45', 'Arch Linux']) {
+      expect(chineseReadme).not.toContain(untested)
     }
 
     for (const expected of [
@@ -67,11 +85,41 @@ describe('v1.3.6 release metadata', () => {
       'More precise failure messages',
       'macOS Apple Silicon',
       'macOS Intel',
-      'seven-asset',
+      '13 assets',
       'not code-signed',
       'not notarized',
+      'Ubuntu 22.04',
+      'Debian 13',
+      'Fedora 44',
+      'glibc 2.35',
+      '.AppImage',
+      '.deb',
+      '.rpm',
+      '--appimage-extract-and-run',
+      'unsigned',
     ]) {
       expect(englishReadme).toContain(expected)
+    }
+
+    for (const untested of ['Ubuntu 20.04', 'Ubuntu 24.04', 'Debian 12', 'Fedora 43', 'Fedora 45', 'Arch Linux']) {
+      expect(englishReadme).not.toContain(untested)
+    }
+  })
+
+  it('documents exact tested Linux installation formats and compatibility boundaries in the quickstart and release notes', () => {
+    const quickstart = readFileSync('docs/quickstart/README.md', 'utf8')
+    const changelog = readFileSync('CHANGELOG.md', 'utf8')
+    for (const source of [quickstart, changelog]) {
+      for (const expected of [
+        'inkweaver-linux-x64-1.3.6.AppImage',
+        'inkweaver-linux-x64-1.3.6.deb',
+        'inkweaver-linux-x64-1.3.6.rpm',
+        'Ubuntu 22.04', 'Debian 13', 'Fedora 44', 'glibc 2.35',
+        '--appimage-extract-and-run',
+      ]) expect(source).toContain(expected)
+      for (const untested of ['Ubuntu 20.04', 'Ubuntu 24.04', 'Debian 12', 'Fedora 43', 'Fedora 45', 'Arch Linux']) {
+        expect(source).not.toContain(untested)
+      }
     }
   })
 

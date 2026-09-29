@@ -9,6 +9,7 @@ const sha256 = bytes => createHash('sha256').update(bytes).digest('hex')
 const readJson = file => JSON.parse(readFileSync(file, 'utf8'))
 const record = (file, relativePath, role) => ({ path: relativePath, role, sizeBytes: statSync(file).size, rawBytesSha256: sha256(readFileSync(file)), hashMode: 'raw-bytes-sha256' })
 const MACOS_QUALIFICATION_ENTITIES = new Set(['macos-arm64', 'macos-x64'])
+const LINUX_QUALIFICATION_ENTITIES = new Set(['linux-x64'])
 
 function assert(condition, message) {
   if (!condition) throw new Error(message)
@@ -27,7 +28,7 @@ function main() {
   const input = options(process.argv.slice(2))
   for (const key of ['platform', 'legacy-root', 'output-root', 'profile', 'expected-sha', 'version']) assert(input[key], `--${key} is required`)
   const platform = input.platform
-  assert(platform === 'windows' || MACOS_QUALIFICATION_ENTITIES.has(platform), 'platform must name a supported qualification entity')
+  assert(platform === 'windows' || MACOS_QUALIFICATION_ENTITIES.has(platform) || LINUX_QUALIFICATION_ENTITIES.has(platform), 'platform must name a supported qualification entity')
   const legacyRoot = path.resolve(input['legacy-root'])
   const outputRoot = path.resolve(input['output-root'])
   const profile = readJson(path.resolve(input.profile))
@@ -64,11 +65,12 @@ function main() {
     const source = path.join(legacyRoot, ...sourceRelative.split('/'))
     const destination = path.join(outputRoot, ...relativePath.split('/'))
     const normalized = normalizeLegacyReceipt({
-      platform: MACOS_QUALIFICATION_ENTITIES.has(platform) ? 'macos' : platform,
+      platform: MACOS_QUALIFICATION_ENTITIES.has(platform) ? 'macos' : LINUX_QUALIFICATION_ENTITIES.has(platform) ? 'linux' : platform,
       relativePath,
       rawBytes: readFileSync(source),
     })
     if (MACOS_QUALIFICATION_ENTITIES.has(platform)) normalized.platform = platform
+    if (LINUX_QUALIFICATION_ENTITIES.has(platform)) normalized.platform = platform
     writeFileSync(destination, `${JSON.stringify(normalized, null, 2)}\n`, 'utf8')
     if (relativePath.endsWith('/signing.json')) signing = {
       status: normalized.status,

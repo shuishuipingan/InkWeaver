@@ -29,6 +29,7 @@
     "build:mac:artifacts": "pnpm run build:mac:arm64:artifacts",
     "build:mac:arm64:artifacts": "pnpm run clean:build && pnpm run typecheck && pnpm run rebuild:electron && clang -fobjc-arc -framework Foundation electron/security/darwin-safe-file-system.m -o electron/security/darwin-safe-file-system && chmod +x electron/security/darwin-safe-file-system && vite build && node scripts/build-release-vector-smoke-runner.mjs && electron-builder --mac --arm64 --publish never",
     "build:mac:x64:artifacts": "pnpm run clean:build && pnpm run typecheck && pnpm run rebuild:electron && clang -fobjc-arc -framework Foundation electron/security/darwin-safe-file-system.m -o electron/security/darwin-safe-file-system && chmod +x electron/security/darwin-safe-file-system && vite build && node scripts/build-release-vector-smoke-runner.mjs && electron-builder --mac --x64 --publish never",
+    "build:linux:artifacts": "pnpm run clean:build && pnpm run typecheck && pnpm run rebuild:electron && vite build && node scripts/build-release-vector-smoke-runner.mjs && electron-builder --linux --x64 --publish never",
     "verify:win-package": "node scripts/verify-win-package.mjs",
     "verify:win-update-artifacts": "node scripts/verify-win-update-artifacts.mjs",
     "verify:github-update-release": "node scripts/verify-github-update-release.mjs",
@@ -122,6 +123,7 @@
   "optionalDependencies": {
     "@lancedb/lancedb-darwin-arm64": "0.22.3",
     "@lancedb/lancedb-darwin-x64": "0.22.3",
+    "@lancedb/lancedb-linux-x64-gnu": "0.22.3",
     "@lancedb/lancedb-win32-x64-msvc": "0.22.3"
   }
 }

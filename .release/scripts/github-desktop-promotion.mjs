@@ -24,6 +24,7 @@ import { parseStrictUtf8Json, readJsonFile, validateReleaseProfile } from "./val
 
 const SHA256 = /^[0-9a-f]{64}$/;
 const COMMIT_SHA = /^[0-9a-f]{40}$/;
+const REQUIRED_QUALIFICATION_ENTITIES = Object.freeze(["linux-x64", "macos-arm64", "macos-x64", "windows"]);
 export const AUTHORITATIVE_READBACK_DELAYS_MS = Object.freeze([250, 500, 1000, 2000]);
 
 export async function boundedAuthoritativeReadback({ label, read, assert: assertValue, sleep = (milliseconds) => new Promise((resolvePromise) => setTimeout(resolvePromise, milliseconds)), delays = AUTHORITATIVE_READBACK_DELAYS_MS }) {
@@ -101,7 +102,8 @@ export function validatePromotionProfile(profile) {
     throw new Error("release profile does not select immutable GitHub Actions artifacts");
   }
   const platforms = Object.keys(profile.platforms || {});
-  if (platforms.length === 0 || platforms.some((platform) => !["windows", "macos-arm64", "macos-x64"].includes(platform))) throw new Error("release profile qualification entities are invalid");
+  if (platforms.length === 0 || platforms.some((platform) => !["windows", "macos-arm64", "macos-x64", "linux-x64"].includes(platform))) throw new Error("release profile qualification entities are invalid");
+  if (JSON.stringify([...platforms].sort()) !== JSON.stringify(REQUIRED_QUALIFICATION_ENTITIES)) throw new Error("release profile must require exactly Windows, macOS ARM64, macOS x64, and Linux x64 qualifications");
   for (const platform of platforms) {
     const policy = profile.platforms[platform];
     if (typeof policy.qualificationWorkflow !== "string" || !policy.qualificationWorkflow.startsWith(".github/workflows/") || typeof policy.artifactName !== "string" || policy.artifactName.length === 0) {

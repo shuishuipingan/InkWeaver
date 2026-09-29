@@ -8,7 +8,7 @@ Current version: **v1.3.6**
 
 > **Turn a long novel into one continuously developing story.** InkWeaver is a local-first AI writing workspace that connects story premises, character state, chapter blueprints, candidate drafts, evidence-backed review, and author-approved finalization into one traceable writing loop.
 
-Version 1.3.6 fixes AI character renaming when the model echoes an original name with different spacing or quote marks. Each character now has a batch-local slot ID, so returned mappings bind to the intended character; legacy name-only responses accept only unambiguous variants. Windows x64 and both macOS installers share one GitHub Release; the DSH plugin remains in v1.2.0, and npm publication remains out of scope.
+Version 1.3.6 fixes AI character renaming when the model echoes an original name with different spacing or quote marks. Each character now has a batch-local slot ID, so returned mappings bind to the intended character; legacy name-only responses accept only unambiguous variants. The same GitHub Release also includes Linux x64 AppImage, deb, and rpm packages with SHA-256 sidecars; the DSH plugin remains in v1.2.0, and npm publication remains out of scope.
 
 [Download v1.3.6](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.3.6) · [Start your first chapter in three minutes](docs/quickstart/README.md) · [Story direction guide](docs/features/story-direction-adjustment.md) · [Install the DSH plugin](plugins/inkweaver-dsh/README.md) · [Ask a question or report a problem](https://github.com/shuishuipingan/InkWeaver/issues/new/choose) · [Join the discussion](https://github.com/shuishuipingan/InkWeaver/discussions)
 
@@ -162,7 +162,31 @@ inkweaver-mac-arm64-<version>-installer.dmg
 inkweaver-mac-x64-<version>-installer.dmg
 ```
 
-The current macOS installers do not have a Developer ID signature and are not notarized. Download only from the [formal v1.3.6 Release](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.3.6) and follow the operating system's first-launch confirmation. The desktop Release uses a seven-asset contract covering macOS Apple Silicon and macOS Intel; the DSH plugin tarball remains in the v1.2.0 Release.
+The current macOS installers do not have a Developer ID signature and are not notarized. Download only from the [formal v1.3.6 Release](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.3.6) and follow the operating system's first-launch confirmation. The desktop Release contains 13 assets for Windows x64, macOS Apple Silicon, macOS Intel, and Linux x64; the DSH plugin tarball remains in the v1.2.0 Release.
+
+### Linux x64
+
+The v1.3.6 Linux packages are built for x64. Qualification tests cover Ubuntu 22.04, Debian 13, and Fedora 44; this does not claim compatibility for other distributions or Linux ARM64. Packages are built in an Ubuntu 22.04 environment with glibc 2.35, and qualification verifies that packaged binaries do not require a glibc symbol newer than 2.35.
+
+Download these files and their matching SHA-256 sidecars from the [formal v1.3.6 Release](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.3.6):
+
+    inkweaver-linux-x64-1.3.6.AppImage
+    inkweaver-linux-x64-1.3.6.deb
+    inkweaver-linux-x64-1.3.6.rpm
+
+The AppImage launches directly when FUSE is available. Without FUSE, use its built-in extraction mode:
+
+    chmod +x inkweaver-linux-x64-1.3.6.AppImage
+    ./inkweaver-linux-x64-1.3.6.AppImage --appimage-extract-and-run
+
+Install the deb package on Ubuntu/Debian or the rpm package on Fedora:
+
+    sudo apt install ./inkweaver-linux-x64-1.3.6.deb
+    sudo dnf install ./inkweaver-linux-x64-1.3.6.rpm
+
+Linux packages are unsigned. Verify the matching checksum file in the same directory before installation, for example:
+
+    sha256sum -c inkweaver-linux-x64-1.3.6.deb.sha256
 
 ## DeepSeek Harness plugin
 

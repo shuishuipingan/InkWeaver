@@ -32,7 +32,7 @@ function main() {
   for (const key of ['repository', 'expected-sha', 'tag', 'version', 'profile', 'output-root', 'platform', 'run-id', 'run-attempt', 'workflow', 'actor', 'event']) assert(options[key], `--${key} is required`)
   assert(/^[a-f0-9]{40}$/.test(options['expected-sha']), 'expected SHA must be lowercase and full length')
   assert(options.tag === `v${options.version}`, 'tag must equal v<version>')
-  assert(options.platform === 'windows' || options.platform === 'macos-arm64' || options.platform === 'macos-x64', 'platform must name a supported qualification entity')
+  assert(options.platform === 'windows' || options.platform === 'macos-arm64' || options.platform === 'macos-x64' || options.platform === 'linux-x64', 'platform must name a supported qualification entity')
   assert(options.event === 'workflow_dispatch', 'event must equal workflow_dispatch')
 
   const profilePath = path.resolve(options.profile)

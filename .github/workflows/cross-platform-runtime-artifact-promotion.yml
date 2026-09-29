@@ -1,8 +1,7 @@
-# INSTALL: copy <github-desktop-release-skill-root>/scripts/github-desktop-promotion.mjs
-# and validate-release-profile.mjs verbatim to .release/scripts/ with the same
-# filenames. Vendor both Skill scripts;
-# do not rewrite a project-specific promotion engine. Projects supply only the
-# release profile and qualification acceptance adapters.
+# Provenance: github-desktop-promotion.mjs and validate-release-profile.mjs are
+# vendored from the GitHub Desktop Release skill. The promotion consumer has a
+# local allowlist extension for this project's linux-x64 qualification entity;
+# the immutable run, artifact, contract, hash, and readback checks remain intact.
 # The fixed verifier runtime below is not the application toolchain.
 name: Promote qualified desktop release
 

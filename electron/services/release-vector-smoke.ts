@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import Database from 'better-sqlite3'
 import { backfillVectors, importText, searchKnowledge, searchKnowledgeFTS } from '../knowledge-base'
 import { closeConnection, getEmbeddingSpaces } from '../vector-store'
 
@@ -13,6 +14,13 @@ export interface ReleaseVectorSmokeInvocation {
 export interface ReleaseVectorSmokeEvidence {
   schemaVersion: 1
   kind: 'packaged-vector-smoke'
+  nativeBindings: {
+    betterSqlite3: {
+      binding: 'better-sqlite3'
+      operation: 'SELECT 1'
+      value: 1
+    }
+  }
   projectA: {
     vectorDimension: 768
     importChunkCount: number
@@ -120,6 +128,15 @@ export async function runReleaseVectorSmoke(token: string): Promise<ReleaseVecto
   }
 
   reportReleaseVectorSmokeStage('invocation-valid')
+  reportReleaseVectorSmokeStage('sqlite-operation')
+  const sqlite = new Database(':memory:')
+  let sqliteValue: unknown
+  try {
+    sqliteValue = (sqlite.prepare('SELECT 1 AS value').get() as { value?: unknown } | undefined)?.value
+  } finally {
+    sqlite.close()
+  }
+  assertSmokeResult(sqliteValue === 1, 'better-sqlite3 SELECT 1 did not return 1')
   const root = createInternalProjectRoot()
   const projectA = path.join(root, 'project-a')
   const projectB = path.join(root, 'project-b')
@@ -182,6 +199,13 @@ export async function runReleaseVectorSmoke(token: string): Promise<ReleaseVecto
     return {
       schemaVersion: 1,
       kind: 'packaged-vector-smoke',
+      nativeBindings: {
+        betterSqlite3: {
+          binding: 'better-sqlite3',
+          operation: 'SELECT 1',
+          value: 1,
+        },
+      },
       projectA: {
         vectorDimension: 768,
         importChunkCount: importedA.chunkCount,

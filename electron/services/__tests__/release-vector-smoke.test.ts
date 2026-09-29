@@ -54,6 +54,13 @@ describe('packaged release vector smoke', () => {
     await expect(runReleaseVectorSmoke(token)).resolves.toMatchObject({
       schemaVersion: 1,
       kind: 'packaged-vector-smoke',
+      nativeBindings: {
+        betterSqlite3: {
+          binding: 'better-sqlite3',
+          operation: 'SELECT 1',
+          value: 1,
+        },
+      },
       projectA: {
         vectorDimension: 768,
         importChunkCount: 1,

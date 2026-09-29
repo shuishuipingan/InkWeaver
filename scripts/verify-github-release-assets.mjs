@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url'
 const scriptPath = fileURLToPath(import.meta.url)
 
 export function expectedReleaseAssetNames(version) {
-  return [
+  const names = [
     `inkweaver-setup-${version}.exe`,
     `inkweaver-setup-${version}.exe.blockmap`,
     'latest.yml',
@@ -16,6 +16,18 @@ export function expectedReleaseAssetNames(version) {
     `inkweaver-mac-x64-${version}-installer.dmg`,
     `inkweaver-mac-x64-${version}-installer.dmg.sha256`,
   ]
+  const [major, minor, patch] = version.split('-')[0].split('.').map(Number)
+  const requiresLinuxPackages = Number.isInteger(major) && Number.isInteger(minor) && Number.isInteger(patch)
+    && (major > 1 || (major === 1 && (minor > 3 || (minor === 3 && patch >= 6))))
+  if (requiresLinuxPackages) names.push(
+    `inkweaver-linux-x64-${version}.AppImage`,
+    `inkweaver-linux-x64-${version}.AppImage.sha256`,
+    `inkweaver-linux-x64-${version}.deb`,
+    `inkweaver-linux-x64-${version}.deb.sha256`,
+    `inkweaver-linux-x64-${version}.rpm`,
+    `inkweaver-linux-x64-${version}.rpm.sha256`,
+  )
+  return names
 }
 
 export function verifyGithubReleaseAssetContract({ expectedVersion, release, topics }) {

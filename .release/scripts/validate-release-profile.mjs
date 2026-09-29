@@ -6,11 +6,12 @@ import { pathToFileURL } from 'node:url';
 // A platform key is a qualification entity, not merely an operating-system
 // family. macOS architectures must remain independently qualified so their
 // run identities, artifacts, and signing receipts cannot be interchanged.
-const PLATFORM_NAMES = new Set(['windows', 'macos-arm64', 'macos-x64']);
+const PLATFORM_NAMES = new Set(['windows', 'macos-arm64', 'macos-x64', 'linux-x64']);
 const REQUIRED_PLATFORM_ARCHITECTURES = new Map([
   ['windows', 'x64'],
   ['macos-arm64', 'arm64'],
   ['macos-x64', 'x64'],
+  ['linux-x64', 'x64'],
 ]);
 const SIGNING_MODES = new Set(['required', 'allow-unsigned-with-disclosure']);
 const FINAL_STATES = new Set(['draft', 'published']);
@@ -177,6 +178,34 @@ export function validateReleaseProfile(profile) {
         errors.push(`releaseAssets[${index}].name must encode the ${requiredArchitecture} macOS architecture.`);
       }
       if (!isNonEmptyString(asset.role)) errors.push(`releaseAssets[${index}].role must be non-empty.`);
+    }
+  }
+
+  if (platforms.includes('linux-x64')) {
+    const expectedLinuxReceipts = [
+      'acceptance/install.json',
+      'acceptance/launch.json',
+      'acceptance/native-abi.json',
+      'acceptance/packaged-smoke.json',
+      'acceptance/signing.json',
+    ];
+    const actualLinuxReceipts = profile.platforms['linux-x64']?.acceptanceReceipts;
+    if (JSON.stringify(actualLinuxReceipts) !== JSON.stringify(expectedLinuxReceipts)) {
+      errors.push('platforms.linux-x64.acceptanceReceipts must exactly include install, launch, native ABI, packaged smoke, and signing evidence in order.');
+    }
+    const expectedLinuxAssets = [
+      'inkweaver-linux-x64-{version}.AppImage',
+      'inkweaver-linux-x64-{version}.AppImage.sha256',
+      'inkweaver-linux-x64-{version}.deb',
+      'inkweaver-linux-x64-{version}.deb.sha256',
+      'inkweaver-linux-x64-{version}.rpm',
+      'inkweaver-linux-x64-{version}.rpm.sha256',
+    ];
+    const actualLinuxAssets = profile.releaseAssets
+      .filter((asset) => asset?.platform === 'linux-x64')
+      .map((asset) => asset?.name);
+    if (JSON.stringify(actualLinuxAssets) !== JSON.stringify(expectedLinuxAssets)) {
+      errors.push('linux-x64 releaseAssets must exactly match the AppImage, deb, rpm, and three SHA-256 sidecars in order.');
     }
   }
 

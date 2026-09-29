@@ -24,6 +24,21 @@ describe('release dependency contract', () => {
     expect(existsSync('package-lock.json')).toBe(false)
   })
 
+  it('builds and unpacks all Linux x64 package formats with the pinned LanceDB binding', () => {
+    expect(pkg.optionalDependencies?.['@lancedb/lancedb-linux-x64-gnu']).toBe('0.22.3')
+    expect(pkg.scripts?.['build:linux:artifacts']).toContain('pnpm run rebuild:electron')
+    expect(pkg.scripts?.['build:linux:artifacts']).toContain('electron-builder --linux --x64')
+    expect(pkg.scripts?.['build:linux:artifacts']).toContain('--publish never')
+
+    const lockfile = readFileSync('pnpm-lock.yaml', 'utf8').split(/\r?\npackages:/u)[0]
+    expect(lockfile).toMatch(/'@lancedb\/lancedb-linux-x64-gnu':\s+specifier: 0\.22\.3\s+version: 0\.22\.3/u)
+
+    const builder = readFileSync('electron-builder.json5', 'utf8')
+    expect(builder).toContain('"target": ["AppImage", "deb", "rpm"]')
+    expect(builder).toContain('"artifactName": "inkweaver-linux-x64-${version}.${ext}"')
+    expect(builder).toContain('node_modules/@lancedb/lancedb-linux-*/**/*')
+  })
+
   it('runs clean, native verification, and executable smoke gates for Windows builds', () => {
     expect(pkg.scripts?.['build:win-dir']).toContain('pnpm run clean:build')
     expect(pkg.scripts?.['build:win-dir']).toContain('pnpm run rebuild:electron')

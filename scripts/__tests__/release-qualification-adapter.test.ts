@@ -71,6 +71,32 @@ describe('legacy qualification receipt adapter', () => {
     })
   })
 
+  it('preserves explicit Linux unsigned package evidence without applying macOS signing inference', () => {
+    const receipt = {
+      schemaVersion: 2,
+      accepted: true,
+      observations: ['Linux package was observed unsigned and checksum sidecars were created.'],
+      platform: 'linux',
+      arch: 'x64',
+      status: 'unsigned',
+      validationResult: 'No Linux signing identity is configured.',
+      unsignedDistributionImpact: 'Verify SHA-256 checksums before installation.',
+      direct: { status: 'unsigned', distributionImpact: 'Verify SHA-256 checksums before installation.' },
+    }
+    const normalized = normalizeLegacyReceipt({
+      platform: 'linux',
+      relativePath: 'acceptance/signing.json',
+      rawBytes: Buffer.from(JSON.stringify(receipt)),
+    })
+
+    expect(normalized).toMatchObject({
+      platform: 'linux',
+      arch: 'x64',
+      status: 'unsigned',
+      sourceClassification: { platform: 'linux', signingStatus: 'unsigned' },
+    })
+  })
+
   it.each([
     ['Developer ID identity', macSigning({ direct: { codeSigning: { observed: 'developer_id', hasDeveloperIdIdentity: true } } })],
     ['unsigned observation with a Developer ID identity', macSigning({ direct: { codeSigning: { observed: 'unsigned', hasDeveloperIdIdentity: true } } })],
