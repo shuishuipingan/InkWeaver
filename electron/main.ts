@@ -26,6 +26,11 @@ import {
   releaseSkinSmokeWasRequested,
   runReleaseSkinSmoke,
 } from './services/release-skin-smoke'
+import {
+  claimReleaseDesktopSmokeInvocation,
+  releaseDesktopSmokeWasRequested,
+  validatePackagedDesktopSmokeObservation,
+} from './services/release-desktop-smoke'
 import { registerOfficialHomepageController } from './controllers/official-homepage-controller'
 import type { UpdateState } from './services/update-service'
 import {
@@ -34,7 +39,7 @@ import {
 } from './services/official-homepage-navigation'
 import { configureSingleInstanceRuntime } from './services/single-instance-runtime'
 
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import path from 'node:path'
 // 主进程兜底：任何未捕获异常都先写入文件日志，再决定是否继续。
 // 重点是 EPIPE——主进程 stdout/stderr 是已断开的管道时（从资源管理器启动、
@@ -92,7 +97,8 @@ let win: BrowserWindow | null
 const releaseVectorSmokeRequested = releaseVectorSmokeWasRequested(process.argv)
 const releaseHomepageSmokeRequested = releaseOfficialHomepageSmokeWasRequested(process.argv)
 const releaseSkinSmokeRequested = releaseSkinSmokeWasRequested(process.argv)
-const releaseSmokeRequested = releaseVectorSmokeRequested || releaseHomepageSmokeRequested || releaseSkinSmokeRequested
+const releaseDesktopSmokeRequested = releaseDesktopSmokeWasRequested(process.argv)
+const releaseSmokeRequested = releaseVectorSmokeRequested || releaseHomepageSmokeRequested || releaseSkinSmokeRequested || releaseDesktopSmokeRequested
 const releaseVectorSmokeInvocation = releaseVectorSmokeRequested
   ? claimReleaseVectorSmokeInvocation(process.argv, process.env)
   : undefined
@@ -101,6 +107,9 @@ const releaseHomepageSmokeInvocation = releaseHomepageSmokeRequested
   : undefined
 const releaseSkinSmokeInvocation = releaseSkinSmokeRequested
   ? claimReleaseSkinSmokeInvocation(process.argv, process.env)
+  : undefined
+const releaseDesktopSmokeInvocation = releaseDesktopSmokeRequested
+  ? claimReleaseDesktopSmokeInvocation(process.argv, process.env)
   : undefined
 const applicationInstanceAccepted = configureSingleInstanceRuntime({
   releaseSmokeRequested,
@@ -130,7 +139,9 @@ if (releaseSmokeRequested) {
     ? 'Packaged vector smoke timed out after 90 seconds'
     : releaseHomepageSmokeRequested
       ? 'Packaged official homepage smoke timed out after 90 seconds'
-      : 'Packaged skin smoke timed out after 90 seconds'
+      : releaseSkinSmokeRequested
+        ? 'Packaged skin smoke timed out after 90 seconds'
+        : 'Packaged desktop startup smoke timed out after 90 seconds'
   releaseSmokeTimeout = setTimeout(() => {
     console.error(`[AI Novel release smoke] ${timeoutDescription}; last stage=${releaseSmokeStage}`)
     app.exit(1)
@@ -203,6 +214,76 @@ function createWindow() {
   } else {
     win.loadFile(path.join(RENDERER_DIST, 'index.html'))
   }
+  return win
+}
+
+async function runPackagedDesktopStartupSmoke(window: BrowserWindow) {
+  await new Promise<void>((resolve, reject) => {
+    let rendererLoaded = false
+    let windowReady = false
+    let settled = false
+    const timeout = setTimeout(() => finish(new Error('Packaged desktop window did not become ready in time')), 20_000)
+    const finish = (error?: Error) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timeout)
+      if (error) reject(error)
+      else resolve()
+    }
+    const checkReady = () => {
+      if (rendererLoaded && windowReady) finish()
+    }
+
+    window.webContents.once('did-finish-load', () => {
+      rendererLoaded = true
+      checkReady()
+    })
+    window.webContents.once('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+      finish(new Error(`Packaged desktop renderer failed to load (${errorCode}): ${errorDescription} ${validatedURL}`))
+    })
+    window.webContents.once('render-process-gone', (_event, details) => {
+      finish(new Error(`Packaged desktop renderer exited before readiness (${details.reason})`))
+    })
+    window.once('ready-to-show', () => {
+      windowReady = true
+      checkReady()
+    })
+  })
+
+  const expectedUrl = pathToFileURL(path.join(RENDERER_DIST, 'index.html')).href
+  const observation = await window.webContents.executeJavaScript(`new Promise(resolve => {
+    const deadline = Date.now() + 10_000;
+    const expectedUrl = ${JSON.stringify(expectedUrl)};
+    const inspect = () => {
+      const result = {
+        url: window.location.href,
+        expectedUrl,
+        windowReady: true,
+        rendererLoaded: document.readyState === 'complete',
+        preloadApiReady: typeof window.velaAPI?.invoke === 'function',
+        appRootReady: Boolean(document.querySelector('#root > [data-skin-readability]')),
+      };
+      if (result.rendererLoaded && result.preloadApiReady && result.appRootReady) {
+        resolve(result);
+        return;
+      }
+      if (Date.now() >= deadline) {
+        resolve(result);
+        return;
+      }
+      setTimeout(inspect, 50);
+    };
+    inspect();
+  })`) as {
+    url: string
+    expectedUrl: string
+    windowReady: boolean
+    rendererLoaded: boolean
+    preloadApiReady: boolean
+    appRootReady: boolean
+  }
+
+  return validatePackagedDesktopSmokeObservation(observation)
 }
 
 function createReleaseHomepageSmokeWindow(): BrowserWindow {
@@ -258,29 +339,35 @@ app.whenReady().then(async () => {
     const requestedSmokeModeCount = Number(releaseVectorSmokeRequested)
       + Number(releaseHomepageSmokeRequested)
       + Number(releaseSkinSmokeRequested)
+      + Number(releaseDesktopSmokeRequested)
     const invocationCount = Number(releaseVectorSmokeInvocation !== undefined)
       + Number(releaseHomepageSmokeInvocation !== undefined)
       + Number(releaseSkinSmokeInvocation !== undefined)
+      + Number(releaseDesktopSmokeInvocation !== undefined)
     if (requestedSmokeModeCount !== 1 || invocationCount !== 1) {
       throw new Error('Invalid packaged smoke invocation: exactly one environment and one-time CLI token pair must match')
     }
     reportReleaseSmokeStage(
-      releaseVectorSmokeInvocation
-        ? 'vector-invocation-valid'
-        : releaseHomepageSmokeInvocation
-          ? 'official-homepage-invocation-valid'
-          : 'skin-invocation-valid',
+      releaseDesktopSmokeInvocation
+        ? 'desktop-invocation-valid'
+        : releaseVectorSmokeInvocation
+          ? 'vector-invocation-valid'
+          : releaseHomepageSmokeInvocation
+            ? 'official-homepage-invocation-valid'
+            : 'skin-invocation-valid',
     )
-    const evidence = releaseVectorSmokeInvocation
-      ? await runReleaseVectorSmoke(releaseVectorSmokeInvocation.token)
-      : releaseHomepageSmokeInvocation
-        ? await runPackagedOfficialHomepageSmoke(releaseHomepageSmokeInvocation.token)
-        : runReleaseSkinSmoke(releaseSkinSmokeInvocation!.token)
-    reportReleaseSmokeStage('evidence-ready')
-    process.stdout.write(`${JSON.stringify(evidence)}\n`)
-    clearReleaseSmokeTimeout()
-    app.exit(0)
-    return
+    if (!releaseDesktopSmokeInvocation) {
+      const evidence = releaseVectorSmokeInvocation
+        ? await runReleaseVectorSmoke(releaseVectorSmokeInvocation.token)
+        : releaseHomepageSmokeInvocation
+          ? await runPackagedOfficialHomepageSmoke(releaseHomepageSmokeInvocation.token)
+          : runReleaseSkinSmoke(releaseSkinSmokeInvocation!.token)
+      reportReleaseSmokeStage('evidence-ready')
+      process.stdout.write(`${JSON.stringify(evidence)}\n`)
+      clearReleaseSmokeTimeout()
+      app.exit(0)
+      return
+    }
   }
 
   // 先准备主进程服务和 IPC，再允许渲染层加载并发起调用。
@@ -294,7 +381,15 @@ app.whenReady().then(async () => {
   registerIPCHandlers()
   registerMCPHandlers()
   // 更新功能失败不能阻断作者进入应用；窗口先于更新运行时创建。
-  createWindow()
+  const mainWindow = createWindow()
+  if (releaseDesktopSmokeInvocation) {
+    const evidence = await runPackagedDesktopStartupSmoke(mainWindow)
+    reportReleaseSmokeStage('desktop-window-ready')
+    process.stdout.write(`${JSON.stringify(evidence)}\n`)
+    clearReleaseSmokeTimeout()
+    app.exit(0)
+    return
+  }
   // The legacy helper keeps its Windows-only default for older callers; the
   // explicit fourth flag enables the same updater on packaged macOS builds.
   const updateRuntimeEnabled = isWindowsUpdateRuntimeEnabled(

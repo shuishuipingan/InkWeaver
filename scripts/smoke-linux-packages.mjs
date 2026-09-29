@@ -69,13 +69,21 @@ export function validateLinuxSmokeResults(results, expectedVersion) {
     assert(Number.isInteger(result.installExitCode) && result.installExitCode === 0, 'Linux package install failed: ' + testCase.id)
     assert(Number.isInteger(result.launchExitCode) && result.launchExitCode === 0, 'Linux packaged launch failed: ' + testCase.id)
     assert(result.nativeSqliteValue === 1 && result.nativeLanceDbOperationSucceeded === true, 'Linux native database operation failed: ' + testCase.id)
+    assert(Number.isInteger(result.desktopLaunchExitCode) && result.desktopLaunchExitCode === 0, 'Linux packaged desktop startup failed: ' + testCase.id)
+    assert(result.desktopWindowReady === true && result.desktopRendererLoaded === true && result.desktopPreloadApiReady === true && result.desktopAppRootReady === true, 'Linux packaged desktop startup failed: ' + testCase.id)
+    assert(result.desktopLaunchMode === (testCase.format === 'appimage' ? 'extract-and-run' : 'installed-package'), 'Linux packaged desktop launch mode is invalid: ' + testCase.id)
     assert(versionAtLeast(result.glibcVersion, '2.35'), 'Linux smoke image is older than the glibc 2.35 build baseline: ' + testCase.id)
     assert(result.glibcRequirements && ['electron', 'betterSqlite3', 'lanceDb'].every(name => versionAtMost(result.glibcRequirements[name], '2.35')), 'Packaged binary GLIBC requirement exceeds the Ubuntu 22.04 baseline: ' + testCase.id)
     assert(result.cleanupSucceeded === true, 'Linux smoke cleanup failed: ' + testCase.id)
     if (testCase.format === 'appimage') {
       assert(result.appImageMode === 'fuse' || result.appImageMode === 'extract-and-run', 'Linux AppImage launch mode is invalid: ' + testCase.id)
+      assert(['passed', 'failed', 'unavailable'].includes(result.appImageFuseStatus), 'Linux AppImage FUSE observation is invalid: ' + testCase.id)
+      assert(Number.isInteger(result.appImageExtractionExitCode) && result.appImageExtractionExitCode === 0, 'Linux AppImage extract-and-run smoke failed: ' + testCase.id)
+      if (result.appImageFuseStatus === 'passed') assert(result.appImageMode === 'fuse', 'Linux AppImage FUSE result does not match its vector-smoke mode: ' + testCase.id)
+      if (result.appImageFuseStatus !== 'passed') assert(result.appImageMode === 'extract-and-run', 'Linux AppImage fallback mode does not match its FUSE result: ' + testCase.id)
     } else {
       assert(result.appImageMode === null, 'Non-AppImage case has an AppImage mode: ' + testCase.id)
+      assert(result.appImageFuseStatus === null && result.appImageExtractionExitCode === null, 'Non-AppImage case has AppImage runtime evidence: ' + testCase.id)
     }
     return {
       id: testCase.id, format: testCase.format, distro: testCase.distro, distroVersion: testCase.distroVersion,
@@ -85,7 +93,16 @@ export function validateLinuxSmokeResults(results, expectedVersion) {
       installExitCode: result.installExitCode, launchExitCode: result.launchExitCode,
       nativeSqliteValue: result.nativeSqliteValue,
       nativeLanceDbOperationSucceeded: result.nativeLanceDbOperationSucceeded,
-      appImageMode: result.appImageMode, cleanupSucceeded: result.cleanupSucceeded,
+      appImageMode: result.appImageMode,
+      appImageFuseStatus: result.appImageFuseStatus,
+      appImageExtractionExitCode: result.appImageExtractionExitCode,
+      desktopLaunchMode: result.desktopLaunchMode,
+      desktopLaunchExitCode: result.desktopLaunchExitCode,
+      desktopWindowReady: result.desktopWindowReady,
+      desktopRendererLoaded: result.desktopRendererLoaded,
+      desktopPreloadApiReady: result.desktopPreloadApiReady,
+      desktopAppRootReady: result.desktopAppRootReady,
+      cleanupSucceeded: result.cleanupSucceeded,
     }
   })
   return {
@@ -114,15 +131,15 @@ function readOptions(args) {
   return result
 }
 
-function containerScript(cases, token) {
+function containerScript(cases, tokens) {
   const rows = cases.map(testCase => [testCase.id, testCase.format, testCase.distro, testCase.distroVersion, testCase.artifact, testCase.image].join('|')).join('\n')
   const fedora = cases[0].distro === 'fedora'
   const debian = cases[0].distro === 'debian'
   const installRuntime = fedora
-    ? 'dnf -q install -y binutils xorg-x11-server-Xvfb xorg-x11-xauth gtk3 nss alsa-lib libXScrnSaver mesa-libgbm at-spi2-atk libX11 libXcomposite libXdamage libXext libXfixes libXrandr libxkbcommon xdg-utils'
+    ? 'dnf -q install -y binutils util-linux xorg-x11-server-Xvfb xorg-x11-xauth gtk3 nss alsa-lib libXScrnSaver mesa-libgbm at-spi2-atk libX11 libXcomposite libXdamage libXext libXfixes libXrandr libxkbcommon xdg-utils'
     : debian
-      ? 'apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq binutils xvfb xauth ca-certificates libgtk-3-0t64 libnss3 libxss1 libasound2t64 libgbm1 libatspi2.0-0t64 libatk-bridge2.0-0t64 libdrm2 libxrandr2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3'
-      : 'apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq binutils xvfb xauth ca-certificates libgtk-3-0 libnss3 libxss1 libasound2 libgbm1 libatspi2.0-0 libatk-bridge2.0-0 libdrm2 libxrandr2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3'
+      ? 'apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq binutils util-linux xvfb xauth ca-certificates libgtk-3-0t64 libnss3 libxss1 libasound2t64 libgbm1 libatspi2.0-0t64 libatk-bridge2.0-0t64 libdrm2 libxrandr2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3'
+      : 'apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq binutils util-linux xvfb xauth ca-certificates libgtk-3-0 libnss3 libxss1 libasound2 libgbm1 libatspi2.0-0 libatk-bridge2.0-0 libdrm2 libxrandr2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3'
   const installPackage = fedora
     ? 'dnf -q install -y "$package_path"'
     : 'dpkg -i "$package_path" >&2 || { apt-get -f install -y -qq >&2; dpkg -i "$package_path" >&2; }'
@@ -130,14 +147,18 @@ function containerScript(cases, token) {
     'set -euo pipefail',
     installRuntime + ' >&2',
     'smoke_root=/tmp/ai-novel-linux-smoke',
-    'mkdir -p "$smoke_root/home" "$smoke_root/config" "$smoke_root/cache" "$smoke_root/data"',
+    'mkdir -p "$smoke_root/home" "$smoke_root/config" "$smoke_root/cache" "$smoke_root/data" "$smoke_root/desktop-home" "$smoke_root/desktop-config" "$smoke_root/desktop-cache" "$smoke_root/desktop-data"',
+    'desktop_uid="$(id -u nobody)" && desktop_gid="$(id -g nobody)"',
+    'chown -R "$desktop_uid:$desktop_gid" "$smoke_root/desktop-home" "$smoke_root/desktop-config" "$smoke_root/desktop-cache" "$smoke_root/desktop-data"',
+    'getent passwd nobody >/dev/null && command -v runuser >/dev/null',
     'export HOME="$smoke_root/home" XDG_CONFIG_HOME="$smoke_root/config" XDG_CACHE_HOME="$smoke_root/cache" XDG_DATA_HOME="$smoke_root/data"',
     'Xvfb :99 -screen 0 1280x720x24 -ac > "$smoke_root/xvfb.log" 2>&1 &',
     'xvfb_pid=$!',
     'sleep 1',
     'kill -0 "$xvfb_pid"',
     'export DISPLAY=:99',
-    'export AI_NOVEL_RELEASE_SMOKE=1 AI_NOVEL_RELEASE_SMOKE_TOKEN=' + token,
+    'export AI_NOVEL_RELEASE_SMOKE=1 AI_NOVEL_RELEASE_SMOKE_TOKEN=' + tokens.vector,
+    'export AI_NOVEL_RELEASE_DESKTOP_SMOKE=1 AI_NOVEL_RELEASE_DESKTOP_SMOKE_TOKEN=' + tokens.desktop,
     'glibc_version="$(getconf GNU_LIBC_VERSION | awk \'{print $2}\')"',
     'os_release="$(. /etc/os-release; printf "%s" "$PRETTY_NAME" | tr "|" " ")"',
     'required_glibc() { readelf --dyn-syms --wide "$1" | grep -oE "GLIBC_[0-9]+(\\.[0-9]+)+" | sed "s/GLIBC_//" | sort -V | tail -n 1 || true; }',
@@ -145,6 +166,7 @@ function containerScript(cases, token) {
     '  [ -n "$case_id" ] || continue',
     '  package_path="/artifacts/$case_artifact"',
     '  appimage_mode=""',
+    '  appimage_fuse_status=""',
     '  if [ "$case_format" = "deb" ] || [ "$case_format" = "rpm" ]; then',
     '    ' + installPackage,
     '    app_path="$(command -v inkweaver || command -v InkWeaver || find /opt -maxdepth 4 -type f -perm -111 -iname "inkweaver" -print -quit)"',
@@ -154,12 +176,15 @@ function containerScript(cases, token) {
     '    cp "$package_path" "$app_path" && chmod 755 "$app_path"',
     '    appimage_mode=extract-and-run',
     '    if [ -c /dev/fuse ]; then',
+    '      appimage_fuse_status=failed',
     '      set +e',
     '      "$app_path" --no-sandbox --disable-gpu --ai-novel-release-smoke="$AI_NOVEL_RELEASE_SMOKE_TOKEN" > "$smoke_root/fuse.log" 2>&1',
     '      fuse_exit=$?',
     '      set -e',
-    '      if [ "$fuse_exit" -eq 0 ] && grep -q \'"kind":"packaged-vector-smoke"\' "$smoke_root/fuse.log"; then appimage_mode=fuse; fi',
+    '      if [ "$fuse_exit" -eq 0 ] && grep -q \'"kind":"packaged-vector-smoke"\' "$smoke_root/fuse.log"; then appimage_mode=fuse; appimage_fuse_status=passed; fi',
+    '    else appimage_fuse_status=unavailable',
     '    fi',
+    '  else appimage_fuse_status=""',
     '  fi',
     '  set +e',
     '  if [ "$case_format" = "appimage" ] && [ "$appimage_mode" = "extract-and-run" ]; then',
@@ -171,6 +196,23 @@ function containerScript(cases, token) {
     '  set -e',
     '  vector_line="$(grep \'"kind":"packaged-vector-smoke"\' "$smoke_root/launch.log" | tail -n 1 || true)"',
     '  if [ "$launch_exit" -ne 0 ] || [ -z "$vector_line" ]; then cat "$smoke_root/launch.log" >&2; exit 1; fi',
+    '  desktop_launch_mode=installed-package',
+    '  appimage_extraction_exit=""',
+    '  if [ "$case_format" = "appimage" ]; then',
+    '    desktop_launch_mode=extract-and-run',
+    '    set +e',
+    '    runuser -u nobody -- env HOME="$smoke_root/desktop-home" XDG_CONFIG_HOME="$smoke_root/desktop-config" XDG_CACHE_HOME="$smoke_root/desktop-cache" XDG_DATA_HOME="$smoke_root/desktop-data" DISPLAY="$DISPLAY" AI_NOVEL_RELEASE_DESKTOP_SMOKE=1 AI_NOVEL_RELEASE_DESKTOP_SMOKE_TOKEN="$AI_NOVEL_RELEASE_DESKTOP_SMOKE_TOKEN" "$app_path" --appimage-extract-and-run --ai-novel-release-desktop-smoke="$AI_NOVEL_RELEASE_DESKTOP_SMOKE_TOKEN" > "$smoke_root/desktop.log" 2>&1',
+    '    desktop_exit=$?',
+    '    set -e',
+    '    appimage_extraction_exit="$desktop_exit"',
+    '  else',
+    '    set +e',
+    '    runuser -u nobody -- env HOME="$smoke_root/desktop-home" XDG_CONFIG_HOME="$smoke_root/desktop-config" XDG_CACHE_HOME="$smoke_root/desktop-cache" XDG_DATA_HOME="$smoke_root/desktop-data" DISPLAY="$DISPLAY" AI_NOVEL_RELEASE_DESKTOP_SMOKE=1 AI_NOVEL_RELEASE_DESKTOP_SMOKE_TOKEN="$AI_NOVEL_RELEASE_DESKTOP_SMOKE_TOKEN" "$app_path" --ai-novel-release-desktop-smoke="$AI_NOVEL_RELEASE_DESKTOP_SMOKE_TOKEN" > "$smoke_root/desktop.log" 2>&1',
+    '    desktop_exit=$?',
+    '    set -e',
+    '  fi',
+    '  desktop_line="$(grep \'"kind":"packaged-desktop-smoke"\' "$smoke_root/desktop.log" | tail -n 1 || true)"',
+    '  if [ "$desktop_exit" -ne 0 ] || [ -z "$desktop_line" ]; then cat "$smoke_root/desktop.log" >&2; exit 1; fi',
     '  inspect_root="$(readlink -f "$app_path")"',
     '  if [ "$case_format" = "appimage" ]; then (cd "$smoke_root" && "$app_path" --appimage-extract >/dev/null); inspect_root="$smoke_root/squashfs-root"; fi',
     '  inspect_binary="$(find "$inspect_root" -type f -perm -111 -name inkweaver -print -quit)"',
@@ -182,8 +224,9 @@ function containerScript(cases, token) {
     '  sqlite_glibc="$(required_glibc "$sqlite_binary")"',
     '  lance_glibc="$(required_glibc "$lance_binary")"',
     '  test -n "$electron_glibc" && test -n "$sqlite_glibc" && test -n "$lance_glibc"',
-    '  printf "CASE_RESULT|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s\\n" "$case_id" "$case_format" "$case_distro" "$case_distro_version" "$case_artifact" "$appimage_mode" "$launch_exit" "$electron_glibc" "$sqlite_glibc" "$lance_glibc"',
+    '  printf "CASE_RESULT|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s\\n" "$case_id" "$case_format" "$case_distro" "$case_distro_version" "$case_artifact" "$appimage_mode" "${appimage_fuse_status:-}" "$launch_exit" "${appimage_extraction_exit:--}" "$desktop_launch_mode" "$desktop_exit" "$electron_glibc" "$sqlite_glibc" "$lance_glibc"',
     '  printf "VECTOR_EVIDENCE|%s\\n" "$vector_line"',
+    '  printf "DESKTOP_EVIDENCE|%s|%s\\n" "$case_id" "$desktop_line"',
     'done <<\'AI_NOVEL_CASES\'',
     rows,
     'AI_NOVEL_CASES',
@@ -194,12 +237,12 @@ function containerScript(cases, token) {
   ].join('\n')
 }
 
-function runContainerGroup(runtime, releaseRoot, cases, token) {
+function runContainerGroup(runtime, releaseRoot, cases, tokens) {
   const args = ['run', '--rm', '--interactive', '--platform', 'linux/amd64', '--mount', 'type=bind,src=' + releaseRoot + ',dst=/artifacts,readonly']
   if (existsSync('/dev/fuse')) args.push('--device', '/dev/fuse', '--cap-add', 'SYS_ADMIN', '--security-opt', 'apparmor:unconfined')
   args.push(cases[0].image, 'bash', '-s')
   const result = spawnSync(runtime, args, {
-    input: containerScript(cases, token), encoding: 'utf8', timeout: 20 * 60 * 1000, maxBuffer: 32 * 1024 * 1024,
+    input: containerScript(cases, tokens), encoding: 'utf8', timeout: 20 * 60 * 1000, maxBuffer: 32 * 1024 * 1024,
   })
   if (result.error) throw result.error
   assert(result.status === 0, 'Linux package smoke container failed for ' + cases[0].image + ': ' + String(result.stderr || result.stdout || '').slice(-6000))
@@ -209,12 +252,36 @@ function runContainerGroup(runtime, releaseRoot, cases, token) {
   const groupLine = lines.find(line => line.startsWith('GROUP_RESULT|'))
   assert(groupLine, 'Linux package smoke container produced no final receipt for ' + cases[0].image)
   const [, image, glibcVersion, cleanup, osRelease] = groupLine.split('|')
+  const desktopEvidenceById = new Map(lines.filter(line => line.startsWith('DESKTOP_EVIDENCE|')).map(line => {
+    const separator = line.indexOf('|', 'DESKTOP_EVIDENCE|'.length)
+    assert(separator > 0, 'Linux desktop smoke evidence line is invalid: ' + cases[0].image)
+    const id = line.slice('DESKTOP_EVIDENCE|'.length, separator)
+    const evidence = JSON.parse(line.slice(separator + 1))
+    assert(evidence?.kind === 'packaged-desktop-smoke', 'Linux packaged desktop smoke evidence is invalid: ' + id)
+    return [id, evidence]
+  }))
   const caseResults = lines.filter(line => line.startsWith('CASE_RESULT|')).map(line => {
-    const [, id, format, distro, distroVersion, artifact, appImageMode, launchExitCode, electronGlibc, sqliteGlibc, lanceGlibc] = line.split('|')
-    return { id, format, distro, distroVersion, image, imageDigest: String(imageInspection.stdout).trim(), osRelease, artifact, glibcVersion, glibcRequirements: { electron: electronGlibc, betterSqlite3: sqliteGlibc, lanceDb: lanceGlibc }, installExitCode: 0, launchExitCode: Number(launchExitCode), appImageMode: appImageMode || null, cleanupSucceeded: cleanup === 'true' }
+    const [, id, format, distro, distroVersion, artifact, appImageMode, appImageFuseStatus, vectorLaunchExitCode, appImageExtractionExitCode, desktopLaunchMode, desktopLaunchExitCode, electronGlibc, sqliteGlibc, lanceGlibc] = line.split('|')
+    const desktopEvidence = desktopEvidenceById.get(id)
+    assert(desktopEvidence, 'Linux packaged desktop smoke result is missing: ' + id)
+    return {
+      id, format, distro, distroVersion, image, imageDigest: String(imageInspection.stdout).trim(), osRelease, artifact,
+      glibcVersion, glibcRequirements: { electron: electronGlibc, betterSqlite3: sqliteGlibc, lanceDb: lanceGlibc },
+      installExitCode: 0, launchExitCode: Number(vectorLaunchExitCode),
+      appImageMode: appImageMode || null,
+      appImageFuseStatus: appImageFuseStatus || null,
+      appImageExtractionExitCode: appImageExtractionExitCode === '-' ? null : Number(appImageExtractionExitCode),
+      desktopLaunchMode,
+      desktopLaunchExitCode: Number(desktopLaunchExitCode),
+      desktopWindowReady: desktopEvidence.windowReady === true,
+      desktopRendererLoaded: desktopEvidence.rendererLoaded === true,
+      desktopPreloadApiReady: desktopEvidence.preloadApiReady === true,
+      desktopAppRootReady: desktopEvidence.appRootReady === true,
+      cleanupSucceeded: cleanup === 'true',
+    }
   })
   const vectorLines = lines.filter(line => line.startsWith('VECTOR_EVIDENCE|'))
-  assert(caseResults.length === cases.length && vectorLines.length === cases.length, 'Linux package smoke container returned an incomplete case set: ' + image)
+  assert(caseResults.length === cases.length && vectorLines.length === cases.length && desktopEvidenceById.size === cases.length, 'Linux package smoke container returned an incomplete case set: ' + image)
   const vectorEvidence = JSON.parse(vectorLines[0].slice('VECTOR_EVIDENCE|'.length))
   for (const line of vectorLines) {
     const evidence = JSON.parse(line.slice('VECTOR_EVIDENCE|'.length))
@@ -244,8 +311,23 @@ function writeAcceptanceReceipts(evidenceRoot, releaseRoot, smokeEvidence, vecto
   }, ['Installed the .deb package on Ubuntu 22.04 and Debian 13.', 'Installed the .rpm package on Fedora 44.', 'Staged the AppImage for launch on all three tested distributions.'])
   save('launch', 'launch', {
     architecture,
-    cases: smokeEvidence.cases.map(({ id, format, distro, distroVersion, image, imageDigest, osRelease, glibcVersion, glibcRequirements, launchExitCode, appImageMode, cleanupSucceeded }) => ({ id, format, distro, distroVersion, image, imageDigest, osRelease, glibcVersion, glibcRequirements, launchExitCode, appImageMode, cleanupSucceeded })),
-  }, ['Every packaged launch completed the token-gated database smoke.', 'Temporary HOME, XDG, and application data were isolated and removed.'])
+    cases: smokeEvidence.cases.map(({
+      id, format, distro, distroVersion, image, imageDigest, osRelease, glibcVersion, glibcRequirements,
+      launchExitCode, appImageMode, appImageFuseStatus, appImageExtractionExitCode, desktopLaunchMode,
+      desktopLaunchExitCode, desktopWindowReady, desktopRendererLoaded, desktopPreloadApiReady,
+      desktopAppRootReady, cleanupSucceeded,
+    }) => ({
+      id, format, distro, distroVersion, image, imageDigest, osRelease, glibcVersion, glibcRequirements,
+      launchExitCode, appImageMode, appImageFuseStatus, appImageExtractionExitCode, desktopLaunchMode,
+      desktopLaunchExitCode, desktopWindowReady, desktopRendererLoaded, desktopPreloadApiReady,
+      desktopAppRootReady, cleanupSucceeded,
+    })),
+  }, [
+    'Every packaged launch completed the token-gated database smoke.',
+    'Every package opened its packaged renderer window and loaded the isolated preload bridge as an unprivileged user under Xvfb.',
+    'AppImage extraction startup is tested independently of the optional FUSE vector-smoke attempt.',
+    'Temporary HOME, XDG, and application data were isolated and removed.',
+  ])
   save('native-abi', 'native-abi', {
     architecture,
     betterSqlite3: vectorEvidence.nativeBindings.betterSqlite3,
@@ -276,11 +358,11 @@ async function main(args = process.argv.slice(2)) {
     const file = path.resolve(releaseRoot, artifact)
     assert(file.startsWith(releaseRoot + path.sep) && existsSync(file) && statSync(file).isFile(), 'Missing Linux package artifact: ' + artifact)
   }
-  const token = randomBytes(32).toString('hex')
+  const tokens = { vector: randomBytes(32).toString('hex'), desktop: randomBytes(32).toString('hex') }
   const groups = new Map()
   for (const testCase of cases) groups.set(testCase.image, [...(groups.get(testCase.image) || []), testCase])
   const results = []
-  for (const group of groups.values()) results.push(runContainerGroup(options.containerRuntime, releaseRoot, group, token))
+  for (const group of groups.values()) results.push(runContainerGroup(options.containerRuntime, releaseRoot, group, tokens))
   const rawCases = results.flatMap(group => group.caseResults.map(result => ({
     ...result,
     nativeSqliteValue: group.vectorEvidence.nativeBindings?.betterSqlite3?.value,

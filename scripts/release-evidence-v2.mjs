@@ -829,8 +829,18 @@ function validateLinuxReceipt(receipt, name, bundleRoot, version) {
         const required = /^(\d+)\.(\d+)$/.exec(String(requirements[name] ?? ''))
         return required && (Number(required[1]) < 2 || (Number(required[1]) === 2 && Number(required[2]) <= 35))
       }), `Linux packaged binary GLIBC requirement exceeds the Ubuntu 22.04 baseline: ${testCase.id}`)
-      if (testCase.format === 'appimage') assert(['fuse', 'extract-and-run'].includes(observed.appImageMode), `Linux AppImage launch mode is invalid: ${testCase.id}`)
-      else assert(observed.appImageMode === null, `Linux non-AppImage launch has an AppImage mode: ${testCase.id}`)
+      assert(observed.desktopLaunchMode === (testCase.format === 'appimage' ? 'extract-and-run' : 'installed-package'), `Linux desktop launch mode is invalid: ${testCase.id}`)
+      assert(observed.desktopLaunchExitCode === 0 && observed.desktopWindowReady === true && observed.desktopRendererLoaded === true && observed.desktopPreloadApiReady === true && observed.desktopAppRootReady === true, `Linux packaged desktop startup receipt is invalid: ${testCase.id}`)
+      if (testCase.format === 'appimage') {
+        assert(['fuse', 'extract-and-run'].includes(observed.appImageMode), `Linux AppImage vector-smoke mode is invalid: ${testCase.id}`)
+        assert(['passed', 'failed', 'unavailable'].includes(observed.appImageFuseStatus), `Linux AppImage FUSE observation is invalid: ${testCase.id}`)
+        assert(observed.appImageExtractionExitCode === 0, `Linux AppImage extraction smoke failed: ${testCase.id}`)
+        if (observed.appImageFuseStatus === 'passed') assert(observed.appImageMode === 'fuse', `Linux AppImage FUSE evidence conflicts with its vector-smoke mode: ${testCase.id}`)
+        else assert(observed.appImageMode === 'extract-and-run', `Linux AppImage fallback evidence conflicts with its vector-smoke mode: ${testCase.id}`)
+      } else {
+        assert(observed.appImageMode === null, `Linux non-AppImage launch has an AppImage mode: ${testCase.id}`)
+        assert(observed.appImageFuseStatus === null && observed.appImageExtractionExitCode === null, `Linux non-AppImage launch has AppImage runtime evidence: ${testCase.id}`)
+      }
     }
   } else if (name === 'native-abi') {
     assert(direct.betterSqlite3?.binding === 'better-sqlite3' && direct.betterSqlite3.operation === 'SELECT 1' && direct.betterSqlite3.value === 1, 'Linux better-sqlite3 ABI receipt facts are invalid')

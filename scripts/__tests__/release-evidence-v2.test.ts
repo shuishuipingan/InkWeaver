@@ -158,6 +158,14 @@ describe('release evidence v2 CLI', () => {
       nativeSqliteValue: 1,
       nativeLanceDbOperationSucceeded: true,
       appImageMode: testCase.format === 'appimage' ? 'extract-and-run' : null,
+      appImageFuseStatus: testCase.format === 'appimage' ? 'unavailable' : null,
+      appImageExtractionExitCode: testCase.format === 'appimage' ? 0 : null,
+      desktopLaunchMode: testCase.format === 'appimage' ? 'extract-and-run' : 'installed-package',
+      desktopLaunchExitCode: 0,
+      desktopWindowReady: true,
+      desktopRendererLoaded: true,
+      desktopPreloadApiReady: true,
+      desktopAppRootReady: true,
       cleanupSucceeded: true,
     }))
     const smokeEvidence = validateLinuxSmokeResults(smokeCases)
@@ -194,7 +202,11 @@ describe('release evidence v2 CLI', () => {
     }))
     writeJson(path.join(acceptanceRoot, 'launch.json'), receipt('launch', {
       architecture,
-      cases: smokeEvidence.cases.map(({ id, image, imageDigest, osRelease, glibcVersion, glibcRequirements, launchExitCode, appImageMode, cleanupSucceeded }) => ({ id, image, imageDigest, osRelease, glibcVersion, glibcRequirements, launchExitCode, appImageMode, cleanupSucceeded })),
+      cases: smokeEvidence.cases.map(({ id, image, imageDigest, osRelease, glibcVersion, glibcRequirements, launchExitCode, appImageMode, appImageFuseStatus, appImageExtractionExitCode, desktopLaunchMode, desktopLaunchExitCode, desktopWindowReady, desktopRendererLoaded, desktopPreloadApiReady, desktopAppRootReady, cleanupSucceeded }) => ({
+        id, image, imageDigest, osRelease, glibcVersion, glibcRequirements, launchExitCode, appImageMode, appImageFuseStatus,
+        appImageExtractionExitCode, desktopLaunchMode, desktopLaunchExitCode, desktopWindowReady, desktopRendererLoaded,
+        desktopPreloadApiReady, desktopAppRootReady, cleanupSucceeded,
+      })),
     }))
     writeJson(path.join(acceptanceRoot, 'native-abi.json'), receipt('native-abi', {
       architecture,
