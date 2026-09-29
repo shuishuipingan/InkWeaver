@@ -83,5 +83,11 @@
     "maintainer": "InkWeaver Maintainers <shuishuipingan@users.noreply.github.com>",
     "category": "Office",
     "icon": "build/icon.png"
+  },
+  "deb": {
+    "afterInstall": "scripts/linux-sandbox-post-install.sh"
+  },
+  "rpm": {
+    "afterInstall": "scripts/linux-sandbox-post-install.sh"
   }
 }
