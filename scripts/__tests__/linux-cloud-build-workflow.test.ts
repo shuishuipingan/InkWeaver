@@ -23,6 +23,8 @@ describe('Linux x64 desktop qualification workflow', () => {
     expect(buildScript).toContain('docker run --rm --interactive --platform')
     expect(buildScript).toContain('corepack enable --install-directory /usr/local/bin')
     expect(buildScript).toContain('export CI=true')
+    expect(buildScript).toContain('ca-certificates')
+    expect(buildScript).toContain('SSL_CERT_FILE=/host-ca-certificates.crt')
     expect(buildScript).toContain('pnpm run build:linux:artifacts')
     expect(workflow).toContain('pnpm run test:browser')
     expect(workflow).toContain('pnpm test')
