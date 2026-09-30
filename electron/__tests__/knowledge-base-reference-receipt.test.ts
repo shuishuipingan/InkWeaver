@@ -255,8 +255,11 @@ describe('stable reference knowledge receipt', () => {
       data: [{ index: 0, embedding: [0.1, 0.2, 0.3] }],
     }), { status: 200, headers: { 'Content-Type': 'application/json' } })
     let finishFirstEmbedding!: (response: Response) => void
+    let observeFirstEmbedding!: () => void
+    const firstEmbeddingStarted = new Promise<void>(resolve => { observeFirstEmbedding = resolve })
     const fetchMock = vi.fn()
       .mockImplementationOnce(() => new Promise<Response>((resolve) => {
+        observeFirstEmbedding()
         finishFirstEmbedding = resolve
       }))
       .mockImplementation(async () => embeddingResponse())
@@ -278,7 +281,12 @@ describe('stable reference knowledge receipt', () => {
         embeddingOptions: { chunkSize: 100, chunkOverlap: 0, batchSize: 1 },
       },
     )
-    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+    // waitFor advances fake Date, which can expire the lease while native DB
+    // initialization is still pending on a slower runner. Advance it only at
+    // the explicit authority-expiry boundary under test.
+    await firstEmbeddingStarted
+    expect(Date.now()).toBe(3_000)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
     vi.setSystemTime(3_101)
     finishFirstEmbedding(embeddingResponse())
 
