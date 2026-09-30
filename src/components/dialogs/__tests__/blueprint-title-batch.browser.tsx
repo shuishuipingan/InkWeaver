@@ -115,6 +115,55 @@ it('previews editable title suggestions and applies only selected unfinished cha
   expect(onClose).toHaveBeenCalledOnce()
 })
 
+it('recovers length-truncated title batches before exposing selectable candidates', async () => {
+  const defaultImplementation = invoke.getMockImplementation()!
+  let requests = 0
+  invoke.mockImplementation(async (...args: unknown[]) => {
+    if (args[0] !== 'llm:generate') return defaultImplementation(...args)
+    requests += 1
+    const request = args[1] as { maxTokens: number; messages: Array<{ content: string }> }
+    expect(request.maxTokens).toBe(16_384)
+    if (requests === 1) return { success: false, finishReason: 'length', content: '', error: 'API 返回的文本未正常完成' }
+    const facts = JSON.parse(request.messages[1]!.content.split('\n').at(-1)!) as { requestedChapters: Array<{ chapterNumber: number }> }
+    return { success: true, finishReason: 'stop', content: JSON.stringify({ titles: facts.requestedChapters.map(item => ({
+      chapterNumber: item.chapterNumber, title: item.chapterNumber === 2 ? '雨夜来信' : '封中暗痕',
+    })) }) }
+  })
+  await act(async () => root?.render(<BlueprintTitleBatchDialog open onClose={onClose} onApplied={onApplied} />))
+  await expect.element(page.getByText(/待处理 2 章/u)).toBeVisible()
+  await act(async () => page.getByRole('button', { name: 'AI 生成标题' }).click())
+  await expect.element(page.getByRole('button', { name: '应用选中 (2)' })).not.toBeDisabled()
+  expect(requests).toBe(3)
+  await act(async () => page.getByRole('button', { name: '应用选中 (2)' }).click())
+  expect(onApplied).toHaveBeenCalledOnce()
+})
+
+it('does not let an old project response reset a newer title generation', async () => {
+  const defaultImplementation = invoke.getMockImplementation()!
+  const pending = new Map<string, (value: unknown) => void>()
+  invoke.mockImplementation(async (...args: unknown[]) => {
+    if (args[0] !== 'llm:generate') return defaultImplementation(...args)
+    const request = args[1] as { projectSession: { projectId: string } }
+    return new Promise(resolve => pending.set(request.projectSession.projectId, resolve))
+  })
+  await act(async () => root?.render(<BlueprintTitleBatchDialog open onClose={onClose} onApplied={onApplied} />))
+  await expect.element(page.getByText(/待处理 2 章/u)).toBeVisible()
+  await act(async () => page.getByRole('button', { name: 'AI 生成标题' }).click())
+  const secondSession = { projectId: 'second-title-project', leaseId: 'second-title-lease', projectPath: 'C:\\novels\\second-title' }
+  await act(async () => {
+    setActiveProjectSessionContext(secondSession)
+    useProjectStore.setState({ currentProject: { id: secondSession.projectId, path: secondSession.projectPath, sessionLease: secondSession.leaseId, name: '另一本小说' } as never })
+  })
+  await expect.element(page.getByRole('button', { name: 'AI 生成标题' })).toBeVisible()
+  await act(async () => page.getByRole('button', { name: 'AI 生成标题' }).click())
+  await act(async () => pending.get(session.projectId)?.({ success: true, finishReason: 'stop', content: '{"titles":[]}' }))
+  await expect.element(page.getByRole('button', { name: '停止后续批次' })).toBeVisible()
+  await act(async () => pending.get(secondSession.projectId)?.({ success: true, finishReason: 'stop', content: JSON.stringify({ titles: [
+    { chapterNumber: 2, title: '雨夜来信' }, { chapterNumber: 3, title: '封中暗痕' },
+  ] }) }))
+  await expect.element(page.getByRole('button', { name: '应用选中 (2)' })).not.toBeDisabled()
+})
+
 it('keeps the completed last batch selectable when generation is stopped after its response', async () => {
   const defaultImplementation = invoke.getMockImplementation()!
   let resolveTitleResponse: ((response: { success: boolean; finishReason: string; content: string }) => void) | undefined

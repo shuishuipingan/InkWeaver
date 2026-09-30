@@ -50,4 +50,18 @@ describe('chapter handoff command contract', () => {
       sceneLocation: '旧码头',
     })
   })
+  it('decodes quoted evidence objects and a single excerpt without inventing evidence', () => {
+    const completion = {
+      sceneLocation: '旧码头', viewpoint: '林舟', presentCharacters: ['林舟'],
+      unfinishedActions: [], immediateGoal: '开锁', emotionalState: '警惕', constraints: [], openQuestions: [],
+      transition: 'continue-scene',
+    }
+    expect(parseChapterHandoffCompletion(JSON.stringify({
+      ...completion, evidence: [{ quote: '林舟握着钥匙。', reason: '结尾动作' }],
+    }), source).evidence).toEqual(['林舟握着钥匙。'])
+    expect(parseChapterHandoffCompletion(JSON.stringify({ ...completion, evidence: '林舟握着钥匙。' }), source).evidence)
+      .toEqual(['林舟握着钥匙。'])
+    expect(() => parseChapterHandoffCompletion(JSON.stringify({ ...completion, evidence: [{ reason: '推断在码头' }] }), source))
+      .toThrow(/证据/)
+  })
 })

@@ -309,7 +309,7 @@ export default function StoryDirectionDialog({ open, onClose, onApplied }: Props
           })),
             outputContract: {
               terminologyReplacements: [{ from: '作者明确要求替换的原名', to: '作者指定的新名' }],
-              coreChanges: '仅包含需要修改的 coreOutline/worldSetting/protagonistProfile/globalGuidance/premise/worldbuilding/synopsis/goldenFinger 字符串字段',
+              coreChanges: '仅包含需要修改的 coreOutline/worldSetting/protagonistProfile/globalGuidance/premise/worldbuilding/synopsis/goldenFinger 字符串字段；未修改字段省略，不要输出 unchanged 元数据',
             characterChanges: [{ name: '只允许已有角色名', changes: { personality: '需要修改时的新性格', abilities: '需要修改时的新能力', arc: '需要修改时的新角色弧光' } }],
             newNarrativeThreads: [{ title: '需要新增时的线索标题', type: '线索类型', authorIntent: '作者预期的埋设与回收', targetStartChapter: startChapter, targetEndChapter: endChapter, lane: 'sub' }],
             summary: '调整摘要', conflicts: ['与已定稿事实冲突或需要作者决定的事项'],

@@ -12,6 +12,16 @@ const blueprint = {
 } satisfies BlueprintData
 
 describe('story direction proposal contract', () => {
+  it('ignores unchanged metadata without turning it into novel guidance', () => {
+    const result = decodeCoreDirectionChanges(JSON.stringify({
+      coreChanges: { unchanged: ['worldSetting'], premise: '第二人格帮助主角' },
+    }), core)
+    expect(result.changes).toEqual({ premise: '第二人格帮助主角' })
+    expect(decodeCoreDirectionChanges(JSON.stringify({ coreChanges: { unchanged: true } }), core).changes).toEqual({})
+    expect(() => decodeCoreDirectionChanges(JSON.stringify({ coreChanges: { premise: [] } }), core)).toThrow(/字段值无效/)
+    expect(decodeCoreDirectionChanges(JSON.stringify({ characterChanges: [{ name: '主角', changes: { unchanged: true } }] }), core, ['主角']).characterChanges).toEqual([])
+    expect(decodeBlueprintDirectionChanges(JSON.stringify({ changes: [{ chapterNumber: 2, changes: { unchanged: true } }] }), [blueprint])).toEqual([])
+  })
   it('accepts only changed planning fields and keeps conflict warnings', () => {
     expect(decodeCoreDirectionChanges(JSON.stringify({
       coreChanges: { premise: '第二人格在危机时帮助主角', globalGuidance: '' },

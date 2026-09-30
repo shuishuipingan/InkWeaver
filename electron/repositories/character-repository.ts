@@ -78,7 +78,7 @@ function rowToData(db: NonNullable<ReturnType<typeof getProjectDb>>, row: Record
               SELECT provenance_source, source_draft_id, source_content_hash, evidence
               FROM character_state_history
               WHERE character_name = ?
-              ORDER BY chapter_number DESC, id DESC
+              ORDER BY id DESC
               LIMIT 1
             `).get(data.name) as {
                 provenance_source: 'author' | 'model' | 'legacy-unknown'

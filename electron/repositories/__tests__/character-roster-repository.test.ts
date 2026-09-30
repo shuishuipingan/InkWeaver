@@ -184,7 +184,15 @@ describe('CharacterRosterRepository public read/commit seam', () => {
     const sourceHash = createHash('sha256').update(content).digest('hex')
     db.prepare('INSERT INTO finalization_outbox (draft_id, content_hash, content_snapshot) VALUES (?, ?, ?)').run(draftId, sourceHash, content)
 
-    const initial = CharacterRosterRepository.commit(commitRequest())
+    const initial = CharacterRosterRepository.commit(commitRequest({
+      entries: commitRequest().entries.map(entry => ({
+        ...entry,
+        currentState: {
+          location: '导入的未来地点', powerLevel: '', physicalState: '', mentalState: '', keyItems: '', recentEvents: '',
+          updatedAtChapter: 100, provenance: { source: 'legacy-unknown' as const },
+        },
+      })),
+    }))
     const entry = initial.snapshot.entries.find(candidate => candidate.name === '林舟')!
     const model = CharacterRosterRepository.commit({
       operationId: 'model-state-with-source',

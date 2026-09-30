@@ -64,6 +64,9 @@ export function decodeCoreDirectionChanges(
     : modelTerminologyReplacements
   const raw = { ...rawCoreChanges }
   delete raw.terminology
+  // Models may report unmodified fields alongside patches. This is response
+  // metadata, never a project field or prose to append to global guidance.
+  delete raw.unchanged
   const changes: Partial<Record<StoryDirectionCoreField, string>> = {}
   const normalizedLabels: string[] = []
   for (const [field, value] of Object.entries(raw)) {
@@ -94,6 +97,7 @@ export function decodeCoreDirectionChanges(
     const rawChanges = object(item.changes)
     const next: Partial<Record<StoryDirectionCharacterField, string>> = {}
     for (const [field, value] of Object.entries(rawChanges)) {
+      if (field === 'unchanged') continue
       if (!STORY_DIRECTION_CHARACTER_FIELDS.includes(field as StoryDirectionCharacterField)
         || typeof value !== 'string' || value.length > 20_000) throw new Error(`角色「${name}」方向调整字段无效：${field}`)
       if (value.trim()) next[field as StoryDirectionCharacterField] = value.trim()
@@ -157,6 +161,7 @@ export function decodeBlueprintDirectionChanges(
     const current = byNumber.get(Number(chapterNumber))!
     const changes: StoryDirectionBlueprintChange['changes'] = {}
     for (const [field, value] of Object.entries(rawChanges)) {
+      if (field === 'unchanged') continue
       if (field === 'characters' && Array.isArray(value)
         && value.every((name): name is string => typeof name === 'string')) {
         const proposedCharacters = [...value].sort()

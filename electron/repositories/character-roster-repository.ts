@@ -401,7 +401,7 @@ function entryFromCharacter(db: BetterSqlite3.Database, character: CharacterData
       SELECT provenance_source, source_draft_id, source_content_hash, evidence
       FROM character_state_history
       WHERE character_id = ? OR character_name = ?
-      ORDER BY chapter_number DESC, id DESC
+      ORDER BY id DESC
       LIMIT 1
     `).get(identity?.character_id ?? '', character.name) as {
       provenance_source: 'author' | 'model' | 'legacy-unknown'

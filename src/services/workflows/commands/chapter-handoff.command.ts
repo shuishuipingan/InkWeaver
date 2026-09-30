@@ -46,6 +46,8 @@ export function buildChapterHandoffPrompt(input: ChapterHandoffPromptInput): str
       'sceneLocation, viewpoint, presentCharacters, unfinishedActions, immediateGoal, emotionalState, constraints, openQuestions, transition, evidence.',
       'transition must be one of: continue-scene, time-jump, location-change, viewpoint-change, flashback, parallel-event.',
       'Every evidence item must be copied word-for-word from the chapter. Do not invent facts that do not appear in the text.',
+      'presentCharacters, unfinishedActions, constraints and openQuestions must be string arrays (at most 12 items). evidence must be a nonempty string array of 1–8 exact quotations, each at most 500 characters. Other text fields are nonempty strings of at most 500 characters. Do not return evidence objects, explanations, or the omitted-text marker.',
+      '{"sceneLocation":"...","viewpoint":"...","presentCharacters":[],"unfinishedActions":[],"immediateGoal":"...","emotionalState":"...","constraints":[],"openQuestions":[],"transition":"continue-scene","evidence":["exact quotation from the chapter"]}',
       'The record must describe where the story stops, not summarize the whole chapter. Keep unresolved actions and emotional consequences concrete.',
       'Chapter text:',
       content,
@@ -59,6 +61,8 @@ export function buildChapterHandoffPrompt(input: ChapterHandoffPromptInput): str
     'sceneLocation、viewpoint、presentCharacters、unfinishedActions、immediateGoal、emotionalState、constraints、openQuestions、transition、evidence。',
     'transition 只能是：continue-scene、time-jump、location-change、viewpoint-change、flashback、parallel-event。',
     '必须逐字摘录正文证据。不得编造正文没有出现的事实。',
+    'presentCharacters、unfinishedActions、constraints、openQuestions 必须是字符串数组，每项最多 12 条。evidence 必须是非空字符串数组，含 1–8 段逐字引文，每段不超过 500 字符；其他文本字段为非空字符串，最多 500 字符。证据不要使用对象或解释，也不要引用正文省略标记。',
+    '{"sceneLocation":"地点","viewpoint":"视角人物","presentCharacters":[],"unfinishedActions":[],"immediateGoal":"当前目标","emotionalState":"当前情绪","constraints":[],"openQuestions":[],"transition":"continue-scene","evidence":["正文逐字引文"]}',
     '记录故事停在哪里，不要概括整章；未完成动作和情绪后果必须具体。',
     '章节正文：',
     content,
@@ -77,7 +81,22 @@ export function parseChapterHandoffCompletion(
   text: string,
   source: ChapterHandoffSourceIdentity,
 ) {
-  return normalizeChapterHandoffCandidate(parseJsonObject(text), source)
+  const value = parseJsonObject(text)
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return normalizeChapterHandoffCandidate(value, source)
+  }
+  const row = value as Record<string, unknown>
+  const evidence = typeof row.evidence === 'string' ? [row.evidence] : row.evidence
+  return normalizeChapterHandoffCandidate({
+    ...row,
+    evidence: Array.isArray(evidence) ? evidence.map(item => {
+      if (item && typeof item === 'object' && !Array.isArray(item)) {
+        // Only an explicit quotation is admissible. A rationale is not evidence.
+        return (item as Record<string, unknown>).quote
+      }
+      return item
+    }) : evidence,
+  }, source)
 }
 
 async function contentHash(content: string): Promise<string> {

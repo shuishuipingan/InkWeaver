@@ -2,6 +2,24 @@
 
 本文件按用户可见行为记录变更。桌面版本不发布 npm；DSH 插件沿用已发布的 `1.2.0` 包。`1.2.0` 已从同一源码 commit 完成工程验收、三平台资产回读和正式 Release；`1.1.0` 的历史 Release 收据保留在 `docs/upgrade/`，不与 1.2.0 混用。
 
+## 1.3.8 — 2026-09-30
+
+- 全书方向调整兼容模型附带的 unchanged 元数据，不再将“未改动字段”当作小说配置值；角色和章节变更中的同类元数据也不会写入项目。
+- 批量章节名生成的输出上限提高至最多 16,384 Token，仍遵守模型配置上限。遇到 length 截断会限次拆分小批次，丢弃截断响应并保留已验证候选；格式或标题质量不合格时限次重新生成。每个原始批次最多 7 次请求。
+- 章节名按小说章节标题生成，中文优先 4–12 字、最多 20 字符，避免剧情梗概和多事件清单；作者仍可在预览中手工修改。新增截断恢复日志与额外调用提示，并修复切换项目时旧响应覆盖新弹窗状态的竞态。
+- 章节交接提示词明确证据数组、逐字引文及长度约束；兼容单段引文和带 quote 的证据对象。保存时继续核对定稿来源、正文哈希及原文引文，候选仍需作者确认。
+- 修复角色状态提交回读错误：读取当前状态来源时使用最近写入的历史记录，避免导入的后面章节状态历史覆盖当前定稿章节的来源。状态与来源仍在同一事务中校验提交。
+- 桌面版继续提供 Windows、macOS 与 Linux x64。Linux 文件为 inkweaver-linux-x64-1.3.8.AppImage、inkweaver-linux-x64-1.3.8.deb、inkweaver-linux-x64-1.3.8.rpm 及 SHA-256；资格覆盖 Ubuntu 22.04、Debian 13、Fedora 44，glibc 2.35 基线与 --appimage-extract-and-run 验证保持有效。Linux 包未签名。
+
+## What's changed
+
+- Story direction proposals now treat unchanged as metadata rather than a project, character, or chapter field.
+- Chapter-title generation reserves up to 16,384 output tokens while honoring the configured model limit. Length-truncated batches are split with bounded recovery; incomplete responses are discarded and validated candidates are retained. Invalid or summary-like titles receive a limited regeneration attempt, with at most seven requests per original batch.
+- Prompts now ask for concise fiction chapter titles rather than plot summaries. Added recovery logging and extra-call disclosure, and prevented old responses from resetting a newer project or reopened dialog.
+- Chapter handoff prompts specify exact quotation arrays and size limits; single quotations and explicit quote objects are normalized at the model boundary. Finalized-source, content-hash and verbatim-text checks remain mandatory, and candidates still require author confirmation.
+- Fixed character state readback after importing later-chapter states by binding the active state to the most recently written provenance record. Transactional validation remains intact.
+- Continues Windows, macOS and Linux x64 distribution: inkweaver-linux-x64-1.3.8.AppImage, inkweaver-linux-x64-1.3.8.deb, inkweaver-linux-x64-1.3.8.rpm and SHA-256 sidecars. Linux qualification covers Ubuntu 22.04, Debian 13 and Fedora 44 with a glibc 2.35 baseline and --appimage-extract-and-run checks. Linux packages are unsigned.
+
 ## 1.3.7 — 2026-09-30
 
 - 修复 Linux deb/rpm 安装后的 Chromium sandbox 辅助程序权限，支持普通用户正常打开桌面窗口。
