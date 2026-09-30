@@ -68,6 +68,7 @@ describe('Linux x64 desktop qualification workflow', () => {
     expect(restoreStep).toBeGreaterThan(enableStep)
     expect(workflow.slice(enableStep, restoreStep)).toContain('user.max_user_namespaces')
     expect(workflow.slice(enableStep, restoreStep)).toContain('kernel.apparmor_restrict_unprivileged_userns')
+    expect(workflow.slice(enableStep, restoreStep)).toContain('sudo -u nobody -- unshare --user --map-root-user true')
     expect(workflow.slice(restoreStep)).toContain('if: ${{ always() }}')
     expect(workflow.slice(restoreStep)).toContain('sudo sysctl -w "$name=$value"')
   })

@@ -108,7 +108,7 @@ jobs:
               sudo sysctl -w "$name=$target"
             fi
           done
-          runuser -u nobody -- unshare --user --map-root-user true
+          sudo -u nobody -- unshare --user --map-root-user true
 
       - name: Install and launch packages on Ubuntu, Debian, and Fedora
         env:
