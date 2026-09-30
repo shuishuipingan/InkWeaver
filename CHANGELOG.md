@@ -2,6 +2,20 @@
 
 本文件按用户可见行为记录变更。桌面版本不发布 npm；DSH 插件沿用已发布的 `1.2.0` 包。`1.2.0` 已从同一源码 commit 完成工程验收、三平台资产回读和正式 Release；`1.1.0` 的历史 Release 收据保留在 `docs/upgrade/`，不与 1.2.0 混用。
 
+## 1.3.7 — 2026-09-30
+
+- 修复 Linux deb/rpm 安装后的 Chromium sandbox 辅助程序权限，支持普通用户正常打开桌面窗口。
+- 修复 AppImage 解压启动时错误使用 SUID sandbox 辅助程序的问题；AppImage 使用系统用户命名空间 sandbox，系统需允许普通用户创建用户命名空间。
+- Linux 资格验证新增实际窗口、预加载 API、React 页面启动检查，覆盖 Ubuntu 22.04、Debian 13、Fedora 44；原生 SQLite 与 LanceDB 操作仍纳入验证。AppImage 每次都验证 --appimage-extract-and-run，并单独记录 FUSE 启动结果。
+- 继续提供 inkweaver-linux-x64-1.3.7.AppImage、inkweaver-linux-x64-1.3.7.deb、inkweaver-linux-x64-1.3.7.rpm 及 SHA-256 文件。glibc 2.35 构建基线、Linux 未签名与 macOS 未签名/未公证的披露保持有效。
+
+## What's changed
+
+- Fixed Chromium sandbox helper ownership and permissions after deb/rpm installation so ordinary users can open the desktop window.
+- Fixed AppImage extraction choosing an unusable SUID sandbox helper. AppImage uses the system user namespace sandbox and requires unprivileged user namespaces to be enabled.
+- Linux qualification now checks the actual window, preload API, and React page on Ubuntu 22.04, Debian 13, and Fedora 44, alongside real SQLite and LanceDB operations. Every AppImage qualification checks --appimage-extract-and-run and records the FUSE result separately.
+- Includes inkweaver-linux-x64-1.3.7.AppImage, inkweaver-linux-x64-1.3.7.deb, inkweaver-linux-x64-1.3.7.rpm and SHA-256 sidecars. The glibc 2.35 baseline and unsigned Linux / unsigned, unnotarized macOS disclosures remain applicable.
+
 ## 1.3.6 — 2026-09-30
 
 - 修复 AI 一键替换角色名在模型回显空白或引号变体时误报“未知或重复的原名”。每个批次现在用稳定角色编号绑定改名；仅当原名变体唯一时才接受旧式名称回显，歧义映射仍会被拒绝。
