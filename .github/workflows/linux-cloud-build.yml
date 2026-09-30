@@ -105,6 +105,7 @@ jobs:
               printf '%s=%s\n' "$name" "$value" >> "$backup"
               target=1
               if [[ "$name" == 'user.max_user_namespaces' ]]; then target=15000; fi
+              if [[ "$name" == 'kernel.apparmor_restrict_unprivileged_userns' ]]; then target=0; fi
               sudo sysctl -w "$name=$target"
             fi
           done
