@@ -2,6 +2,24 @@
 
 本文件按用户可见行为记录变更。桌面版本不发布 npm；DSH 插件沿用已发布的 `1.2.0` 包。`1.2.0` 已从同一源码 commit 完成工程验收、三平台资产回读和正式 Release；`1.1.0` 的历史 Release 收据保留在 `docs/upgrade/`，不与 1.2.0 混用。
 
+## 1.3.10 — 2026-10-02
+
+- 章节草稿和续写使用冻结模型能力计算输入预算，扣除按章节目标设定的输出预留及安全余量。取消统一 64 KiB 草稿限制；应用最多使用 96,000 估算输入 Tokens，容量未知时采用 16,384 的保守上限。Token 数均为估算，非模型专用 tokenizer 的精确计数。
+- 本章核心人物的身份、外貌、性格、能力、动机、关系、备注和约束保留完整；必保资料无法容纳时在模型请求前阻止生成。背景与弧线可使用完整句段的摘录摘要；相关非出场人物按关系、地点和势力筛选，最多 12 人，其余显示未纳入原因。
+- 全书架构和前文使用来源绑定的摘录摘要；项目缓存依据源文本、章节、相关词和算法版本匹配，资料变更后不会复用不匹配的摘要。每项目最多 128 条，单条最多 32 KiB，不增加额外模型调用。
+- 前文事件来自定稿连续性事实或实际已写正文；草稿标为候选，参考书片段标为参考资料，未写蓝图只作规划。未来/未核实人物状态不作为当前事实；旧图谱没有结构化卡片时提示先修复。
+- 写前收据在模型响应前显示来源、核心保护、完整/摘要/未纳入、缓存命中和预算估算，并同步实际压缩结果。续写有对应请求的资料收据；大型列表支持滚动。兼容旧卡片缺失的可选文本字段。
+- 保持 Windows、macOS、Linux x64 同提交发布。Linux 文件为 inkweaver-linux-x64-1.3.10.AppImage、inkweaver-linux-x64-1.3.10.deb、inkweaver-linux-x64-1.3.10.rpm 及 SHA-256；运行资格覆盖 Ubuntu 22.04、Debian 13、Fedora 44，glibc 2.35 基线及 --appimage-extract-and-run 检查继续有效，包未签名。
+
+## What's changed
+
+- Drafting and continuation calculate input budgets from frozen model capabilities, task-sized output reservations and safety margin. Replaced the universal 64 KiB draft limit with a 96,000 estimated-input-token application ceiling and a conservative 16,384 ceiling for unknown capacities. Token counts are estimates, not exact provider tokenization.
+- Protected core profiles retain identity, appearance, personality, abilities, motivation, relationships, notes and constraints; insufficient required context blocks dispatch. Background/arcs can use complete-sentence extractive summaries. Up to twelve related non-present characters are selected by relationships, locations and factions.
+- Added source-bound architecture/prose summaries and a project cache keyed by text, chapter, relevance terms and algorithm version. Changed inputs cannot reuse mismatched summaries. Limits: 128 entries per project, 32 KiB per entry, no additional model calls.
+- Prior events come from finalized continuity or actual written prose. Unfinished prose remains a candidate, reference-book excerpts remain reference material, and unwritten blueprints remain plans. Future/unverified states are excluded; legacy graphs without structured cards require repair.
+- Live preflight receipts show sources, protected cores, full/summary/omitted status, cache hits and estimated budgets, then reflect final compaction. Continuations have request-specific receipts, long lists are scrollable, and legacy optional fields are supported.
+- Continues Windows, macOS and Linux x64 same-commit releases. Linux packages: inkweaver-linux-x64-1.3.10.AppImage, inkweaver-linux-x64-1.3.10.deb, inkweaver-linux-x64-1.3.10.rpm with SHA-256. Qualification covers Ubuntu 22.04, Debian 13, Fedora 44, the glibc 2.35 baseline and --appimage-extract-and-run. Linux packages are unsigned.
+
 ## 1.3.9 — 2026-10-01
 
 - 修复批量创作恢复从头重跑并被已有草稿阻断的问题。恢复收据保存草稿 ID、SHA-256 和定稿修订号；只继续原任务保存且正文未变化的草稿，已完成章节跳过，未完成定稿继续处理，失败会阻止后续章节。

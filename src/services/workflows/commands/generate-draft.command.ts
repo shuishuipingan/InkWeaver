@@ -518,6 +518,8 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
       '（无后续蓝图）',
       '(no future chapter blueprints)',
     )
+    const futureReceiptEntries: ContextReceiptEntry[] = []
+    const futureBudgetBindings: ContextBudgetBinding[] = []
     try {
       const { loadDirectoryBlueprints } = await import('../directory-workflow')
       const allBlueprints = await loadDirectoryBlueprints(expectedProjectPath, projectSession)
@@ -525,11 +527,22 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
         b => b.chapterNumber > this.chapterInfo.chapterNumber && b.chapterNumber <= this.chapterInfo.chapterNumber + 5
       )
       if (futureBlueprintsArr.length > 0) {
-        futureBlueprintsStr = futureBlueprintsArr.map(b => promptLanguageText(
+        const rows = futureBlueprintsArr.map(b => promptLanguageText(
           writingLanguage,
           `第${b.chapterNumber}章 ${b.title}：${b.keyEvents}`,
           `Chapter ${b.chapterNumber}: ${b.title} — ${b.keyEvents}`,
-        )).join('\n')
+        ).replace(/[\r\n]+/gu, ' '))
+        futureBlueprintsStr = rows.join('\n')
+        const sectionBytes = new TextEncoder().encode(futureBlueprintsStr).byteLength
+        let rowEndBytes = 0
+        rows.forEach((row, index) => {
+          rowEndBytes += new TextEncoder().encode(row).byteLength + (index ? 1 : 0)
+          const blueprint = futureBlueprintsArr[index]!
+          const entryId = `future-plan:${blueprint.chapterNumber}`
+          futureReceiptEntries.push({ id: entryId, layer: 'future-plan', label: blueprint.title, sourceChapter: blueprint.chapterNumber,
+            included: true, charCount: row.length, representation: 'full', sourceKind: 'planning' })
+          futureBudgetBindings.push({ entryId, sectionName: 'distant-blueprints', fullSectionBytes: sectionBytes, fullEndBytes: rowEndBytes })
+        })
       }
     } catch { /* 忽略 */ }
 
@@ -577,6 +590,18 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
       selectedChars: 0,
       entries: [],
     }
+    const planningReceiptEntries: ContextReceiptEntry[] = planningMaterials.sections.map((text, index) => ({
+      id: `planning-material:${index + 1}`, layer: 'planning-material', label: text.split('\n')[0]!,
+      included: true, charCount: text.length, sourceKind: 'planning', representation: 'full',
+    }))
+    const guidanceReceiptEntries = guidanceSections.filter(section => !section.degradation).map(section => ({
+      ...contextReceiptEntry(`guidance:${section.sectionName}`, 'fixed-rules', section.sectionName === 'global-guidance' ? '全局写作指导' : '项目写作指导', section.text, undefined, true),
+      sourceKind: 'project-setting' as const, representation: 'full' as const,
+    }))
+    const allBudgetBindings = [...characterContext.budgetBindings, ...futureBudgetBindings,
+      ...planningMaterials.sections.map((text, index) => ({ entryId: `planning-material:${index + 1}`,
+        sectionName: `confirmed-planning-material-${index + 1}`, fullSectionBytes: new TextEncoder().encode(text).byteLength,
+        fullEndBytes: new TextEncoder().encode(text).byteLength }))]
     context.data.contextReceipt = emptyContextReceipt
     context.data.planningMaterialCount = planningMaterials.count
     context.data.contextReceipt = extendContextReceipt(emptyContextReceipt, [
@@ -594,20 +619,7 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
         this.chapterInfo.chapterNumber,
         true,
       ),
-      contextReceiptEntry(
-        'future-plan:blueprints',
-        'future-plan',
-        '后续章节计划',
-        futureBlueprintsStr,
-        undefined,
-        true,
-      ),
-      contextReceiptEntry(
-        'planning-material:confirmed',
-        'planning-material',
-        '作者已确认规划资料',
-        planningMaterials.text,
-      ),
+      ...futureReceiptEntries, ...planningReceiptEntries, ...guidanceReceiptEntries,
     ])
 
     const draftBaseReceipt = context.data.contextReceipt as ContextReceipt
@@ -713,10 +725,8 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
         ...draftBaseReceipt.entries.filter(entry => entry.id === 'configuration:outline'),
         ...(architectureContext.entries ?? []),
         ...characterContext.entries,
-        contextReceiptEntry('fixed-rules:architecture', 'fixed-rules', '故事架构', draftArchitecture.text),
-        contextReceiptEntry('fixed-rules:guidance', 'fixed-rules', '全局写作要求', mergedGuidance),
+        ...guidanceReceiptEntries, ...planningReceiptEntries,
         contextReceiptEntry('fixed-rules:style', 'fixed-rules', '文风约束', novelConfig.writingStyle || ''),
-        contextReceiptEntry('character-state:current', 'character-state', '角色状态档案', characterContext.text),
         contextReceiptEntry('active-thread:relevant', 'active-thread', '相关活跃叙事线', activeThreads.text),
         contextReceiptEntry('knowledge-search:current', 'knowledge-search', '知识库检索片段', filteredContext),
         contextReceiptEntry(
@@ -758,18 +768,12 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
           this.chapterInfo.chapterNumber,
           true,
         ),
-        contextReceiptEntry(
-          'future-plan:blueprints',
-          'future-plan',
-          '后续章节计划',
-          futureBlueprintsStr,
-          undefined,
-          true,
-        ),
+        ...futureReceiptEntries,
       ])
       const currentReceipt = context.data.contextReceipt as ContextReceipt
-      currentReceipt.entries = currentReceipt.entries.map(entry => entry.layer === 'knowledge-search'
-        ? { ...entry, sourceKind: 'reference-material' } : entry)
+      currentReceipt.entries = currentReceipt.entries.map(entry => entry.id === 'knowledge-search:current'
+        ? { ...entry, sourceKind: 'reference-material' } : entry.id === 'knowledge-search:confirmed-events'
+          ? { ...entry, sourceKind: 'confirmed-knowledge' } : entry)
 
       promptBuilder
         // ---- 缓存命中区续（要点时间线按序追加，前缀对齐）----
@@ -907,7 +911,7 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
             }, {
               signal: cancellation.signal,
               onPromptBudgetPreflight: report => {
-                const finalReceipt = applyContextBudgetReceipt(preparedReceipt, report, characterContext.budgetBindings)
+                const finalReceipt = applyContextBudgetReceipt(preparedReceipt, report, allBudgetBindings)
                 context.data.contextReceipt = finalReceipt
                 callbacks.setContextReceipt?.(finalReceipt)
                 callbacks.setPromptBudgetReport?.(report)
@@ -943,7 +947,8 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
             coreContext: [draftArchitecture.text, !isFirstChapter ? characterContext.text : '', JSON.stringify(draftNovelConfig, null, 2)].filter(Boolean).join('\n\n'),
             coreSections: [...draftArchitecture.sections, ...(!isFirstChapter ? characterBudgetSections(characterContext) : []),
               { sectionName: 'novel-configuration', label: '', text: JSON.stringify(draftNovelConfig, null, 2) }],
-            contextBudgetBindings: characterContext.budgetBindings,
+            contextBudgetBindings: allBudgetBindings,
+            guidanceSections,
             preparedContextReceipt: preparedReceipt,
             chapterInfo: this.chapterInfo,
             futureBlueprints: futureBlueprintsStr,
@@ -1075,6 +1080,7 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
     coreSections: readonly DraftArchitectureSection[]
     contextBudgetBindings: readonly ContextBudgetBinding[]
     preparedContextReceipt: ContextReceipt
+    guidanceSections: readonly DraftArchitectureSection[]
     chapterInfo: ChapterInfo
     futureBlueprints: string
     globalGuidance: string
@@ -1108,6 +1114,15 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
 
       const remaining = Math.max(0, params.targetChars - currentChars)
       const visibleTail = sanitizeDraftText(draft).slice(-CONTINUE_PROMPT_MAX_CHARS)
+      const continuationLayers = new Set(['fixed-rules', 'author-task', 'character-state', 'future-plan', 'planning-material'])
+      const continuationReceipt: ContextReceipt = { ...params.preparedContextReceipt,
+        entries: [...params.preparedContextReceipt.entries.map(entry => continuationLayers.has(entry.layer) ? { ...entry }
+          : { ...entry, included: false, charCount: 0, representation: 'omitted' as const, reason: 'not-in-continuation' as const }),
+          { id: 'adjacent-prose:current-tail', layer: 'adjacent-prose', label: '本章已写结尾', included: true, required: true,
+            charCount: visibleTail.length, sourceKind: 'unfinished-prose', representation: 'full' }],
+      }
+      params.context.data.contextReceipt = continuationReceipt
+      params.callbacks.setContextReceipt?.(continuationReceipt)
       const recoveryInstruction = recoveryPending
         ? promptLanguageText(
             params.writingLanguage,
@@ -1192,7 +1207,7 @@ ${visibleTail}`,
           promptBudget: promptBudgetSectionsForDraft({ systemPrompt: params.systemRole, prompt: continuationPrompt,
             targetChapterText: JSON.stringify(params.chapterInfo, null, 2), contexts: [
               ...params.coreSections,
-              { sectionName: 'global-guidance', label: '', text: params.globalGuidance },
+              ...params.guidanceSections.map(section => ({ ...section, startOffset: undefined })),
               { sectionName: 'writing-style', label: '', text: params.writingStyle },
               { sectionName: 'existing-ending', label: '', text: visibleTail },
               { sectionName: 'distant-blueprints', label: '', text: params.futureBlueprints,
@@ -1200,7 +1215,7 @@ ${visibleTail}`,
             ] }),
         }, {
           onPromptBudgetPreflight: report => {
-            const finalReceipt = applyContextBudgetReceipt(params.preparedContextReceipt, report, params.contextBudgetBindings)
+            const finalReceipt = applyContextBudgetReceipt(continuationReceipt, report, params.contextBudgetBindings)
             params.context.data.contextReceipt = finalReceipt
             params.callbacks.setContextReceipt?.(finalReceipt)
             params.callbacks.setPromptBudgetReport?.(report)

@@ -354,6 +354,7 @@ export const ContextReceiptSummary = memo(function ContextReceiptSummary({ recei
                     'unfinished-prose': locale === 'en-US' ? 'Unfinished candidate' : '草稿候选',
                     'reference-material': locale === 'en-US' ? 'Reference material' : '参考资料',
                     'planning': locale === 'en-US' ? 'Plan' : '规划',
+                    'confirmed-knowledge': locale === 'en-US' ? 'Confirmed character knowledge' : '已确认知情事实',
                   }[entry.sourceKind]}</span>}
                   {entry.cacheHit && <span className="shrink-0 opacity-70">{locale === 'en-US' ? 'Summary cache hit' : '摘要缓存命中'}</span>}
                   <span className="shrink-0 opacity-60">{entry.originalCharCount !== undefined ? `${entry.originalCharCount} → ` : ''}{entry.charCount} {locale === 'en-US' ? 'chars' : '字符'}</span>
@@ -366,6 +367,7 @@ export const ContextReceiptSummary = memo(function ContextReceiptSummary({ recei
                     'missing-source': locale === 'en-US' ? 'Missing source' : '缺少来源',
                     'not-authorized': locale === 'en-US' ? 'Not current chapter facts' : '不属于本章有效事实',
                     'needs-verification': locale === 'en-US' ? 'Needs verification' : '待核实',
+                    'not-in-continuation': locale === 'en-US' ? 'Not used in this continuation' : '本次续写未使用',
                   }[entry.reason ?? 'unavailable']}</span>}
                 </div>
               ))}

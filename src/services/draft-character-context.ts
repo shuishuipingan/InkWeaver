@@ -9,7 +9,7 @@ function relatedTargets(card: CharacterData, knownNames: readonly string[]): str
     if (Array.isArray(rows)) return rows.flatMap(row => row && typeof row === 'object'
       && typeof row.target === 'string' ? [row.target] : [])
   } catch { /* Author-written relationship notes remain useful planning data. */ }
-  return knownNames.filter(name => name !== card.name && card.relationships.includes(name))
+  return knownNames.filter(name => name !== card.name && (card.relationships ?? '').includes(name))
 }
 
 export function planDraftCharacterContext(cards: readonly CharacterData[], input: {
@@ -34,14 +34,14 @@ export function planDraftCharacterContext(cards: readonly CharacterData[], input
     .map((card, index) => ({ card, index, score: (linked.has(card.name) ? 400 : 0)
       + (relatedTargets(card, [...coreNames]).some(name => coreNames.has(name)) ? 300 : 0)
       + ((!!stateFor(card)?.location && stateFor(card)!.location.length > 1 && input.keyEvents.includes(stateFor(card)!.location)) ? 100 : 0)
-      + ([...card.background.matchAll(/(?:所属|势力|驻地|faction|location)\s*[:：]\s*([^，。；;\n]+)/giu)]
+      + ([...(card.background ?? '').matchAll(/(?:所属|势力|驻地|faction|location)\s*[:：]\s*([^，。；;\n]+)/giu)]
         .some(match => match[1]!.trim().length > 1 && input.keyEvents.includes(match[1]!.trim())) ? 90 : 0) }))
     .filter(row => row.score > 0).sort((a, b) => b.score - a.score || a.index - b.index).slice(0, 12)
   const relatedNames = new Set(related.map(row => row.card.name))
   const coreLines = coreCards.map(card => JSON.stringify({ name: card.name, role: card.role, gender: card.gender, age: card.age,
     appearance: card.appearance,
     personality: card.personality, abilities: card.abilities, motivation: card.motivation, relationships: card.relationships,
-    notes: card.notes, constraints: [card.background, card.arc].flatMap(text => text.split(/(?<=[。！？!?])|\r?\n+/u).filter(line => CONSTRAINT_PATTERN.test(line))),
+    notes: card.notes, constraints: [card.background, card.arc].flatMap(text => (text ?? '').split(/(?<=[。！？!?])|\r?\n+/u).filter(line => CONSTRAINT_PATTERN.test(line))),
     ...(stateFor(card) ? { currentState: stateFor(card) } : {}) }))
   const detailLines = coreCards.map(card => JSON.stringify({ name: card.name, appearance: card.appearance, background: card.background, arc: card.arc }))
   const summaryLines = coreCards.map(card => JSON.stringify({ name: card.name, details: detailSummaries.get(card.name)

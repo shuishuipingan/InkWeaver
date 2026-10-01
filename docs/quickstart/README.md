@@ -13,28 +13,28 @@
 
 ## 0. 准备环境
 
-最简单的方式是从 [v1.3.9 GitHub Release](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.3.9) 下载对应系统的安装包：
+最简单的方式是从 [v1.3.10 GitHub Release](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.3.10) 下载对应系统的安装包：
 
-- Windows x64：`inkweaver-setup-1.3.9.exe`
-- macOS Apple Silicon：`inkweaver-mac-arm64-1.3.9-installer.dmg`
-- macOS Intel：`inkweaver-mac-x64-1.3.9-installer.dmg`
+- Windows x64：`inkweaver-setup-1.3.10.exe`
+- macOS Apple Silicon：`inkweaver-mac-arm64-1.3.10-installer.dmg`
+- macOS Intel：`inkweaver-mac-x64-1.3.10-installer.dmg`
 
 Linux x64 本次只验证 Ubuntu 22.04、Debian 13 和 Fedora 44；不声明其他发行版或 Linux ARM64 已验证。安装包未签名，请核对各包旁边的 SHA-256 文件。基线构建环境使用 glibc 2.35；资格验证会确认程序要求的最高 glibc 符号版本不高于 2.35。
 
 Linux 下载文件：
 
-    inkweaver-linux-x64-1.3.9.AppImage
-    inkweaver-linux-x64-1.3.9.deb
-    inkweaver-linux-x64-1.3.9.rpm
+    inkweaver-linux-x64-1.3.10.AppImage
+    inkweaver-linux-x64-1.3.10.deb
+    inkweaver-linux-x64-1.3.10.rpm
 
 AppImage 在 FUSE 可用时可直接运行；若没有 FUSE，请使用提取运行模式：
 
-    chmod +x inkweaver-linux-x64-1.3.9.AppImage
-    ./inkweaver-linux-x64-1.3.9.AppImage --appimage-extract-and-run
+    chmod +x inkweaver-linux-x64-1.3.10.AppImage
+    ./inkweaver-linux-x64-1.3.10.AppImage --appimage-extract-and-run
 
 AppImage 需要系统允许普通用户创建用户命名空间，以启用 sandbox；若系统策略禁用了此能力，请使用对应的 deb/rpm 安装包。
 
-Ubuntu/Debian 可运行 sudo apt install ./inkweaver-linux-x64-1.3.9.deb；Fedora 可运行 sudo dnf install ./inkweaver-linux-x64-1.3.9.rpm。Windows 可能显示未知发布者，macOS 可能要求你在系统设置中确认首次打开；所有系统都请只从项目官方 Release 下载并核对 SHA-256。
+Ubuntu/Debian 可运行 sudo apt install ./inkweaver-linux-x64-1.3.10.deb；Fedora 可运行 sudo dnf install ./inkweaver-linux-x64-1.3.10.rpm。Windows 可能显示未知发布者，macOS 可能要求你在系统设置中确认首次打开；所有系统都请只从项目官方 Release 下载并核对 SHA-256。
 
 如果你从源码运行，需要 Node.js 20+ 和 pnpm 11：
 

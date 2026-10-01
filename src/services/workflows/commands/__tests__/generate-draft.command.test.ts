@@ -10,6 +10,7 @@ import type {
 } from '../../../../shared/ipc-channels'
 import type { NarrativeThreadView } from '../../../../shared/narrative-thread'
 import type { ChapterHandoffRecord } from '../../../../shared/chapter-handoff'
+import type { ContextReceipt } from '../../../../shared/context-receipt'
 import * as promptTemplateModule from '../../../prompt-templates'
 import type { PromptTemplate } from '../../../prompt-templates'
 import {
@@ -459,6 +460,27 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
     })
     await command.execute({ step: {}, context, callbacks })
   })
+  it('reflects removed future plans and planning materials in the final preflight receipt', async () => {
+    const completeWithLease = vi.fn<GenerationRuntimeEnvironment['completeWithLease']>().mockResolvedValue({ content: `${'正文'.repeat(2500)}。`, finishReason: 'stop' })
+    const environment: GenerationRuntimeEnvironment = { snapshotDefaultModelId: () => 'a',
+      beginModelExecution: async () => leaseReceipt({ modelId: 'a', capabilityEvidence: { ...leaseReceipt().capabilityEvidence, contextWindowTokens: 12_000, maxOutputTokens: 8_192 } }),
+      completeWithLease, closeModelExecution: vi.fn().mockResolvedValue(undefined) }
+    const runtime = { ...fakeRuntime(() => outcome('正文。', 'stop')), createRuntime: vi.fn(options => createGenerationRuntime(options, environment)) }
+    const { command, context, callbacks } = setup({ runtime, blueprints: [{ chapterNumber: 2, title: '计划章', keyEvents: 'FUTURE'.repeat(5000) }],
+      planningMaterials: [{ name: '辅助规划', content: 'PLAN'.repeat(1000), status: 'confirmed' }] })
+    await command.execute({ step: {}, context, callbacks })
+    const receipt = context.data.contextReceipt as ContextReceipt
+    expect(receipt.entries.filter(entry => entry.layer === 'future-plan' && entry.included)).toEqual([])
+    expect(receipt.entries.filter(entry => entry.layer === 'planning-material' && entry.included)).toEqual([])
+  })
+  it('makes each upcoming blueprint an atomic line even when events have line breaks', async () => {
+    const runtime = fakeOutcomes(outcome(`${'正文'.repeat(2500)}。`, 'stop'))
+    const { command, context, callbacks } = setup({ runtime,
+      blueprints: [{ chapterNumber: 2, title: '未来\n章节', keyEvents: '甲事件\n乙事件' }] })
+    await command.execute({ step: {}, context, callbacks })
+    const task = runtime.complete.mock.calls[0]![0] as GenerationTask
+    expect(task.promptBudget!.sections.find(section => section.sectionName === 'distant-blueprints')!.finalText).not.toContain('\n')
+  })
   it('carries protected cast and adaptive budgets into automatic continuations', async () => {
     const runtime = fakeOutcomes(outcome(`${'始'.repeat(2500)}。`, 'length'), outcome(`${'续'.repeat(2500)}。`, 'stop', 2))
     const character: CharacterData = { name: '林舟', role: 'protagonist', gender: '', age: '', appearance: '左眼有伤', personality: '克制',
@@ -470,6 +492,17 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
     expect(continuation.messages[1]!.content).toContain('御火')
     expect(continuation.promptBudget?.adaptive).toBeDefined()
     expect(continuation.promptBudget?.sections.find(section => section.sectionName === 'core-cast')?.degradation).toBeUndefined()
+  })
+  it('reports initial history as omitted in a continuation and includes its actual prose tail', async () => {
+    const runtime = fakeOutcomes(outcome(`${'始'.repeat(2500)}。`, 'length'), outcome(`${'续'.repeat(2500)}。`, 'stop', 2))
+    const { command, context, callbacks } = setup({ runtime, chapterNumber: 2,
+      continuity: [{ draftId: 1, chapterNumber: 1, chapterTitle: '旧章', chapterNotes: '林舟找到旧剑。' }],
+      knowledgeResults: [{ text: '参考小说的剧情。', score: 1, fileName: '参考书' }] })
+    await command.execute({ step: {}, context, callbacks })
+    const receipt = context.data.contextReceipt as ContextReceipt
+    expect(receipt.entries.filter(entry => entry.layer === 'finalized-history').every(entry => !entry.included)).toBe(true)
+    expect(receipt.entries.find(entry => entry.id === 'adjacent-prose:current-tail')).toMatchObject({ included: true, sourceKind: 'unfinished-prose' })
+    expect(receipt.entries.find(entry => entry.id === 'knowledge-search:current')).toMatchObject({ included: false, reason: 'not-in-continuation' })
   })
 
   it('stops before requesting a model when the project switches while its lease opens', async () => {

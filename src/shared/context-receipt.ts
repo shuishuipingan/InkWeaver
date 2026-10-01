@@ -27,6 +27,7 @@ export type ContextOmissionReason =
   | 'missing-source'
   | 'not-authorized'
   | 'needs-verification'
+  | 'not-in-continuation'
 
 export interface ContextSelectionEntry extends Pick<ContextReceiptEntry, 'representation' | 'sourceKind' | 'cacheHit' | 'originalCharCount'> {
   /** Stable, non-content identifier such as `fact:12:3`. */
@@ -48,7 +49,7 @@ export interface ContextSelectionEntry extends Pick<ContextReceiptEntry, 'repres
 
 export interface ContextReceiptEntry {
   representation?: 'full' | 'summary' | 'omitted'
-  sourceKind?: 'project-setting' | 'character-profile' | 'finalized-prose' | 'unfinished-prose' | 'reference-material' | 'planning'
+  sourceKind?: 'project-setting' | 'character-profile' | 'finalized-prose' | 'unfinished-prose' | 'reference-material' | 'planning' | 'confirmed-knowledge'
   cacheHit?: boolean
   originalCharCount?: number
   id: string

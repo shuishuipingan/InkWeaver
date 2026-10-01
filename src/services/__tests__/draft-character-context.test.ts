@@ -4,6 +4,12 @@ import type { CharacterData } from '../../../electron/repositories/character-rep
 const card = (name: string): CharacterData => ({ name, role: 'supporting', gender: '', age: '', appearance: '', personality: '谨慎',
   background: '村里种麦。凤凰守门。'.repeat(200), abilities: '御火', motivation: '守诺', relationships: '[]', arc: '成长', notes: '不得杀人' })
 describe('chapter-relevant cast context', () => {
+  it('accepts legacy cards with optional text fields missing', () => {
+    const legacy = { name: '沈砺', role: 'protagonist', currentState: null } as unknown as CharacterData
+    const result = planDraftCharacterContext([legacy], { chapterNumber: 1, characters: ['沈砺'], keyEvents: '沈砺出场', writingLanguage: 'zh-CN' })
+    expect(result.core).toContain('沈砺')
+    expect(result.selectedCoreNames).toEqual(['沈砺'])
+  })
   it('prefers direct relations over shared-location extras and matches longer names first', () => {
     const cards = [card('林舟'), ...Array.from({ length: 13 }, (_, i) => ({ ...card(`路人${i}`),
       currentState: { location: '北境', powerLevel: '', physicalState: '', mentalState: '', keyItems: '', recentEvents: '', updatedAtChapter: 1, provenance: { source: 'author' as const } } })), card('沈月')]

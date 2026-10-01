@@ -319,6 +319,8 @@ function installIpc() {
     if (channel === 'db:character-get-all') {
       return [{ id: 1, name: '沈砺', role: 'protagonist', currentState: null }]
     }
+    if (channel === 'db:context-summary-cache-get') return null
+    if (channel === 'db:context-summary-cache-put') return { success: true }
     if (channel === 'db:character-extraction-candidates-list') return []
     if (channel === 'db:project-core-get') {
       return { premise: '雨夜来信开启调查。', charactersArch: '', worldbuilding: '', synopsis: '' }
