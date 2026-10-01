@@ -13,6 +13,8 @@ import { FINALIZATION_SHARED_WRITE_RESOURCE_KINDS } from '../../shared/workflow-
 import { requireWorkflowProjectSession } from './workflow-project-session'
 import { normalizeChapterWordsTarget } from './chapter-creation-parameters'
 import { canResumeWorkflowCheckpoint, type WorkflowRecoveryCheckpoint } from '../../shared/workflow-recovery'
+import { sha256Hex } from '../../shared/sha256-hex'
+import type { DraftFull } from '../../../electron/repositories/draft-repository'
 
 /** 单次批量创作的安全上限，避免无边界调用模型。 */
 export const MIN_BATCH_CHAPTERS = 1
@@ -86,7 +88,7 @@ export function resumeBatchChapterWorkflowFromCheckpoint(
     generationModelId,
     chapterWordsTarget,
     completionMode,
-  })
+  }, checkpoint)
 }
 
 /** 将 UI 或外部输入收敛到安全的 1–10 章范围。 */
@@ -202,6 +204,7 @@ async function runOneBatchChapter(
   context: WorkflowContext,
   callbacks: StepCallbacks,
   draftReviewContinuity: Map<number, { content: string; draftId?: number; version?: number }>,
+  recovery?: WorkflowRecoveryCheckpoint,
 ): Promise<string> {
   const projectSession = requireWorkflowProjectSession(context)
   // 草稿待审模式不会把本批次前一章变成定稿事实；首章仍遵守外部连续性门禁，
@@ -227,7 +230,27 @@ async function runOneBatchChapter(
       `No blueprint was found for Chapter ${chapterNumber}. Batch writing stopped.`,
     ))
   }
-  if (existingDraft) {
+  const ownedDraftId = Number(recovery?.resumeMetadata?.[`draftId_${chapterNumber}`])
+  const ownedContentHash = recovery?.resumeMetadata?.[`draftContentHash_${chapterNumber}`]
+  const revisionKey = `finalizationContentRevision_${chapterNumber}`
+  const replayRevision = recovery?.resumeMetadata?.[revisionKey]
+  if (recovery && !existingDraft && Number.isSafeInteger(ownedDraftId) && ownedDraftId > 0) {
+    throw new Error(localeText(uiLocale, '检查点中的草稿已不存在，批量恢复已停止。', 'The checkpoint draft is missing. Batch recovery stopped.'))
+  }
+  let recoveredDraft: DraftFull | undefined
+  if (existingDraft && recovery && existingDraft.id === ownedDraftId && typeof ownedContentHash === 'string') {
+    const full = await ipc.invokeWithProjectSession(projectSession, 'db:draft-get-full', ownedDraftId, projectPath)
+    if (!full || full.chapterNumber !== chapterNumber || await sha256Hex(full.content) !== ownedContentHash) {
+      throw new Error(localeText(uiLocale, '恢复草稿正文已变化，请先检查已有内容。', 'The recovery draft changed. Review its saved content before continuing.'))
+    }
+    recoveredDraft = full
+    if (completionMode === 'auto_finalize' && (full.status === 'finalized' || replayRevision !== undefined)) {
+      if (typeof replayRevision !== 'number' || !Number.isSafeInteger(replayRevision) || replayRevision < 0) {
+        throw new Error(localeText(uiLocale, '恢复收据缺少有效的原定稿修订，请先检查已定稿内容。', 'The recovery checkpoint lacks a valid original finalization revision. Review the finalized content before continuing.'))
+      }
+    }
+  }
+  if (existingDraft && !recoveredDraft) {
     throw new Error(localeText(
       uiLocale,
       `第${chapterNumber}章已有草稿，批量创作不会覆盖既有内容`,
@@ -236,6 +259,20 @@ async function runOneBatchChapter(
   }
 
   const chapterInfo = toChapterInfo(blueprint as ChapterBlueprint, projectPath, chapterWordsTarget)
+  if (recoveredDraft) {
+    context.data.draftPath = `vela://draft/${recoveredDraft.id}`
+    context.data.draft = recoveredDraft.content
+    context.data.draftContent = recoveredDraft.content
+    context.data.chapterNumber = chapterNumber
+    context.data.chapterInfo = chapterInfo
+    const chapterIndex = chapterNumber - batchStartChapterNumber
+    const alreadyCompleted = recovery?.steps[chapterIndex]?.status === 'completed'
+    if (completionMode === 'draft_review' || (alreadyCompleted && recoveredDraft.status === 'finalized')) {
+      draftReviewContinuity.set(chapterNumber, { content: recoveredDraft.content, draftId: recoveredDraft.id, version: recoveredDraft.version })
+      callbacks.setProgress(100)
+      return localeText(uiLocale, `第${chapterNumber}章已保存，已从检查点继续。`, `Chapter ${chapterNumber} is already saved; continued from its checkpoint.`)
+    }
+  }
   callbacks.log(completionMode === 'draft_review'
     ? localeText(
       uiLocale,
@@ -280,7 +317,7 @@ async function runOneBatchChapter(
       previousDraftVersion = saved?.version
     }
   }
-  const draftContent = await new GenerateDraftCommand(chapterInfo, {
+  const draftContent = recoveredDraft?.content ?? await new GenerateDraftCommand(chapterInfo, {
     ...(previousDraftContent ? { previousDraftContent, previousDraftVersion } : {}),
   }).execute({ step, context, callbacks })
   throwIfCancelled(context, uiLocale)
@@ -312,15 +349,30 @@ async function runOneBatchChapter(
     ))
   }
 
-  const snapshot = await captureBatchFinalizationSnapshot(
+  const capturedSnapshot = await captureBatchFinalizationSnapshot(
     draftPath,
     draftContent,
     chapterNumber,
     chapterInfo.title,
     projectPath,
     projectSession,
-  )
+  ) ?? (recoveredDraft ? Object.freeze({
+    tabId: `batch:${context.runId}:${recoveredDraft.id}`,
+    projectPath,
+    projectSession: Object.freeze({ ...projectSession }),
+    draftId: recoveredDraft.id,
+    chapterNumber,
+    chapterTitle: chapterInfo.title,
+    content: draftContent,
+    contentRevision: typeof replayRevision === 'number' ? replayRevision : 0,
+  }) : undefined)
+  // A committed outbox accepts only its original revision. Keeping that
+  // revision also lets reconciliation detect edits made in a reopened tab.
+  const snapshot = capturedSnapshot && typeof replayRevision === 'number'
+    ? Object.freeze({ ...capturedSnapshot, contentRevision: replayRevision })
+    : capturedSnapshot
   throwIfCancelled(context, uiLocale)
+  callbacks.setResumeMetadata?.({ [revisionKey]: snapshot?.contentRevision ?? 0 })
 
   await new FinalizeChapterCommand({
     draftPath,
@@ -347,7 +399,7 @@ async function runOneBatchChapter(
  * 工作流层只会在章节边界推进；因此暂停/取消不会将一个正在进行的模型请求或后处理
  * 截断到不一致状态。后处理任一步骤最终失败会抛出错误，阻止后续章节启动。
  */
-export function createBatchChapterWorkflow(params: BatchChapterWorkflowParams): BatchChapterWorkflowDefinition {
+export function createBatchChapterWorkflow(params: BatchChapterWorkflowParams, recovery?: WorkflowRecoveryCheckpoint): BatchChapterWorkflowDefinition {
   if (!sameProjectPathKey(params.projectSession.projectPath, params.projectPath)) {
     throw new Error('批量创作项目会话与目标路径不匹配')
   }
@@ -373,6 +425,8 @@ export function createBatchChapterWorkflow(params: BatchChapterWorkflowParams): 
 
   return {
     type: 'batch_generate',
+    ...(recovery ? { runId: recovery.runId } : {}),
+    uiLocale,
     projectPath,
     projectSession: Object.freeze({ ...params.projectSession }),
     generationModelId,
@@ -389,6 +443,7 @@ export function createBatchChapterWorkflow(params: BatchChapterWorkflowParams): 
       workflowResourceKey('blueprints'),
     ],
     resumeMetadata: {
+      ...recovery?.resumeMetadata,
       startChapterNumber,
       chapterCount,
       completionMode,
@@ -443,6 +498,7 @@ export function createBatchChapterWorkflow(params: BatchChapterWorkflowParams): 
           context,
           callbacks,
           draftReviewContinuity,
+          recovery,
         ),
       }
     }),

@@ -97,13 +97,22 @@ export function resumeArchitectureWorkflowFromCheckpoint(
   }
   const metadata = checkpoint.resumeMetadata
   const selectedSteps = parseArchitectureSteps(metadata.selectedStepsJson)
+  const orderedSteps = (['premise', 'characters', 'worldbuilding', 'synopsis'] as const)
+    .filter(key => selectedSteps.includes(key))
+  if (checkpoint.steps.length > 0 && checkpoint.steps.length !== orderedSteps.length) {
+    throw new Error('架构恢复收据的步骤与冻结参数不匹配')
+  }
+  const unfinishedSteps = orderedSteps.filter((_key, index) => (
+    checkpoint.steps[index]?.status !== 'completed' && checkpoint.steps[index]?.status !== 'skipped'
+  ))
   const stepGuidance = parseArchitectureGuidance(metadata.stepGuidanceJson)
-  return createArchitectureWorkflow({
+  const workflow = createArchitectureWorkflow({
     projectPath: currentSession.projectPath,
     projectSession: currentSession,
-    selectedSteps,
+    selectedSteps: unfinishedSteps,
     stepGuidance,
   })
+  return { ...workflow, runId: checkpoint.runId, uiLocale: checkpoint.uiLocale }
 }
 
 function parseArchitectureSteps(value: unknown): Array<'premise' | 'characters' | 'worldbuilding' | 'synopsis'> {

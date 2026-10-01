@@ -53,6 +53,14 @@ function createCriticalRun(): string {
 }
 
 describe('PostProcessRepository retry receipts', () => {
+  it('reads the most recently created run when timestamps are equal', () => {
+    const first = createCriticalRun()
+    PostProcessRepository.markStepOk(first, 'kb_import')
+    const second = createCriticalRun()
+    db.prepare('UPDATE post_process_runs SET created_at = ?').run('2026-10-01 12:00:00')
+    expect(PostProcessRepository.getLatestRun('chapter_finalize', 'chapter-1')?.id).toBe(second)
+    expect(PostProcessRepository.isAllCriticalPassed('chapter_finalize', 'chapter-1')).toBe(false)
+  })
   it('rejects an unknown success step without refreshing the run summary', () => {
     const runId = createCriticalRun()
 

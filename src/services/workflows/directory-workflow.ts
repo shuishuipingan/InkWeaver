@@ -21,6 +21,7 @@ import type {
 import { stripThinkingTags } from './workflow-utils'
 import { requireWorkflowProjectSession } from './workflow-project-session'
 import { canResumeWorkflowCheckpoint, type WorkflowRecoveryCheckpoint } from '../../shared/workflow-recovery'
+import { retryDirectoryCharacterSync } from './directory-character-sync-recovery'
 
 // ==========================================
 // 1. 结构与类型导出 (保留对外的向后兼容)
@@ -68,7 +69,7 @@ export function resumeDirectoryWorkflowFromCheckpoint(
     ? metadata.pacingGuidance
     : undefined
 
-  return createDirectoryWorkflow(
+  const workflow = createDirectoryWorkflow(
     {
       mode,
       ...(startChapter === undefined ? {} : { startChapter }),
@@ -78,6 +79,34 @@ export function resumeDirectoryWorkflowFromCheckpoint(
     currentSession.projectPath,
     currentSession,
   )
+  const operationId = metadata.directoryCharacterSyncOperationId
+  if (operationId !== undefined && (typeof operationId !== 'string' || !operationId.trim())) {
+    throw new Error('蓝图恢复收据的角色同步操作标识无效')
+  }
+  return {
+    ...workflow,
+    runId: checkpoint.runId,
+    uiLocale: checkpoint.uiLocale,
+    resumeMetadata: { ...metadata },
+    ...(typeof operationId === 'string' ? {
+      readResourceKeys: [],
+      steps: [{
+        name: '恢复蓝图角色同步',
+        description: '从 SQLite 已提交操作恢复角色同步',
+        executor: async (_step, context, callbacks) => {
+          const receipt = await retryDirectoryCharacterSync(
+            operationId,
+            currentSession.projectPath,
+            requireWorkflowProjectSession(context),
+          )
+          context.data.blueprintCharacterSyncReceipt = receipt
+          callbacks.setProgress(100)
+          return '已提交蓝图的角色同步已完成'
+        },
+      }],
+      onComplete: { mode: 'silent' as const, message: '已提交蓝图的角色同步已完成' },
+    } : {}),
+  }
 }
 
 function parseOptionalPositiveInteger(value: unknown, label: string): number | undefined {

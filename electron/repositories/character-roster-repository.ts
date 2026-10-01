@@ -685,6 +685,9 @@ function mergeIncrementalEntriesWithExisting(
         ? candidate.relationships
         : existing.relationships,
       ...(intent === 'chapter_progress' && candidate.currentState
+        && (existing.currentState?.updatedAtChapter ?? 0) <= candidate.currentState.updatedAtChapter
+        && (existing.currentState?.provenance?.source !== 'author'
+          || existing.currentState.updatedAtChapter < candidate.currentState.updatedAtChapter)
         ? { currentState: candidate.currentState }
         : {}),
     }

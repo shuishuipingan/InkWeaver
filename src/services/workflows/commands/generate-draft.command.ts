@@ -1,5 +1,6 @@
 import { BaseWorkflowCommand, CommandExecuteParams, type LLMCompletion } from './base-command'
 import { useProjectStore } from '../../../stores/project-store'
+import { sha256Hex } from '../../../shared/sha256-hex'
 import { resolvePromptTemplate } from '../../prompt-templates'
 import { ChapterPromptBuilder } from '../../prompts/prompt-builder'
 import { ipc } from '../../ipc-client'
@@ -932,6 +933,8 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
         expectedProjectPath,
       )
       this.assertNotCancelled(context)
+      const draftContentHash = await sha256Hex(boundedDraftText)
+      this.assertNotCancelled(context)
       const createResult = await ipc.invokeWithProjectSession(projectSession, 'db:draft-create', {
         chapterNumber: this.chapterInfo.chapterNumber,
         version: nextVersion,
@@ -942,7 +945,6 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
       if (!createResult.success || !createResult.id) {
         throw new Error(createResult.error || '章节草稿保存失败')
       }
-      this.assertNotCancelled(context)
       draftPersisted = true
       callbacks.replaceText?.(boundedDraftText)
 
@@ -955,6 +957,11 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
       context.data.chapterInfo = this.chapterInfo
       context.data.mergedGuidance = mergedGuidance
       context.data.shortSummary = ''
+      callbacks.setResumeMetadata?.({
+        [`draftId_${this.chapterInfo.chapterNumber}`]: Number(createResult.id),
+        [`draftContentHash_${this.chapterInfo.chapterNumber}`]: draftContentHash,
+      })
+      this.assertNotCancelled(context)
 
       await useProjectStore.getState().refreshFileTree(expectedProjectPath, undefined, projectSession)
       try {

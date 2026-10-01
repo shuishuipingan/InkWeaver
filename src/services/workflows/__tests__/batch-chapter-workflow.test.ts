@@ -10,7 +10,9 @@ import {
 } from '../batch-chapter-workflow'
 import { useProjectStore } from '../../../stores/project-store'
 import { useLLMStore } from '../../../stores/llm-store'
+import { useEditorStore } from '../../../stores/editor-store'
 import { useWorkflowStore, type WorkflowContext } from '../../../stores/workflow-store'
+import type { WorkflowRecoveryCheckpoint } from '../../../shared/workflow-recovery'
 
 const doubles = vi.hoisted(() => ({
   guardChapterWriting: vi.fn(),
@@ -84,10 +86,11 @@ function resetWorkflowState() {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks()
+  vi.resetAllMocks()
   doubles.finalizeChapterParams.length = 0
   doubles.generateDraftChapterInfos.length = 0
   resetWorkflowState()
+  useEditorStore.setState({ tabs: [] })
   doubles.guardChapterWriting.mockResolvedValue({ ok: true })
   doubles.invokeWithProjectSession.mockImplementation(async (
     _session: unknown,
@@ -110,6 +113,159 @@ beforeEach(() => {
     return 'generated draft'
   })
   doubles.finalizeChapterExecute.mockResolvedValue(undefined)
+})
+
+describe('batch chapter persisted recovery', () => {
+  function checkpoint(mode: 'draft_review' | 'auto_finalize', completed = false): WorkflowRecoveryCheckpoint {
+    return {
+      schemaVersion: 1, runId: 'original-batch', projectPath, projectSession: projectSession(),
+      type: 'batch_generate', title: 'Recover batch', writingLanguage: 'zh-CN', uiLocale: 'en-US',
+      boundary: 'failed', currentStepIndex: completed ? 1 : 0,
+      steps: [
+        { id: 'one', name: 'one', status: completed ? 'completed' : 'failed' },
+        { id: 'two', name: 'two', status: 'pending' },
+      ],
+      createdAt: '2026-01-01', updatedAt: '2026-01-01',
+      resumeMetadata: {
+        startChapterNumber: 1, chapterCount: 2, completionMode: mode,
+        generationModelId: 'frozen-model', chapterWordsTarget: 4200, draftId_1: 41,
+        draftContentHash_1: '522b098d7558f5084c4e14431b4690d1ea830c74ab75b7d2659c61ba41fc220a',
+        finalizationContentRevision_1: 0,
+      },
+    }
+  }
+
+  function persistedDraft(status: 'draft' | 'finalized', id = 41) {
+    const original = doubles.invokeWithProjectSession.getMockImplementation()!
+    doubles.invokeWithProjectSession.mockImplementation(async (session, channel, ...args) => {
+      if (channel === 'db:draft-get-latest' && args[0] === 1) return { id, chapterNumber: 1, status, version: 1 }
+      if (channel === 'db:draft-get-full' && args[0] === 41) return {
+        id: 41, chapterNumber: 1, status, version: 1, content: 'saved chapter one',
+      }
+      return original(session, channel, ...args)
+    })
+  }
+
+  it('continues after a completed persisted review draft without generating it again', async () => {
+    persistedDraft('draft')
+    await useWorkflowStore.getState().startWorkflow(resumeBatchChapterWorkflowFromCheckpoint(checkpoint('draft_review', true), projectSession()))
+    expect(useWorkflowStore.getState().history[0]?.status).toBe('completed')
+    expect(doubles.generateDraftChapterInfos.map(info => info.chapterNumber)).toEqual([2])
+    expect(doubles.finalizeChapterParams).toEqual([])
+  })
+
+  it.each(['draft', 'finalized'] as const)('finishes the owned %s draft before advancing to the next chapter', async status => {
+    persistedDraft(status)
+    await useWorkflowStore.getState().startWorkflow(resumeBatchChapterWorkflowFromCheckpoint(checkpoint('auto_finalize'), projectSession()))
+    expect(useWorkflowStore.getState().history[0]?.status).toBe('completed')
+    expect(doubles.generateDraftChapterInfos.map(info => info.chapterNumber)).toEqual([2])
+    expect(doubles.finalizeChapterParams[0]).toMatchObject({
+      chapterNumber: 1, draftPath: 'vela://draft/41', draftContent: 'saved chapter one',
+      stopOnPostProcessFailure: true, enableChapterHandoff: true,
+      snapshot: expect.objectContaining({ draftId: 41, content: 'saved chapter one' }),
+    })
+  })
+
+  it('stops before later chapters when repairing the committed draft still fails', async () => {
+    persistedDraft('finalized')
+    doubles.finalizeChapterExecute.mockRejectedValueOnce(new Error('postprocess still failed'))
+    await useWorkflowStore.getState().startWorkflow(resumeBatchChapterWorkflowFromCheckpoint(checkpoint('auto_finalize'), projectSession()))
+    expect(useWorkflowStore.getState().history[0]?.error).toBe('postprocess still failed')
+    expect(doubles.generateDraftChapterInfos).toEqual([])
+  })
+
+  it('refuses to adopt a different latest draft during recovery', async () => {
+    persistedDraft('draft', 99)
+    await useWorkflowStore.getState().startWorkflow(resumeBatchChapterWorkflowFromCheckpoint(checkpoint('auto_finalize'), projectSession()))
+    expect(useWorkflowStore.getState().history[0]?.status).toBe('failed')
+    expect(doubles.generateDraftChapterInfos).toEqual([])
+    expect(doubles.finalizeChapterParams).toEqual([])
+  })
+
+  it('refuses to regenerate an owned draft that disappeared after the checkpoint', async () => {
+    await useWorkflowStore.getState().startWorkflow(resumeBatchChapterWorkflowFromCheckpoint(checkpoint('auto_finalize'), projectSession()))
+    expect(useWorkflowStore.getState().history[0]?.status).toBe('failed')
+    expect(doubles.generateDraftChapterInfos).toEqual([])
+  })
+
+  it('refuses to finalize an owned draft whose persisted content was edited', async () => {
+    persistedDraft('draft')
+    const receipt = checkpoint('auto_finalize')
+    receipt.resumeMetadata = { ...receipt.resumeMetadata, draftContentHash_1: 'a'.repeat(64) }
+    await useWorkflowStore.getState().startWorkflow(resumeBatchChapterWorkflowFromCheckpoint(receipt, projectSession()))
+    expect(useWorkflowStore.getState().history[0]?.status).toBe('failed')
+    expect(doubles.finalizeChapterParams).toEqual([])
+  })
+
+  it('retains saved draft ownership on a second recovery after postprocess fails again', async () => {
+    persistedDraft('finalized')
+    doubles.finalizeChapterExecute.mockRejectedValueOnce(new Error('postprocess still failed'))
+    const first = resumeBatchChapterWorkflowFromCheckpoint(checkpoint('auto_finalize'), projectSession())
+    await useWorkflowStore.getState().startWorkflow(first)
+    const failed = useWorkflowStore.getState().history[0]!
+    const second = resumeBatchChapterWorkflowFromCheckpoint({
+      ...checkpoint('auto_finalize'),
+      runId: failed.id, steps: failed.steps, resumeMetadata: failed.resumeMetadata,
+    }, projectSession())
+    await useWorkflowStore.getState().startWorkflow(second)
+    expect(useWorkflowStore.getState().history[0]?.status).toBe('completed')
+    expect(doubles.generateDraftChapterInfos.map(info => info.chapterNumber)).toEqual([2])
+  })
+
+  it('reuses the checkpoint run identity and UI locale when recovery starts', async () => {
+    persistedDraft('draft')
+    const recovered = resumeBatchChapterWorkflowFromCheckpoint(checkpoint('draft_review'), projectSession())
+    expect(recovered).toMatchObject({ runId: 'original-batch', uiLocale: 'en-US' })
+    await useWorkflowStore.getState().startWorkflow(recovered)
+    expect(useWorkflowStore.getState().history[0]).toMatchObject({ id: 'original-batch', uiLocale: 'en-US' })
+  })
+
+  it.each(['closed', 'reopened'] as const)('replays the committed revision after postprocess fails and the draft tab is %s', async tabState => {
+    const tab = {
+      id: 'original-tab', filePath: 'vela://draft/41', type: 'chapter' as const,
+      projectKey: projectPath, content: 'saved chapter one', contentRevision: 7,
+    }
+    useEditorStore.setState({ tabs: [tab as never] })
+    doubles.generateDraftExecute.mockImplementationOnce(async ({ context, callbacks }) => {
+      context.data.draftPath = 'vela://draft/41'
+      callbacks.setResumeMetadata({
+        draftId_1: 41,
+        draftContentHash_1: '522b098d7558f5084c4e14431b4690d1ea830c74ab75b7d2659c61ba41fc220a',
+      })
+      return 'saved chapter one'
+    })
+    doubles.finalizeChapterExecute.mockRejectedValueOnce(new Error('postprocess failed after commit'))
+    await useWorkflowStore.getState().startWorkflow(createBatchChapterWorkflow({
+      projectPath, projectSession: projectSession(), startChapterNumber: 1, chapterCount: 1,
+      generationModelId: 'frozen-model', chapterWordsTarget: 4200, completionMode: 'auto_finalize',
+    }))
+    const failed = useWorkflowStore.getState().history[0]!
+    expect(failed.resumeMetadata).toMatchObject({ finalizationContentRevision_1: 7 })
+    expect(doubles.finalizeChapterParams[0]).toMatchObject({ snapshot: expect.objectContaining({ contentRevision: 7 }) })
+    persistedDraft('finalized')
+    useEditorStore.setState({ tabs: tabState === 'closed' ? [] : [{ ...tab, id: 'reopened-tab', contentRevision: 19 } as never] })
+    await useWorkflowStore.getState().startWorkflow(resumeBatchChapterWorkflowFromCheckpoint({
+      ...checkpoint('auto_finalize'), runId: failed.id, steps: failed.steps, resumeMetadata: failed.resumeMetadata,
+    }, projectSession()))
+    expect(useWorkflowStore.getState().history[0]?.status).toBe('completed')
+    expect(doubles.finalizeChapterParams[1]).toMatchObject({
+      snapshot: expect.objectContaining({ contentRevision: 7, draftId: 41, content: 'saved chapter one' }),
+    })
+    expect(useWorkflowStore.getState().history[0]?.resumeMetadata?.draftContentHash_1)
+      .toBe('522b098d7558f5084c4e14431b4690d1ea830c74ab75b7d2659c61ba41fc220a')
+  })
+
+  it.each([undefined, -1, 1.5, '7'])('rejects invalid committed revision evidence %p during recovery', async revision => {
+    persistedDraft('finalized')
+    const receipt = checkpoint('auto_finalize')
+    const metadata = { ...receipt.resumeMetadata }
+    if (revision === undefined) delete metadata.finalizationContentRevision_1
+    else metadata.finalizationContentRevision_1 = revision
+    receipt.resumeMetadata = metadata
+    await useWorkflowStore.getState().startWorkflow(resumeBatchChapterWorkflowFromCheckpoint(receipt, projectSession()))
+    expect(useWorkflowStore.getState().history[0]?.status).toBe('failed')
+    expect(doubles.finalizeChapterParams).toEqual([])
+  })
 })
 
 describe('batch chapter workflow limits', () => {

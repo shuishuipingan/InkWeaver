@@ -513,7 +513,7 @@ describe('GenerateDirectoryCommand', () => {
 
     const result = await command.execute({
       step: {},
-      context: workflowContext(),
+      context: { ...workflowContext(), generationModelId: 'selected-directory-model' },
       callbacks: stepCallbacks(),
     })
 
@@ -526,6 +526,7 @@ describe('GenerateDirectoryCommand', () => {
     expect(invoke.mock.calls.filter(([channel]) => channel === 'db:blueprint-commit-range'))
       .toHaveLength(1)
     expect(createRuntime).toHaveBeenCalledWith({
+      modelId: 'selected-directory-model',
       budget: {
         maxAttempts: 17,
         maxRequestedOutputTokens: 131_072,
@@ -1241,6 +1242,7 @@ describe('GenerateDirectoryCommand', () => {
   })
 
   it('reports an explicit committed receipt when post-commit character synchronization fails', async () => {
+    const setResumeMetadata = vi.fn()
     const committed = blueprint(1, { characters: ['林岚'] })
     stubIpcInvoke(successfulCommitHandler({
       snapshot: [committed],
@@ -1264,10 +1266,11 @@ describe('GenerateDirectoryCommand', () => {
     const failure = await command.execute({
       step: {},
       context: workflowContext(),
-      callbacks: stepCallbacks(),
+      callbacks: { ...stepCallbacks(), setResumeMetadata },
     }).catch(error => error as unknown)
 
     expect(failure).toBeInstanceOf(DirectoryPostCommitSyncError)
+    expect(setResumeMetadata).toHaveBeenCalledWith({ directoryCharacterSyncOperationId: 'blueprint-sync-directory-test-run-1-1' })
     expect(failure).toMatchObject({
       retryOperationId: 'blueprint-sync-directory-test-run-1-1',
       commitReceipt: {
@@ -1351,6 +1354,7 @@ describe('GenerateDirectoryCommand', () => {
   })
 
   it('does not report zero-write cancellation when cancellation arrives after the atomic commit', async () => {
+    const setResumeMetadata = vi.fn()
     const context = workflowContext()
     const committed = blueprint(1)
     const commitHandler = successfulCommitHandler({ snapshot: [committed] })
@@ -1371,10 +1375,11 @@ describe('GenerateDirectoryCommand', () => {
       { createRuntime: vi.fn(async () => testRuntime(session)) },
     )
 
-    const failure = await command.execute({ step: {}, context, callbacks: stepCallbacks() })
+    const failure = await command.execute({ step: {}, context, callbacks: { ...stepCallbacks(), setResumeMetadata } })
       .catch(error => error as unknown)
 
     expect(failure).toBeInstanceOf(DirectoryPostCommitCancellationError)
+    expect(setResumeMetadata).toHaveBeenCalledWith({ directoryCharacterSyncOperationId: 'blueprint-sync-directory-test-run-1-1' })
     expect(failure).toMatchObject({ commitReceipt: { chapterNumbers: [1] } })
     expect((failure as Error).message).toContain('蓝图已提交')
   })

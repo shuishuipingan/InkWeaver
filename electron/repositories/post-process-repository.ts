@@ -76,7 +76,7 @@ export class PostProcessRepository {
         const row = db.prepare(`
       SELECT * FROM post_process_runs
       WHERE trigger_source_type = ? AND trigger_source_id = ?
-      ORDER BY created_at DESC LIMIT 1
+      ORDER BY created_at DESC, rowid DESC LIMIT 1
     `).get(sourceType, sourceId) as Record<string, unknown> | undefined
 
         if (!row) return null

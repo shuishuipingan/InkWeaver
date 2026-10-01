@@ -155,6 +155,7 @@ describe('BaseWorkflowCommand completion boundary', () => {
   })
 
   it.each([
+    { leasedCap: 131_072, expectedRequest: 32_768 },
     { leasedCap: 16_384, expectedRequest: 16_384 },
     { leasedCap: 8192, expectedRequest: 8192 },
   ])('keeps ordinary structured requests at $expectedRequest for a $leasedCap-capability lease', async ({ leasedCap, expectedRequest }) => {
@@ -220,6 +221,7 @@ describe('BaseWorkflowCommand completion boundary', () => {
   it.each([
     { leasedCap: 16_384, expectedRequest: 16_384 },
     { leasedCap: 8192, expectedRequest: 8192 },
+    { leasedCap: 131_072, expectedRequest: 32_768 },
   ])('uses the bounded character-architecture policy without exceeding a $leasedCap-capability lease', async ({ leasedCap, expectedRequest }) => {
     const completeWithLease = vi.fn<GenerationRuntimeEnvironment['completeWithLease']>()
       .mockResolvedValue({ content: '{"ok":true}', finishReason: 'stop' })
@@ -244,6 +246,7 @@ describe('BaseWorkflowCommand completion boundary', () => {
       maxAttempts: 12,
       maxRequestedOutputTokens: 196_608,
       maxRequestedOutputTokensPerAttempt: 32_768,
+      respectIntentOutputCaps: true,
       deadlineMs: 10 * 60_000,
     })
   })

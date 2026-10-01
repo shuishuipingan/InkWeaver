@@ -161,6 +161,8 @@ export interface WorkflowContext {
 
 /** 步骤回调 */
 export interface StepCallbacks {
+  /** Merge durable identities of saved effects into the recovery receipt. */
+  setResumeMetadata?: (patch: WorkflowRecoveryMetadata) => void
   /** 追加日志 */
   log: (message: string) => void
   /** 更新进度 (0-100) */
@@ -350,6 +352,15 @@ function workflowRuntimeContext(runId: string, projectSession: ProjectSessionCon
 const pauseResolveRefs = new Map<string, () => void>()
 const cancelRequestedHooks = new Map<string, (context: WorkflowContext) => void | Promise<void>>()
 const cancelBoundaryHooks = new Map<string, (context: WorkflowContext) => void | Promise<void>>()
+
+function invokeCancellationRequest(
+  hook: (context: WorkflowContext) => void | Promise<void>,
+  context: WorkflowContext,
+  onError: (error: unknown) => void,
+): void {
+  try { void Promise.resolve(hook(context)).catch(onError) }
+  catch (error) { onError(error) }
+}
 
 /** 计算兼容字段的辅助函数 */
 function computeCompat(activeRuns: WorkflowRun[], waitingRuns: Record<string, { waitingForConfirm: boolean; waitingAfterStepIndex: number }>) {
@@ -659,6 +670,13 @@ export const useWorkflowStore = create<WorkflowState>()((set, get) => ({
       // 创建步骤回调
       let promptBudgetAttemptCount = 0
       const callbacks: StepCallbacks = {
+        setResumeMetadata: (patch) => {
+          const activeRun = get().activeRuns.find(candidate => candidate.id === run.id)
+          if (!activeRun || activeRun.currentStepIndex !== i || activeRun.steps[i]?.status !== 'running') return
+          updateRunById(set, run.id, { resumeMetadata: { ...activeRun.resumeMetadata, ...patch } })
+          const savedRun = get().activeRuns.find(candidate => candidate.id === run.id)
+          if (savedRun) persistRecoveryCheckpoint(savedRun, 'started')
+        },
         log: (message) => {
           appendStepLogById(set, run.id, i, message)
           get().addLog('info', `  ${message}`, context.uiLocale, workflowRuntimeContext(run.id, context.projectSession))
@@ -891,7 +909,7 @@ export const useWorkflowStore = create<WorkflowState>()((set, get) => ({
         ctx.cancelled = true
         ctx.pauseRequested = false
         const persistCancellation = cancelRequestedHooks.get(runId)
-        if (persistCancellation) void Promise.resolve(persistCancellation(ctx)).catch(error => {
+        if (persistCancellation) invokeCancellationRequest(persistCancellation, ctx, error => {
           get().addLog('error', uiText(
             targetRun.uiLocale,
             `[取消失败] 未能立即保存取消请求：${String(error)}`,
@@ -941,7 +959,7 @@ export const useWorkflowStore = create<WorkflowState>()((set, get) => ({
         ctx.cancelled = true
         ctx.pauseRequested = false
         const persistCancellation = cancelRequestedHooks.get(id)
-        if (persistCancellation) void Promise.resolve(persistCancellation(ctx)).catch(error => {
+        if (persistCancellation) invokeCancellationRequest(persistCancellation, ctx, error => {
            get().addLog('error', uiText(
             run.uiLocale,
             `[取消失败] 未能立即保存取消请求：${String(error)}`,

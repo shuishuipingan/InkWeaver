@@ -23,6 +23,29 @@ beforeEach(() => {
 })
 
 describe('workflow recovery checkpoints', () => {
+  it('ignores malformed persisted rows without discarding valid recovery receipts', () => {
+    const valid = checkpointFromRun({
+      id: 'valid-run', projectPath: session.projectPath, projectSession: session,
+      type: 'chapter_creation', title: 'Draft', writingLanguage: 'zh-CN', uiLocale: 'zh-CN',
+      status: 'failed', currentStepIndex: 0, steps: [{ id: 'draft', name: 'Draft', status: 'failed' }],
+      createdAt: '2026-01-01',
+    }, 'failed')!
+    localStorage.setItem('inkweaver.workflow-recovery.v1', JSON.stringify({
+      valid, nullRow: null, broken: { ...valid, steps: 'not an array' },
+    }))
+    expect(listWorkflowRecoveryCheckpoints(session.projectPath)).toEqual([valid])
+  })
+
+  it('can save a new checkpoint after the stored root was corrupted', () => {
+    localStorage.setItem('inkweaver.workflow-recovery.v1', 'null')
+    const checkpoint = checkpointFromRun({
+      id: 'new-run', projectPath: session.projectPath, projectSession: session,
+      type: 'chapter_creation', title: 'Draft', writingLanguage: 'zh-CN', uiLocale: 'zh-CN',
+      status: 'failed', currentStepIndex: 0, steps: [], createdAt: '2026-01-01',
+    }, 'failed')!
+    saveWorkflowRecoveryCheckpoint(checkpoint)
+    expect(listWorkflowRecoveryCheckpoints()).toEqual([checkpoint])
+  })
   it('persists safe step metadata without model output and rejects another lease', () => {
     const checkpoint = checkpointFromRun({
       id: 'run-1', projectPath: session.projectPath, projectSession: session, type: 'chapter_creation', title: '写稿',

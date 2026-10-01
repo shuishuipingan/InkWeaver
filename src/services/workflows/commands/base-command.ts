@@ -62,6 +62,7 @@ export const WORKFLOW_GENERATION_BUDGETS = Object.freeze({
     maxAttempts: 16,
     maxRequestedOutputTokens: 262_144,
     maxRequestedOutputTokensPerAttempt: 32_768,
+    respectIntentOutputCaps: true,
     deadlineMs: 10 * 60_000,
   }),
   text: Object.freeze({
@@ -76,6 +77,7 @@ export const WORKFLOW_GENERATION_BUDGETS = Object.freeze({
     maxAttempts: 12,
     maxRequestedOutputTokens: 196_608,
     maxRequestedOutputTokensPerAttempt: 32_768,
+    respectIntentOutputCaps: true,
     deadlineMs: 10 * 60_000,
   }),
 })

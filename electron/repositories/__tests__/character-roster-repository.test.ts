@@ -123,6 +123,53 @@ function rawRosterStorage() {
 }
 
 describe('CharacterRosterRepository public read/commit seam', () => {
+  it('advances an author-entered state when a later finalized chapter provides a new state', () => {
+    db.exec(`
+      CREATE TABLE contents (id INTEGER PRIMARY KEY, body TEXT NOT NULL);
+      CREATE TABLE drafts (id INTEGER PRIMARY KEY, chapter_number INTEGER, status TEXT, content_id INTEGER);
+      CREATE TABLE finalization_outbox (draft_id INTEGER PRIMARY KEY, content_hash TEXT NOT NULL, content_snapshot TEXT NOT NULL);
+    `)
+    const content = '林舟已痊愈，抵达北境。'
+    const hash = createHash('sha256').update(content).digest('hex')
+    db.prepare('INSERT INTO contents (id, body) VALUES (1, ?)').run(content)
+    db.prepare("INSERT INTO drafts (id, chapter_number, status, content_id) VALUES (17, 2, 'finalized', 1)").run()
+    db.prepare('INSERT INTO finalization_outbox (draft_id, content_hash, content_snapshot) VALUES (17, ?, ?)').run(hash, content)
+    const initial = CharacterRosterRepository.commit(commitRequest({
+      entries: commitRequest().entries.map(entry => ({ ...entry, currentState: {
+        location: '旧地点', powerLevel: '', physicalState: '受伤', mentalState: '', keyItems: '', recentEvents: '',
+        updatedAtChapter: 1, provenance: { source: 'author' as const },
+      } })),
+    }))
+    const entry = initial.snapshot.entries.find(candidate => candidate.name === '林舟')!
+    const nextState = { ...entry.currentState!, location: '北境', physicalState: '已痊愈', updatedAtChapter: 2,
+      provenance: { source: 'model' as const, sourceDraftId: 17, sourceContentHash: hash, evidence: content },
+    }
+    const advanced = CharacterRosterRepository.commit({
+      operationId: 'finalize-later-chapter', expectedRevision: initial.revision, schemaVersion: 1,
+      intent: 'chapter_progress', entries: [{ ...entry, currentState: nextState }],
+    })
+    expect(advanced.snapshot.entries.find(candidate => candidate.name === '林舟')?.currentState).toEqual(nextState)
+  })
+  it.each([
+    ['later chapter', 5, { source: 'legacy-unknown' as const }],
+    ['author correction', 1, { source: 'author' as const }],
+  ])('preserves current state from a %s when repairing an older finalized chapter', (_label, chapter, provenance) => {
+    const initial = CharacterRosterRepository.commit(commitRequest({
+      entries: commitRequest().entries.map(entry => ({ ...entry, currentState: {
+        location: '作者指定的新地点', powerLevel: '', physicalState: '已痊愈', mentalState: '', keyItems: '', recentEvents: '',
+        updatedAtChapter: chapter, provenance,
+      } })),
+    }))
+    const entry = initial.snapshot.entries.find(candidate => candidate.name === '林舟')!
+    const repaired = CharacterRosterRepository.commit({
+      operationId: 'repair-old-chapter', expectedRevision: initial.revision, schemaVersion: 1, intent: 'chapter_progress',
+      entries: [{ ...entry, currentState: {
+        location: '旧地点', powerLevel: '', physicalState: '受伤', mentalState: '', keyItems: '', recentEvents: '',
+        updatedAtChapter: 1, provenance: { source: 'legacy-unknown' },
+      } }],
+    })
+    expect(repaired.snapshot.entries.find(candidate => candidate.name === '林舟')?.currentState).toEqual(entry.currentState)
+  })
   it('normalizes a finite numeric model age without widening other roster fields', () => {
     const base = commitRequest()
     const numericAge = {
@@ -189,7 +236,7 @@ describe('CharacterRosterRepository public read/commit seam', () => {
         ...entry,
         currentState: {
           location: '导入的未来地点', powerLevel: '', physicalState: '', mentalState: '', keyItems: '', recentEvents: '',
-          updatedAtChapter: 100, provenance: { source: 'legacy-unknown' as const },
+          updatedAtChapter: 0, provenance: { source: 'legacy-unknown' as const },
         },
       })),
     }))

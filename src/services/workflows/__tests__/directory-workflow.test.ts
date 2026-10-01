@@ -6,6 +6,7 @@ import {
   parseTextBlueprints,
   parseTextBlueprintsStrict,
   createDirectoryWorkflow,
+  resumeDirectoryWorkflowFromCheckpoint,
   saveAllBlueprints,
   saveChapterBlueprint,
   verifyBlueprintsPersisted,
@@ -15,6 +16,7 @@ import { useProjectStore } from '../../../stores/project-store'
 import type { ProjectData } from '../../../shared/ipc-channels'
 import type { StepCallbacks, WorkflowContext } from '../../../stores/workflow-store'
 import { StructuredContractDiagnostic } from '../../../shared/structured-contract-diagnostic'
+import type { WorkflowRecoveryCheckpoint } from '../../../shared/workflow-recovery'
 
 const blueprint: ChapterBlueprint = {
   chapterNumber: 1,
@@ -331,6 +333,36 @@ describe('blueprint persistence helpers', () => {
 })
 
 describe('directory workflow project context', () => {
+  it.each(['pending', 'completed'] as const)('resumes the %s durable character sync without reading architecture or generating blueprints', async status => {
+    const projectA = project('C:/NovelA')
+    useProjectStore.setState({ currentProject: projectA })
+    const session = { projectId: projectA.id, leaseId: projectA.sessionLease!, projectPath: projectA.path }
+    const operationId = 'sync-committed-directory'
+    const receipt = { operationId, blueprintCommitOperationId: 'committed-directory', status: 'already-satisfied' }
+    const invoke = stubIpcInvoke(null)
+    invoke.mockImplementation(async (channel: string) => {
+      if (channel === 'db:blueprint-character-sync-get') return { operationId, status, characterSyncInput: [], completionReceipt: status === 'completed' ? receipt : undefined }
+      if (channel === 'db:blueprint-character-sync-complete') return { success: true, operation: { status: 'completed', completionReceipt: receipt } }
+      throw new Error(`Unexpected operation: ${channel}`)
+    })
+    const checkpoint: WorkflowRecoveryCheckpoint = {
+      schemaVersion: 1, runId: 'committed-directory', projectPath: session.projectPath, projectSession: session,
+      type: 'directory', title: 'Directory', writingLanguage: 'zh-CN', uiLocale: 'zh-CN', boundary: 'failed',
+      currentStepIndex: 1, steps: [], createdAt: '2026-01-01', updatedAt: '2026-01-01',
+      resumeMetadata: { kind: 'directory-generation', mode: 'full', directoryCharacterSyncOperationId: operationId },
+    }
+    const workflow = resumeDirectoryWorkflowFromCheckpoint(checkpoint, session)
+    const context: WorkflowContext = { runId: checkpoint.runId, projectPath: session.projectPath, projectSession: session, writingLanguage: 'zh-CN', uiLocale: 'zh-CN', cancelled: false, data: {} }
+    const callbacks: StepCallbacks = { log: vi.fn(), setProgress: vi.fn(), appendText: vi.fn() }
+    expect(workflow.runId).toBe(checkpoint.runId)
+    expect(workflow.resumeMetadata).toEqual(checkpoint.resumeMetadata)
+    expect(workflow.steps).toHaveLength(1)
+    await workflow.steps[0].executor(workflowStep('sync'), context, callbacks)
+    expect(context.data.blueprintCharacterSyncReceipt).toEqual(receipt)
+    expect(invoke.mock.calls.map(([channel]) => channel)).toEqual(status === 'pending'
+      ? ['db:blueprint-character-sync-get', 'db:blueprint-character-sync-complete']
+      : ['db:blueprint-character-sync-get'])
+  })
   it('freezes the launch project and does not schedule a duplicate post-command save step', async () => {
     const projectA = project('C:\\novels\\A')
     useProjectStore.setState({ currentProject: projectA })

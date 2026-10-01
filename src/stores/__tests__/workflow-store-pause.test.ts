@@ -40,6 +40,32 @@ beforeEach(() => {
 })
 
 describe('workflow pause at a safe step boundary', () => {
+  it('releases a paused workflow even if the cancellation hook throws synchronously', async () => {
+    let releaseStep!: () => void
+    const blocked = new Promise<void>(resolve => { releaseStep = resolve })
+    let hookCalls = 0
+    const completion = useWorkflowStore.getState().startWorkflow({
+      runId: 'sync-cancel-hook', type: 'batch_generate', title: 'Batch', projectPath,
+      projectSession: frozenSession(), onCancelRequested: () => {
+        hookCalls += 1
+        if (hookCalls === 1) throw new Error('durable cancellation unavailable')
+      },
+      steps: [
+        { name: 'first', description: '', executor: async () => { await blocked } },
+        { name: 'second', description: '', executor: vi.fn() },
+      ],
+    })
+    await vi.waitFor(() => expect(useWorkflowStore.getState().activeRuns[0]?.steps[0]?.status).toBe('running'))
+    useWorkflowStore.getState().pauseWorkflow('sync-cancel-hook')
+    releaseStep()
+    await vi.waitFor(() => expect(useWorkflowStore.getState().activeRuns[0]?.status).toBe('paused'))
+    let thrown: unknown
+    try { useWorkflowStore.getState().cancelWorkflow('sync-cancel-hook') } catch (error) { thrown = error }
+    if (thrown) useWorkflowStore.getState().cancelWorkflow('sync-cancel-hook')
+    await completion
+    expect(thrown).toBeUndefined()
+    expect(useWorkflowStore.getState().activeRuns).toHaveLength(0)
+  })
   it('reuses an active caller-supplied run id without mutating the first workflow', async () => {
     let releaseFirst!: () => void
     const firstBlocked = new Promise<void>((resolve) => { releaseFirst = resolve })

@@ -7,6 +7,7 @@ import {
 import {
   createGenerationHarness,
   GenerationAttemptError,
+  GenerationHarnessError,
   PromptBudgetExceededError,
   type GenerationOutcome,
   GenerationAttemptReceipt,
@@ -184,6 +185,39 @@ function blueprintJson(chapters: readonly number[]): string {
 }
 
 describe('StructuredBatchExecutor seam', () => {
+  it.each([
+    ['CANCELLED', 'cancelled', 'cancelled'],
+    ['DEADLINE_EXHAUSTED', 'deadline', 'deadline'],
+    ['ATTEMPT_BUDGET_EXHAUSTED', 'limit_exceeded', 'max_calls'],
+    ['REQUESTED_TOKEN_BUDGET_EXHAUSTED', 'limit_exceeded', 'max_requested_tokens'],
+  ] as const)('preserves split retry failure %s', async (errorCode, code, reason) => {
+    const complete = vi.fn<GenerationSession['complete']>()
+      .mockResolvedValueOnce({ status: 'completed', content: blueprintJson([1]), finishReason: 'stop', receipt: attemptReceipt(1, 100, 100, 'stop') })
+      .mockRejectedValueOnce(new GenerationHarnessError(errorCode, 'child failure'))
+    const result = await createStructuredBatchExecutor({ contract: { ...blueprintContract, retryInvalidOutputWithSmallerBatch: true }, session: { complete } })
+      .execute({ items: [1, 2], limits: { maxBatchItems: 2 } })
+    expect(result).toMatchObject({ ok: false, failure: { code, reason } })
+  })
+
+  it('retains the physical receipt when a split retry fails at the provider', async () => {
+    const childReceipt = attemptReceipt(2, 100, 200, 'error')
+    const complete = vi.fn<GenerationSession['complete']>()
+      .mockResolvedValueOnce({ status: 'completed', content: blueprintJson([1]), finishReason: 'stop', receipt: attemptReceipt(1, 100, 100, 'stop') })
+      .mockRejectedValueOnce(new GenerationAttemptError('PROVIDER_REQUEST_FAILED', 'child provider failed', childReceipt))
+    const result = await createStructuredBatchExecutor({ contract: { ...blueprintContract, retryInvalidOutputWithSmallerBatch: true }, session: { complete } })
+      .execute({ items: [1, 2], limits: { maxBatchItems: 2 } })
+    expect(result).toMatchObject({ ok: false, failure: { reason: 'server_error' }, receipt: { calls: 2, requestedTokens: 200 } })
+    expect(result.receipt.attempts[1]).toBe(childReceipt)
+  })
+
+  it('propagates prompt preflight errors from split retries', async () => {
+    const error = new PromptBudgetExceededError({} as ConstructorParameters<typeof PromptBudgetExceededError>[0])
+    const complete = vi.fn<GenerationSession['complete']>()
+      .mockResolvedValueOnce({ status: 'completed', content: blueprintJson([1]), finishReason: 'stop', receipt: attemptReceipt(1, 100, 100, 'stop') })
+      .mockRejectedValueOnce(error)
+    await expect(createStructuredBatchExecutor({ contract: { ...blueprintContract, retryInvalidOutputWithSmallerBatch: true }, session: { complete } })
+      .execute({ items: [1, 2], limits: { maxBatchItems: 2 } })).rejects.toBe(error)
+  })
   it('propagates a typed prompt-budget preflight without manufacturing a batch receipt', async () => {
     const promptBudgetError = new PromptBudgetExceededError({
       totalUtf8Bytes: 17_000,

@@ -411,8 +411,10 @@ export class GenerateDirectoryCommand extends BaseWorkflowCommand<ChapterBluepri
     const cancellation = observeWorkflowCancellation(context)
     let runtime: GenerationRuntime | null = null
     try {
+      const generationModelId = context.generationModelId?.trim() || undefined
       runtime = await this.createRuntime({
         budget: costPlan.runtimeBudget,
+        ...(generationModelId ? { modelId: generationModelId } : {}),
       })
       const batchResult = await runtime.execute(async ({ session }) => {
         let promptBudgetPreflightReported = false
@@ -475,6 +477,9 @@ export class GenerateDirectoryCommand extends BaseWorkflowCommand<ChapterBluepri
       )
       const newBlueprints = [...commitReceipt.snapshot]
       context.data.blueprintCommitReceipt = commitReceipt
+      callbacks.setResumeMetadata?.({
+        directoryCharacterSyncOperationId: commitReceipt.characterSyncOperation.operationId,
+      })
 
       if (context.cancelled) {
         throw new DirectoryPostCommitCancellationError(commitReceipt)

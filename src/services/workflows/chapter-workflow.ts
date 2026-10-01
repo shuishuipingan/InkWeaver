@@ -5,7 +5,7 @@ import { ipc } from '../ipc-client'
 
 import type { DraftStatus } from '../../shared/draft-status'
 import type { ProjectSessionContext } from '../../shared/ipc-channels'
-import { sameProjectPathKey } from '../../shared/project-session-context'
+import { sameProjectPathKey, sameProjectSessionContext, projectSessionContextFromProject } from '../../shared/project-session-context'
 import { FINALIZATION_SHARED_WRITE_RESOURCE_KINDS } from '../../shared/workflow-resource-claims'
 import { normalizeChapterWordsTarget } from './chapter-creation-parameters'
 import { canResumeWorkflowCheckpoint, type WorkflowRecoveryCheckpoint } from '../../shared/workflow-recovery'
@@ -247,7 +247,7 @@ export function resumeChapterDraftWorkflowFromCheckpoint(
     || wordsTarget < 1
   ) throw new Error('写稿恢复收据缺少完整的冻结参数')
 
-  return createChapterWorkflow({
+  const workflow = createChapterWorkflow({
     projectPath: currentSession.projectPath,
     chapterNumber,
     title,
@@ -259,6 +259,47 @@ export function resumeChapterDraftWorkflowFromCheckpoint(
     userGuidance: typeof metadata.userGuidance === 'string' ? metadata.userGuidance : undefined,
     wordsTarget,
   }, currentSession, { generationModelId })
+  const savedDraftId = Number(metadata[`draftId_${chapterNumber}`])
+  const savedContentHash = metadata[`draftContentHash_${chapterNumber}`]
+  if (metadata[`draftId_${chapterNumber}`] !== undefined || savedContentHash !== undefined) {
+    if (!Number.isSafeInteger(savedDraftId) || savedDraftId < 1 || typeof savedContentHash !== 'string'
+      || !/^[a-f0-9]{64}$/u.test(savedContentHash)) throw new Error('写稿恢复收据的已保存草稿身份无效')
+    workflow.steps = [{
+      ...workflow.steps[0],
+      executor: async (_step, context, callbacks) => {
+        const [full, latest] = await Promise.all([
+          ipc.invokeWithProjectSession(currentSession, 'db:draft-get-full', savedDraftId, currentSession.projectPath),
+          ipc.invokeWithProjectSession(currentSession, 'db:draft-get-latest', chapterNumber, currentSession.projectPath),
+        ])
+        const { sha256Hex } = await import('../../shared/sha256-hex')
+        if (!full || full.id !== savedDraftId || full.chapterNumber !== chapterNumber || full.status === 'archived'
+          || latest?.id !== savedDraftId || await sha256Hex(full.content) !== savedContentHash) {
+          throw new Error('已保存草稿已变化或不存在，已拒绝重新生成覆盖恢复结果')
+        }
+        const { useProjectStore } = await import('../../stores/project-store')
+        const { useEditorStore } = await import('../../stores/editor-store')
+        if (context.cancelled || !sameProjectSessionContext(currentSession,
+          projectSessionContextFromProject(useProjectStore.getState().currentProject))) {
+          throw new Error('恢复任务已取消或项目会话已变化')
+        }
+        context.data.draftPath = `vela://draft/${savedDraftId}`
+        context.data.draftContent = full.content
+        context.data.draft = full.content
+        context.data.chapterNumber = chapterNumber
+        useEditorStore.getState().openFile({
+          id: `vela://draft/${savedDraftId}`, name: `第${chapterNumber}章 ${title} v${full.version}`,
+          type: 'chapter', filePath: `vela://draft/${savedDraftId}`, projectKey: currentSession.projectPath,
+          content: full.content, savedContent: full.content, draftId: savedDraftId,
+          chapterNumber, draftStatus: full.status as DraftStatus,
+        })
+        callbacks.replaceText?.(full.content)
+        callbacks.setProgress(100)
+        return full.content
+      },
+    }]
+  }
+  return { ...workflow, runId: checkpoint.runId, uiLocale: checkpoint.uiLocale,
+    resumeMetadata: { ...workflow.resumeMetadata, ...metadata } }
 }
 
 /** Rebuild a review-only workflow from the current draft authority. */
@@ -708,7 +749,8 @@ export function createRepairFinalizeWorkflow(
 
           // 修复运行也冻结一次模型租约，全部 LLM 后处理共享一个预算。
           const { RunFinalizePostProcessCommand } = await import('./commands/finalize-chapter.command')
-          await new RunFinalizePostProcessCommand({
+          const { sha256Hex } = await import('../../shared/sha256-hex')
+          const status = await new RunFinalizePostProcessCommand({
             project,
             chapterNumber,
             chapterTitle,
@@ -717,7 +759,13 @@ export function createRepairFinalizeWorkflow(
             sourceLabel: `第${chapterNumber}章定稿`,
             onlyFailed: false,
             chapterEntities,
+            enableChapterHandoff: true,
+            sourceContentHash: await sha256Hex(full.content),
           }).execute({ step: {}, context, callbacks })
+          const failedLabels = Object.values(status.steps).filter(step => !step.ok).map(step => step.label)
+          if (failedLabels.length > 0) {
+            throw new Error(`后处理修复仍有失败步骤：${failedLabels.join('、')}`)
+          }
 
           // 后处理修复不会产生新定稿快照，只请求项目资源刷新。
           const { globalEventBus } = await import('../../shared/event-bus')

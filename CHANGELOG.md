@@ -2,6 +2,24 @@
 
 本文件按用户可见行为记录变更。桌面版本不发布 npm；DSH 插件沿用已发布的 `1.2.0` 包。`1.2.0` 已从同一源码 commit 完成工程验收、三平台资产回读和正式 Release；`1.1.0` 的历史 Release 收据保留在 `docs/upgrade/`，不与 1.2.0 混用。
 
+## 1.3.9 — 2026-10-01
+
+- 修复批量创作恢复从头重跑并被已有草稿阻断的问题。恢复收据保存草稿 ID、SHA-256 和定稿修订号；只继续原任务保存且正文未变化的草稿，已完成章节跳过，未完成定稿继续处理，失败会阻止后续章节。
+- 修复保存成功后取消任务却清空结果的问题；单章恢复会重新打开已保存草稿。架构恢复只执行未完成步骤；蓝图已提交后的恢复只重试持久化角色同步，不重复生成蓝图。
+- 修复补修仍有失败步骤却显示成功、遗漏章节交接及同秒跑批查询选中旧状态的问题。补修交接继续绑定定稿正文散列；旧章/同章补修不会倒退后续状态或覆盖人工修正，后续定稿仍可推进角色状态。
+- 结构化拆批保留取消、超时、预算和供应商异常及尝试收据；结构化与角色架构请求遵守步骤输出上限，蓝图生成遵守工作流冻结的模型选择。
+- 取消持久化回调同步抛错不会再卡住暂停任务；损坏的恢复收据逐条隔离，正常收据仍可读取并继续保存。
+- Linux x64 继续提供 inkweaver-linux-x64-1.3.9.AppImage、inkweaver-linux-x64-1.3.9.deb、inkweaver-linux-x64-1.3.9.rpm 及 SHA-256；资格覆盖 Ubuntu 22.04、Debian 13、Fedora 44，glibc 2.35 基线与 --appimage-extract-and-run 验证保持有效。Linux 包未签名。
+
+## What's changed
+
+- Batch recovery now preserves saved draft IDs, SHA-256 hashes, and finalization revisions. It skips completed chapters and resumes unfinished finalization without regenerating or adopting unrelated drafts; further failure stops later chapters.
+- Cancellation after a successful draft save retains its identity and result. Single-draft recovery reopens saved content, architecture recovery runs only unfinished steps, and recovery after a blueprint commit retries only its durable character synchronization.
+- Finalization repair fails when any step remains failed and includes source-bound chapter handoff. Same-second run selection is deterministic. Older/same-chapter repair preserves newer states and author corrections, while later chapters can advance character state.
+- Structured split retries preserve cancellation, deadline, budget, and provider failures and receipts. Structured/character requests honor intended output caps, and directory generation honors the frozen workflow model.
+- Synchronous cancellation-hook failures no longer strand paused tasks. Malformed recovery receipts are isolated without hiding valid receipts or blocking new saves.
+- Continues Linux x64 distribution: inkweaver-linux-x64-1.3.9.AppImage, inkweaver-linux-x64-1.3.9.deb, inkweaver-linux-x64-1.3.9.rpm and SHA-256 sidecars. Qualification covers Ubuntu 22.04, Debian 13 and Fedora 44 with a glibc 2.35 baseline and --appimage-extract-and-run checks. Linux packages are unsigned.
+
 ## 1.3.8 — 2026-09-30
 
 - 全书方向调整兼容模型附带的 unchanged 元数据，不再将“未改动字段”当作小说配置值；角色和章节变更中的同类元数据也不会写入项目。

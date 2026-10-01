@@ -283,7 +283,7 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
       if (channel === 'fs:read-file') return { success: true, content: options.projectPrompt ?? '' }
       if (channel === 'db:planning-material-list') return options.planningMaterials ?? []
       if (channel === 'db:draft-next-version') return 1
-      if (channel === 'db:draft-create') return { success: true, id: 'draft-1' }
+      if (channel === 'db:draft-create') return { success: true, id: 1 }
       throw new Error(`unexpected IPC: ${channel}`)
     })
     vi.stubGlobal('window', {
@@ -1185,6 +1185,30 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
       .rejects.toThrow('无法安全续接隐藏推理过程')
     expect(runtime.complete).toHaveBeenCalledOnce()
     expectNoDraftPersistence(invoke)
+  })
+
+  it('preserves the successful draft save when cancellation arrives during persistence', async () => {
+    const runtime = fakeRuntime(() => outcome('正文'.repeat(2500), 'stop'))
+    const { invoke, context, callbacks, command } = setup({ runtime })
+    const original = invoke.getMockImplementation()!
+    invoke.mockImplementation(async (channel, ...args) => {
+      if (channel === 'db:draft-create') {
+        context.cancelled = true
+        return { success: true, id: 41 }
+      }
+      return original(channel, ...args)
+    })
+    const replaceText = vi.fn()
+    const setResumeMetadata = vi.fn()
+    Object.assign(callbacks, { replaceText, setResumeMetadata })
+    await expect(command.execute({ step: {}, context, callbacks })).rejects.toThrow()
+    expect(context.data.draftPath).toBe('vela://draft/41')
+    expect(context.data.draftContent).toBe('正文'.repeat(2500))
+    expect(setResumeMetadata).toHaveBeenCalledWith({
+      draftId_1: 41,
+      draftContentHash_1: 'c0941dfaff34685c90734375f8f77c3ca44aeb5d06ee6ede5234baae1ebf14f7',
+    })
+    expect(replaceText).not.toHaveBeenCalledWith('')
   })
 
   it('aborts a cancelled run before any database version query or commit', async () => {

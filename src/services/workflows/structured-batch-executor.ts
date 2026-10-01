@@ -676,10 +676,13 @@ export function createStructuredBatchExecutor<TInput, TOutput>(dependencies: {
           try {
             await executeBatchResilient(items.slice(0, midpoint))
             await executeBatchResilient(items.slice(midpoint))
-          } catch {
+          } catch (childError) {
             // Preserve the original batch diagnostic when a bounded repair
             // cannot establish complete coverage; child failures often report
             // an incidental out-of-range key after the split.
+            if (!(childError instanceof ExecutionFailure) || childError.failure.code !== 'invalid_output') {
+              throw childError
+            }
             throw error
           }
         }
