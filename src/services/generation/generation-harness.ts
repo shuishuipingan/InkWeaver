@@ -5,6 +5,7 @@ import type {
   TokenUsage,
 } from '../../shared/ipc-channels'
 import type { CreativeStrategy, GenerationReasoningStage } from '../../shared/reasoning-types'
+import { estimatePromptTokens, resolveAdaptivePromptBudget } from '../../shared/adaptive-prompt-budget'
 import type {
   PromptBudgetCompactionReport,
   PromptBudgetPolicy,
@@ -538,6 +539,10 @@ function createPromptBudgetReport(input: {
     ...(input.compaction ? { compaction: input.compaction } : {}),
     modelId: input.modelId,
     errorCode,
+    ...(input.policy.adaptive ? {
+      estimatedInputTokens: estimatePromptTokens(input.messages),
+      protectedSections: input.sections.filter(section => !section.policy.degradation).map(section => section.policy.sectionName),
+    } : {}),
   })
 }
 
@@ -758,16 +763,22 @@ export function createGenerationHarness(dependencies: {
           let promptBudgetCandidate: PromptBudgetReport | undefined
           let promptBudgetSections: LocatedPromptBudgetSection[] | undefined
           let promptBudgetCompaction: ReturnType<typeof compactPromptBudgetSections> | undefined
+          const adaptiveBudget = task.promptBudget?.adaptive
+            ? resolveAdaptivePromptBudget(task.promptBudget, capabilities.contextWindowTokens, intentOutputTokens, task.messages.length)
+            : undefined
+          const effectivePromptPolicy = task.promptBudget
+            ? { ...task.promptBudget, ...(adaptiveBudget ? { limitUtf8Bytes: adaptiveBudget.limitUtf8Bytes } : {}) }
+            : undefined
           if (task.promptBudget) {
             promptBudgetSections = locatePromptBudgetSections(task.messages, task.promptBudget)
             promptBudgetCompaction = compactPromptBudgetSections({
               messages: task.messages,
-              policy: task.promptBudget,
+              policy: effectivePromptPolicy!,
               sections: promptBudgetSections,
             })
             requestMessages = promptBudgetCompaction.messages
           }
-          const estimatedInputTokens = estimateInputTokens(requestMessages)
+          const estimatedInputTokens = adaptiveBudget ? estimatePromptTokens(requestMessages) : estimateInputTokens(requestMessages)
           const contextAvailableOutputTokens = capabilities.contextWindowTokens === null
             ? null
             : capabilities.contextWindowTokens - estimatedInputTokens - CONTEXT_SAFETY_RESERVE_TOKENS
@@ -780,14 +791,19 @@ export function createGenerationHarness(dependencies: {
             const compacted = promptBudgetCompaction!
             promptBudgetCandidate = createPromptBudgetReport({
               messages: requestMessages,
-              policy: task.promptBudget,
+              policy: effectivePromptPolicy!,
               sections,
               sectionTexts: compacted.sectionTexts,
-              reservedOutputTokens: maxOutputTokens,
+              reservedOutputTokens: adaptiveBudget ? intentOutputTokens : maxOutputTokens,
               modelId: frozenIdentity.id,
               ...(compacted.compaction ? { compaction: compacted.compaction } : {}),
             })
-            if (compacted.compaction) options?.onPromptBudgetPreflight?.(promptBudgetCandidate)
+            if (adaptiveBudget) promptBudgetCandidate = Object.freeze({ ...promptBudgetCandidate,
+              limitInputTokens: adaptiveBudget.limitInputTokens, capacityKnown: adaptiveBudget.capacityKnown,
+              contextWindowTokens: capabilities.contextWindowTokens,
+              errorCode: estimatedInputTokens > adaptiveBudget.limitInputTokens ? 'PROMPT_BUDGET_EXHAUSTED' : promptBudgetCandidate.errorCode,
+            })
+            if (compacted.compaction || adaptiveBudget) options?.onPromptBudgetPreflight?.(promptBudgetCandidate)
           }
           if (promptBudgetCandidate?.errorCode === 'PROMPT_BUDGET_EXHAUSTED') {
             logPromptBudgetReport(promptBudgetCandidate)

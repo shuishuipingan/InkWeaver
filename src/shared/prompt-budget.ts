@@ -20,6 +20,7 @@ export interface PromptBudgetSection {
 
 export interface PromptBudgetPolicy {
   limitUtf8Bytes: number
+  adaptive?: { maxInputTokens: number; unknownInputTokens: number }
   sections: readonly PromptBudgetSection[]
 }
 
@@ -47,6 +48,11 @@ export type PromptBudgetResultCode = 'OK' | 'PROMPT_BUDGET_EXHAUSTED'
 
 /** Safe prompt diagnostics. Prompt text and provider endpoint details are deliberately absent. */
 export interface PromptBudgetReport {
+  estimatedInputTokens?: number
+  limitInputTokens?: number
+  contextWindowTokens?: number | null
+  capacityKnown?: boolean
+  protectedSections?: readonly string[]
   totalUtf8Bytes: number
   limitUtf8Bytes: number
   reservedOutputTokens: number

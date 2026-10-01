@@ -37,6 +37,27 @@ function task() {
 }
 
 describe('GenerationHarness', () => {
+  it('retains large protected drafting context under authoritative adaptive capacity', async () => {
+    const complete = vi.fn<CompletionPort['complete']>().mockResolvedValue({ content: 'done', finishReason: 'stop' })
+    const harness = createGenerationHarness({
+      modelSource: { snapshotDefaultModel: () => ({ revision: 'adaptive', modelExecutionLeaseId: 'adaptive-test-lease', model: model(), resolvedCapabilities: {
+        contextWindowTokens: 1_000_000, maxOutputTokens: 4_096, reasoning: false, structuredOutput: true, usage: true,
+        source: { contextWindowTokens: 'verified-provider-preset', maxOutputTokens: 'user-operational-cap', featureFlags: 'verified-provider-preset' },
+      } }) },
+      completionPort: { complete },
+      policy: { maxAttempts: 1, maxRequestedOutputTokens: 4_096, maxRequestedOutputTokensPerAttempt: 4_096, deadlineMs: 60_000 },
+    })
+    const core = 'x'.repeat(80_000)
+    const preflight = vi.fn()
+    const result = await harness.openSession().complete({
+      purpose: 'chapter-draft', output: 'visible-text', messages: [{ role: 'user', content: core }],
+      promptBudget: { limitUtf8Bytes: 65_536, adaptive: { maxInputTokens: 96_000, unknownInputTokens: 16_384 },
+        sections: [{ sectionName: 'core-cast', messageIndex: 0, finalText: core }] },
+    }, { onPromptBudgetPreflight: preflight })
+    expect(result.receipt.promptBudget).toMatchObject({ errorCode: 'OK', estimatedInputTokens: 40_016, capacityKnown: true })
+    expect(complete.mock.calls[0]![0].messages[0]!.content).toBe(core)
+    expect(preflight).toHaveBeenCalledOnce()
+  })
   it('freezes the default model id, configuration revision, and endpoint for the whole session', async () => {
     let current: DefaultModelSnapshot = {
       revision: 'revision-a',
