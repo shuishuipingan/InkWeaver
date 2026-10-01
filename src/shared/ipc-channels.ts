@@ -12,6 +12,7 @@ import type { EmbeddingOptions } from './embedding-options'
 import type { ModelCapabilities } from './provider-presets'
 import type { ModelProviderResourceId } from './model-provider-resources'
 import type { WritingLanguage } from './writing-language'
+import type { ContextSummaryCacheKey, ContextSummaryCacheEntry } from './context-summary'
 import type {
   FinalizedContinuityProjection,
   SaveFinalizedContinuityRequest,
@@ -902,6 +903,8 @@ export interface DatabaseChannels {
     args: [request: SaveFinalizedContinuityRequest, expectedProjectPath: string]
     return: { success: boolean; error?: string }
   }
+  'db:context-summary-cache-get': { args: [key: ContextSummaryCacheKey, expectedProjectPath: string]; return: ContextSummaryCacheEntry | null }
+  'db:context-summary-cache-put': { args: [entry: ContextSummaryCacheEntry, expectedProjectPath: string]; return: { success: boolean } }
   'db:continuity-list-before': {
     args: [chapterNumber: number, expectedProjectPath: string]
     return: FinalizedContinuityProjection[]

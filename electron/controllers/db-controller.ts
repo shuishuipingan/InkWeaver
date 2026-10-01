@@ -45,6 +45,7 @@ import { PostProcessRepository } from '../repositories/post-process-repository'
 // 沿用的旧表
 import { LLMHistoryRepository } from '../repositories/llm-repository'
 import { SummaryRepository } from '../repositories/summary-repository'
+import { ContextSummaryCacheRepository } from '../repositories/context-summary-cache-repository'
 import { ChapterHandoffRepository } from '../repositories/chapter-handoff-repository'
 import { CharacterExtractionCandidateRepository } from '../repositories/character-extraction-candidate-repository'
 import { ConsistencyExemptionRepository } from '../repositories/consistency-exemption-repository'
@@ -106,6 +107,7 @@ const MUTATING_DATABASE_CHANNELS = new Set([
   'db:post-process-mark-step-failed',
   'db:log-llm-call',
   'db:save-summary-snapshot',
+  'db:context-summary-cache-put',
   'db:narrative-thread-plan-create',
   'db:narrative-thread-plan-update',
   'db:narrative-thread-plan-delete',
@@ -773,6 +775,15 @@ export function registerDatabaseController() {
   ipcMain.handle('db:continuity-list-before', async (_event, chapterNumber: number, expectedProjectPath: string) => {
     assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
     return SummaryRepository.listFinalizedContinuityBefore(chapterNumber)
+  })
+  ipcMain.handle('db:context-summary-cache-get', async (_event, key, expectedProjectPath: string) => {
+    assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+    return ContextSummaryCacheRepository.get(key)
+  })
+  ipcMain.handle('db:context-summary-cache-put', async (_event, entry, expectedProjectPath: string) => {
+    assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+    ContextSummaryCacheRepository.put(entry)
+    return { success: true }
   })
 
   ipcMain.handle('db:continuity-list-all', async (_event, expectedProjectPath: string) => {
