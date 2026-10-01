@@ -28,7 +28,7 @@ export type ContextOmissionReason =
   | 'not-authorized'
   | 'needs-verification'
 
-export interface ContextSelectionEntry {
+export interface ContextSelectionEntry extends Pick<ContextReceiptEntry, 'representation' | 'sourceKind' | 'cacheHit' | 'originalCharCount'> {
   /** Stable, non-content identifier such as `fact:12:3`. */
   id: string
   layer: ContextLayer
@@ -79,6 +79,14 @@ export interface ContextSelectionResult {
 function normalizedText(value: string): string {
   return value.replace(/\r\n?/gu, '\n').trim()
 }
+function sourceMetadata(entry: ContextSelectionEntry) {
+  return {
+    ...(entry.representation ? { representation: entry.representation } : {}),
+    ...(entry.sourceKind ? { sourceKind: entry.sourceKind } : {}),
+    ...(entry.cacheHit !== undefined ? { cacheHit: entry.cacheHit } : {}),
+    ...(entry.originalCharCount !== undefined ? { originalCharCount: entry.originalCharCount } : {}),
+  }
+}
 
 function compareEntries(left: ContextSelectionEntry, right: ContextSelectionEntry): number {
   return Number(right.required ?? false) - Number(left.required ?? false)
@@ -116,6 +124,7 @@ export function selectContextEntries(
     if (!id || !label) continue
     if (input.excludedReason) {
       receiptEntries.push({
+        ...sourceMetadata(input),
         id,
         layer: input.layer,
         label,
@@ -130,6 +139,7 @@ export function selectContextEntries(
     if (!content) {
       if (input.required) {
         receiptEntries.push({
+          ...sourceMetadata(input),
           id,
           layer: input.layer,
           label,
@@ -153,6 +163,7 @@ export function selectContextEntries(
     }
     if (unique.has(id)) {
       receiptEntries.push({
+        ...sourceMetadata(normalized),
         id,
         layer: normalized.layer,
         label,
@@ -177,6 +188,7 @@ export function selectContextEntries(
       selected.add(entry.id)
       selectedChars = nextChars
       receiptEntries.push({
+        ...sourceMetadata(entry),
         id: entry.id,
         layer: entry.layer,
         label: entry.label,
@@ -189,6 +201,7 @@ export function selectContextEntries(
       continue
     }
     receiptEntries.push({
+      ...sourceMetadata(entry),
       id: entry.id,
       layer: entry.layer,
       label: entry.label,

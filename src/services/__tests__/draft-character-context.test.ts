@@ -4,6 +4,15 @@ import type { CharacterData } from '../../../electron/repositories/character-rep
 const card = (name: string): CharacterData => ({ name, role: 'supporting', gender: '', age: '', appearance: '', personality: '谨慎',
   background: '村里种麦。凤凰守门。'.repeat(200), abilities: '御火', motivation: '守诺', relationships: '[]', arc: '成长', notes: '不得杀人' })
 describe('chapter-relevant cast context', () => {
+  it('prefers direct relations over shared-location extras and matches longer names first', () => {
+    const cards = [card('林舟'), ...Array.from({ length: 13 }, (_, i) => ({ ...card(`路人${i}`),
+      currentState: { location: '北境', powerLevel: '', physicalState: '', mentalState: '', keyItems: '', recentEvents: '', updatedAtChapter: 1, provenance: { source: 'author' as const } } })), card('沈月')]
+    cards.at(-1)!.relationships = '[{"target":"林舟","relation":"师徒"}]'
+    const options = { chapterNumber: 2, characters: ['林舟'], keyEvents: '林舟前往北境', writingLanguage: 'zh-CN' as const }
+    expect(planDraftCharacterContext(cards, options).secondary).toContain('沈月')
+    const names = planDraftCharacterContext([card('人物1'), card('人物10')], { ...options, characters: [], keyEvents: '人物10出场' })
+    expect(names.selectedCoreNames).toEqual(['人物10'])
+  })
   it('retains background constraints and appearance and selects verified shared locations', () => {
     const cards = [card('林舟'), { ...card('沈月'), currentState: { location: '北境', powerLevel: '', physicalState: '', mentalState: '', keyItems: '', recentEvents: '', updatedAtChapter: 1, provenance: { source: 'author' as const } } }]
     cards[0]!.appearance = '左眼有伤'

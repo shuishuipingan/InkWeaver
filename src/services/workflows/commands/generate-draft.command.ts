@@ -6,9 +6,12 @@ import { ChapterPromptBuilder } from '../../prompts/prompt-builder'
 import { ipc } from '../../ipc-client'
 import { unwrapKnowledgeValue } from '../../knowledge-service'
 import { projectSessionContextFromProject, sameProjectSessionContext } from '../../../shared/project-session-context'
-import type { CharacterData } from '../../../../electron/repositories/character-repository'
+import type { DraftMeta } from '../../../../electron/repositories/draft-repository'
+import { planDraftCharacterContext } from '../../draft-character-context'
+import { cachedContextSummary } from '../../context-summary-cache'
+import { DRAFT_CONTEXT_INPUT_LIMIT, UNKNOWN_CONTEXT_INPUT_LIMIT, draftOutputReservation } from '../../../shared/adaptive-prompt-budget'
 import type { ProjectSessionContext } from '../../../shared/ipc-channels'
-import { requireWorkflowProjectSession, workflowWritingLanguage } from '../workflow-project-session'
+import { requireWorkflowProjectSession, workflowWritingLanguage, workflowUiText } from '../workflow-project-session'
 import {
   DIR_PROMPTS
 } from '../../../shared/project-paths'
@@ -41,6 +44,7 @@ import {
   selectContextEntries,
   type ContextReceipt,
   type ContextSelectionEntry,
+  type ContextReceiptEntry,
 } from '../../../shared/context-receipt'
 
 export { countDraftUnits } from '../../../shared/draft-units'
@@ -92,12 +96,28 @@ function promptTextOccurrences(text: string, fragment: string): number[] {
 interface DraftArchitectureContext {
   text: string
   sections: DraftArchitectureSection[]
+  entries?: ContextReceiptEntry[]
+  legacyCharactersPresent?: boolean
 }
 
 interface DraftCharacterContext {
   linked: string
   secondary: string
   text: string
+  details: string
+  detailSummary: string
+  entries: ContextReceiptEntry[]
+  cardCount: number
+}
+
+function characterBudgetSections(context: DraftCharacterContext): DraftArchitectureSection[] {
+  return [
+    ...(context.linked ? [{ sectionName: 'core-cast', label: '', text: context.linked }] : []),
+    ...(context.details ? [{ sectionName: 'linked-cast', label: '', text: context.details,
+      degradation: { priority: 30, strategy: 'summary' as const, fallbackText: context.detailSummary } }] : []),
+    ...(context.secondary ? [{ sectionName: 'secondary-cast', label: '', text: context.secondary,
+      degradation: { priority: 20, strategy: 'complete-lines' as const } }] : []),
+  ]
 }
 
 function promptBudgetSectionsForDraft(input: {
@@ -195,6 +215,7 @@ function promptBudgetSectionsForDraft(input: {
 
   return {
     limitUtf8Bytes: MAX_DRAFT_PROMPT_UTF8_BYTES,
+    adaptive: { maxInputTokens: DRAFT_CONTEXT_INPUT_LIMIT, unknownInputTokens: UNKNOWN_CONTEXT_INPUT_LIMIT },
     sections: locatedSections
       .sort((left, right) => left.section.messageIndex - right.section.messageIndex || left.start - right.start)
       .map(({ section }) => section),
@@ -318,6 +339,11 @@ function completionFromOutcome(outcome: GenerationOutcome): LLMCompletion {
 
 function workflowGenerationModelId(context: CommandExecuteParams['context']): string | undefined {
   return context.generationModelId?.trim() || undefined
+}
+function assertDraftProjectSession(session: ProjectSessionContext): void {
+  if (!sameProjectSessionContext(session, projectSessionContextFromProject(useProjectStore.getState().currentProject))) {
+    throw new Error('当前项目已切换，章节生成已停止')
+  }
 }
 
 function contextReceiptEntry(
@@ -448,6 +474,10 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
       projectSession,
       writingLanguage,
     )
+    const outlineSummary = novelConfig.coreOutline?.trim()
+      ? await cachedContextSummary(projectSession, 'architecture', 'core-outline', novelConfig.coreOutline,
+        { maxChars: 2_000, terms: this.chapterInfo.characters, chapterNumber: this.chapterInfo.chapterNumber }) : null
+    const draftNovelConfig = { ...novelConfig, ...(outlineSummary ? { coreOutline: outlineSummary.text } : {}) }
     const projectPrompts = await this.readProjectPrompts(
       expectedProjectPath,
       projectSession,
@@ -477,6 +507,10 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
       writingLanguage,
       this.chapterInfo.characters,
     )
+    if (architectureContext.legacyCharactersPresent && characterContext.cardCount === 0) {
+      throw new Error(workflowUiText(context, '旧角色图谱尚未转换为结构化角色卡，请先完成角色图谱修复再生成章节。',
+        'The legacy character graph has no structured cards. Repair the character graph before generating a chapter.'))
+    }
     let futureBlueprintsStr = promptLanguageText(
       writingLanguage,
       '（无后续蓝图）',
@@ -500,21 +534,11 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
     const isFirstChapter = this.chapterInfo.chapterNumber === 1
     const draftArchitecture = isFirstChapter && (characterContext.linked || characterContext.secondary)
       ? {
+          ...architectureContext,
           text: [architectureContext.text, characterContext.text].filter(Boolean).join('\n\n---\n\n'),
           sections: [
             ...architectureContext.sections,
-            ...(characterContext.linked ? [{
-              sectionName: 'linked-cast',
-              label: '',
-              text: characterContext.linked,
-              degradation: { priority: DRAFT_PROMPT_DEGRADATION_PRIORITY.linkedCast, strategy: 'complete-lines' as const },
-            }] : []),
-            ...(characterContext.secondary ? [{
-              sectionName: 'secondary-cast',
-              label: '',
-              text: characterContext.secondary,
-              degradation: { priority: DRAFT_PROMPT_DEGRADATION_PRIORITY.secondaryCast, strategy: 'complete-lines' as const },
-            }] : []),
+            ...characterBudgetSections(characterContext),
           ],
         }
       : architectureContext
@@ -531,7 +555,7 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
       .withArchitecture(draftArchitecture.text)
       .withGlobalGuidance(mergedGuidance)
       .withWritingStyle(novelConfig.writingStyle || '')
-      .withNovelConfig(novelConfig)
+      .withNovelConfig(draftNovelConfig)
       .withWordNumber(normalizeChapterWordsTarget(this.chapterInfo.wordsTarget, novelConfig.wordsPerChapter))
       // ---- 章节公共区（首章与后续章都必须完整注入）----
       .withChapterInfo(this.chapterInfo)
@@ -554,6 +578,12 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
     context.data.contextReceipt = emptyContextReceipt
     context.data.planningMaterialCount = planningMaterials.count
     context.data.contextReceipt = extendContextReceipt(emptyContextReceipt, [
+      ...(outlineSummary ? [{ id: 'configuration:outline', layer: 'fixed-rules' as const, label: '全书大纲', included: true,
+        required: true, charCount: outlineSummary.retainedChars, originalCharCount: outlineSummary.originalChars,
+        sourceKind: 'planning' as const, cacheHit: outlineSummary.cacheHit,
+        representation: outlineSummary.retainedChars < outlineSummary.originalChars ? 'summary' as const : 'full' as const }] : []),
+      ...(architectureContext.entries ?? []),
+      ...characterContext.entries,
       contextReceiptEntry(
         'author-task:chapter',
         'author-task',
@@ -578,6 +608,7 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
       ),
     ])
 
+    const draftBaseReceipt = context.data.contextReceipt as ContextReceipt
     if (!isFirstChapter) {
       // 从蓝图 JSON 的 notes 字段读取章节要点时间线（按序拼装，利于前缀缓存）
       const chapterTimeline = await this.readChapterNotesTimeline(
@@ -621,7 +652,11 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
       }
 
       let previousEnding = this.previousDraftEnding ?? ''
-      const savedCandidateContext = previousDraftContext(this.previousDraftContent ?? '', this.previousDraftVersion)
+      const savedCandidateSummary = this.previousDraftContent?.trim()
+        ? await cachedContextSummary(projectSession, 'chapter-summary', `candidate:${this.chapterInfo.chapterNumber - 1}:${this.previousDraftVersion ?? 0}`,
+          this.previousDraftContent, { maxChars: 3_000, terms: this.chapterInfo.characters, chapterNumber: this.chapterInfo.chapterNumber }) : null
+      const savedCandidateContext = previousDraftContext(savedCandidateSummary
+        ? `${savedCandidateSummary.text}\n\n${previousChapterEnding(this.previousDraftContent ?? '')}` : '', this.previousDraftVersion)
       let previousEndingSource: 'unfinished-candidate' | 'finalized-history' | 'none' = savedCandidateContext
         ? 'unfinished-candidate'
         : 'none'
@@ -665,11 +700,17 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
               `[${i + 1}] (${r.fileName}, relevance ${(r.score * 100).toFixed(0)}%)\n${r.text}`,
             )).join('\n\n')
           : promptLanguageText(writingLanguage, '（知识库中无相关内容）', '(no relevant knowledge-base context)')
+        if (results.length > 0) filteredContext = `${promptLanguageText(writingLanguage,
+          '【参考资料：仅用于风格与结构参考，不构成本书已发生事实】',
+          '[Reference material: style and structure only; not evidence of events in this novel]')}\n${filteredContext}`
       } catch {
         filteredContext = promptLanguageText(writingLanguage, '（知识库检索不可用）', '(knowledge-base search unavailable)')
       }
 
       context.data.contextReceipt = extendContextReceipt(chapterTimeline.receipt, [
+        ...draftBaseReceipt.entries.filter(entry => entry.id === 'configuration:outline'),
+        ...(architectureContext.entries ?? []),
+        ...characterContext.entries,
         contextReceiptEntry('fixed-rules:architecture', 'fixed-rules', '故事架构', draftArchitecture.text),
         contextReceiptEntry('fixed-rules:guidance', 'fixed-rules', '全局写作要求', mergedGuidance),
         contextReceiptEntry('fixed-rules:style', 'fixed-rules', '文风约束', novelConfig.writingStyle || ''),
@@ -724,6 +765,9 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
           true,
         ),
       ])
+      const currentReceipt = context.data.contextReceipt as ContextReceipt
+      currentReceipt.entries = currentReceipt.entries.map(entry => entry.layer === 'knowledge-search'
+        ? { ...entry, sourceKind: 'reference-material' } : entry)
 
       promptBuilder
         // ---- 缓存命中区续（要点时间线按序追加，前缀对齐）----
@@ -741,10 +785,13 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
     }
 
     const prompt = promptBuilder.build()
+    const draftSystemRole = `${promptBuilder.getSystemRole()}\n${promptLanguageText(writingLanguage,
+      '资料来源规则：定稿正文与核实的连续性事实代表已发生事件。未定稿正文是候选；架构、人物背景与弧线、未来蓝图是设定或规划。当前人物状态以核实的前文状态和本章蓝图为准。参考书片段仅供风格与结构参考，不得据此断言本书已经发生事件或提前写出后续章节。',
+      'Source rules: finalized prose and verified continuity facts establish occurred events. Unfinished prose is a candidate; architecture, character background/arcs and upcoming blueprints are settings or plans. Current character states follow verified prior states and this chapter blueprint. Reference excerpts provide style/structure guidance and must not establish events or advance future chapters.')} `
     const serializedGlobalGuidance = typeof novelConfig.globalGuidance === 'string'
       ? JSON.stringify(novelConfig.globalGuidance)
       : undefined
-    const serializedNovelConfig = JSON.stringify(novelConfig, null, 2)
+    const serializedNovelConfig = JSON.stringify(draftNovelConfig, null, 2)
     const novelConfigRanges = promptTextOccurrences(prompt, serializedNovelConfig).map(start => ({
       start,
       end: start + serializedNovelConfig.length,
@@ -793,33 +840,21 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
         }))
       : []
     const promptBudget = promptBudgetSectionsForDraft({
-      systemPrompt: promptBuilder.getSystemRole(),
+      systemPrompt: draftSystemRole,
       prompt,
       targetChapterText: JSON.stringify(this.chapterInfo, null, 2),
       contexts: [
         ...globalGuidanceConfigSections,
         ...locatedGuidanceSections,
         ...draftArchitecture.sections,
-        ...(typeof novelConfig.coreOutline === 'string' && novelConfig.coreOutline
+        ...(typeof draftNovelConfig.coreOutline === 'string' && draftNovelConfig.coreOutline
           ? [{
               sectionName: 'core-outline',
               label: '',
-              text: JSON.stringify(novelConfig.coreOutline),
-              degradation: { priority: DRAFT_PROMPT_DEGRADATION_PRIORITY.coreOutline, strategy: 'json-string' as const },
+              text: JSON.stringify(draftNovelConfig.coreOutline),
             }]
           : []),
-        ...(characterContext.linked && !isFirstChapter ? [{
-          sectionName: 'linked-cast',
-          label: '',
-          text: characterContext.linked,
-          degradation: { priority: DRAFT_PROMPT_DEGRADATION_PRIORITY.linkedCast, strategy: 'complete-lines' as const },
-        }] : []),
-        ...(characterContext.secondary && !isFirstChapter ? [{
-          sectionName: 'secondary-cast',
-          label: '',
-          text: characterContext.secondary,
-          degradation: { priority: DRAFT_PROMPT_DEGRADATION_PRIORITY.secondaryCast, strategy: 'complete-lines' as const },
-        }] : []),
+        ...(!isFirstChapter ? characterBudgetSections(characterContext) : []),
         {
           sectionName: 'distant-blueprints',
           label: '',
@@ -835,17 +870,22 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
     let draftPersisted = false
     try {
       this.assertNotCancelled(context)
+      if (!sameProjectSessionContext(projectSession, projectSessionContextFromProject(useProjectStore.getState().currentProject))) {
+        throw new Error('当前项目已切换，章节生成已停止')
+      }
       const cancellation = observeWorkflowCancellation(context)
       let runtime: GenerationRuntime | null = null
       let cleanDraftText: string
       try {
         const generationModelId = workflowGenerationModelId(context)
         runtime = await this.dependencies.createRuntime({
-          budget: DRAFT_GENERATION_BUDGET,
+          budget: { ...DRAFT_GENERATION_BUDGET, respectIntentOutputCaps: true,
+            maxRequestedOutputTokensPerAttempt: draftOutputReservation(targetChars) },
           ...(generationModelId ? { modelId: generationModelId } : {}),
         })
         cleanDraftText = await runtime.execute(async ({ session }) => {
           this.assertNotCancelled(context)
+          assertDraftProjectSession(projectSession)
           callbacks.setProgress(10)
           let rawPreview = ''
           let previewActive = true
@@ -856,7 +896,7 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
               reasoningStage: 'drafting',
               output: 'visible-text',
               messages: [
-                { role: 'system', content: promptBuilder.getSystemRole() },
+                { role: 'system', content: draftSystemRole },
                 { role: 'user', content: prompt },
               ],
               promptBudget,
@@ -891,7 +931,10 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
             targetChars,
             callbacks,
             context,
-            systemRole: promptBuilder.getSystemRole(),
+            systemRole: draftSystemRole,
+            coreContext: [draftArchitecture.text, !isFirstChapter ? characterContext.text : '', JSON.stringify(draftNovelConfig, null, 2)].filter(Boolean).join('\n\n'),
+            coreSections: [...draftArchitecture.sections, ...(!isFirstChapter ? characterBudgetSections(characterContext) : []),
+              { sectionName: 'novel-configuration', label: '', text: JSON.stringify(draftNovelConfig, null, 2) }],
             chapterInfo: this.chapterInfo,
             futureBlueprints: futureBlueprintsStr,
             globalGuidance: mergedGuidance,
@@ -1018,6 +1061,8 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
     callbacks: CommandExecuteParams['callbacks']
     context: CommandExecuteParams['context']
     systemRole: string
+    coreContext: string
+    coreSections: readonly DraftArchitectureSection[]
     chapterInfo: ChapterInfo
     futureBlueprints: string
     globalGuidance: string
@@ -1044,6 +1089,7 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
 
     while (this.shouldAutoContinue(draft, params.targetChars, rounds, lastFinishReason)) {
       if (params.context.cancelled) break
+      assertDraftProjectSession(requireWorkflowProjectSession(params.context))
       rounds += 1
       const currentChars = countDraftUnits(draft)
       params.callbacks.log(`  自动续写第 ${rounds} 段：当前约 ${currentChars}/${params.targetChars} 字`)
@@ -1080,6 +1126,9 @@ ${params.futureBlueprints}
 【全局写作要求】
 ${params.globalGuidance}
 
+【人物核心与全书设定（沿用本次写作资料）】
+${params.coreContext}
+
 【文风要求】
 ${params.writingStyle || '（无）'}
 
@@ -1104,6 +1153,9 @@ ${params.futureBlueprints}
 [Project-wide writing guidance]
 ${params.globalGuidance}
 
+[Core cast and novel settings from this writing session]
+${params.coreContext}
+
 [Writing style]
 ${params.writingStyle || '(none)'}
 
@@ -1125,7 +1177,20 @@ ${visibleTail}`,
             { role: 'system', content: params.systemRole },
             { role: 'user', content: continuationPrompt },
           ],
+          promptBudget: promptBudgetSectionsForDraft({ systemPrompt: params.systemRole, prompt: continuationPrompt,
+            targetChapterText: JSON.stringify(params.chapterInfo, null, 2), contexts: [
+              ...params.coreSections,
+              { sectionName: 'global-guidance', label: '', text: params.globalGuidance },
+              { sectionName: 'writing-style', label: '', text: params.writingStyle },
+              { sectionName: 'existing-ending', label: '', text: visibleTail },
+              { sectionName: 'distant-blueprints', label: '', text: params.futureBlueprints,
+                degradation: { priority: 10, strategy: 'complete-lines' } },
+            ] }),
         }, {
+          onPromptBudgetPreflight: report => {
+            params.callbacks.setPromptBudgetReport?.(report)
+            if (report.compaction) params.callbacks.log(formatPromptBudgetCompactionNotice(report, params.context.uiLocale))
+          },
           signal: params.signal,
           onChunk: chunk => {
             if (!previewActive || params.context.cancelled) return
@@ -1208,12 +1273,6 @@ ${visibleTail}`,
         degradation: { priority: DRAFT_PROMPT_DEGRADATION_PRIORITY.premise, strategy: 'utf8-prefix' },
       },
       {
-        sectionName: 'secondary-cast',
-        label: promptLanguageText(writingLanguage, '角色图谱', 'Character graph'),
-        text: core?.charactersArch?.trim() || '',
-        degradation: { priority: DRAFT_PROMPT_DEGRADATION_PRIORITY.secondaryCast, strategy: 'complete-lines' },
-      },
-      {
         sectionName: 'worldbuilding',
         label: promptLanguageText(writingLanguage, '世界观', 'Worldbuilding'),
         text: core?.worldbuilding?.trim() || '',
@@ -1225,9 +1284,20 @@ ${visibleTail}`,
         degradation: { priority: DRAFT_PROMPT_DEGRADATION_PRIORITY.synopsis, strategy: 'utf8-prefix' },
       },
     ]
-    const sections = candidates.filter(section => section.text)
+    const sections: DraftArchitectureSection[] = []
+    const entries: ContextReceiptEntry[] = []
+    for (const candidate of candidates.filter(section => section.text)) {
+      const summary = await cachedContextSummary(projectSession, 'architecture', candidate.sectionName, candidate.text,
+        { maxChars: candidate.sectionName === 'worldbuilding' ? 2_400 : 1_600,
+          terms: this.chapterInfo.characters, chapterNumber: this.chapterInfo.chapterNumber })
+      sections.push({ ...candidate, text: summary.text, degradation: undefined })
+      entries.push({ id: `architecture:${candidate.sectionName}`, layer: 'fixed-rules', label: candidate.label,
+        included: true, required: true, sourceKind: 'project-setting', cacheHit: summary.cacheHit,
+        charCount: summary.retainedChars, originalCharCount: summary.originalChars,
+        representation: summary.retainedChars < summary.originalChars ? 'summary' : 'full' })
+    }
     return {
-      sections,
+      sections, entries, legacyCharactersPresent: !!core?.charactersArch?.trim(),
       text: sections.map(section => `【${section.label}】\n${section.text}`).join('\n\n---\n\n'),
     }
   }
@@ -1293,199 +1363,89 @@ ${visibleTail}`,
     writingLanguage: WritingLanguage,
     linkedNames: readonly string[],
   ): Promise<DraftCharacterContext> {
-    try {
-      const cards = await ipc.invokeWithProjectSession(projectSession, 'db:character-get-all', projectPath)
-      const linkedNameSet = new Set(linkedNames)
-      const linkedCards = cards.filter(card => card.name && linkedNameSet.has(card.name))
-      const secondaryCards = cards.filter(card => card.name && !linkedNameSet.has(card.name))
-      const currentState = (card: CharacterData) => card.currentState
-        ? {
-            location: card.currentState.location,
-            powerLevel: card.currentState.powerLevel,
-            physicalState: card.currentState.physicalState,
-            mentalState: card.currentState.mentalState,
-            keyItems: card.currentState.keyItems,
-            recentEvents: card.currentState.recentEvents,
-            updatedAtChapter: card.currentState.updatedAtChapter,
-          }
-        : undefined
-      const linkedLines = linkedCards.map(card => {
-        const state = currentState(card)
-        return JSON.stringify({
-          name: card.name,
-          role: card.role,
-          gender: card.gender,
-          age: card.age,
-          appearance: card.appearance,
-          personality: card.personality,
-          background: card.background,
-          abilities: card.abilities,
-          motivation: card.motivation,
-          relationships: card.relationships,
-          arc: card.arc,
-          notes: card.notes,
-          ...(state ? { currentState: state } : {}),
-        })
-      })
-      const secondaryLines = secondaryCards.map(card => {
-        const state = currentState(card)
-        return JSON.stringify({
-          name: card.name,
-          role: card.role,
-          ...(card.arc ? { arc: card.arc } : {}),
-          ...(state ? {
-            currentState: {
-              location: state.location,
-              keyItems: state.keyItems,
-              recentEvents: state.recentEvents,
-              updatedAtChapter: state.updatedAtChapter,
-            },
-          } : {}),
-        })
-      })
-      const linked = linkedLines.length > 0
-        ? `${promptLanguageText(writingLanguage, '【本章关联角色卡】', '[Linked character cards]')}\n${linkedLines.join('\n')}`
-        : ''
-      const secondary = secondaryLines.length > 0
-        ? `${promptLanguageText(writingLanguage, '【次要角色简表】', '[Secondary character summaries]')}\n${secondaryLines.join('\n')}`
-        : ''
-      const text = [linked, secondary].filter(Boolean).join('\n\n')
-      return {
-        linked,
-        secondary,
-        text: text || promptLanguageText(writingLanguage, '（暂无角色状态档案）', '(no character state records)'),
-      }
-    } catch {
-      return {
-        linked: '',
-        secondary: '',
-        text: promptLanguageText(writingLanguage, '（角色状态档案读取失败）', '(character state records unavailable)'),
-      }
+    const cards = await ipc.invokeWithProjectSession(projectSession, 'db:character-get-all', projectPath)
+    const input = { chapterNumber: this.chapterInfo.chapterNumber, characters: linkedNames,
+      keyEvents: this.chapterInfo.keyEvents, writingLanguage }
+    const initial = planDraftCharacterContext(cards, input)
+    const summaries = new Map<string, string>()
+    const cacheHits = new Map<string, boolean>()
+    for (const card of cards.filter(card => initial.selectedCoreNames.includes(card.name))) {
+      const summary = await cachedContextSummary(projectSession, 'character-detail', `card:${card.name}`,
+        [card.appearance, card.background, card.arc].filter(Boolean).join('\n'),
+        { maxChars: 800, terms: linkedNames, chapterNumber: this.chapterInfo.chapterNumber })
+      summaries.set(card.name, summary.text)
+      cacheHits.set(card.name, summary.cacheHit)
+    }
+    const plan = planDraftCharacterContext(cards, input, summaries)
+    const text = [plan.core, plan.details, plan.secondary].filter(Boolean).join('\n\n')
+    return {
+      linked: plan.core, details: plan.details, detailSummary: plan.detailSummary, secondary: plan.secondary,
+      cardCount: cards.length,
+      text: text || promptLanguageText(writingLanguage, '（暂无角色状态档案，未知资料需与本章蓝图保持一致）', '(no character state records) Unknown details must follow the chapter blueprint.'),
+      entries: plan.entries.map(entry => ({ ...entry, ...(cacheHits.has(entry.label) ? { cacheHit: cacheHits.get(entry.label) } : {}) })),
     }
   }
-
   /**
    * 从 finalized 定稿连续性投影读取章节要点时间线，旧蓝图 notes 仅作兼容回退。
    * 近 5 章完整收录；更早期仅保留标题行，控制总量 ≤ 3000 字。
    * 按序拼装保证前缀稳定，最大化 LLM 上下文缓存命中。
    */
   private async readChapterNotesTimeline(
-    projectPath: string,
-    currentChapter: number,
-    projectSession: ProjectSessionContext,
-    writingLanguage: WritingLanguage,
-    currentEntities: readonly string[],
+    projectPath: string, currentChapter: number, projectSession: ProjectSessionContext,
+    writingLanguage: WritingLanguage, currentEntities: readonly string[],
   ): Promise<{ text: string; factCount: number; receipt: ContextReceipt }> {
-    const FULL_WINDOW = 5  // 近 N 章完整收录
-    const MAX_CHARS = 3000 // 总量上限
     const entries: ContextSelectionEntry[] = []
-    let finalizedContinuity: FinalizedContinuityProjection[] = []
-    try {
-      finalizedContinuity = await ipc.invokeWithProjectSession(
-        projectSession,
-        'db:continuity-list-before',
-        currentChapter,
-        projectPath,
-      )
-    } catch { /* 兼容未迁移的旧项目，逐章读取蓝图 notes */ }
-    const continuityByChapter = new Map(
-      finalizedContinuity.map(projection => [projection.chapterNumber, projection]),
-    )
-
-    for (let i = 1; i < currentChapter; i++) {
-      try {
-        const projection = continuityByChapter.get(i)
-        const bp = projection
-          ? null
-          : await ipc.invokeWithProjectSession(projectSession, 'db:blueprint-get', i, projectPath)
-        if (!projection && !bp) continue
-        const isRecent = i >= currentChapter - FULL_WINDOW
-        const title = projection?.chapterTitle || bp?.title || ''
-        const notes = projection?.chapterNotes || bp?.notes || ''
-        for (const [factIndex, fact] of (projection?.facts ?? []).entries()) {
+    let continuity: FinalizedContinuityProjection[] = []
+    try { continuity = await ipc.invokeWithProjectSession(projectSession, 'db:continuity-list-before', currentChapter, projectPath) } catch { /* actual prose fallback below */ }
+    let drafts: DraftMeta[] = []
+    try { drafts = await ipc.invokeWithProjectSession(projectSession, 'db:draft-list-all', projectPath) } catch { /* no reference-note fallback */ }
+    const byChapter = new Map<number, (typeof drafts)[number]>()
+    for (const draft of drafts.filter(draft => draft.chapterNumber < currentChapter && ['draft', 'reviewing', 'finalized'].includes(draft.status))) {
+      const existing = byChapter.get(draft.chapterNumber)
+      if (!existing || (draft.status === 'finalized' && existing.status !== 'finalized')
+        || (draft.status === existing.status && (draft.version ?? draft.id) > (existing.version ?? existing.id))) byChapter.set(draft.chapterNumber, draft)
+    }
+    const projections = new Map(continuity.filter(row => row.chapterNumber < currentChapter).map(row => [row.chapterNumber, row]))
+    const chapters = [...new Set([...projections.keys(), ...byChapter.keys()])].sort((a, b) => a - b)
+    for (const chapter of chapters) {
+      const projection = projections.get(chapter)
+      const recent = chapter >= currentChapter - 5
+      if (projection) {
+        for (const [index, fact] of (projection.facts ?? []).entries()) {
           if (!factAppliesAtChapter(fact, currentChapter)) continue
-          const entityRelevant = fact.entities.some(entity => currentEntities.includes(entity))
-            || currentEntities.some(entity => (
-              fact.statement.includes(entity) || fact.evidence.includes(entity)
-            ))
-          if (!isRecent && !entityRelevant) {
-            entries.push({
-              id: `fact:${fact.sourceChapter}:${factIndex}`,
-              layer: projection ? 'finalized-history' : 'historical-fact',
-              label: `第${fact.sourceChapter}章${fact.category}事实`,
-              content: promptLanguageText(
-                writingLanguage,
-                `- [${fact.category}] ${fact.statement}（来源第${fact.sourceChapter}章；证据：${fact.evidence}）`,
-                `- [${fact.category}] ${fact.statement} (source: Chapter ${fact.sourceChapter}; evidence: ${fact.evidence})`,
-              ),
-              priority: 0,
-              order: i * 100 + factIndex,
-              sourceChapter: fact.sourceChapter,
-              excludedReason: 'not-relevant',
-            })
-            continue
-          }
-          entries.push({
-            id: `fact:${fact.sourceChapter}:${factIndex}`,
-            layer: projection ? 'finalized-history' : 'historical-fact',
-            label: `第${fact.sourceChapter}章${fact.category}事实`,
-            content: promptLanguageText(
-              writingLanguage,
-              `- [${fact.category}] ${fact.statement}（来源第${fact.sourceChapter}章；证据：${fact.evidence}）`,
-              `- [${fact.category}] ${fact.statement} (source: Chapter ${fact.sourceChapter}; evidence: ${fact.evidence})`,
-            ),
-            priority: entityRelevant ? 100 : isRecent ? 70 : 35,
-            order: i * 100 + factIndex,
-            sourceChapter: fact.sourceChapter,
-          })
+          const related = fact.entities.some(name => currentEntities.includes(name))
+          entries.push({ id: `fact:${chapter}:${index}`, layer: 'finalized-history', label: `第${chapter}章${fact.category}`,
+            content: promptLanguageText(writingLanguage, `- [${fact.category}] ${fact.statement}（来源第${chapter}章；证据：${fact.evidence}）`,
+              `- [${fact.category}] ${fact.statement} (source: Chapter ${chapter}; evidence: ${fact.evidence})`), sourceChapter: chapter,
+            sourceKind: 'finalized-prose', representation: 'full', required: recent && related && fact.category === 'character-state',
+            priority: related ? 100 : recent ? 70 : 20, order: chapter * 100 + index,
+            ...(!recent && !related ? { excludedReason: 'not-relevant' as const } : {}) })
         }
-
-        if (isRecent && notes.trim()) {
-          // 近 N 章：完整收录要点
-          entries.push({
-            id: `chapter-notes:${i}`,
-            layer: projection ? 'finalized-history' : 'current-arc',
-            label: `第${i}章章节要点`,
-            content: promptLanguageText(
-            writingLanguage,
-            `【第${i}章 ${title}】\n${notes.trim()}`,
-            `[Chapter ${i}: ${title}]\n${notes.trim()}`,
-            ),
-            priority: 80,
-            order: i * 100,
-            sourceChapter: i,
-          })
-        } else {
-          // 远期章节：仅保留标题行（节省 Token）
-          entries.push({
-            id: `chapter-title:${i}`,
-            layer: projection ? 'finalized-history' : 'historical-fact',
-            label: `第${i}章标题`,
-            content: promptLanguageText(
-            writingLanguage,
-            `【第${i}章 ${title}】`,
-            `[Chapter ${i}: ${title}]`,
-            ),
-            priority: 20,
-            order: i * 100,
-            sourceChapter: i,
-          })
-        }
-      } catch { /* 忽略单章读取失败 */ }
+        if (projection.chapterNotes.trim()) entries.push({ id: `chapter-notes:${chapter}`, layer: 'finalized-history',
+          label: `第${chapter}章 ${projection.chapterTitle}`, content: projection.chapterNotes, sourceChapter: chapter,
+          sourceKind: 'finalized-prose', representation: 'summary', priority: recent ? 80 : 25, order: chapter * 100 })
+        continue
+      }
+      const draft = byChapter.get(chapter)!
+      try {
+        const full = await ipc.invokeWithProjectSession(projectSession, 'db:draft-get-full', draft.id, projectPath)
+        if (!full?.content?.trim()) continue
+        const summary = await cachedContextSummary(projectSession, 'chapter-summary', `draft:${draft.id}`, full.content,
+          { maxChars: recent ? 1_800 : 600, terms: currentEntities, chapterNumber: currentChapter })
+        const finalized = draft.status === 'finalized'
+        entries.push({ id: `prose-summary:${draft.id}`, layer: finalized ? 'finalized-history' : 'unfinished-candidate',
+          label: `${writingLanguage === 'en-US' ? 'Chapter' : '第'}${chapter} ${finalized ? '定稿' : '草稿候选'}`,
+          content: `${finalized ? '[Finalized prose summary]' : '[Unfinished candidate summary; unconfirmed]'}\n${summary.text}`,
+          sourceChapter: chapter, sourceKind: finalized ? 'finalized-prose' : 'unfinished-prose',
+          representation: 'summary', cacheHit: summary.cacheHit, originalCharCount: full.content.length,
+          priority: recent ? 80 : 25, order: chapter * 100 })
+      } catch { entries.push({ id: `prose-unavailable:${draft.id}`, layer: 'historical-fact', label: `第${chapter}章正文`,
+        content: '', priority: 0, order: chapter * 100, excludedReason: 'unavailable' }) }
     }
-
-    const selection = selectContextEntries(currentChapter, entries, { maxChars: MAX_CHARS })
-    const selectedFactIds = new Set(
-      selection.selectedIds.filter(id => id.startsWith('fact:')),
-    )
-
-    return {
-      text: selection.text || promptLanguageText(writingLanguage, '（无章节要点）', '(no chapter notes)'),
-      factCount: selectedFactIds.size,
-      receipt: selection.receipt,
-    }
+    const selection = selectContextEntries(currentChapter, entries, { maxChars: 6_000 })
+    return { text: selection.text || promptLanguageText(writingLanguage, '（无章节要点：没有可核实的已写前文；未写蓝图仅作规划）', '(no chapter notes) Only actual manuscripts establish history; unwritten blueprints are plans.'),
+      factCount: selection.selectedIds.filter(id => id.startsWith('fact:')).length, receipt: selection.receipt }
   }
-
   private async readActiveNarrativeThreads(
     projectPath: string,
     projectSession: ProjectSessionContext,

@@ -15,7 +15,13 @@ export function planDraftCharacterContext(cards: readonly CharacterData[], input
   chapterNumber: number; characters: readonly string[]; keyEvents: string; writingLanguage: 'zh-CN' | 'en-US'
 }, detailSummaries: ReadonlyMap<string, string> = new Map()) {
   const coreNames = new Set(input.characters)
-  for (const card of cards) if (card.name && input.keyEvents.includes(card.name)) coreNames.add(card.name)
+  let remainingEvents = input.keyEvents
+  for (const card of [...cards].sort((a, b) => b.name.length - a.name.length)) {
+    if (card.name && remainingEvents.includes(card.name)) {
+      coreNames.add(card.name)
+      remainingEvents = remainingEvents.replaceAll(card.name, '\0'.repeat(card.name.length))
+    }
+  }
   const names = cards.map(card => card.name)
   const coreCards = cards.filter(card => coreNames.has(card.name))
   const stateFor = (card: CharacterData) => card.currentState
@@ -24,12 +30,12 @@ export function planDraftCharacterContext(cards: readonly CharacterData[], input
     ? card.currentState : undefined
   const linked = new Set(coreCards.flatMap(card => relatedTargets(card, names)))
   const related = cards.filter(card => !coreNames.has(card.name))
-    .map((card, index) => ({ card, index, relevant: linked.has(card.name)
-      || relatedTargets(card, [...coreNames]).some(name => coreNames.has(name))
-      || (!!stateFor(card)?.location && stateFor(card)!.location.length > 1 && input.keyEvents.includes(stateFor(card)!.location))
-      || [...card.background.matchAll(/(?:所属|势力|驻地|faction|location)\s*[:：]\s*([^，。；;\n]+)/giu)]
-        .some(match => match[1]!.trim().length > 1 && input.keyEvents.includes(match[1]!.trim())) }))
-    .filter(row => row.relevant).slice(0, 12)
+    .map((card, index) => ({ card, index, score: (linked.has(card.name) ? 400 : 0)
+      + (relatedTargets(card, [...coreNames]).some(name => coreNames.has(name)) ? 300 : 0)
+      + ((!!stateFor(card)?.location && stateFor(card)!.location.length > 1 && input.keyEvents.includes(stateFor(card)!.location)) ? 100 : 0)
+      + ([...card.background.matchAll(/(?:所属|势力|驻地|faction|location)\s*[:：]\s*([^，。；;\n]+)/giu)]
+        .some(match => match[1]!.trim().length > 1 && input.keyEvents.includes(match[1]!.trim())) ? 90 : 0) }))
+    .filter(row => row.score > 0).sort((a, b) => b.score - a.score || a.index - b.index).slice(0, 12)
   const relatedNames = new Set(related.map(row => row.card.name))
   const coreLines = coreCards.map(card => JSON.stringify({ name: card.name, role: card.role, gender: card.gender, age: card.age,
     appearance: card.appearance,
