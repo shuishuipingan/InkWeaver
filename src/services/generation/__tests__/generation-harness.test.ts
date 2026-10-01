@@ -37,6 +37,18 @@ function task() {
 }
 
 describe('GenerationHarness', () => {
+  it('uses an extractive fallback for optional detail without deleting core cast', async () => {
+    const complete = vi.fn<CompletionPort['complete']>().mockResolvedValue({ content: 'done', finishReason: 'stop' })
+    const session = createGenerationHarness({ modelSource: { snapshotDefaultModel: () => ({ revision: 'summary', model: model() }) },
+      completionPort: { complete }, policy: { maxAttempts: 1, maxRequestedOutputTokens: 4_096, maxRequestedOutputTokensPerAttempt: 4_096, deadlineMs: 60_000 } }).openSession()
+    const details = 'x'.repeat(100)
+    await session.complete({ purpose: 'chapter-draft', output: 'visible-text', messages: [{ role: 'user', content: `CAST\n${details}` }],
+      promptBudget: { limitUtf8Bytes: 40, sections: [
+        { sectionName: 'core-cast', messageIndex: 0, finalText: 'CAST' },
+        { sectionName: 'cast-details', messageIndex: 0, finalText: details, degradation: { priority: 10, strategy: 'summary', fallbackText: 'summary' } },
+      ] } })
+    expect(complete.mock.calls[0]![0].messages[0]!.content).toBe('CAST\nsummary')
+  })
   it('retains large protected drafting context under authoritative adaptive capacity', async () => {
     const complete = vi.fn<CompletionPort['complete']>().mockResolvedValue({ content: 'done', finishReason: 'stop' })
     const harness = createGenerationHarness({

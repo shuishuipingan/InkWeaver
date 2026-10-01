@@ -2,7 +2,8 @@
 export interface PromptBudgetDegradation {
   /** Lower priorities compact first; ties preserve declaration order. */
   priority: number
-  strategy: 'utf8-prefix' | 'complete-lines' | 'whole-section' | 'json-string'
+  strategy: 'utf8-prefix' | 'complete-lines' | 'whole-section' | 'json-string' | 'summary'
+  fallbackText?: string
 }
 
 export interface PromptBudgetSection {

@@ -47,6 +47,10 @@ export interface ContextSelectionEntry {
 }
 
 export interface ContextReceiptEntry {
+  representation?: 'full' | 'summary' | 'omitted'
+  sourceKind?: 'project-setting' | 'character-profile' | 'finalized-prose' | 'unfinished-prose' | 'reference-material' | 'planning'
+  cacheHit?: boolean
+  originalCharCount?: number
   id: string
   layer: ContextLayer
   label: string

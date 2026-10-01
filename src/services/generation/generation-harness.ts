@@ -277,7 +277,8 @@ function locatePromptBudgetSections(
       || (section.degradation !== undefined && (
         !Number.isSafeInteger(section.degradation.priority)
         || section.degradation.priority < 0
-        || !['utf8-prefix', 'complete-lines', 'whole-section', 'json-string'].includes(section.degradation.strategy)
+        || !['utf8-prefix', 'complete-lines', 'whole-section', 'json-string', 'summary'].includes(section.degradation.strategy)
+        || (section.degradation.strategy === 'summary' && typeof section.degradation.fallbackText !== 'string')
       ))
     ) {
       throw new GenerationHarnessError('INVALID_POLICY', '提示词预算区段定义无效。')
@@ -369,6 +370,8 @@ function compactTextForSection(
   switch (section.degradation?.strategy) {
     case 'utf8-prefix':
       return utf8Prefix(text, maxUtf8Bytes)
+    case 'summary':
+      return utf8Bytes(section.degradation.fallbackText ?? '') <= maxUtf8Bytes ? section.degradation.fallbackText ?? '' : ''
     case 'complete-lines':
       return completeLinePrefix(text, maxUtf8Bytes)
     case 'whole-section':
