@@ -30,7 +30,7 @@ describe('chapter-relevant cast context', () => {
     expect(result.core).toContain('御火')
     expect(result.secondary).toContain('人物1')
     expect(result.secondary).not.toContain('人物228')
-    expect(result.entries.filter(entry => entry.included)).toHaveLength(2)
+    expect(result.entries.filter(entry => entry.id.startsWith('cast:') && entry.included)).toHaveLength(2)
     expect(result.entries.filter(entry => !entry.included)).toHaveLength(227)
     expect(result.entries.find(entry => entry.id === 'cast:0')).toMatchObject({ required: true, included: true })
   })

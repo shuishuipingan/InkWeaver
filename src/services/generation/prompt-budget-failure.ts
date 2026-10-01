@@ -19,8 +19,11 @@ const SECTION_LABELS: Readonly<Record<string, readonly [string, string]>> = Obje
   'story-premise': ['故事前提', 'Story premise'],
   'core-outline': ['核心大纲', 'Core outline'],
   synopsis: ['剧情概要', 'Synopsis'],
-  'linked-cast': ['本章关联角色卡', 'Linked character cards'],
-  'secondary-cast': ['次要角色', 'Secondary characters'],
+  'core-cast': ['本章核心角色档案', 'Core cast profiles'],
+  'linked-cast': ['本章角色背景与弧线', 'Cast background and arcs'],
+  'secondary-cast': ['相关非出场角色', 'Related non-present cast'],
+  'novel-configuration': ['小说配置', 'Novel configuration'],
+  'existing-ending': ['已写正文结尾', 'Existing manuscript ending'],
   'distant-blueprints': ['远期章节蓝图', 'Distant blueprints'],
   genre: ['作品类型', 'Genre'],
   'protagonist-profile': ['主角设定', 'Protagonist profile'],
@@ -51,8 +54,27 @@ function formatInteger(value: number, locale: Locale): string {
   return new Intl.NumberFormat(locale).format(value)
 }
 
+export function formatAdaptivePromptBudgetNotice(report: PromptBudgetReport, locale: Locale): string {
+  if (report.limitInputTokens === undefined || report.estimatedInputTokens === undefined) return ''
+  const estimate = formatInteger(report.estimatedInputTokens, locale)
+  const limit = formatInteger(report.limitInputTokens, locale)
+  const output = formatInteger(report.reservedOutputTokens, locale)
+  const capacity = report.capacityKnown && report.contextWindowTokens
+    ? formatInteger(report.contextWindowTokens, locale)
+    : locale === 'zh-CN' ? '未知，使用保守预算' : 'unknown; conservative budget'
+  return locale === 'zh-CN'
+    ? `写前预算：估算输入 ${estimate}/${limit} Tokens；输出预留 ${output}；模型上下文 ${capacity}。`
+    : `Preflight budget: estimated input ${estimate}/${limit} tokens; output reservation ${output}; model context ${capacity}.`
+}
+
 /** Formats only the safe byte report; prompt fragments never cross this boundary. */
 export function formatPromptBudgetFailure(report: PromptBudgetReport, locale: Locale): string {
+  if (report.limitInputTokens !== undefined) {
+    const protectedNames = [...new Set(report.protectedSections ?? [])].map(name => sectionLabel(name, locale)).join(locale === 'zh-CN' ? '、' : ', ')
+    return locale === 'zh-CN'
+      ? `${formatAdaptivePromptBudgetNotice(report, locale)} 必保资料无法完整容纳，已阻止模型请求。保护区段：${protectedNames}。${report.capacityKnown ? '' : '模型上下文容量未知，请在模型设置中确认容量。'}请使用已确认的大容量模型、调整本章范围或精简核心说明。结果码：${report.errorCode}。`
+      : `${formatAdaptivePromptBudgetNotice(report, locale)} Required material cannot fit; the request was blocked. Protected sections: ${protectedNames}. ${report.capacityKnown ? '' : 'Confirm the model context capacity in settings. '}Use a confirmed larger-capacity model, narrow this chapter, or simplify core descriptions. Code: ${report.errorCode}.`
+  }
   const contributors = [...report.sections]
     .sort((left, right) => right.utf8Bytes - left.utf8Bytes)
     .slice(0, 3)

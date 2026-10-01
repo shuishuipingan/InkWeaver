@@ -170,6 +170,7 @@ export interface StepCallbacks {
   /** 保存本步骤最近一次模型调用的安全提示词预算摘要。 */
   setPromptBudgetReport?: (report: PromptBudgetReport) => void
   setGenerationReceipt?: (receipt: GenerationReceiptSummary) => void
+  setContextReceipt?: (receipt: ContextReceipt) => void
   /** 流式文本追加 */
   appendText: (text: string) => void
   /** 用一份安全的临时或终态文本替换当前步骤输出。 */
@@ -686,12 +687,15 @@ export const useWorkflowStore = create<WorkflowState>()((set, get) => ({
         },
         setPromptBudgetReport: (report) => {
           promptBudgetAttemptCount += 1
-          const attributableReport = promptBudgetAttemptCount === 1 ? report : undefined
+          const attributableReport = report.limitInputTokens !== undefined || promptBudgetAttemptCount === 1 ? report : undefined
           updateStepById(set, run.id, i, { promptBudgetReport: attributableReport })
           updateRunById(set, run.id, { promptBudgetReport: attributableReport })
         },
         setGenerationReceipt: (receipt) => {
           updateRunById(set, run.id, { generationReceipt: receipt })
+        },
+        setContextReceipt: (receipt) => {
+          updateRunById(set, run.id, { contextReceipt: receipt })
         },
         appendText: (text) => {
           const activeRun = get().activeRuns.find(r => r.id === run.id)

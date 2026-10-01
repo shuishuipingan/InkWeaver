@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, memo } from 'react'
 import { CheckCircle2, Loader2, Circle, Sparkles, X, ChevronRight, StopCircle, AlertTriangle, SlidersHorizontal } from 'lucide-react'
 import {
   useWorkflowStore,
@@ -21,7 +21,7 @@ import type { GenerationReceiptSummary } from '../../shared/generation-receipt'
 import MarkdownContent from '../ui/MarkdownContent'
 import { PanelHeader } from '../ui/PanelHeader'
 import { presentWorkflowFailure } from './ai-output-failure-presentation'
-import { formatPromptBudgetCompactionNotice } from '../../services/generation/prompt-budget-failure'
+import { formatPromptBudgetCompactionNotice, formatAdaptivePromptBudgetNotice } from '../../services/generation/prompt-budget-failure'
 
 /**
  * 右侧面板「AI 输出」视图
@@ -216,6 +216,7 @@ function ActiveRunView({
       </div>
 
       {run.contextReceipt && <ContextReceiptSummary receipt={run.contextReceipt} locale={locale} />}
+      {run.promptBudgetReport?.limitInputTokens !== undefined && <AdaptiveBudgetSummary report={run.promptBudgetReport} locale={locale} />}
       {run.generationReceipt && <GenerationReceiptSummaryBlock receipt={run.generationReceipt} locale={locale} />}
       {run.status === 'running' && run.promptBudgetReport?.compaction && (
         <div
@@ -297,7 +298,7 @@ function ActiveRunView({
 }
 
 
-function ContextReceiptSummary({ receipt, locale }: { receipt: ContextReceipt; locale: 'zh-CN' | 'en-US' }) {
+export const ContextReceiptSummary = memo(function ContextReceiptSummary({ receipt, locale }: { receipt: ContextReceipt; locale: 'zh-CN' | 'en-US' }) {
   const included = receipt.entries.filter(entry => entry.included).length
   const omitted = receipt.entries.length - included
   if (receipt.entries.length === 0) return null
@@ -333,7 +334,7 @@ function ContextReceiptSummary({ receipt, locale }: { receipt: ContextReceipt; l
         {locale === 'en-US' ? 'Context receipt' : '写前上下文收据'} · {included} {locale === 'en-US' ? 'included' : '项已纳入'}
         {omitted > 0 ? ` · ${omitted} ${locale === 'en-US' ? 'omitted' : '项省略'}` : ''}
       </summary>
-      <div className="mt-1 space-y-1.5" data-context-receipt="true">
+      <div className="mt-1 max-h-64 space-y-1.5 overflow-y-auto" data-context-receipt="true">
         {[...groups.entries()].map(([layer, entries]) => (
           <div key={layer} data-context-layer={layer}>
             <div className="font-medium opacity-80">{layerLabel[layer]} · {entries.filter(entry => entry.included).length}/{entries.length}</div>
@@ -342,7 +343,30 @@ function ContextReceiptSummary({ receipt, locale }: { receipt: ContextReceipt; l
                 <div key={`${entry.id}:${entry.included ? 'in' : 'out'}`} className="flex gap-1.5">
                   <span aria-hidden="true">{entry.included ? <CheckCircle2 size={11} /> : '—'}</span>
                   <span className="truncate">{entry.label}</span>
-                  {!entry.included && <span className="shrink-0 text-[var(--color-text-muted)]">{entry.reason}</span>}
+                  <span className="shrink-0">{entry.required && entry.sourceKind === 'character-profile' && entry.included
+                    ? locale === 'en-US' ? 'Core complete' : '核心完整'
+                    : entry.included ? entry.representation === 'summary' ? locale === 'en-US' ? 'Summary' : '摘要' : locale === 'en-US' ? 'Full' : '完整'
+                      : locale === 'en-US' ? 'Omitted' : '未纳入'}</span>
+                  {entry.sourceKind && <span className="shrink-0 opacity-70">{{
+                    'project-setting': locale === 'en-US' ? 'Project setting' : '项目设定',
+                    'character-profile': locale === 'en-US' ? 'Character profile' : '角色档案',
+                    'finalized-prose': locale === 'en-US' ? 'Finalized prose' : '定稿正文',
+                    'unfinished-prose': locale === 'en-US' ? 'Unfinished candidate' : '草稿候选',
+                    'reference-material': locale === 'en-US' ? 'Reference material' : '参考资料',
+                    'planning': locale === 'en-US' ? 'Plan' : '规划',
+                  }[entry.sourceKind]}</span>}
+                  {entry.cacheHit && <span className="shrink-0 opacity-70">{locale === 'en-US' ? 'Summary cache hit' : '摘要缓存命中'}</span>}
+                  <span className="shrink-0 opacity-60">{entry.originalCharCount !== undefined ? `${entry.originalCharCount} → ` : ''}{entry.charCount} {locale === 'en-US' ? 'chars' : '字符'}</span>
+                  {!entry.included && <span className="shrink-0 text-[var(--color-text-muted)]">{{
+                    'budget-exceeded': locale === 'en-US' ? 'Budget exceeded' : '预算不足',
+                    'not-relevant': locale === 'en-US' ? 'Not relevant to this chapter' : '与本章无关',
+                    'unavailable': locale === 'en-US' ? 'Unavailable' : '无法读取',
+                    'expired': locale === 'en-US' ? 'Expired' : '已过期',
+                    'duplicate': locale === 'en-US' ? 'Duplicate' : '重复',
+                    'missing-source': locale === 'en-US' ? 'Missing source' : '缺少来源',
+                    'not-authorized': locale === 'en-US' ? 'Not current chapter facts' : '不属于本章有效事实',
+                    'needs-verification': locale === 'en-US' ? 'Needs verification' : '待核实',
+                  }[entry.reason ?? 'unavailable']}</span>}
                 </div>
               ))}
             </div>
@@ -351,7 +375,17 @@ function ContextReceiptSummary({ receipt, locale }: { receipt: ContextReceipt; l
       </div>
     </details>
   )
-}
+})
+
+export const AdaptiveBudgetSummary = memo(function AdaptiveBudgetSummary({ report, locale }: { report: PromptBudgetReport; locale: 'zh-CN' | 'en-US' }) {
+  return <div className="mx-2 mb-2 rounded-md border px-2 py-1.5 text-[0.68rem]" role="status" data-context-budget="true"
+    style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }}>
+    {formatAdaptivePromptBudgetNotice(report, locale)}
+    <div>{report.errorCode === 'OK'
+      ? locale === 'en-US' ? 'Core material is protected; background detail uses summaries when needed.' : '核心资料受保护；背景细节按预算使用摘要。'
+      : locale === 'en-US' ? 'Required material does not fit. The model request was blocked.' : '必保资料无法完整容纳，已阻止模型请求。'}</div>
+  </div>
+})
 
 function GenerationReceiptSummaryBlock({ receipt, locale }: { receipt: GenerationReceiptSummary; locale: 'zh-CN' | 'en-US' }) {
   const usage = receipt.usage

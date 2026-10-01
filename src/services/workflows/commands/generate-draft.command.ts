@@ -8,6 +8,7 @@ import { unwrapKnowledgeValue } from '../../knowledge-service'
 import { projectSessionContextFromProject, sameProjectSessionContext } from '../../../shared/project-session-context'
 import type { DraftMeta } from '../../../../electron/repositories/draft-repository'
 import { planDraftCharacterContext } from '../../draft-character-context'
+import { applyContextBudgetReceipt, type ContextBudgetBinding } from '../../../shared/context-budget-receipt'
 import { cachedContextSummary } from '../../context-summary-cache'
 import { DRAFT_CONTEXT_INPUT_LIMIT, UNKNOWN_CONTEXT_INPUT_LIMIT, draftOutputReservation } from '../../../shared/adaptive-prompt-budget'
 import type { ProjectSessionContext } from '../../../shared/ipc-channels'
@@ -38,7 +39,7 @@ import { countDraftUnits } from '../../../shared/draft-units'
 import { formatChapterHandoff } from '../../chapter-handoff-context'
 import type { ChapterHandoffRecord } from '../../../shared/chapter-handoff'
 import { generationReceiptFromAttempt } from '../../../shared/generation-receipt'
-import { formatPromptBudgetCompactionNotice } from '../../generation/prompt-budget-failure'
+import { formatPromptBudgetCompactionNotice, formatAdaptivePromptBudgetNotice } from '../../generation/prompt-budget-failure'
 import { formatKnowledgeEventForPrompt, type KnowledgeEvent } from '../../../shared/knowledge-event'
 import {
   selectContextEntries,
@@ -108,6 +109,7 @@ interface DraftCharacterContext {
   detailSummary: string
   entries: ContextReceiptEntry[]
   cardCount: number
+  budgetBindings: ContextBudgetBinding[]
 }
 
 function characterBudgetSections(context: DraftCharacterContext): DraftArchitectureSection[] {
@@ -864,6 +866,8 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
       ],
     })
     const targetChars = normalizeChapterWordsTarget(this.chapterInfo.wordsTarget, novelConfig.wordsPerChapter)
+    callbacks.setContextReceipt?.(context.data.contextReceipt as ContextReceipt)
+    const preparedReceipt = context.data.contextReceipt as ContextReceipt
     const maxDraftChars = maxDraftCharsForTarget(targetChars)
 
     callbacks.log('调用 AI 生成章节草稿...')
@@ -903,8 +907,12 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
             }, {
               signal: cancellation.signal,
               onPromptBudgetPreflight: report => {
+                const finalReceipt = applyContextBudgetReceipt(preparedReceipt, report, characterContext.budgetBindings)
+                context.data.contextReceipt = finalReceipt
+                callbacks.setContextReceipt?.(finalReceipt)
                 callbacks.setPromptBudgetReport?.(report)
-                callbacks.log(formatPromptBudgetCompactionNotice(report, context.uiLocale))
+                callbacks.log(formatAdaptivePromptBudgetNotice(report, context.uiLocale))
+                if (report.compaction) callbacks.log(formatPromptBudgetCompactionNotice(report, context.uiLocale))
               },
               onChunk: chunk => {
                 if (!previewActive || context.cancelled) return
@@ -935,6 +943,8 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
             coreContext: [draftArchitecture.text, !isFirstChapter ? characterContext.text : '', JSON.stringify(draftNovelConfig, null, 2)].filter(Boolean).join('\n\n'),
             coreSections: [...draftArchitecture.sections, ...(!isFirstChapter ? characterBudgetSections(characterContext) : []),
               { sectionName: 'novel-configuration', label: '', text: JSON.stringify(draftNovelConfig, null, 2) }],
+            contextBudgetBindings: characterContext.budgetBindings,
+            preparedContextReceipt: preparedReceipt,
             chapterInfo: this.chapterInfo,
             futureBlueprints: futureBlueprintsStr,
             globalGuidance: mergedGuidance,
@@ -1063,6 +1073,8 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
     systemRole: string
     coreContext: string
     coreSections: readonly DraftArchitectureSection[]
+    contextBudgetBindings: readonly ContextBudgetBinding[]
+    preparedContextReceipt: ContextReceipt
     chapterInfo: ChapterInfo
     futureBlueprints: string
     globalGuidance: string
@@ -1188,7 +1200,11 @@ ${visibleTail}`,
             ] }),
         }, {
           onPromptBudgetPreflight: report => {
+            const finalReceipt = applyContextBudgetReceipt(params.preparedContextReceipt, report, params.contextBudgetBindings)
+            params.context.data.contextReceipt = finalReceipt
+            params.callbacks.setContextReceipt?.(finalReceipt)
             params.callbacks.setPromptBudgetReport?.(report)
+            params.callbacks.log(formatAdaptivePromptBudgetNotice(report, params.context.uiLocale))
             if (report.compaction) params.callbacks.log(formatPromptBudgetCompactionNotice(report, params.context.uiLocale))
           },
           signal: params.signal,
@@ -1381,8 +1397,10 @@ ${visibleTail}`,
     return {
       linked: plan.core, details: plan.details, detailSummary: plan.detailSummary, secondary: plan.secondary,
       cardCount: cards.length,
+      budgetBindings: plan.budgetBindings.map(binding => ({ ...binding,
+        summaryCacheHit: binding.entryId.startsWith('cast-details:') ? cacheHits.get(cards[Number(binding.entryId.split(':')[1])]!.name) : undefined })),
       text: text || promptLanguageText(writingLanguage, '（暂无角色状态档案，未知资料需与本章蓝图保持一致）', '(no character state records) Unknown details must follow the chapter blueprint.'),
-      entries: plan.entries.map(entry => ({ ...entry, ...(cacheHits.has(entry.label) ? { cacheHit: cacheHits.get(entry.label) } : {}) })),
+      entries: plan.entries,
     }
   }
   /**

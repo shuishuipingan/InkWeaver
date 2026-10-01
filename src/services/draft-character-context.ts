@@ -1,5 +1,6 @@
 import type { CharacterData } from '../../electron/repositories/character-repository'
 import type { ContextReceiptEntry } from '../shared/context-receipt'
+import type { ContextBudgetBinding } from '../shared/context-budget-receipt'
 import { summarizeContextText, CONSTRAINT_PATTERN } from '../shared/context-summary'
 
 function relatedTargets(card: CharacterData, knownNames: readonly string[]): string[] {
@@ -53,6 +54,15 @@ export function planDraftCharacterContext(cards: readonly CharacterData[], input
   const details = section(english ? '[Cast background and arc plans]' : '【角色背景与弧线规划】', detailLines)
   const detailSummary = section(english ? '[Cast background and arc plans]' : '【角色背景与弧线规划】', summaryLines)
   const secondary = section(english ? '[Related non-present cast]' : '【相关非出场角色】', secondaryLines)
+  const bytes = (text: string) => new TextEncoder().encode(text).byteLength
+  const lineEnds = (text: string, lines: readonly string[]) => {
+    let end = bytes(text.split('\n')[0] ?? '')
+    return lines.map(line => { end += 1 + bytes(line); return end })
+  }
+  const relatedEnds = lineEnds(secondary, secondaryLines)
+  const detailEnds = lineEnds(details, detailLines)
+  const summaryEnds = lineEnds(detailSummary, summaryLines)
+  const budgetBindings: ContextBudgetBinding[] = []
   const entries: ContextReceiptEntry[] = cards.map((card, index) => ({ id: `cast:${index}`, layer: 'character-state',
     label: card.name, included: coreNames.has(card.name) || relatedNames.has(card.name), required: coreNames.has(card.name),
     representation: coreNames.has(card.name) ? 'full' : relatedNames.has(card.name) ? 'summary' : 'omitted',
@@ -61,6 +71,16 @@ export function planDraftCharacterContext(cards: readonly CharacterData[], input
       : relatedNames.has(card.name) ? secondaryLines[related.findIndex(row => row.card === card)]!.length : 0,
     ...(!coreNames.has(card.name) && !relatedNames.has(card.name) ? { reason: 'not-relevant' as const } : {}),
   }))
+  for (const [index, card] of coreCards.entries()) {
+    const originalIndex = cards.indexOf(card)
+    entries.push({ id: `cast-details:${originalIndex}`, layer: 'character-state', label: `${card.name} ${english ? 'background' : '背景与弧线'}`,
+      included: true, sourceKind: 'character-profile', representation: 'full', charCount: detailLines[index]!.length, originalCharCount: detailLines[index]!.length })
+    budgetBindings.push({ entryId: `cast-details:${originalIndex}`, sectionName: 'linked-cast', fullSectionBytes: bytes(details),
+      fullEndBytes: detailEnds[index]!, summaryEndBytes: summaryEnds[index]!, summaryChars: summaryLines[index]!.length })
+  }
+  for (const [index, row] of related.entries()) {
+    budgetBindings.push({ entryId: `cast:${cards.indexOf(row.card)}`, sectionName: 'secondary-cast', fullSectionBytes: bytes(secondary), fullEndBytes: relatedEnds[index]! })
+  }
   for (const [index, card] of cards.entries()) {
     if (!card.currentState || (!coreNames.has(card.name) && !relatedNames.has(card.name))) continue
     const included = !!stateFor(card)
@@ -70,9 +90,11 @@ export function planDraftCharacterContext(cards: readonly CharacterData[], input
       charCount: included ? JSON.stringify(card.currentState).length : 0,
       ...(!included ? { reason: card.currentState.updatedAtChapter >= input.chapterNumber ? 'not-authorized' as const : 'needs-verification' as const } : {}),
     })
+    const relatedIndex = related.findIndex(row => row.card === card)
+    if (relatedIndex >= 0) budgetBindings.push({ entryId: `cast-state:${index}`, sectionName: 'secondary-cast', fullSectionBytes: bytes(secondary), fullEndBytes: relatedEnds[relatedIndex]! })
   }
   for (const name of input.characters) if (!names.includes(name)) entries.push({ id: `cast-missing:${entries.length}`,
     layer: 'character-state', label: name, included: false, reason: 'missing-source', representation: 'omitted',
     sourceKind: 'character-profile', charCount: 0 })
-  return { core, details, detailSummary, secondary, entries, selectedCoreNames: coreCards.map(card => card.name) }
+  return { core, details, detailSummary, secondary, entries, budgetBindings, selectedCoreNames: coreCards.map(card => card.name) }
 }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { PromptBudgetReport } from '../../../shared/prompt-budget'
-import { formatPromptBudgetCompactionNotice, formatPromptBudgetFailure } from '../prompt-budget-failure'
+import { formatPromptBudgetCompactionNotice, formatPromptBudgetFailure, formatAdaptivePromptBudgetNotice } from '../prompt-budget-failure'
 
 const compactedReport: PromptBudgetReport = {
   totalUtf8Bytes: 990,
@@ -25,6 +25,16 @@ const compactedReport: PromptBudgetReport = {
 }
 
 describe('prompt budget compaction diagnostics', () => {
+  it('explains estimated capacity, protected cores and unknown-capacity fallback', () => {
+    const report = { ...compactedReport, estimatedInputTokens: 900, limitInputTokens: 800, capacityKnown: false,
+      contextWindowTokens: null, protectedSections: ['core-cast'] }
+    expect(formatAdaptivePromptBudgetNotice(report, 'zh-CN')).toContain('估算输入')
+    const failure = formatPromptBudgetFailure(report, 'zh-CN')
+    expect(failure).toContain('核心角色档案')
+    expect(failure).toContain('模型上下文容量未知')
+    expect(failure).toContain('已阻止')
+    expect(formatAdaptivePromptBudgetNotice(report, 'en-US')).toContain('estimated')
+  })
   it('shows safe retained and removed byte counts for each compacted section', () => {
     const notice = formatPromptBudgetCompactionNotice(compactedReport, 'en-US')
 

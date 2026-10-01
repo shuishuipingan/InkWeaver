@@ -447,6 +447,18 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
       expect.objectContaining({ sourceKind: 'reference-material' }),
     ]) })
   })
+  it('publishes the prepared material receipt before the first model call', async () => {
+    const runtime = fakeOutcomes(outcome(`${'正文'.repeat(2500)}。`, 'stop'))
+    const { command, context, callbacks } = setup({ runtime })
+    const publish = vi.fn()
+    callbacks.setContextReceipt = publish
+    runtime.complete.mockImplementation(async () => {
+      expect(publish).toHaveBeenCalled()
+      expect(publish.mock.calls[0]![0]).toMatchObject({ chapterNumber: 1, entries: expect.any(Array) })
+      return outcome(`${'正文'.repeat(2500)}。`, 'stop')
+    })
+    await command.execute({ step: {}, context, callbacks })
+  })
   it('carries protected cast and adaptive budgets into automatic continuations', async () => {
     const runtime = fakeOutcomes(outcome(`${'始'.repeat(2500)}。`, 'length'), outcome(`${'续'.repeat(2500)}。`, 'stop', 2))
     const character: CharacterData = { name: '林舟', role: 'protagonist', gender: '', age: '', appearance: '左眼有伤', personality: '克制',
