@@ -16,6 +16,36 @@ export const PLATFORM_LABELS: Record<PlatformStyle, { zh: string; en: string; wo
   qidian: { zh: '起点风格', en: 'Qidian style', wordRange: '150-300 字，世界观/成长路径先行' },
 }
 
+/** 各平台书名建议字数（与 buildTitleRules 的平台风格说明保持一致）。 */
+export const TITLE_LENGTH_RANGE: Record<PlatformStyle, { min: number; max: number }> = {
+  fanqie: { min: 8, max: 15 },
+  jinjiang: { min: 4, max: 10 },
+  yanxuan: { min: 4, max: 10 },
+  qidian: { min: 4, max: 8 },
+}
+
+/** 书名清洗：去掉模型常带的书名号、引号与换行。 */
+export function sanitizeBookTitle(value: string): string {
+  return value
+    .replace(/[\r\n]+/gu, ' ')
+    .replace(/\s+/gu, ' ')
+    .trim()
+    .replace(/^[《〈「『【〔“”‘’"']+/u, '')
+    .replace(/[》〉」』】〕“”‘’"']+$/u, '')
+    .trim()
+}
+
+/** 书名长度超出平台建议区间时返回实测长度与区间，否则返回 null。 */
+export function bookTitleLengthHint(
+  value: string,
+  platform: PlatformStyle,
+): { length: number; min: number; max: number } | null {
+  const length = Array.from(sanitizeBookTitle(value)).length
+  const range = TITLE_LENGTH_RANGE[platform]
+  if (!length || (length >= range.min && length <= range.max)) return null
+  return { length, ...range }
+}
+
 /** 从项目受众字段推断男女频 */
 export function detectAudience(targetAudience: string | undefined, genre: string | undefined): Audience {
   const t = (targetAudience ?? '').toLowerCase()
@@ -236,7 +266,8 @@ ${platformStyle[platform]}
 2. 书名必须与故事核心强相关（金手指/人设/核心冲突至少体现一个）
 3. ${audience === 'female' ? '女频可含蓄留白，避免过度卖惨' : '男频可带"！"增强爽感'}
 4. 避免烂大街词堆砌（"至尊""逆天""狂婿"连用不超过 1 个）
-5. 若提供原书名模仿：句式/气质模仿原书，内容完全原创，不得使用原书名中的独特词汇`
+5. 若提供原书名模仿：句式/气质模仿原书，内容完全原创，不得使用原书名中的独特词汇
+6. 书名只写纯文字：不要书名号《》、引号、标点或"1."这类序号`
 }
 
 /** 从项目设定 + 正文节选构建上下文块 */

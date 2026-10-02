@@ -112,4 +112,60 @@ describe('blueprint title batch', () => {
   ])('rejects a %s in the model response', (_label, response, expected) => {
     expect(() => parseBlueprintTitleSuggestions(JSON.stringify(response), expected as number[])).toThrow()
   })
+
+  it('cleans book-title marks, numbering prefixes, and trailing punctuation into a real chapter name', () => {
+    expect(parseBlueprintTitleSuggestions(
+      JSON.stringify({
+        titles: [
+          { chapterNumber: 1, title: '《夜探书房》' },
+          { chapterNumber: 2, title: '第三章 意外来客' },
+          { chapterNumber: 3, title: '3. 摊牌。' },
+          { chapterNumber: 4, title: '标题：雨夜来客' },
+        ],
+      }),
+      [1, 2, 3, 4],
+    )).toEqual([
+      { chapterNumber: 1, title: '夜探书房' },
+      { chapterNumber: 2, title: '意外来客' },
+      { chapterNumber: 3, title: '摊牌' },
+      { chapterNumber: 4, title: '雨夜来客' },
+    ])
+  })
+
+  it('rejects summary-like, over-long, and already-used titles so the model rewrites them', () => {
+    expect(() => parseBlueprintTitleSuggestions(
+      JSON.stringify({ titles: [{ chapterNumber: 1, title: '主角发现旧信，追问陌生人' }] }),
+      [1],
+    )).toThrow(/章节名/u)
+    expect(() => parseBlueprintTitleSuggestions(
+      JSON.stringify({ titles: [{ chapterNumber: 1, title: '主角在夜晚发现了隐藏很久的线索并且当面追问陌生人' }] }),
+      [1],
+    )).toThrow(/章节名/u)
+    expect(() => parseBlueprintTitleSuggestions(
+      JSON.stringify({ titles: [{ chapterNumber: 2, title: '雨夜来信' }] }),
+      [2],
+      { reservedTitles: ['《雨夜来信》'] },
+    )).toThrow(/重复/u)
+  })
+
+  it('shows existing chapter titles to the model and repairs a cross-batch duplicate', async () => {
+    const prompt = buildBlueprintTitleBatchPrompt({
+      writingLanguage: 'zh-CN',
+      core: {},
+      targets: [target(4)],
+      adjacent: [],
+      existingTitles: ['雨夜来信'],
+    })
+    expect(prompt).toContain('existingChapterTitles')
+    expect(prompt).toContain('雨夜来信')
+
+    const request = vi.fn()
+      .mockResolvedValueOnce({ success: true, finishReason: 'stop', content: '{"titles":[{"chapterNumber":1,"title":"雨夜来信"}]}' })
+      .mockResolvedValueOnce({ success: true, finishReason: 'stop', content: '{"titles":[{"chapterNumber":1,"title":"门后回声"}]}' })
+    const result = await generateBlueprintTitleSuggestions({
+      targets: [target(1)], writingLanguage: 'zh-CN', reservedTitles: ['雨夜来信'], request,
+    })
+    expect(result.suggestions).toEqual([{ chapterNumber: 1, title: '门后回声' }])
+    expect(request).toHaveBeenCalledTimes(2)
+  })
 })

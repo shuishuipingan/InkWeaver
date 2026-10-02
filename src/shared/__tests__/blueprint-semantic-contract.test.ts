@@ -100,7 +100,7 @@ describe('blueprint semantic contract', () => {
   })
 
   it('rejects semantically unbounded prose and lists even when the JSON shape is valid', () => {
-    expect(validateBlueprintSemanticItem(validBlueprint({ keyEvents: '事'.repeat(401) })))
+    expect(validateBlueprintSemanticItem(validBlueprint({ keyEvents: '事'.repeat(701) })))
       .toContain('code=invalid_value path=blueprint.keyEvents')
     expect(validateBlueprintSemanticItem(validBlueprint({
       characters: Array.from({ length: 13 }, (_, index) => `角色${index}`),
@@ -114,6 +114,16 @@ describe('blueprint semantic contract', () => {
         relation: '不同事件中的临时盟友',
       })),
     }))).toContain('code=invalid_value path=blueprint.relationships')
+  })
+
+  it('accepts detailed chapter facts up to the widened prose limits', () => {
+    expect(validateBlueprintSemanticItem(validBlueprint({
+      purpose: '的'.repeat(240),
+      keyEvents: '事'.repeat(700),
+      suspenseHook: '钩'.repeat(220),
+    }))).toBeUndefined()
+    expect(validateBlueprintSemanticItem(validBlueprint({ suspenseHook: '钩'.repeat(221) })))
+      .toContain('code=invalid_value path=blueprint.suspenseHook')
   })
 
   it('accepts an explicit empty relationship list but rejects malformed or dangling relationships', () => {

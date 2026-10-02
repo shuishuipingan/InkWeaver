@@ -13,9 +13,11 @@ import { useLocaleStore } from '../../stores/locale-store'
 import {
   type PlatformStyle,
   PLATFORM_LABELS,
+  bookTitleLengthHint,
   detectAudience,
   buildSynopsisRules,
   buildTitleRules,
+  sanitizeBookTitle,
 } from '../../services/novel-copywriting'
 
 type Mode = 'title' | 'synopsis'
@@ -184,9 +186,14 @@ export default function AITitleSynopsisDialog({
         synopsis?: unknown
       }
       if (isTitle) {
+        const seen = new Set<string>()
         const rows: TitleCandidate[] = (parsed.titles ?? [])
-          .map(t => ({ name: String(t.name ?? '').trim(), reason: String(t.reason ?? '') }))
-          .filter(t => t.name)
+          .map(t => ({ name: sanitizeBookTitle(String(t.name ?? '')), reason: String(t.reason ?? '') }))
+          .filter((t) => {
+            if (!t.name || seen.has(t.name)) return false
+            seen.add(t.name)
+            return true
+          })
         if (rows.length === 0) throw new Error(text('AI 未返回候选书名，请重试。', 'No titles returned. Please retry.'))
         setTitles(rows)
       } else {
@@ -326,25 +333,40 @@ export default function AITitleSynopsisDialog({
 
           {!generating && isTitle && titles.length > 0 && (
             <div className="space-y-1.5">
-              {titles.map(t => (
-                <div
-                  key={t.name}
-                  className="flex items-center gap-2 rounded-md px-2.5 py-2 text-xs group"
-                  style={{ backgroundColor: 'var(--color-raised)', border: '1px solid var(--color-border)' }}
-                >
-                  <span className="font-semibold text-sm shrink-0" style={{ color: 'var(--color-text)' }}>{t.name}</span>
-                  <span className="flex-1 truncate text-[0.7rem]" style={{ color: 'var(--color-text-muted)' }} title={t.reason}>{t.reason}</span>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-6 px-2 shrink-0"
-                    onClick={() => apply(t.name)}
-                    disabled={applied && currentProject?.name === t.name}
+              {titles.map((t) => {
+                const lengthHint = bookTitleLengthHint(t.name, platform)
+                return (
+                  <div
+                    key={t.name}
+                    className="flex items-center gap-2 rounded-md px-2.5 py-2 text-xs group"
+                    style={{ backgroundColor: 'var(--color-raised)', border: '1px solid var(--color-border)' }}
                   >
-                    {applied && currentProject?.name === t.name ? <Check size={12} /> : text('采用', 'Use')}
-                  </Button>
-                </div>
-              ))}
+                    <span className="font-semibold text-sm shrink-0" style={{ color: 'var(--color-text)' }}>{t.name}</span>
+                    {lengthHint && (
+                      <span
+                        className="shrink-0 text-[0.65rem]"
+                        style={{ color: 'var(--color-warning-text)' }}
+                        title={text(
+                          `平台建议 ${lengthHint.min}-${lengthHint.max} 字，当前 ${lengthHint.length} 字`,
+                          `Platform suggests ${lengthHint.min}-${lengthHint.max} characters; this is ${lengthHint.length}`,
+                        )}
+                      >
+                        {lengthHint.length} {text('字', 'chars')}
+                      </span>
+                    )}
+                    <span className="flex-1 truncate text-[0.7rem]" style={{ color: 'var(--color-text-muted)' }} title={t.reason}>{t.reason}</span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 px-2 shrink-0"
+                      onClick={() => apply(t.name)}
+                      disabled={applied && currentProject?.name === t.name}
+                    >
+                      {applied && currentProject?.name === t.name ? <Check size={12} /> : text('采用', 'Use')}
+                    </Button>
+                  </div>
+                )
+              })}
             </div>
           )}
 

@@ -11,6 +11,8 @@ import {
   buildBlueprintTitleBatchPrompt,
   chunkBlueprintTitleTargets,
   generateBlueprintTitleSuggestions,
+  normalizeChapterTitleKey,
+  sanitizeChapterTitle,
   type BlueprintTitleSource,
 } from '../../services/blueprint-title-batch'
 import { useLLMStore } from '../../stores/llm-store'
@@ -40,7 +42,7 @@ function titleSource(blueprint: BlueprintData): BlueprintTitleSource {
 }
 
 function normalizedTitle(value: string): string {
-  return value.trim().normalize('NFKC').toLocaleLowerCase()
+  return normalizeChapterTitleKey(value)
 }
 
 function titleConflicts(
@@ -179,10 +181,16 @@ export default function BlueprintTitleBatchDialog({ open, onClose, onApplied }: 
           lastIndex >= 0 ? snapshot.blueprints[lastIndex + 1] : undefined,
         ].filter((item): item is BlueprintData => Boolean(item))
         const configuredMaxTokens = modelStore.models.find(model => model.id === modelId)?.maxTokens
+        // 未被本批改写的既有标题既用于提示，也用于拒绝重名，避免跨批撞名。
+        const reservedTitles = snapshot.blueprints
+          .filter(blueprint => !targets.some(item => item.chapterNumber === blueprint.chapterNumber))
+          .map(blueprint => blueprint.title)
+          .filter(Boolean)
         await generateBlueprintTitleSuggestions({
           targets,
           writingLanguage: snapshot.core.writingLanguage,
           configuredMaxTokens,
+          reservedTitles,
           isCancelled: () => cancelled.current || !isCurrentGeneration(),
           onSuggestions: items => {
             if (!isCurrentGeneration()) return
@@ -204,6 +212,7 @@ export default function BlueprintTitleBatchDialog({ open, onClose, onApplied }: 
               core: snapshot.core,
               targets: requestTargets,
               adjacent: adjacent.map(titleSource),
+              existingTitles: reservedTitles,
             })
             const result = await ipc.invoke('llm:generate', {
               modelId,
@@ -283,9 +292,11 @@ export default function BlueprintTitleBatchDialog({ open, onClose, onApplied }: 
   }
 
   const updateSuggestion = (chapterNumber: number, title: string) => {
+    // 手工编辑同样按章节名习惯清洗：粘贴“《标题》”“第3章 标题”也能落成正常章名。
+    const cleaned = sanitizeChapterTitle(title)
     setSuggestions(previous => {
       const next = new Map(previous)
-      next.set(chapterNumber, title)
+      next.set(chapterNumber, cleaned)
       return next
     })
   }
@@ -307,11 +318,16 @@ export default function BlueprintTitleBatchDialog({ open, onClose, onApplied }: 
       setError(text('请先勾选至少一个已生成的候选标题。', 'Select at least one generated title first.'))
       return
     }
-    if (selectedBlueprints.some(blueprint => !suggestions.get(blueprint.chapterNumber)?.trim())) {
+    // 提交前再清洗一次：候选可能来自旧会话或手工粘贴。
+    const cleanedSuggestions: TitleSuggestions = new Map(
+      [...suggestions].map(([chapterNumber, title]) => [chapterNumber, sanitizeChapterTitle(title)]),
+    )
+    if (selectedBlueprints.some(blueprint => !cleanedSuggestions.get(blueprint.chapterNumber)?.trim())) {
+      setSuggestions(cleanedSuggestions)
       setError(text('请为已勾选的章节填写有效标题。', 'Enter a valid title for every selected chapter.'))
       return
     }
-    const conflicts = titleConflicts(snapshot.blueprints, selected, suggestions)
+    const conflicts = titleConflicts(snapshot.blueprints, selected, cleanedSuggestions)
     if (conflicts.length > 0) {
       setError(text(
         `发现重复标题（${conflicts.join('；')}），请修改后再提交。`,
@@ -340,7 +356,7 @@ export default function BlueprintTitleBatchDialog({ open, onClose, onApplied }: 
           coreChanges: {},
           blueprintChanges: selectedBlueprints.map(blueprint => ({
             chapterNumber: blueprint.chapterNumber,
-            changes: { title: suggestions.get(blueprint.chapterNumber)!.trim() },
+            changes: { title: cleanedSuggestions.get(blueprint.chapterNumber)! },
           })),
         },
         projectSession.projectPath,

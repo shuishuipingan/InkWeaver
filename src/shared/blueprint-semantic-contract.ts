@@ -30,9 +30,12 @@ export const BLUEPRINT_SEMANTIC_CONTRACT_MANIFEST = Object.freeze({
   outputLimits: Object.freeze({
     titleCharacters: 60,
     roleCharacters: 80,
-    purposeCharacters: 160,
-    keyEventsCharacters: 400,
-    suspenseHookCharacters: 160,
+    // 单章蓝图是唯一的结构化拆解产物：目的、关键事件与悬念钩子写得太短，
+    // 后续写作就失去可用的章节意图。上限只用来拒绝跑偏的长文，不用来逼
+    // 模型压缩信息，因此比早期的 160/400/160 更宽松。
+    purposeCharacters: 240,
+    keyEventsCharacters: 700,
+    suspenseHookCharacters: 220,
     characterItems: 12,
     characterNameCharacters: 32,
     relationshipItems: 8,
