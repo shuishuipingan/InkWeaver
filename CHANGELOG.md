@@ -2,18 +2,31 @@
 
 本文件按用户可见行为记录变更。桌面版本不发布 npm；DSH 插件沿用已发布的 `1.2.0` 包。`1.2.0` 已从同一源码 commit 完成工程验收、三平台资产回读和正式 Release；`1.1.0` 的历史 Release 收据保留在 `docs/upgrade/`，不与 1.2.0 混用。
 
-## 未发布
+## 1.3.13 — 2026-10-02
 
 - 修复手动输入模型名称后推理强度映射失效的问题：手输名不再要求与预设逐字一致，大小写差异、部署变体后缀（如 -32b）、日期后缀、OpenRouter 路由后缀（如 :free）与分隔符/空格变体都能命中同一官方模型并继承其推理映射；“章节起草/故事规划/审稿与修订”不再显示“不支持 / 不发送参数”。完全无关的模型名仍正确判定为不支持。Gemini 预设目录收录 gemini-3.8-flash（1M 上下文、thinking budget 映射），gemini-3.8-flash-high/-low/-thinking 等强度别名后缀的手输名可自动命中。
-
-## 1.3.12 — 2026-10-02
-
 - 修复 AI 一键替换角色名的应用死锁：应用成功后界面不再回到预览把已替换的名字重新当待改名做重名校验；批量改名一次写入整份名单，互换与链式改名都能生效。名单已改而落盘失败时保留草稿，可再次点击“应用改名”补上；落盘后仅同步失败时停在完成态并说明原因。整体改名的覆盖面补齐蓝图备注。
 - AI 全书方向调整升级为真正的档案级调整：人物档案的外貌、背景、性别、年龄、定位、能力、动机、弧光、备注都可由 AI 改写，人物关系可整份替换（目标限现有角色）；未定稿章节蓝图的出场人物名单也可由 AI 调整（不得发明新角色）。预览按字段对照展示，所有写入仍受指纹、定稿章保护与角色名单校验约束。
 - 草稿生成上下文的摘录摘要不再只保留约束句和含角色名的句子：在相关句之外按全文位置均匀取样，保住世界观、场景与氛围描写，避免草稿变干巴；自动续写现在携带本章要点时间线、活跃线索、知情范围与上一章交接，已写结尾窗口从 1600 字加宽到 2400 字，续写场景更连贯。单次生成的输出预留下限从 8192 提高到 16384 tokens 并按目标字数放大系数上调，减少多轮薄上下文续写；系统提示改为“正文的生动优先”，参考资料声明从“仅风格结构参考”改为“可化用冲突设计与细节笔法”。上一章候选稿恢复 1.2 时代的最多 12000 字全文注入（不再先摘要成 3000 字）；故事前提、剧情概要、世界观与核心大纲在 4000-4800 字以内保持原文直通，不再摘要。
+- 保持 Windows、macOS、Linux x64 同提交发布。Linux 文件为 inkweaver-linux-x64-1.3.13.AppImage、inkweaver-linux-x64-1.3.13.deb、inkweaver-linux-x64-1.3.13.rpm 及 SHA-256；运行资格覆盖 Ubuntu 22.04、Debian 13、Fedora 44，glibc 2.35 基线及 --appimage-extract-and-run 检查继续有效，包未签名。
+
+## 1.3.12 — 2026-10-02
+
+- 拆章支持“第X卷/回/话/节”与“序章/楔子/引子/前言/尾声/终章/番外/外传”等章节标记；书名与作者等前言短行不再被当成第一章。没有任何章节标记、只靠空行分节的长文按空行与段落边界切成约 3000 字的连续分节，不再整本变成一章。
+- 拆解仿写逐章独立分析，超长章节保留开头与真实结尾并标注中间省略；导入推演的角色卡上限放宽到 3-12 人并要求覆盖全书重要角色，可推断字段不再用“（待确认）”敷衍。
+- 导入的全局设定与文风推演改为全书均匀取样（首尾加中段共 5 章）；单章蓝图字段上限放宽（目的 240 字、关键事件 700 字、悬念钩子 220 字）。
+- AI 批量生成章节名改为常见小说章节名风格并自动清洗书名号、引号、章号与前缀，按全书去重；生成章节蓝图与 AI 生成书名遵循同一命名约定，书名候选旁提示平台建议字数区间。
 - 保持 Windows、macOS、Linux x64 同提交发布。Linux 文件为 inkweaver-linux-x64-1.3.12.AppImage、inkweaver-linux-x64-1.3.12.deb、inkweaver-linux-x64-1.3.12.rpm 及 SHA-256；运行资格覆盖 Ubuntu 22.04、Debian 13、Fedora 44，glibc 2.35 基线及 --appimage-extract-and-run 检查继续有效，包未签名。
 
 ## What's changed
+
+- Manually entered model names no longer lose the reasoning mapping: case differences, deployment suffixes, date suffixes, OpenRouter-style routing suffixes, and separator variants all resolve to the same official model. The settings screen shows the mapped stage efforts again, and runtime requests carry the reasoning directive. Catalogued gemini-3.8-flash (1M context, thinking budget), so strength-suffixed names like gemini-3.8-flash-high resolve automatically.
+- The adaptation rename deadlock is fixed: applying no longer returns to the preview to re-validate already-applied names; renames apply to the whole roster in one batch (exchanges and chains work); a failed commit keeps the local draft for retry; post-commit sync failures stay on the completed screen. Blueprint notes are covered by full-identity renames.
+- AI story direction is now a real profile-level adjustment: full character profiles, whole relationship lists (targets limited to the existing cast), and unfinished blueprint cast lists are AI-editable, with fingerprint, finalized-chapter, and roster-closure checks intact.
+- Draft vividness levers restored: extractive summaries sample ambient sentences evenly instead of keeping only constraints; output reservations rise (16,384-token floor, target*3+8192) to avoid thin continuations; previous-chapter candidates and short settings text pass through verbatim up to historical budgets; system prompts state vividness first and allow adapting conflict design and detail craft from reference excerpts.
+- Continues Windows, macOS and Linux x64 same-commit releases. Linux packages: inkweaver-linux-x64-1.3.13.AppImage, inkweaver-linux-x64-1.3.13.deb, inkweaver-linux-x64-1.3.13.rpm with SHA-256. Qualification covers Ubuntu 22.04, Debian 13, Fedora 44, the glibc 2.35 baseline and --appimage-extract-and-run. Linux packages are unsigned.
+
+## 1.3.12 — 2026-10-02 (English)
 
 - Fixed the adaptation-rename deadlock: a successful apply no longer returns to the preview and re-validates already-applied names. Renames apply to the whole roster in one batch (exchanges and chains work), already-applied rows render as read-only results, a failed commit keeps the local draft for retry, and post-commit sync failures stay on the completed screen. Full-identity rename coverage now includes blueprint notes.
 - AI story direction is now a real profile-level adjustment: appearance, background, gender, age, role, abilities, motivation, arc, and notes are AI-editable; a character's whole relationship list can be replaced (targets limited to the existing cast); unfinished chapter blueprints accept validated cast-list edits. Previews render the new fields, and every write still crosses fingerprint, finalized-chapter, and roster-closure checks.
