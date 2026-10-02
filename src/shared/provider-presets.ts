@@ -511,6 +511,20 @@ export function createProviderCatalog(): ProviderPreset[] {
           providerValues: { off: 0, low: 2048, medium: 16384, high: 49152 },
         },
       },
+      {
+        // 手输名常带强度别名后缀（gemini-3.8-flash-high / -low），映射由
+        // thinkingConfig.thinkingBudget 承担，模型名后缀只影响预设命中。
+        name: 'gemini-3.8-flash',
+        compatibilityAliases: ['gemini-3.8-flash-pro'],
+        capabilityAliases: ['gemini-3.8-flash-thinking'],
+        maxTokens: 65536,
+        capabilities: { contextWindowTokens: 1000000, maxOutputTokens: 65536, reasoning: true, structuredOutput: true, usage: true },
+        reasoningMapping: {
+          adapter: 'gemini-thinking-budget',
+          supportedEfforts: ['off', 'low', 'medium', 'high'],
+          providerValues: { off: 0, low: 2048, medium: 16384, high: 49152 },
+        },
+      },
     ],
     embeddingModels: ['text-embedding-004'],
   },
@@ -932,14 +946,23 @@ export function isKnownModelProfileApiId(profile: ModelCapabilityProfile): boole
   const preset = BUILTIN_PRESETS.find(candidate => candidate.provider === profile.provider)
   if (!preset || preset.protocol !== profile.protocol) return false
 
+  // 与 findPresetModel 同一套归一化（大小写、分隔符、部署/日期/路由后缀）。
+  // capabilityAliases（旧显示名）仍要求端点验证，不计入“官方已验证 API id”。
   const modelName = profile.modelName.trim()
   const normalizedName = normalizeModelNameForPreset(modelName)
-  return preset.models.some(candidate => (
-    candidate.name === modelName
-    || candidate.name === normalizedName
-    || candidate.compatibilityAliases?.includes(modelName)
-    || candidate.compatibilityAliases?.includes(normalizedName)
-  ))
+  const typedKey = presetModelKey(modelName)
+  const normalizedKey = presetModelKey(normalizedName)
+  const matched = findPresetModel(preset, modelName)
+  if (!matched) return false
+  const official = [matched.name, ...(matched.compatibilityAliases ?? [])]
+  const foldedOfficial = [
+    presetModelKey(matched.name),
+    ...(matched.compatibilityAliases ?? []).map(alias => presetModelKey(alias)),
+  ]
+  return official.includes(modelName)
+    || official.includes(normalizedName)
+    || foldedOfficial.includes(normalizedKey)
+    || (typedKey.length >= 3 && foldedOfficial.includes(typedKey))
 }
 
 /**

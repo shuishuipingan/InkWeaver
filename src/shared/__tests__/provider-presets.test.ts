@@ -161,6 +161,51 @@ describe('provider catalog', () => {
     })).toBeUndefined()
   })
 
+  it('publishes gemini-3.8-flash with the thinking-budget mapping and strength-suffix aliases', () => {
+    const gemini = createProviderCatalog().find(preset => preset.provider === 'gemini')
+
+    expect(gemini?.models).toContainEqual(expect.objectContaining({
+      name: 'gemini-3.8-flash',
+      capabilities: {
+        contextWindowTokens: 1_000_000,
+        maxOutputTokens: 65_536,
+        reasoning: true,
+        structuredOutput: true,
+        usage: true,
+      },
+      reasoningMapping: {
+        adapter: 'gemini-thinking-budget',
+        supportedEfforts: ['off', 'low', 'medium', 'high'],
+        providerValues: { off: 0, low: 2048, medium: 16384, high: 49152 },
+      },
+    }))
+  })
+
+  it.each([
+    'gemini-3.8-flash',
+    'gemini-3.8-flash-high',
+    'gemini-3.8-flash-low',
+    'gemini-3.8-flash-thinking',
+    'gemini-3.8-flash-0930',
+    'GEMINI-3.8-FLASH',
+  ])('resolves strength-suffixed gemini-3.8-flash name %s to the thinking-budget mapping', (modelName) => {
+    const profile = { provider: 'gemini', protocol: 'gemini', modelName }
+    expect(resolveModelProfileReasoningMapping(profile)).toMatchObject({
+      adapter: 'gemini-thinking-budget',
+      supportedEfforts: ['off', 'low', 'medium', 'high'],
+    })
+    expect(resolveModelProfileCapabilities(profile)).toMatchObject({
+      contextWindowTokens: 1_000_000,
+      maxOutputTokens: 65_536,
+      reasoning: true,
+    })
+    expect(resolveModelProfileReasoningMapping({
+      provider: 'gemini',
+      protocol: 'gemini',
+      modelName: 'gemini-4.0-flash',
+    })).toBeUndefined()
+  })
+
   it('publishes Gemini 2.5 Flash-Lite as one exact official capability fact', () => {
     const gemini = createProviderCatalog().find((preset) => preset.provider === 'gemini')
 
