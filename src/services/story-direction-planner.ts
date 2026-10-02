@@ -1,13 +1,17 @@
 import type { BlueprintData } from '../../electron/repositories/blueprint-repository'
 import type { ProjectCoreData } from '../../electron/repositories/project-core-repository'
+import { CHARACTER_ROSTER_ROLES } from '../shared/character-roster'
 import type { NarrativeThreadPlanInput } from '../shared/narrative-thread'
 import {
   STORY_DIRECTION_BLUEPRINT_FIELDS,
   STORY_DIRECTION_CHARACTER_FIELDS,
   STORY_DIRECTION_CORE_FIELDS,
   type StoryDirectionBlueprintChange,
+  type StoryDirectionBlueprintField,
   type StoryDirectionCoreField,
+  type StoryDirectionCharacterChange,
   type StoryDirectionCharacterField,
+  type StoryDirectionCharacterRelationship,
 } from '../shared/story-direction'
 import {
   normalizeTerminologyReplacements,
@@ -47,7 +51,7 @@ export function decodeCoreDirectionChanges(
   latestFinalizedChapter = 0,
   totalChapters = Number.MAX_SAFE_INTEGER,
   authorTerminologyReplacements: readonly StoryDirectionTerminologyReplacement[] = [],
-): { changes: Partial<Record<StoryDirectionCoreField, string>>; characterChanges: Array<{ name: string; changes: Partial<Record<StoryDirectionCharacterField, string>> }>; newNarrativeThreads: NarrativeThreadPlanInput[]; terminologyReplacements: StoryDirectionTerminologyReplacement[]; summary: string; conflicts: string[] } {
+): { changes: Partial<Record<StoryDirectionCoreField, string>>; characterChanges: StoryDirectionCharacterChange[]; newNarrativeThreads: NarrativeThreadPlanInput[]; terminologyReplacements: StoryDirectionTerminologyReplacement[]; summary: string; conflicts: string[] } {
   const root = parseDirectionJson(content)
   const rawCoreChanges = object(root.coreChanges ?? {})
   let modelTerminologyReplacements: StoryDirectionTerminologyReplacement[] = []
@@ -83,9 +87,13 @@ export function decodeCoreDirectionChanges(
   const conflicts = Array.isArray(root.conflicts)
     ? root.conflicts.filter((item): item is string => typeof item === 'string').map(item => item.slice(0, 500)).slice(0, 20)
     : []
-  const characterChanges: Array<{ name: string; changes: Partial<Record<StoryDirectionCharacterField, string>> }> = []
+  const characterChanges: StoryDirectionCharacterChange[] = []
   const rawCharacters = root.characterChanges ?? []
   if (!Array.isArray(rawCharacters)) throw new Error('方向调整角色变更列表无效')
+  const relationshipTargets = new Set([
+    ...rosterNames,
+    ...terminologyReplacements.map(replacement => replacement.to),
+  ])
   const seen = new Set<string>()
   for (const rawItem of rawCharacters) {
     const item = object(rawItem)
@@ -100,9 +108,40 @@ export function decodeCoreDirectionChanges(
       if (field === 'unchanged') continue
       if (!STORY_DIRECTION_CHARACTER_FIELDS.includes(field as StoryDirectionCharacterField)
         || typeof value !== 'string' || value.length > 20_000) throw new Error(`角色「${name}」方向调整字段无效：${field}`)
-      if (value.trim()) next[field as StoryDirectionCharacterField] = value.trim()
+      const trimmed = value.trim()
+      // 定位是枚举：模型给了无法识别的值就明确报错，不要让整批在写入时失败。
+      if (field === 'role' && trimmed && !(CHARACTER_ROSTER_ROLES as readonly string[]).includes(trimmed)) {
+        throw new Error(`角色「${name}」的定位无效：${trimmed}`)
+      }
+      if (trimmed) next[field as StoryDirectionCharacterField] = trimmed
     }
-    if (Object.keys(next).length > 0) characterChanges.push({ name, changes: next })
+    let relationships: StoryDirectionCharacterRelationship[] | undefined
+    if (item.relationships !== undefined) {
+      if (!Array.isArray(item.relationships) || item.relationships.length > 24) {
+        throw new Error(`角色「${name}」的关系列表无效`)
+      }
+      const targets = new Set<string>()
+      relationships = item.relationships.map((rawRelationship) => {
+        const relationship = object(rawRelationship)
+        const target = relationship.target
+        const relation = relationship.relation
+        if (typeof target !== 'string' || !target.trim() || target.trim() === name
+          || !relationshipTargets.has(target.trim())
+          || typeof relation !== 'string' || !relation.trim() || relation.length > 200
+          || targets.has(target.trim())) {
+          throw new Error(`角色「${name}」的关系条目无效`)
+        }
+        targets.add(target.trim())
+        return { target: target.trim(), relation: relation.trim() }
+      })
+    }
+    if (Object.keys(next).length > 0 || relationships) {
+      characterChanges.push({
+        name,
+        changes: next as StoryDirectionCharacterChange['changes'],
+        ...(relationships ? { relationships } : {}),
+      })
+    }
   }
   const newNarrativeThreads: NarrativeThreadPlanInput[] = []
   const rawThreads = root.newNarrativeThreads ?? []
@@ -145,6 +184,7 @@ export function decodeBlueprintDirectionChanges(
   content: string,
   expected: readonly BlueprintData[],
   terminologyReplacements: readonly StoryDirectionTerminologyReplacement[] = [],
+  allowedCharacterNames: readonly string[] = [],
 ): StoryDirectionBlueprintChange[] {
   const root = parseDirectionJson(content)
   if (!Array.isArray(root.changes)) throw new Error('方向调整缺少章节变更列表')
@@ -160,6 +200,7 @@ export function decodeBlueprintDirectionChanges(
     const rawChanges = object(item.changes)
     const current = byNumber.get(Number(chapterNumber))!
     const changes: StoryDirectionBlueprintChange['changes'] = {}
+    const textFields = new Set<string>(STORY_DIRECTION_BLUEPRINT_FIELDS)
     for (const [field, value] of Object.entries(rawChanges)) {
       if (field === 'unchanged') continue
       if (field === 'characters' && Array.isArray(value)
@@ -171,12 +212,23 @@ export function decodeBlueprintDirectionChanges(
             ? [replaceTerminologyNameArray(current.characters, terminologyReplacements)]
             : []),
         ].map(names => JSON.stringify(names.sort()))
+        // 与现名单（或术语替换后的名单）一致只是回显，不算改动。
         if (allowedCharacterLists.includes(JSON.stringify(proposedCharacters))) continue
+        const known = new Set(allowedCharacterNames)
+        const nextCharacters = [...new Set(value.map(name => name.trim()).filter(Boolean))]
+        if (nextCharacters.length === 0 || nextCharacters.length > 12
+          || nextCharacters.length !== value.length
+          || nextCharacters.some(name => !known.has(name))) {
+          throw new Error(`第 ${chapterNumber} 章方向调整字段无效：${field}`)
+        }
+        changes.characters = nextCharacters
+        continue
       }
-      if (!STORY_DIRECTION_BLUEPRINT_FIELDS.includes(field as keyof typeof changes)
+      if (!textFields.has(field)
         || typeof value !== 'string' || value.length > 20_000) throw new Error(`第 ${chapterNumber} 章方向调整字段无效：${field}`)
-      if (value.trim() && value !== current[field as keyof typeof changes]) {
-        changes[field as keyof typeof changes] = value.trim()
+      const textField = field as StoryDirectionBlueprintField
+      if (value.trim() && value !== current[textField]) {
+        changes[textField] = value.trim()
       }
     }
     return Object.keys(changes).length ? [{ chapterNumber: Number(chapterNumber), changes }] : []

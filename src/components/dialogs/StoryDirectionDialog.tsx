@@ -59,6 +59,8 @@ const DIRECTION_FIELD_LABELS: Record<string, readonly [string, string]> = {
   worldbuilding: ['世界观', 'World building'], synopsis: ['情节大纲', 'Synopsis'],
   personality: ['性格', 'Personality'], abilities: ['能力', 'Abilities'],
   motivation: ['动机', 'Motivation'], arc: ['角色弧光', 'Character arc'], notes: ['备注', 'Notes'],
+  gender: ['性别', 'Gender'], age: ['年龄', 'Age'], appearance: ['外貌', 'Appearance'],
+  background: ['背景', 'Background'], relationships: ['人物关系', 'Relationships'],
   title: ['章节标题', 'Chapter title'], role: ['章节定位', 'Chapter role'],
   purpose: ['章节目的', 'Purpose'], keyEvents: ['关键事件', 'Key events'], suspenseHook: ['悬念钩子', 'Suspense hook'],
   userGuidance: ['作者指导', 'Author guidance'],
@@ -294,13 +296,17 @@ export default function StoryDirectionDialog({ open, onClose, onApplied }: Props
       }))
       const core = existing?.core ?? decodeCoreDirectionChanges(await requestModel(
         modelId, 'story-direction-global',
-        '你是长篇小说总编辑。根据作者的新想法，提出必要且最小的项目配置和故事架构改动。已定稿章节不可改写。仅输出 JSON 对象。',
+        '你是长篇小说总编辑。作者给出新的故事想法后，你要把它落成对全书真正有用的调整，而不是仅替换字词：改写故事前提、世界观、核心大纲、主角设定与全局指导，并说明人物档案与人物关系需要怎样随之改变（characterChanges 可以改写外貌、背景、性格、能力、动机、弧光、备注与关系描述），必要时新增叙事线索。改动要彼此一致、与已定稿事实不冲突；已定稿正文不可改写。仅输出 JSON 对象。',
         JSON.stringify({
           newIdea: normalizedIdea,
           current: Object.fromEntries(STORY_DIRECTION_CORE_FIELDS.map(field => [field, compact(String(snapshot.core[field] ?? ''), 8_000)])),
           characters: roster?.status === 'ready' ? roster.entries.map(entry => ({
-            name: entry.name, role: entry.role, personality: compact(entry.personality, 600),
-            abilities: compact(entry.abilities, 600), arc: compact(entry.arc, 600),
+            name: entry.name, role: entry.role, gender: entry.gender, age: entry.age,
+            appearance: compact(entry.appearance, 400), background: compact(entry.background, 600),
+            personality: compact(entry.personality, 600),
+            abilities: compact(entry.abilities, 600), motivation: compact(entry.motivation, 400),
+            arc: compact(entry.arc, 600), notes: compact(entry.notes, 300),
+            relationships: entry.relationships.map(relationship => `${relationship.target}（${compact(relationship.relation, 60)}）`),
           })).slice(0, 80) : [],
           finalizedSummaries: finalizedBrief,
           existingNarrativeThreads: snapshot.threadPlans.map(item => ({
@@ -310,7 +316,11 @@ export default function StoryDirectionDialog({ open, onClose, onApplied }: Props
             outputContract: {
               terminologyReplacements: [{ from: '作者明确要求替换的原名', to: '作者指定的新名' }],
               coreChanges: '仅包含需要修改的 coreOutline/worldSetting/protagonistProfile/globalGuidance/premise/worldbuilding/synopsis/goldenFinger 字符串字段；未修改字段省略，不要输出 unchanged 元数据',
-            characterChanges: [{ name: '只允许已有角色名', changes: { personality: '需要修改时的新性格', abilities: '需要修改时的新能力', arc: '需要修改时的新角色弧光' } }],
+            characterChanges: [{
+              name: '只允许已有角色名',
+              changes: { appearance: '需要修改时的新外貌', background: '需要修改时的新背景', personality: '需要修改时的新性格', abilities: '需要修改时的新能力', motivation: '需要修改时的新动机', arc: '需要修改时的新角色弧光', notes: '需要修改时的新备注' },
+              relationships: [{ target: '全书已有角色名', relation: '关系随新方向改成什么' }],
+            }],
             newNarrativeThreads: [{ title: '需要新增时的线索标题', type: '线索类型', authorIntent: '作者预期的埋设与回收', targetStartChapter: startChapter, targetEndChapter: endChapter, lane: 'sub' }],
             summary: '调整摘要', conflicts: ['与已定稿事实冲突或需要作者决定的事项'],
           },
@@ -331,15 +341,32 @@ export default function StoryDirectionDialog({ open, onClose, onApplied }: Props
         if (batch.length > 0) {
           const response = await requestModel(
             modelId, 'story-direction-characters',
-            '你是长篇小说人物编辑。根据新想法与全局方向，只对本批已有角色提出必要的资料变更。不得改名、删除角色或更改关系与已定稿状态。仅返回 JSON 对象。',
+            '你是长篇小说人物编辑。根据新想法与全局方向，对本批已有角色提出必要的档案变更：外貌、背景、性别、年龄、定位、性格、能力、动机、弧光、备注都可以改写；当人物关系确实随新方向变化时，可以整份给出该角色的 relationships 新列表（target 必须是全书已有角色名，不得自指）。不得改名、新增或删除角色，不得改写已定稿的当前状态。仅返回 JSON 对象。',
             JSON.stringify({
               newIdea: normalizedIdea, globalChanges: plan.core.changes,
               characters: batch.map(entry => ({
-                name: entry.name, role: entry.role, personality: compact(entry.personality ?? '', 500),
+                name: entry.name, role: entry.role, gender: entry.gender, age: entry.age,
+                appearance: compact(entry.appearance ?? '', 500), background: compact(entry.background ?? '', 500),
+                personality: compact(entry.personality ?? '', 500),
                 abilities: compact(entry.abilities ?? '', 500), motivation: compact(entry.motivation ?? '', 500),
                 arc: compact(entry.arc ?? '', 500), notes: compact(entry.notes ?? '', 500),
+                relationships: entry.relationships.map(relationship => (
+                  `${relationship.target}（${compact(relationship.relation, 60)}）`
+                )),
               })),
-              outputContract: { coreChanges: {}, characterChanges: [{ name: '本批已有角色名', changes: { personality: '需要改变时的新性格', arc: '需要改变时的新弧光' } }], conflicts: [] },
+              outputContract: {
+                coreChanges: {},
+                characterChanges: [{
+                  name: '本批已有角色名',
+                  changes: {
+                    appearance: '需要改变时的新外貌', background: '需要改变时的新背景',
+                    personality: '需要改变时的新性格', abilities: '需要改变时的新能力',
+                    motivation: '需要改变时的新动机', arc: '需要改变时的新弧光', notes: '需要改变时的新备注',
+                  },
+                  relationships: [{ target: '全书已有角色名', relation: '新的关系描述' }],
+                }],
+                conflicts: [],
+              },
             }), 16_384,
           )
           const decoded = decodeCoreDirectionChanges(response, snapshot.core, batch.map(entry => entry.name))
@@ -365,11 +392,12 @@ export default function StoryDirectionDialog({ open, onClose, onApplied }: Props
         try {
           const content = await requestModel(
             modelId, 'story-direction-blueprints',
-            '你是长篇小说编辑。逐章调整需要受新想法影响的未定稿章节蓝图；无须改变的章节不返回。保留人物名单和作者备注，只输出 JSON 对象。人物名单的确定改名由系统同步，不要改 characters。',
+            '你是长篇小说编辑。逐章调整需要受新想法影响的未定稿章节蓝图；无须改变的章节不返回。可以改写本章的目的、关键事件、悬念钩子、章末指导与出场人物名单（characters 只能使用角色名单里的现有名字，不得发明新角色）；作者备注 notes 与已定稿章节不可改动。人物名单的确定改名由系统同步。只输出 JSON 对象。',
             JSON.stringify({
               newIdea: normalizedIdea,
               globalChanges: core.changes,
               terminologyReplacements: core.terminologyReplacements,
+              rosterNames: roster?.status === 'ready' ? roster.entries.map(entry => entry.name) : [],
               relevantCharacterChanges: plan.core.characterChanges.filter(change =>
                 batch.some(item => item.characters.includes(change.name))),
               previousApprovedBatchChanges: priorChanges.slice(-20).map(item => ({
@@ -383,10 +411,13 @@ export default function StoryDirectionDialog({ open, onClose, onApplied }: Props
                 suspenseHook: compact(item.suspenseHook, 1_000), userGuidance: compact(item.userGuidance, 1_000),
                 characters: item.characters,
               })),
-              outputContract: { changes: [{ chapterNumber: 1, changes: { purpose: '更新后的章节目的', keyEvents: '更新后的关键事件', userGuidance: '后续写作指导' } }] },
+              outputContract: { changes: [{ chapterNumber: 1, changes: { purpose: '更新后的章节目的', keyEvents: '更新后的关键事件', userGuidance: '后续写作指导', characters: ['本章出场角色名'] } }] },
             }), 16_384,
           )
-          return decodeBlueprintDirectionChanges(content, batch, plan.core.terminologyReplacements)
+          return decodeBlueprintDirectionChanges(
+            content, batch, plan.core.terminologyReplacements,
+            roster?.status === 'ready' ? roster.entries.map(entry => entry.name) : [],
+          )
         } catch (reason) {
           if (batch.length > 1 && String(reason).includes('（length）')) {
             const middle = Math.ceil(batch.length / 2)
@@ -781,8 +812,14 @@ export default function StoryDirectionDialog({ open, onClose, onApplied }: Props
             {partial.core.characterChanges.length > 0 && <div className="space-y-2">
               <p className="font-medium">{text(`角色卡调整（${partial.core.characterChanges.length} 人）`, `Character card changes (${partial.core.characterChanges.length})`)}</p>
               {partial.core.characterChanges.map(item => <details key={item.name} className="rounded border border-[var(--color-border)] p-2 text-xs">
-                <summary className="cursor-pointer">{item.name} · {Object.keys(item.changes).map(field => directionFieldLabel(field, text)).join('、')}</summary>
+                <summary className="cursor-pointer">{item.name} · {[
+                  ...Object.keys(item.changes).map(field => directionFieldLabel(field, text)),
+                  ...(item.relationships ? [text('人物关系', 'Relationships')] : []),
+                ].join('、')}</summary>
                 {Object.entries(item.changes).map(([field, value]) => <p key={field} className="mt-2 whitespace-pre-wrap"><strong>{directionFieldLabel(field, text)}：</strong>{value}</p>)}
+                {item.relationships && <p className="mt-2 whitespace-pre-wrap"><strong>{text('人物关系', 'Relationships')}：</strong>
+                  {item.relationships.map(relationship => `${relationship.target}（${relationship.relation}）`).join('、') || text('（清空）', '(cleared)')}
+                </p>}
               </details>)}
             </div>}
             {partial.core.newNarrativeThreads.length > 0 && <div className="space-y-1 text-xs">
@@ -800,7 +837,7 @@ export default function StoryDirectionDialog({ open, onClose, onApplied }: Props
               </label>}
               {partial.chapterChanges.map(item => <details key={item.chapterNumber} className="rounded border border-[var(--color-border)] p-2 text-xs">
                 <summary className="cursor-pointer">{text(`第 ${item.chapterNumber} 章`, `Chapter ${item.chapterNumber}`)} · {Object.keys(item.changes).map(field => directionFieldLabel(field, text)).join('、')}</summary>
-                {Object.entries(item.changes).map(([field, value]) => <div key={field} className="mt-2 grid grid-cols-[6rem_1fr] gap-2"><strong>{directionFieldLabel(field, text)}</strong><span className="whitespace-pre-wrap">{value}</span></div>)}
+                {Object.entries(item.changes).map(([field, value]) => <div key={field} className="mt-2 grid grid-cols-[6rem_1fr] gap-2"><strong>{directionFieldLabel(field, text)}</strong><span className="whitespace-pre-wrap">{Array.isArray(value) ? value.join('、') : value}</span></div>)}
               </details>)}
             </div>
             {phase === 'drafts' && <p>{text('正在逐章生成候选修稿…', 'Generating candidate revisions chapter by chapter…')}</p>}

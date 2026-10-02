@@ -31,9 +31,11 @@ import {
   settleProjectEditorSave,
 } from './project-editor-draft-ledger'
 import {
+  applyCharacterRenameBatch,
   getCharacterDraftRenames,
   mergeCharacterDraftWithRemote,
   rebuildCharacterRenamesAfterSave,
+  renameCharacterCardsSimultaneously,
   setCharacterDraftRenames,
   updateCharacterRename,
 } from './character-rename-ledger'
@@ -222,6 +224,11 @@ interface CharacterState {
     expectedProjectSession?: ProjectSessionContext,
   ) => Promise<boolean>
   renameCharacter: (name: string, newName: string) => boolean
+  /**
+   * 整份名单一次性改名（AI 一键替换角色名）。同批内的互换与链式改名必须
+   * 同时生效，不能因为目标名已存在或先后顺序而失败。
+   */
+  renameCharactersBatch: (pairs: Array<{ from: string; to: string }>) => boolean
   discardDraft: (projectPath: string, expectedProjectSession?: ProjectSessionContext) => void
   hasUnsavedCharacterDraft: (projectPath: string) => boolean
   updateField: <K extends Exclude<keyof CharacterCard, 'name'>>(
@@ -545,6 +552,52 @@ export const useCharacterStore = create<CharacterState>()((set, get) => ({
     set({
       characters,
       selectedName: get().selectedName === name ? newName : get().selectedName,
+    })
+
+    let nextLedger = recordProjectEditorEdit(ledger, projectKey, before, characters)
+    nextLedger = setCharacterDraftRenames(nextLedger, projectKey, nextRenames)
+    persistCharacterDraftLedger(nextLedger)
+    return true
+  },
+
+  renameCharactersBatch: (pairs) => {
+    const projectSession = currentCharacterProjectSession()
+    if (!projectSession) return false
+    if (
+      characterIdentityMutationInFlight
+      && sameProjectSessionContext(characterIdentityMutationInFlight.projectSession, projectSession)
+    ) return false
+    const projectKey = projectSession.projectPath
+    const state = get()
+    if (
+      !sameProjectSessionContext(state.dataProjectSession, projectSession)
+      || state.loadingProjectSession !== null
+      || state.lastError !== null
+    ) return false
+    const normalized = pairs
+      .map(pair => ({ originalName: pair.from.trim(), newName: pair.to.trim() }))
+      .filter(pair => pair.originalName && pair.newName && pair.originalName !== pair.newName)
+    const before = get().characters
+    if (normalized.length === 0) return true
+    const knownNames = new Set(before.map(character => character.name))
+    if (normalized.some(pair => !knownNames.has(pair.originalName))) return false
+
+    const characters = renameCharacterCardsSimultaneously(before, normalized)
+    const names = characters.map(character => character.name)
+    if (names.some(name => !name) || new Set(names).size !== names.length) return false
+
+    const ledger = readCharacterDraftLedger(projectKey)
+    const existing = getProjectEditorDraft(ledger, projectKey)
+    const renames = getCharacterDraftRenames(ledger, projectKey)
+    const persistedNames = new Set((existing?.baseValue ?? before).map(character => character.name))
+    const nextRenames = applyCharacterRenameBatch(renames, normalized, persistedNames)
+
+    const selectedName = get().selectedName
+    set({
+      characters,
+      selectedName: selectedName === null
+        ? selectedName
+        : (renameCharacterCardsSimultaneously([{ name: selectedName }], normalized)[0]?.name ?? selectedName),
     })
 
     let nextLedger = recordProjectEditorEdit(ledger, projectKey, before, characters)

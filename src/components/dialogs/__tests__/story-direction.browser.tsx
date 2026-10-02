@@ -42,7 +42,7 @@ beforeEach(() => {
   appliedRun = null
   invoke.mockImplementation(async (channel: string, request: { purpose: string }) => {
     if (channel === 'db:story-direction-snapshot') return snapshot
-    if (channel === 'db:character-roster-read') return { status: 'ready', revision: 0, entries: [{ name: '主角', role: 'protagonist', personality: '', abilities: '', arc: '' }] }
+    if (channel === 'db:character-roster-read') return { status: 'ready', revision: 0, entries: [{ name: '主角', role: 'protagonist', gender: '', age: '', appearance: '', background: '', personality: '', abilities: '', motivation: '', arc: '', notes: '', relationships: [] }] }
     if (channel === 'db:story-direction-latest-run') return appliedRun
     if (channel === 'db:story-direction-apply') {
       const plan = request as unknown as { idea: string; modelId: string; coreChanges: StoryDirectionRun['coreChanges']; blueprintChanges: StoryDirectionRun['blueprintChanges']; terminologyReplacements: StoryDirectionRun['terminologyReplacements']; generateDraftCandidates: boolean }
@@ -291,8 +291,8 @@ it('analyzes character cards beyond the first 80 in separate batches', async () 
     if (args[0] === 'db:character-roster-read') return {
       status: 'ready', revision: 0,
       entries: Array.from({ length: 81 }, (_, index) => ({
-        name: `角色${index + 1}`, role: 'supporting', personality: '', abilities: '',
-        motivation: '', arc: '', notes: '',
+        name: `角色${index + 1}`, role: 'supporting', gender: '', age: '', appearance: '', background: '',
+        personality: '', abilities: '', motivation: '', arc: '', notes: '', relationships: [],
       })),
     }
     if (args[0] === 'llm:generate' && (args[1] as { purpose: string }).purpose === 'story-direction-characters') {
@@ -331,7 +331,7 @@ it('previews explicit term mappings and keeps the same replacements in candidate
   invoke.mockImplementation(async (channel: string, request: { purpose: string; messages?: Array<{ content: string }> }) => {
     if (channel === 'db:story-direction-snapshot') return renamedSnapshot
     if (channel === 'db:character-roster-read') return {
-      status: 'ready', revision: 4, entries: [{ name: '幽狼', role: 'protagonist', personality: '', abilities: '', arc: '' }],
+      status: 'ready', revision: 4, entries: [{ name: '幽狼', role: 'protagonist', gender: '', age: '', appearance: '', background: '', personality: '', abilities: '', motivation: '', arc: '', notes: '', relationships: [] }],
     }
     if (channel === 'llm:generate' && request.purpose === 'story-direction-global') {
       return { success: true, finishReason: 'stop', content: JSON.stringify({

@@ -51,6 +51,54 @@ export function updateCharacterRename(
   return [...renames, { originalName: currentName, newName }]
 }
 
+/**
+ * 整份名单一次性改名（AI 一键替换角色名）：同一批里的互换（A↔B）与链式
+ * （先 X→A，再把 A→C）都必须保住，不能按"改回原名"处理而互相抵消。
+ * 因此本函数只以进入本批之前的账本为参照，并且不修改传入的账本。
+ */
+export function applyCharacterRenameBatch(
+  renames: readonly CharacterRenameData[],
+  pairs: readonly CharacterRenameData[],
+  persistedNames: ReadonlySet<string>,
+): CharacterRenameData[] {
+  const batch = pairs
+    .map(pair => ({
+      originalName: pair.originalName.trim(),
+      newName: pair.newName.trim(),
+    }))
+    .filter(pair => pair.originalName && pair.newName && pair.originalName !== pair.newName)
+  if (batch.length === 0) return [...renames]
+
+  const batchSources = new Set(batch.map(pair => pair.originalName))
+  // 本批要改写的那一行本身被新映射取代，其余历史改名原样保留。
+  const next = renames.filter(rename => !batchSources.has(rename.newName))
+  for (const pair of batch) {
+    const chained = renames.find(rename => rename.newName === pair.originalName)
+    if (!chained && !persistedNames.has(pair.originalName)) continue
+    const originalName = chained ? chained.originalName : pair.originalName
+    if (originalName === pair.newName) continue
+    next.push({ originalName, newName: pair.newName })
+  }
+  return next
+}
+
+/** 同一次整体改名后的名字映射：用于把角色卡一次性换名（支持互换与链式）。 */
+export function renameCharacterCardsSimultaneously<T extends { name: string }>(
+  characters: readonly T[],
+  pairs: readonly CharacterRenameData[],
+): T[] {
+  const targets = new Map(
+    pairs
+      .map(pair => [pair.originalName.trim(), pair.newName.trim()] as const)
+      .filter(([originalName, newName]) => originalName && newName && originalName !== newName),
+  )
+  if (targets.size === 0) return [...characters]
+  return characters.map(character => {
+    const next = targets.get(character.name)
+    return next === undefined ? character : { ...character, name: next }
+  })
+}
+
 function mapPersistedCharacterName<T extends { name: string }>(
   character: T,
   renames: readonly CharacterRenameData[],

@@ -15,8 +15,28 @@ export const STORY_DIRECTION_BLUEPRINT_FIELDS = [
 
 export type StoryDirectionCoreField = typeof STORY_DIRECTION_CORE_FIELDS[number]
 export type StoryDirectionBlueprintField = typeof STORY_DIRECTION_BLUEPRINT_FIELDS[number]
-export const STORY_DIRECTION_CHARACTER_FIELDS = ['personality', 'abilities', 'motivation', 'arc', 'notes'] as const satisfies readonly (keyof CharacterRosterEntry)[]
+/**
+ * AI 可以直接重写的角色档案字段。name 是身份主键、currentState 是定稿推导
+ * 的动态事实、relationships 需要闭合校验，因此这三项仍由系统维护。
+ */
+export const STORY_DIRECTION_CHARACTER_FIELDS = [
+  'role', 'gender', 'age', 'appearance', 'background',
+  'personality', 'abilities', 'motivation', 'arc', 'notes',
+] as const satisfies readonly (keyof CharacterRosterEntry)[]
 export type StoryDirectionCharacterField = typeof STORY_DIRECTION_CHARACTER_FIELDS[number]
+
+/** 关系只能改描述或替换成名单内的角色，不能凭空造人。 */
+export interface StoryDirectionCharacterRelationship {
+  target: string
+  relation: string
+}
+
+export interface StoryDirectionCharacterChange {
+  name: string
+  changes: Partial<Pick<CharacterRosterEntry, StoryDirectionCharacterField>>
+  /** 给出时整份替换该角色的关系列表（目标必须是现有角色）。 */
+  relationships?: StoryDirectionCharacterRelationship[]
+}
 
 export interface StoryDirectionSnapshot {
   core: ProjectCoreData
@@ -28,14 +48,17 @@ export interface StoryDirectionSnapshot {
 
 export interface StoryDirectionBlueprintChange {
   chapterNumber: number
-  changes: Partial<Pick<BlueprintData, StoryDirectionBlueprintField>>
+  changes: Partial<Pick<BlueprintData, StoryDirectionBlueprintField>> & {
+    /** 给出时整份替换本章出场角色；每个名字都必须是角色名单里的现有角色。 */
+    characters?: string[]
+  }
 }
 
 export interface StoryDirectionApplyRequest {
   expectedFingerprint: string
   coreChanges: Partial<Pick<ProjectCoreData, StoryDirectionCoreField>>
   blueprintChanges: StoryDirectionBlueprintChange[]
-  characterChanges?: Array<{ name: string; changes: Partial<Pick<CharacterRosterEntry, StoryDirectionCharacterField>> }>
+  characterChanges?: StoryDirectionCharacterChange[]
   expectedRosterRevision?: number
   terminologyReplacements?: StoryDirectionTerminologyReplacement[]
   /** Draft chapters that should receive reviewable candidate revisions for explicit terminology changes. */

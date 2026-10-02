@@ -61,7 +61,10 @@ export default function AIRenameCharactersDialog({ onClose }: { onClose: () => v
   const [replaceProse, setReplaceProse] = useState(true)
   const [renames, setRenames] = useState<RenameRow[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [warning, setWarning] = useState<string | null>(null)
   const [summary, setSummary] = useState<ApplySummary | null>(null)
+  /** 已写入本地名单、等待落盘的改名行；保存失败后仍可重试。 */
+  const [appliedPairs, setAppliedPairs] = useState<Array<{ from: string; to: string }>>([])
 
   const projectSession = useMemo(() => captureProjectSession(currentProject), [currentProject])
   const currentNames = useMemo(
@@ -72,12 +75,28 @@ export default function AIRenameCharactersDialog({ onClose }: { onClose: () => v
     () => findQuoteWrappedNameCollisions(characters.map(character => character.name)),
     [characters],
   )
-  const previewTargets = renames.map(row => row.to.trim())
-  const previewHasInvalidNames = renames.length !== characters.length
-    || previewTargets.some((target, index) => !target
-      || (target !== renames[index]?.from && currentNames.has(target))
-      || previewTargets.indexOf(target) !== index)
-  const hasRenameChanges = renames.some(row => row.to.trim() !== row.from)
+  /**
+   * 只有“当前名单里还存在的原名”才算待改名行。已经应用过的行不能继续参与
+   * 校验，否则应用成功后重新进入预览会把自己判成重名并卡死。
+   */
+  const pendingRows = useMemo(
+    () => renames.filter(row => currentNames.has(row.from)),
+    [renames, currentNames],
+  )
+  const previewHasInvalidNames = useMemo(() => {
+    const targets = new Map(pendingRows.map(row => [row.from, row.to.trim()] as const))
+    if ([...targets.values()].some(target => !target)) return true
+    const resulting = characters.map(character => targets.get(character.name) ?? character.name)
+    const seen = new Set<string>()
+    for (const name of resulting) {
+      if (!name || seen.has(name)) return true
+      seen.add(name)
+    }
+    return false
+  }, [characters, pendingRows])
+  const hasRenameChanges = pendingRows.length > 0
+  /** 名单已被本地改写但还没落盘：允许再次点击“应用改名”完成保存。 */
+  const hasPendingSave = appliedPairs.length > 0
 
   const generate = useCallback(async () => {
     if (!currentProject || !projectSession) return
@@ -214,8 +233,11 @@ export default function AIRenameCharactersDialog({ onClose }: { onClose: () => v
       setError(text('新名字缺失或重复，请修改后再应用。', 'New names are missing or duplicated. Edit them before applying.'))
       return
     }
-    const valid = renames.filter(r => r.to.trim() && r.to.trim() !== r.from)
-    if (valid.length === 0) {
+    // 只对"名单里仍然存在的原名"发起改名；已应用的行留给下面的保存步骤。
+    const valid = pendingRows
+      .map(row => ({ from: row.from, to: row.to.trim() }))
+      .filter(pair => pair.to && pair.to !== pair.from)
+    if (valid.length === 0 && appliedPairs.length === 0) {
       runtimeLog.warn('character-rename', '改名应用被预检拒绝', { reason: 'no-name-changes' }, {
         projectId: projectSession.projectId, projectSessionId: projectSession.leaseId,
         operation: 'character-rename.apply', outcome: 'rejected',
@@ -243,80 +265,111 @@ export default function AIRenameCharactersDialog({ onClose }: { onClose: () => v
     }
     setStep('applying')
     setError(null)
+    setWarning(null)
     runtimeLog.info('character-rename', '应用角色名替换开始', {
       changedCharacterCount: valid.length, replaceDrafts: replaceProse,
     }, {
       projectId: projectSession.projectId, projectSessionId: projectSession.leaseId,
       operation: 'character-rename.apply', outcome: 'started',
     })
-    try {
-      // 1) 走角色卡本地改名 + 草稿账本（链式改名已由 store 处理）
-      for (const r of valid) {
-        const ok = useCharacterStore.getState().renameCharacter(r.from, r.to.trim())
-        if (!ok) throw new Error(text(`改名失败：${r.from} → ${r.to}`, `Rename failed: ${r.from} → ${r.to}`))
+    // 1) 本地整份名单改名 + 草稿账本：一次提交，支持互换与链式改名。
+    if (valid.length > 0) {
+      const renamed = useCharacterStore.getState().renameCharactersBatch(valid)
+      if (!renamed) {
+        runtimeLog.error('character-rename', '本地批量改名失败', { changedCharacterCount: valid.length }, {
+          projectId: projectSession.projectId, projectSessionId: projectSession.leaseId,
+          operation: 'character-rename.apply', outcome: 'failed',
+        })
+        setError(text('改名未生效：角色名单已变化，请关闭后重新生成方案。',
+          'Renaming did not apply: the roster changed. Close this dialog and generate a new mapping.'))
+        setStep('preview')
+        return
       }
+    }
+    const mergedPairs = [
+      ...appliedPairs.filter(pair => !valid.some(candidate => candidate.from === pair.from)),
+      ...valid,
+    ]
+    try {
       // 2) 经 roster seam 原子提交：角色主键、档案字段、关系、蓝图结构化引用、图谱投影
       await useCharacterStore.getState().saveAll(
         currentProject.path, projectSession, undefined, { fullIdentityRename: true },
       )
       if (!isProjectSessionCurrent(projectSession)) return
+      setAppliedPairs([])
 
-      // The roster commit rewrites project_core in SQLite; refresh the open
-      // configuration snapshot too, or the editor keeps showing old names.
-      const currentNovelConfig = useProjectStore.getState().currentProject?.novelConfig
-      if (currentNovelConfig) {
-        const nextConfig = Object.fromEntries(Object.entries(currentNovelConfig).map(([key, value]) => [
-          key,
-          typeof value === 'string'
-            ? replaceNamesInText(value,
-              valid.map(rename => ({ from: rename.from, to: rename.to.trim() })),
-              characters.map(character => character.name))
-            : value,
-        ])) as Partial<typeof currentNovelConfig>
-        useProjectStore.getState().syncCommittedNovelConfig(nextConfig, projectSession)
-      }
-      const currentProjectName = useProjectStore.getState().currentProject?.name
-      if (currentProjectName) {
-        const nextProjectName = replaceNamesInText(
-          currentProjectName,
-          valid.map(rename => ({ from: rename.from, to: rename.to.trim() })),
-          characters.map(character => character.name),
-        )
-        if (nextProjectName !== currentProjectName) {
-          const recentProjectSaved = await useProjectStore.getState()
-            .syncCommittedProjectName(nextProjectName, projectSession)
-          if (!recentProjectSaved && isProjectSessionCurrent(projectSession)) {
-            globalEventBus.emit('SYSTEM_NOTICE', {
-              level: 'warn',
-              message: text('角色名已替换，但最近项目名称同步失败。重新打开项目后会自动校正。',
-                'Character names were replaced, but the recent-project label did not sync. Reopening the project will refresh it.'),
-            })
-          }
-        }
-      }
-
-      // 3) 正文中的角色名替换（仅未定稿草稿；已定稿正文为不可变事实）
+      // 名字已经写入名单，后面的同步步骤即使失败也不能把界面退回“确定名字”：
+      // 那时预览里的原名已经不存在，重新校验只会把已应用的名字判成重名而卡死。
       let proseChapters = 0
       let finalizedSkipped = 0
-      if (replaceProse) {
-        const drafts = await ipc.invokeWithProjectSession(
-          projectSession, 'db:draft-list-all', currentProject.path,
-        )
-        for (const meta of drafts) {
-          if (!isProjectSessionCurrent(projectSession)) return
-          if (meta.status === 'finalized') { finalizedSkipped += 1; continue }
-          const full = await ipc.invokeWithProjectSession(
-            projectSession, 'db:draft-get-full', meta.id, currentProject.path,
-          )
-          if (!full) continue
-          const next = replaceNamesInText(full.content, valid, characters.map(character => character.name))
-          if (next === full.content) continue
-          const updated = await ipc.invokeWithProjectSession(
-            projectSession, 'db:draft-update-content',
-            meta.id, next, countDraftUnits(next), currentProject.path,
-          )
-          if (updated.success) proseChapters += 1
+      let postCommitWarning: string | null = null
+      try {
+        // The roster commit rewrites project_core in SQLite; refresh the open
+        // configuration snapshot too, or the editor keeps showing old names.
+        const currentNovelConfig = useProjectStore.getState().currentProject?.novelConfig
+        if (currentNovelConfig) {
+          const nextConfig = Object.fromEntries(Object.entries(currentNovelConfig).map(([key, value]) => [
+            key,
+            typeof value === 'string'
+              ? replaceNamesInText(value,
+                mergedPairs.map(rename => ({ from: rename.from, to: rename.to })),
+                characters.map(character => character.name))
+              : value,
+          ])) as Partial<typeof currentNovelConfig>
+          useProjectStore.getState().syncCommittedNovelConfig(nextConfig, projectSession)
         }
+        const currentProjectName = useProjectStore.getState().currentProject?.name
+        if (currentProjectName) {
+          const nextProjectName = replaceNamesInText(
+            currentProjectName,
+            mergedPairs.map(rename => ({ from: rename.from, to: rename.to })),
+            characters.map(character => character.name),
+          )
+          if (nextProjectName !== currentProjectName) {
+            const recentProjectSaved = await useProjectStore.getState()
+              .syncCommittedProjectName(nextProjectName, projectSession)
+            if (!recentProjectSaved && isProjectSessionCurrent(projectSession)) {
+              globalEventBus.emit('SYSTEM_NOTICE', {
+                level: 'warn',
+                message: text('角色名已替换，但最近项目名称同步失败。重新打开项目后会自动校正。',
+                  'Character names were replaced, but the recent-project label did not sync. Reopening the project will refresh it.'),
+              })
+            }
+          }
+        }
+
+        // 正文中的角色名替换（仅未定稿草稿；已定稿正文为不可变事实）
+        if (replaceProse) {
+          const drafts = await ipc.invokeWithProjectSession(
+            projectSession, 'db:draft-list-all', currentProject.path,
+          )
+          for (const meta of drafts) {
+            if (!isProjectSessionCurrent(projectSession)) return
+            if (meta.status === 'finalized') { finalizedSkipped += 1; continue }
+            const full = await ipc.invokeWithProjectSession(
+              projectSession, 'db:draft-get-full', meta.id, currentProject.path,
+            )
+            if (!full) continue
+            const next = replaceNamesInText(full.content, mergedPairs, characters.map(character => character.name))
+            if (next === full.content) continue
+            const updated = await ipc.invokeWithProjectSession(
+              projectSession, 'db:draft-update-content',
+              meta.id, next, countDraftUnits(next), currentProject.path,
+            )
+            if (updated.success) proseChapters += 1
+          }
+        }
+      } catch (postError) {
+        postCommitWarning = text(
+          `角色名已写入名单，但正文或设定的同步未完成：${String(postError)}。可再点一次“应用改名”重试同步，或在编辑器里检查相关章节。`,
+          `The new names are saved, but syncing prose or settings did not finish: ${String(postError)}. Click "Apply renames" again to retry the sync, or check the affected chapters in the editor.`,
+        )
+        runtimeLog.warn('character-rename', '改名后同步未完成', {
+          errorType: postError instanceof Error ? postError.name : 'UnknownError',
+        }, {
+          projectId: projectSession.projectId, projectSessionId: projectSession.leaseId,
+          operation: 'character-rename.apply', outcome: 'failed',
+        })
       }
 
       globalEventBus.emit('REFRESH_RESOURCE', {
@@ -331,14 +384,15 @@ export default function AIRenameCharactersDialog({ onClose }: { onClose: () => v
         })
       }
       setSummary({
-        renamedCards: valid.length,
+        renamedCards: mergedPairs.length,
         proseChapters,
         finalizedSkipped,
       })
+      setWarning(postCommitWarning)
       setStep('done')
       runtimeLog.info('character-rename', '应用角色名替换完成', {
-        renamedCharacterCount: valid.length, changedDraftCount: proseChapters,
-        finalizedSkipped,
+        renamedCharacterCount: mergedPairs.length, changedDraftCount: proseChapters,
+        finalizedSkipped, postCommitWarning: Boolean(postCommitWarning),
       }, {
         projectId: projectSession.projectId, projectSessionId: projectSession.leaseId,
         operation: 'character-rename.apply', outcome: 'succeeded',
@@ -350,10 +404,18 @@ export default function AIRenameCharactersDialog({ onClose }: { onClose: () => v
         projectId: projectSession.projectId, projectSessionId: projectSession.leaseId,
         operation: 'character-rename.apply', outcome: 'failed',
       })
-      setError(String(e))
+      // 本地名单可能已经改名，只是尚未落盘：保留待保存行，让界面仍可重试。
+      setAppliedPairs(mergedPairs)
+      setError(text(
+        `角色名未能写入项目：${String(e)}。已改名的部分会保留在草稿中，可再点一次“应用改名”重试。`,
+        `The new names were not committed: ${String(e)}. Any locally applied renames are kept as a draft; click "Apply renames" again to retry.`,
+      ))
       setStep('preview')
     }
-  }, [characters, currentProject, projectSession, renames, replaceProse, text, previewHasInvalidNames])
+  }, [
+    characters, currentProject, projectSession, replaceProse, text,
+    previewHasInvalidNames, pendingRows, appliedPairs,
+  ])
 
   if (!currentProject || !projectSession) return null
 
@@ -435,35 +497,53 @@ export default function AIRenameCharactersDialog({ onClose }: { onClose: () => v
 
           {step === 'preview' && (
             <div className="space-y-1.5">
-              {renames.map((r, i) => {
-                const collision = (r.to.trim() !== r.from && currentNames.has(r.to.trim()))
-                  || renames.some((other, index) => index !== i && other.to.trim() === r.to.trim())
-                const invalid = !r.to.trim() || collision
+              {renames.map((r) => {
+                // 已经应用的行：原名已不在名单里，但新名就是当前角色。它们只是
+                // 展示结果，不能继续参与校验，也不能再被改回旧名。
+                const applied = !currentNames.has(r.from) && currentNames.has(r.to.trim())
+                const rowIsPending = !applied
+                const duplicatedTarget = rowIsPending && renames.some(other => (
+                  other !== r && currentNames.has(other.from) && other.to.trim() === r.to.trim()
+                ))
+                const collision = rowIsPending && (r.to.trim() !== r.from && currentNames.has(r.to.trim()))
+                const invalid = rowIsPending && (!r.to.trim() || collision || duplicatedTarget)
                 return (
-                  <div key={r.from} className="flex items-center gap-2 text-xs">
+                  <div key={`${r.from}→${r.to}`} className="flex items-center gap-2 text-xs">
                     <span className="w-24 shrink-0 truncate" style={{ color: 'var(--color-text)' }} title={r.from}>{r.from}</span>
                     <ArrowRight size={13} style={{ color: 'var(--color-text-muted)' }} />
-                    <input
-                      value={r.to}
-                      onChange={e => setRenames(rows => rows.map((row, j) => j === i ? { ...row, to: e.target.value } : row))}
-                      className="flex-1 rounded-md px-2 py-1.5 outline-none"
-                      style={{
-                        backgroundColor: 'var(--color-raised)',
-                        border: `1px solid ${invalid ? 'var(--color-accent)' : 'var(--color-border)'}`,
-                        color: 'var(--color-text)',
-                      }}
-                    />
+                    {applied ? (
+                      <span className="flex-1 truncate text-[0.72rem] px-2 py-1.5" style={{ color: 'var(--color-text-muted)' }}>
+                        {r.to} · {text('已应用', 'applied')}
+                      </span>
+                    ) : (
+                      <input
+                        value={r.to}
+                        onChange={e => setRenames(rows => rows.map((row) => row === r ? { ...row, to: e.target.value } : row))}
+                        className="flex-1 rounded-md px-2 py-1.5 outline-none"
+                        style={{
+                          backgroundColor: 'var(--color-raised)',
+                          border: `1px solid ${invalid ? 'var(--color-accent)' : 'var(--color-border)'}`,
+                          color: 'var(--color-text)',
+                        }}
+                      />
+                    )}
                     <span className="w-40 shrink-0 truncate text-[0.65rem]" style={{ color: 'var(--color-text-muted)' }} title={r.reason}>{r.reason}</span>
                   </div>
                 )
               })}
+              {step === 'preview' && hasPendingSave && (
+                <p className="text-[0.7rem]" style={{ color: 'var(--color-text-muted)' }}>
+                  {text('名单已在本地更新，还有一步落盘未完成；再点一次“应用改名”即可补上。',
+                    'The roster was updated locally but not yet committed; click "Apply renames" again to finish saving.')}
+                </p>
+              )}
               {previewHasInvalidNames && (
                 <p className="text-[0.7rem] flex items-center gap-1" style={{ color: 'var(--color-accent)' }}>
                   <AlertTriangle size={12} />
                   {text('存在空名字或与其他角色重名的新名字，请修改后再应用；个别角色可以保留原名。', 'Some names are empty or collide with existing characters. Individual characters may keep their original names.')}
                 </p>
               )}
-              {!previewHasInvalidNames && !hasRenameChanges && (
+              {!previewHasInvalidNames && !hasRenameChanges && !hasPendingSave && (
                 <p className="text-[0.7rem]" style={{ color: 'var(--color-text-muted)' }}>
                   {text('至少更改一个角色名；个别角色可以保留原名。', 'Change at least one name; individual characters can keep their original names.')}
                 </p>
@@ -493,6 +573,11 @@ export default function AIRenameCharactersDialog({ onClose }: { onClose: () => v
               <p style={{ color: 'var(--color-text-muted)' }}>
                 {text('知识库中已导入的原文不会被改写（保护向量一致性）；其后的仿写生成建议基于新正文进行。', 'Imported knowledge-base text is untouched to protect embedding consistency.')}
               </p>
+              {warning && (
+                <p className="flex items-start gap-1.5" style={{ color: 'var(--color-warning-text)' }}>
+                  <AlertTriangle size={13} className="shrink-0 mt-0.5" /> {warning}
+                </p>
+              )}
             </div>
           )}
 
@@ -517,7 +602,7 @@ export default function AIRenameCharactersDialog({ onClose }: { onClose: () => v
               <Button variant="ghost" onClick={() => setStep('input')}>{text('上一步', 'Back')}</Button>
               <Button
                 onClick={apply}
-                disabled={previewHasInvalidNames || !hasRenameChanges}
+                disabled={previewHasInvalidNames || (!hasRenameChanges && !hasPendingSave)}
               >
                 <Replace size={13} /> {text('应用改名', 'Apply renames')}
               </Button>

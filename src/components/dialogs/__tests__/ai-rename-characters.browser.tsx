@@ -25,6 +25,16 @@ const secondCharacter: CharacterData = {
   ...character, name: '灰鸦', role: 'supporting',
 }
 const saveAll = vi.fn(async () => undefined)
+const renameCharactersBatch = vi.fn((pairs: Array<{ from: string; to: string }>) => {
+  // 真实 store 会在一次调用里把整份名单改名，这里用同样的语义驱动界面。
+  const targets = new Map(pairs.map(pair => [pair.from, pair.to] as const))
+  useCharacterStore.setState(state => ({
+    characters: state.characters.map(character => (
+      targets.has(character.name) ? { ...character, name: targets.get(character.name)! } : character
+    )),
+  }))
+  return true
+})
 const syncCommittedNovelConfig = vi.fn()
 const syncCommittedProjectName = vi.fn(async () => true)
 let root: Root | undefined
@@ -33,6 +43,8 @@ let host: HTMLDivElement | undefined
 beforeEach(() => {
   invoke.mockReset()
   saveAll.mockClear()
+  saveAll.mockImplementation(async () => undefined)
+  renameCharactersBatch.mockClear()
   syncCommittedNovelConfig.mockClear()
   syncCommittedProjectName.mockClear()
   invoke.mockImplementation(async (channel: string) => {
@@ -51,7 +63,7 @@ beforeEach(() => {
   })
   useCharacterStore.setState({
     characters: [character, secondCharacter], identityBusy: false,
-    renameCharacter: vi.fn(() => true), saveAll,
+    renameCharacter: vi.fn(() => true), renameCharactersBatch, saveAll,
   } as never)
   useEditorStore.setState({ tabs: [], activeTabId: null, draftLedgers: {} })
   useProjectStore.setState({
@@ -91,10 +103,44 @@ it('refreshes the open novel settings after roster rename commits them to storag
     premise: '凤凰借助黑虫系统脱险',
     protagonistProfile: '凤凰与伙伴并肩行动',
   }), session)
-  expect(useCharacterStore.getState().renameCharacter).toHaveBeenCalledWith('幽狼', '凤凰')
   expect(useCharacterStore.getState().renameCharacter).not.toHaveBeenCalledWith('灰鸦', '灰鸦')
+  expect(renameCharactersBatch).toHaveBeenCalledWith([{ from: '幽狼', to: '凤凰' }])
   expect(refreshedArchitectureFiles).toEqual(['premise.md', 'characters.md', 'worldbuilding.md', 'synopsis.md'])
   unsubscribe()
+})
+
+it('finishes the run when a post-commit sync fails instead of returning to the name preview', async () => {
+  syncCommittedNovelConfig.mockImplementationOnce(() => {
+    throw new Error('配置快照写入失败')
+  })
+  await act(async () => root?.render(<AIRenameCharactersDialog onClose={vi.fn()} />))
+  await act(async () => page.getByRole('button', { name: 'AI 生成新名字' }).click())
+  await act(async () => page.getByRole('button', { name: '应用改名' }).click())
+
+  // 改名已经写入名单，界面必须停在完成态并给出可执行的提示，而不是回到预览
+  // 把已经替换过的名字重新当成待改名去做重名校验。
+  await expect.element(page.getByText('改名完成！')).toBeVisible()
+  await expect.element(page.getByText(/同步未完成/)).toBeVisible()
+  expect(page.getByRole('button', { name: '应用改名' }).query()).toBeNull()
+})
+
+it('keeps the roster state recoverable and retryable when the commit fails', async () => {
+  saveAll.mockRejectedValueOnce(new Error('角色名单 revision 已过期，已拒绝覆盖'))
+  await act(async () => root?.render(<AIRenameCharactersDialog onClose={vi.fn()} />))
+  await act(async () => page.getByRole('button', { name: 'AI 生成新名字' }).click())
+  await act(async () => page.getByRole('button', { name: '应用改名' }).click())
+
+  await expect.element(page.getByText(/未能写入项目/)).toBeVisible()
+  // 名单已在本地改名：行显示为已应用，按钮仍可再次点击完成落盘。
+  await expect.element(page.getByText(/已应用/).first()).toBeVisible()
+  const retry = page.getByRole('button', { name: '应用改名' })
+  await expect.element(retry).toBeEnabled()
+  await act(async () => retry.click())
+
+  await expect.element(page.getByText('改名完成！')).toBeVisible()
+  expect(saveAll).toHaveBeenCalledTimes(2)
+  // 第二次应用只重试保存，不会把原名再改一遍。
+  expect(renameCharactersBatch).toHaveBeenCalledTimes(1)
 })
 
 afterEach(async () => {

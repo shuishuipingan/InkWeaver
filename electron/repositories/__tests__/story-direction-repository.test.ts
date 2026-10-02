@@ -139,6 +139,58 @@ describe('StoryDirectionRepository', () => {
     expect(StoryDirectionRepository.snapshot().blueprints[1].characters).toEqual(['主角', '未来角色'])
   })
 
+  it('rewrites the whole character profile and relationships through a direction adjustment', () => {
+    db.exec(`CREATE TABLE characters (
+      name TEXT PRIMARY KEY, role TEXT DEFAULT 'supporting', gender TEXT DEFAULT '', age TEXT DEFAULT '',
+      appearance TEXT DEFAULT '', personality TEXT DEFAULT '', background TEXT DEFAULT '', abilities TEXT DEFAULT '',
+      motivation TEXT DEFAULT '', relationships TEXT DEFAULT '', arc TEXT DEFAULT '', notes TEXT DEFAULT '',
+      cs_location TEXT DEFAULT '', cs_power_level TEXT DEFAULT '', cs_physical_state TEXT DEFAULT '',
+      cs_mental_state TEXT DEFAULT '', cs_key_items TEXT DEFAULT '', cs_recent_events TEXT DEFAULT '',
+      cs_updated_at_chapter INTEGER DEFAULT NULL, created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    )`)
+    ensureCharacterRosterSchema(db)
+    const roster = CharacterRosterRepository.commit({
+      operationId: 'initial-roster-profile', expectedRevision: 0, schemaVersion: 1, intent: 'manual_edit',
+      entries: [
+        { name: '主角', role: 'protagonist', gender: '男', age: '十八', appearance: '灰袍',
+          personality: '独立', background: '铁匠学徒', abilities: '锻造', motivation: '守家',
+          relationships: [], arc: '成长', notes: '' },
+        { name: '配角', role: 'supporting', gender: '女', age: '', appearance: '', personality: '',
+          background: '', abilities: '', motivation: '', relationships: [], arc: '', notes: '' },
+      ],
+    })
+    const snapshot = StoryDirectionRepository.snapshot()
+    StoryDirectionRepository.apply({
+      expectedFingerprint: snapshot.fingerprint,
+      expectedRosterRevision: roster.revision,
+      coreChanges: {},
+      blueprintChanges: [],
+      characterChanges: [{
+        name: '主角',
+        changes: {
+          gender: '女', age: '二十四', appearance: '银甲', background: '没落将军之女',
+          personality: '果敢', motivation: '复仇', arc: '从孤军到统帅',
+        },
+        relationships: [{ target: '配角', relation: '结拜姐妹' }],
+      }],
+    })
+    const entry = CharacterRosterRepository.read().entries.find(item => item.name === '主角')!
+    expect(entry).toMatchObject({
+      gender: '女', age: '二十四', appearance: '银甲', background: '没落将军之女',
+      personality: '果敢', motivation: '复仇', arc: '从孤军到统帅',
+      relationships: [{ target: '配角', relation: '结拜姐妹' }],
+    })
+    const { revision: rosterRevision } = CharacterRosterRepository.read()
+    expect(() => StoryDirectionRepository.apply({
+      expectedFingerprint: StoryDirectionRepository.snapshot().fingerprint,
+      expectedRosterRevision: rosterRevision,
+      coreChanges: {},
+      blueprintChanges: [],
+      characterChanges: [{ name: '主角', changes: {}, relationships: [{ target: '陌生人', relation: '盟友' }] }],
+    })).toThrow(/关系变更无效/u)
+  })
+
   it('applies previewed planning changes while preserving finalized chapters and author notes', () => {
     const snapshot = StoryDirectionRepository.snapshot()
     const next = StoryDirectionRepository.apply({

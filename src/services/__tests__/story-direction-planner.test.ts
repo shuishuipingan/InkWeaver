@@ -128,4 +128,50 @@ describe('story direction proposal contract', () => {
       changes: [{ chapterNumber: 2, changes: { characters: ['主角'], purpose: '主角在危机中脱险' } }],
     }), [blueprint])).toEqual([{ chapterNumber: 2, changes: { purpose: '主角在危机中脱险' } }])
   })
+
+  it('accepts a validated cast-list edit built from the known roster and rejects invented names', () => {
+    const blueprint2 = { ...blueprint, characters: ['主角'] }
+    expect(decodeBlueprintDirectionChanges(JSON.stringify({
+      changes: [{ chapterNumber: 2, changes: { characters: ['主角', '配角'], purpose: '两人结盟' } }],
+    }), [blueprint2], [], ['主角', '配角'])).toEqual([{
+      chapterNumber: 2,
+      changes: { characters: ['主角', '配角'], purpose: '两人结盟' },
+    }])
+    expect(() => decodeBlueprintDirectionChanges(JSON.stringify({
+      changes: [{ chapterNumber: 2, changes: { characters: ['主角', '凭空出现的人'] } }],
+    }), [blueprint2], [], ['主角', '配角'])).toThrow(/字段无效/)
+    expect(() => decodeBlueprintDirectionChanges(JSON.stringify({
+      changes: [{ chapterNumber: 2, changes: { characters: [] } }],
+    }), [blueprint2])).toThrow(/字段无效/)
+  })
+
+  it('decodes full-profile character edits with relationships validated against the roster', () => {
+    const result = decodeCoreDirectionChanges(JSON.stringify({
+      characterChanges: [{
+        name: '主角',
+        changes: {
+          role: 'protagonist', gender: '女', age: '二十四', appearance: '银甲',
+          background: '没落将军之女', personality: '果敢', arc: '从孤军到统帅', notes: '',
+        },
+        relationships: [{ target: '配角', relation: '结拜姐妹' }],
+      }],
+    }), core, ['主角', '配角'])
+    expect(result.characterChanges).toEqual([{
+      name: '主角',
+      changes: {
+        role: 'protagonist', gender: '女', age: '二十四', appearance: '银甲',
+        background: '没落将军之女', personality: '果敢', arc: '从孤军到统帅',
+      },
+      relationships: [{ target: '配角', relation: '结拜姐妹' }],
+    }])
+    expect(() => decodeCoreDirectionChanges(JSON.stringify({
+      characterChanges: [{ name: '主角', changes: { role: '大反派' } }],
+    }), core, ['主角'])).toThrow(/定位无效/)
+    expect(() => decodeCoreDirectionChanges(JSON.stringify({
+      characterChanges: [{ name: '主角', changes: {}, relationships: [{ target: '陌生人', relation: '盟友' }] }],
+    }), core, ['主角'])).toThrow(/关系条目无效/)
+    expect(() => decodeCoreDirectionChanges(JSON.stringify({
+      characterChanges: [{ name: '主角', changes: {}, relationships: [{ target: '主角', relation: '自指' }] }],
+    }), core, ['主角'])).toThrow(/关系条目无效/)
+  })
 })

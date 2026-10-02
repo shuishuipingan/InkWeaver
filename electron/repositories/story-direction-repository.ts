@@ -155,6 +155,8 @@ function replaceRosterPlanningFields(
   )
   return {
     ...value,
+    gender: rewrite('gender'),
+    age: rewrite('age'),
     appearance: rewrite('appearance'),
     personality: rewrite('personality'),
     background: rewrite('background'),
@@ -163,6 +165,8 @@ function replaceRosterPlanningFields(
     arc: rewrite('arc'),
     relationships: value.relationships.map(relationship => ({
       ...relationship,
+      // 关系目标可能是改名前给出的名字；术语替换是同一批映射，这里一并校正。
+      target: replaceTerminologyText(relationship.target, replacements, protectedNames),
       relation: replaceTerminologyText(relationship.relation, replacements, protectedNames),
     })),
   }
@@ -243,11 +247,29 @@ export class StoryDirectionRepository {
       }
       if (characterChanges.length > 0 && roster?.status === 'ready') {
         const existingNames = new Set(roster.entries.map(entry => entry.name))
+        const assignableNames = new Set([
+          ...existingNames,
+          ...terminologyReplacements.map(pair => pair.to),
+        ])
         const seenNames = new Set<string>()
         for (const item of characterChanges) {
           if (!existingNames.has(item.name) || seenNames.has(item.name)) throw new Error('角色变更引用未知或重复角色')
           seenNames.add(item.name)
           assertStringChanges(item.changes as Record<string, unknown>, STORY_DIRECTION_CHARACTER_FIELDS, '角色卡')
+          const relationships = (item as { relationships?: unknown }).relationships
+          if (relationships === undefined) continue
+          if (!Array.isArray(relationships) || relationships.length > 24) throw new Error('角色关系变更数量无效')
+          const targets = new Set<string>()
+          for (const rawRelationship of relationships) {
+            const relationship = rawRelationship as { target?: unknown; relation?: unknown }
+            const target = typeof relationship?.target === 'string' ? relationship.target.trim() : ''
+            const relation = typeof relationship?.relation === 'string' ? relationship.relation.trim() : ''
+            if (!target || target === item.name || !assignableNames.has(target) || !relation
+              || relation.length > 200 || targets.has(target)) {
+              throw new Error(`角色「${item.name}」的关系变更无效`)
+            }
+            targets.add(target)
+          }
         }
       }
       const rosterRenames = roster?.status === 'ready'
@@ -288,7 +310,7 @@ export class StoryDirectionRepository {
         BlueprintRepository.upsert({ ...byChapter.get(item.chapterNumber)!, ...changes })
       }
       if (roster?.status === 'ready' && terminologyReplacements.length > 0) {
-        const changesByName = new Map(characterChanges.map(item => [item.name, item.changes]))
+        const changesByName = new Map(characterChanges.map(item => [item.name, item]))
         const renameByName = new Map(rosterRenames.map(item => [item.from, item.to]))
         const protectedNames = roster.entries.map(entry => entry.name)
         CharacterRosterRepository.commit({
@@ -299,28 +321,40 @@ export class StoryDirectionRepository {
           renames: rosterRenames.map(pair => ({ originalName: pair.from, newName: pair.to })),
           entries: roster.entries.map(entry => {
             const safeEntry = replaceRosterPlanningFields(entry, terminologyReplacements, protectedNames)
-            const changes = changesByName.get(entry.name)
+            const change = changesByName.get(entry.name)
             const candidate = {
               ...safeEntry,
-              ...(changes ?? {}),
+              ...(change?.changes ?? {}),
+              // 方向调整给出的关系已是新名字（decoder 用改名后的名单校验过）。
+              ...(change?.relationships
+                ? { relationships: change.relationships.map(relationship => ({
+                    target: relationship.target, relation: relationship.relation })) }
+                : {}),
               name: renameByName.get(entry.name) ?? entry.name,
             }
             return replaceRosterPlanningFields(candidate, terminologyReplacements, protectedNames)
           }),
         })
       } else if (roster?.status === 'ready' && characterChanges.length > 0) {
-        const byName = new Map(characterChanges.map(item => [item.name, item.changes]))
+        const byName = new Map(characterChanges.map(item => [item.name, item]))
         CharacterRosterRepository.commit({
           operationId: `story-direction-${randomUUID()}`,
           expectedRevision: roster.revision,
           schemaVersion: CHARACTER_ROSTER_SCHEMA_VERSION,
           intent: 'direction_adjustment',
           entries: roster.entries.flatMap(entry => {
-            const changes = byName.get(entry.name)
-            if (!changes) return []
+            const change = byName.get(entry.name)
+            if (!change) return []
             const safeEntry = { ...entry }
             delete safeEntry.legacyRelationshipNotes
-            return [{ ...safeEntry, ...changes }]
+            return [{
+              ...safeEntry,
+              ...change.changes,
+              ...(change.relationships
+                ? { relationships: change.relationships.map(relationship => ({
+                    target: relationship.target, relation: relationship.relation })) }
+                : {}),
+            }]
           }),
         })
       }

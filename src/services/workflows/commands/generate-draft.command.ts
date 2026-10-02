@@ -50,7 +50,8 @@ import {
 
 export { countDraftUnits } from '../../../shared/draft-units'
 
-const CONTINUE_PROMPT_MAX_CHARS = 1600
+// 续写时要能看到较长的已写结尾，才能接住当下的场景、语气与未收的动作。
+const CONTINUE_PROMPT_MAX_CHARS = 2400
 const MIN_TARGET_COMPLETION_RATIO = 0.82
 const MAX_AUTO_CONTINUE_ROUNDS = 7
 const MAX_TARGET_OVERAGE_RATIO = 0.12
@@ -623,6 +624,8 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
     ])
 
     const draftBaseReceipt = context.data.contextReceipt as ContextReceipt
+    // 续写阶段也要带着同一批连续性锚点（要点时间线 / 活跃线索 / 知情范围 / 上一章交接）。
+    let continuityContext = ''
     if (!isFirstChapter) {
       // 从蓝图 JSON 的 notes 字段读取章节要点时间线（按序拼装，利于前缀缓存）
       const chapterTimeline = await this.readChapterNotesTimeline(
@@ -788,6 +791,12 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
         ))
         .withFilteredContext(filteredContext)
         .withShortSummary('')
+      continuityContext = [
+        chapterTimeline.text,
+        activeThreads.text,
+        knowledgeEvents.text,
+        formatChapterHandoff(chapterHandoff, writingLanguage),
+      ].filter(Boolean).join('\n\n')
     }
 
     const prompt = promptBuilder.build()
@@ -955,6 +964,9 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
             globalGuidance: mergedGuidance,
             writingStyle: novelConfig.writingStyle || '',
             writingLanguage,
+            // 续写过去只带蓝图与已写结尾，模型看不到要点时间线与上一章交接，
+            // 场景容易漂移或注水；把首次请求的连续性锚点一并带上。
+            continuityContext,
             reasoning: initialOutcome.receipt.capabilities.reasoning === true,
           })
         })
@@ -1085,6 +1097,7 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
     futureBlueprints: string
     globalGuidance: string
     writingStyle: string
+    continuityContext: string
     writingLanguage: WritingLanguage
     reasoning: boolean
   }): Promise<string> {
@@ -1147,6 +1160,9 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
 【本章蓝图】
 ${JSON.stringify(params.chapterInfo, null, 2)}
 
+【前文要点与上一章交接】
+${params.continuityContext || '（无）'}
+
 【后续章节大纲预告】
 ${params.futureBlueprints}
 
@@ -1173,6 +1189,9 @@ ${visibleTail}`,
 
 [Current chapter blueprint]
 ${JSON.stringify(params.chapterInfo, null, 2)}
+
+[Story so far and confirmed handoff]
+${params.continuityContext || '(none)'}
 
 [Upcoming chapter blueprints]
 ${params.futureBlueprints}
@@ -1209,6 +1228,8 @@ ${visibleTail}`,
               ...params.coreSections,
               ...params.guidanceSections.map(section => ({ ...section, startOffset: undefined })),
               { sectionName: 'writing-style', label: '', text: params.writingStyle },
+              { sectionName: 'story-so-far', label: '', text: params.continuityContext,
+                degradation: { priority: 15, strategy: 'complete-lines' } },
               { sectionName: 'existing-ending', label: '', text: visibleTail },
               { sectionName: 'distant-blueprints', label: '', text: params.futureBlueprints,
                 degradation: { priority: 10, strategy: 'complete-lines' } },

@@ -675,13 +675,21 @@ function mergeIncrementalEntriesWithExisting(
     if (!candidate) return { ...existing }
 
     if (intent === 'direction_adjustment') {
+      // 方向调整可以改写整份人物档案（身份主键与动态状态除外），也可以整份
+      // 替换该角色的关系列表；目标已在调用方校验为现有角色。
       return {
         ...existing,
+        role: candidate.role,
+        gender: candidate.gender,
+        age: candidate.age,
+        appearance: candidate.appearance,
+        background: candidate.background,
         personality: candidate.personality,
         abilities: candidate.abilities,
         motivation: candidate.motivation,
         arc: candidate.arc,
         notes: candidate.notes,
+        relationships: candidate.relationships,
       }
     }
 
@@ -922,6 +930,7 @@ function updatePlanningTextReferencesForManualEdit(
   db: BetterSqlite3.Database,
   renames: readonly CharacterRosterRename[],
   protectedNames: readonly string[],
+  fullIdentityRename = false,
 ): void {
   if (renames.length === 0) return
   const coreFields = [
@@ -931,8 +940,12 @@ function updatePlanningTextReferencesForManualEdit(
     'writing_style', 'reference_works',
   ]
   // Fixed-choice fields, numeric settings, and character_states are not
-  // planning prose; chapter notes can project finalized facts.
-  const blueprintFields = ['title', 'purpose', 'key_events', 'suspense_hook', 'user_guidance']
+  // planning prose; chapter notes can project finalized facts. An adaptation
+  // rename rewrites the chapter notes too so no previous name survives.
+  const blueprintFields = [
+    'title', 'purpose', 'key_events', 'suspense_hook', 'user_guidance',
+    ...(fullIdentityRename ? ['notes'] : []),
+  ]
   const available = (table: string) => new Set(
     (db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>).map(column => column.name),
   )
@@ -1266,7 +1279,7 @@ export class CharacterRosterRepository {
           new Set(renamedEntries.map(entry => entry.name)),
         )
         updatePlanningTextReferencesForManualEdit(
-          db, request.renames ?? [], protectedNames,
+          db, request.renames ?? [], protectedNames, fullIdentityRename,
         )
         updateKnowledgeEventReferencesForManualEdit(
           db, request.renames ?? [], protectedNames, fullIdentityRename,

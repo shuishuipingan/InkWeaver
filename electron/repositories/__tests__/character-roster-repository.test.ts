@@ -423,6 +423,9 @@ describe('CharacterRosterRepository public read/commit seam', () => {
       INSERT INTO planning_materials (id, name, kind, content, content_hash, status)
       VALUES (?, ?, ?, ?, ?, ?)
     `).run('pm-1', '导入大纲', 'outline', '林舟与苏绾同行，寻找林舟的师父', 'source-hash', 'confirmed')
+    db.exec('ALTER TABLE blueprints ADD COLUMN notes TEXT DEFAULT \'\'')
+    db.prepare('INSERT INTO blueprints (chapter_number, characters, notes) VALUES (?, ?, ?)')
+      .run(1, JSON.stringify(['林舟', '苏绾']), '定稿事实：林舟在这里获救')
 
     const renamed = CharacterRosterRepository.commit({
       operationId: 'manual-edit-rename-card-prose',
@@ -460,6 +463,8 @@ describe('CharacterRosterRepository public read/commit seam', () => {
       .toEqual({ background: '沈绾的徒弟，在铁砧镇长大' })
     expect(db.prepare('SELECT content, status FROM planning_materials WHERE name = ?').get('导入大纲'))
       .toEqual({ content: '陆舟与沈绾同行，寻找陆舟的师父', status: 'confirmed' })
+    expect(db.prepare('SELECT notes FROM blueprints WHERE chapter_number = 1').get())
+      .toEqual({ notes: '定稿事实：陆舟在这里获救' })
     expect(renamed.snapshot.renderedMarkdown).toContain('- 背景：沈绾的徒弟，在铁砧镇长大')
   })
 
