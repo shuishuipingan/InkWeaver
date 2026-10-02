@@ -718,8 +718,8 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
             )).join('\n\n')
           : promptLanguageText(writingLanguage, '（知识库中无相关内容）', '(no relevant knowledge-base context)')
         if (results.length > 0) filteredContext = `${promptLanguageText(writingLanguage,
-          '【参考资料：仅用于风格与结构参考，不构成本书已发生事实】',
-          '[Reference material: style and structure only; not evidence of events in this novel]')}\n${filteredContext}`
+          '【参考资料：本书未发生的事件不能照搬，但其中的冲突设计、场景铺陈与细节笔法可以化用进本章】',
+          '[Reference material: do not copy events that never happened in this novel, but do adapt its conflict design, scene framing, and concrete detail into this chapter]')}\n${filteredContext}`
       } catch {
         filteredContext = promptLanguageText(writingLanguage, '（知识库检索不可用）', '(knowledge-base search unavailable)')
       }
@@ -801,8 +801,8 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
 
     const prompt = promptBuilder.build()
     const draftSystemRole = `${promptBuilder.getSystemRole()}\n${promptLanguageText(writingLanguage,
-      '资料来源规则：定稿正文与核实的连续性事实代表已发生事件。未定稿正文是候选；架构、人物背景与弧线、未来蓝图是设定或规划。当前人物状态以核实的前文状态和本章蓝图为准。参考书片段仅供风格与结构参考，不得据此断言本书已经发生事件或提前写出后续章节。',
-      'Source rules: finalized prose and verified continuity facts establish occurred events. Unfinished prose is a candidate; architecture, character background/arcs and upcoming blueprints are settings or plans. Current character states follow verified prior states and this chapter blueprint. Reference excerpts provide style/structure guidance and must not establish events or advance future chapters.')} `
+      '资料来源规则：定稿正文与核实的连续性事实代表已发生事件，必须保持一致；架构、人物背景与弧线、未来蓝图是设定或规划，按本章蓝图推进。正文的生动优先：多写具体的动作、对白、感官细节与场景氛围，把设定与约束织进情节里，而不是复述设定。参考书片段仅供防事实污染，其冲突设计与细节笔法应当化用。',
+      'Source rules: finalized prose and verified continuity facts establish occurred events and must stay consistent; architecture, character background/arcs, and upcoming blueprints are settings to advance through this chapter blueprint. Vivid prose first: favor concrete action, dialogue, sensory detail, and scene atmosphere, weaving settings and constraints into the plot instead of restating them. Reference excerpts guard against fact contamination only; adapt their conflict design and detail craft.')} `
     const serializedGlobalGuidance = typeof novelConfig.globalGuidance === 'string'
       ? JSON.stringify(novelConfig.globalGuidance)
       : undefined

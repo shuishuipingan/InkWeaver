@@ -13,7 +13,10 @@ export function estimatePromptTokens(messages: readonly { content: string }[]): 
 
 export function draftOutputReservation(targetWords: number): number {
   if (!Number.isFinite(targetWords) || targetWords < 1) throw new Error('章节目标字数无效')
-  return Math.min(65_536, Math.max(8_192, Math.ceil(targetWords * 2 + 4_096)))
+  // 1.2 时代单次输出直接给到模型能力上限（≥65536），1.3.10 起按目标字数预留。
+  // 预留过小会挤掉细节描写并触发多轮薄上下文续写；下限抬高到 16384
+  // （约 1.1 万汉字），上限仍受 65536 与模型能力约束。
+  return Math.min(65_536, Math.max(16_384, Math.ceil(targetWords * 3 + 8_192)))
 }
 
 export function resolveAdaptivePromptBudget(

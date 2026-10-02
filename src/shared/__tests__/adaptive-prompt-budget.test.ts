@@ -17,8 +17,8 @@ describe('adaptive draft input budget', () => {
   })
   it('counts UTF-8 and message framing, including emoji, and sizes output by task', () => {
     expect(estimatePromptTokens([{ content: '汉字😀' }])).toBe(21)
-    expect(draftOutputReservation(3_000)).toBe(10_096)
-    expect(draftOutputReservation(100)).toBe(8_192)
+    expect(draftOutputReservation(3_000)).toBe(17_192)
+    expect(draftOutputReservation(100)).toBe(16_384)
     expect(draftOutputReservation(100_000)).toBe(65_536)
   })
 })

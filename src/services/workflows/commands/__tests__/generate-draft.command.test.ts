@@ -554,10 +554,10 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
     ])
     // The chapter target sets output reservation; one frozen lease serves both requests.
     expect(completeWithLease.mock.calls.map(([request]) => request.plan.maxOutputTokens)).toEqual([
-      14_096,
-      14_096,
+      23_192,
+      23_192,
     ])
-    expect(createRuntime).toHaveBeenCalledWith({ budget: { ...DRAFT_GENERATION_BUDGET, respectIntentOutputCaps: true, maxRequestedOutputTokensPerAttempt: 14_096 } })
+    expect(createRuntime).toHaveBeenCalledWith({ budget: { ...DRAFT_GENERATION_BUDGET, respectIntentOutputCaps: true, maxRequestedOutputTokensPerAttempt: 23_192 } })
     expect(invoke).toHaveBeenCalledWith(
       'db:draft-create',
       expect.objectContaining({ content: expect.stringContaining('续') }),
@@ -574,7 +574,7 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
     await expect(command.execute({ step: {}, context, callbacks })).resolves.toContain('正文')
 
     expect(runtime.createRuntime).toHaveBeenCalledWith({
-      budget: { ...DRAFT_GENERATION_BUDGET, respectIntentOutputCaps: true, maxRequestedOutputTokensPerAttempt: 8_192 },
+      budget: { ...DRAFT_GENERATION_BUDGET, respectIntentOutputCaps: true, maxRequestedOutputTokensPerAttempt: 16_384 },
       modelId: 'grok-selected-model',
     })
   })
