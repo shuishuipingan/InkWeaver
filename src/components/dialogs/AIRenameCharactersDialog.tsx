@@ -112,8 +112,16 @@ export default function AIRenameCharactersDialog({ onClose }: { onClose: () => v
       const rows: RenameRow[] = []
       const generateBatch = async (batch: typeof characters, forbiddenNames: Set<string>): Promise<RenameRow[]> => {
         const rosterLines = batch.map((c, index) => {
-          const brief = [c.gender, c.age, c.role, c.personality?.slice(0, 40)]
-            .filter(Boolean).join(' / ')
+          // 带上背景/能力/动机的短摘要，模型才能给出贴合世界观与人设的名字。
+          const brief = [
+            c.gender,
+            c.age,
+            c.role,
+            c.personality?.slice(0, 40),
+            c.background?.slice(0, 60),
+            c.abilities?.slice(0, 40),
+            c.motivation?.slice(0, 40),
+          ].filter(Boolean).join(' / ')
           return `- [R${index + 1}] ${c.name}${brief ? `（${brief}）` : ''}`
         }).join('\n')
         const user = [
@@ -247,8 +255,10 @@ export default function AIRenameCharactersDialog({ onClose }: { onClose: () => v
         const ok = useCharacterStore.getState().renameCharacter(r.from, r.to.trim())
         if (!ok) throw new Error(text(`改名失败：${r.from} → ${r.to}`, `Rename failed: ${r.from} → ${r.to}`))
       }
-      // 2) 经 roster seam 原子提交：角色主键、关系、蓝图结构化引用、图谱投影
-      await useCharacterStore.getState().saveAll(currentProject.path, projectSession)
+      // 2) 经 roster seam 原子提交：角色主键、档案字段、关系、蓝图结构化引用、图谱投影
+      await useCharacterStore.getState().saveAll(
+        currentProject.path, projectSession, undefined, { fullIdentityRename: true },
+      )
       if (!isProjectSessionCurrent(projectSession)) return
 
       // The roster commit rewrites project_core in SQLite; refresh the open

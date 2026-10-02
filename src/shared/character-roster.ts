@@ -131,6 +131,13 @@ export interface CharacterRosterCommitRequest {
   /** 仅 manual_edit 使用；由角色管理的草稿账本明确给出身份映射。 */
   renames?: CharacterRosterRename[]
   /**
+   * 仅 manual_edit 使用。默认 false：改名只贯穿作者撰写的规划字段
+   * （外貌/性格/背景/能力/动机/弧光/关系描述），备注、动态状态、关系证据、
+   * 知情事件正文与导入规划资料这类“证据型文本”保持原样，避免改写冻结事实。
+   * 拆书仿写式整体改名为 true：上述证据型文本一并改写，使作品不再残留旧名。
+   */
+  fullIdentityRename?: boolean
+  /**
    * legacy_repair / legacy_cards_adoption 使用。它是从只读快照回传的原始
    * 证据，用来拒绝把旧 Markdown A 的候选提交到后来已变为 Markdown B 的项目中。
    */

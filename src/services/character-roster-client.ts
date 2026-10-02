@@ -9,6 +9,32 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }
 
+/** 关系除端点与类型外还带方向、来源章节与证据，手工保存不能顺手丢掉它们。 */
+function structuredRelationship(raw: Record<string, unknown>): CharacterRosterRelationship | null {
+  if (typeof raw.target !== 'string' || typeof raw.relation !== 'string') return null
+  const target = raw.target.trim()
+  const relation = raw.relation.trim()
+  if (!target || !relation) return null
+  const direction = raw.direction === 'outgoing' || raw.direction === 'incoming' || raw.direction === 'mutual'
+    ? raw.direction
+    : undefined
+  const sourceChapter = typeof raw.sourceChapter === 'number'
+    && Number.isSafeInteger(raw.sourceChapter)
+    && raw.sourceChapter >= 1
+    ? raw.sourceChapter
+    : undefined
+  const evidence = typeof raw.evidence === 'string' && raw.evidence.trim()
+    ? raw.evidence.trim().slice(0, 300)
+    : undefined
+  return {
+    target,
+    relation,
+    ...(direction ? { direction } : {}),
+    ...(sourceChapter === undefined ? {} : { sourceChapter }),
+    ...(evidence ? { evidence } : {}),
+  }
+}
+
 function parseStructuredRelationships(value: string): CharacterRosterRelationship[] | null {
   const text = value.trim()
   if (!text) return []
@@ -21,8 +47,10 @@ function parseStructuredRelationships(value: string): CharacterRosterRelationshi
   if (Array.isArray(parsed)) {
     const relationships: CharacterRosterRelationship[] = []
     for (const raw of parsed) {
-      if (!isRecord(raw) || typeof raw.target !== 'string' || typeof raw.relation !== 'string') return null
-      relationships.push({ target: raw.target.trim(), relation: raw.relation.trim() })
+      if (!isRecord(raw)) return null
+      const relationship = structuredRelationship(raw)
+      if (!relationship) return null
+      relationships.push(relationship)
     }
     return relationships
   }

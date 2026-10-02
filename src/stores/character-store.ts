@@ -233,6 +233,7 @@ interface CharacterState {
     projectPath?: string,
     expectedProjectSession?: ProjectSessionContext,
     operationKind?: 'delete',
+    options?: { fullIdentityRename?: boolean },
   ) => Promise<void>
 
   // 兼容旧接口
@@ -615,7 +616,7 @@ export const useCharacterStore = create<CharacterState>()((set, get) => ({
     ))
   },
 
-  saveAll: (projectPath, expectedProjectSession, operationKind) => {
+  saveAll: (projectPath, expectedProjectSession, operationKind, options) => {
     const projectSession = currentCharacterProjectSession(projectPath, expectedProjectSession)
     const projectKey = projectSession?.projectPath
     if (
@@ -675,6 +676,8 @@ export const useCharacterStore = create<CharacterState>()((set, get) => ({
           intent: 'manual_edit',
           entries: characterRosterEntriesFromCards(savedCharacters),
           ...(savedRenames.length > 0 ? { renames: savedRenames } : {}),
+          // 拆书仿写式整体改名：备注、动态状态、关系证据与知情事件也要换名。
+          ...(options?.fullIdentityRename ? { fullIdentityRename: true } : {}),
         },
         projectKey,
       )

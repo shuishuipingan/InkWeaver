@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 
 import { getProjectDb } from '../database'
+import { replaceCharacterNamesSimultaneously } from '../../src/shared/character-rename-references'
 import {
   isPlanningMaterialKind,
   type PlanningMaterialInput,
@@ -119,5 +120,41 @@ export class PlanningMaterialRepository {
     `).run(id)
     if (result.changes !== 1) throw new Error('规划资料不存在')
     return this.get(id)!
+  }
+
+  /**
+   * Confirmed planning materials are fed into generation prompts, so a rename
+   * that skips them would leak the previous character names back into new
+   * prose. Content, hash, and derived id move together inside one transaction.
+   */
+  static renameCharacterReferences(
+    renames: readonly { originalName: string; newName: string }[],
+    protectedNames: readonly string[],
+  ): number {
+    const pairs = renames.filter(rename => rename.originalName && rename.newName
+      && rename.originalName !== rename.newName)
+    if (pairs.length === 0) return 0
+    const db = requireDb()
+    const rows = db.prepare('SELECT * FROM planning_materials').all() as Record<string, unknown>[]
+    const update = db.prepare(`
+      UPDATE planning_materials
+      SET id = ?, content = ?, content_hash = ?, updated_at = datetime('now')
+      WHERE id = ?
+    `)
+    const exists = db.prepare('SELECT 1 FROM planning_materials WHERE id = ?')
+    return db.transaction(() => {
+      let changed = 0
+      for (const row of rows) {
+        const record = rowToRecord(row)
+        const nextContent = replaceCharacterNamesSimultaneously(record.content, pairs, protectedNames)
+        if (nextContent === record.content) continue
+        const contentHash = createHash('sha256').update(nextContent, 'utf8').digest('hex')
+        const id = materialId({ name: record.name, kind: record.kind, contentHash })
+        if (id === record.id || exists.get(id)) continue
+        update.run(id, nextContent, contentHash, record.id)
+        changed += 1
+      }
+      return changed
+    })()
   }
 }

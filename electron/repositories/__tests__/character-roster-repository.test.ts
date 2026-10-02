@@ -363,6 +363,147 @@ describe('CharacterRosterRepository public read/commit seam', () => {
       .toEqual({ title: '陆舟的伏笔', author_intent: '陆舟最终与苏绾和解' })
   })
 
+  it('rewrites character card prose, dynamic state, and knowledge events in the rename transaction', () => {
+    db.exec(`
+      CREATE TABLE knowledge_events (
+        event_id TEXT PRIMARY KEY,
+        character_name TEXT NOT NULL,
+        source_chapter INTEGER NOT NULL,
+        status TEXT NOT NULL,
+        payload_json TEXT NOT NULL,
+        updated_at TEXT DEFAULT (datetime('now'))
+      );
+    `)
+    db.prepare([
+      'CREATE TABLE planning_materials (',
+      '  id TEXT PRIMARY KEY,',
+      '  name TEXT NOT NULL,',
+      '  kind TEXT NOT NULL,',
+      '  content TEXT NOT NULL,',
+      '  source_display_name TEXT NOT NULL DEFAULT \'\',',
+      '  source_hash TEXT NOT NULL DEFAULT \'\',',
+      '  content_hash TEXT NOT NULL,',
+      '  status TEXT NOT NULL DEFAULT \'candidate\',',
+      '  created_at TEXT DEFAULT (datetime(\'now\')),',
+      '  updated_at TEXT DEFAULT (datetime(\'now\')),',
+      '  confirmed_at TEXT DEFAULT NULL',
+      ')',
+    ].join('\n')).run()
+    const initial = CharacterRosterRepository.commit(commitRequest({
+      intent: 'manual_edit',
+      entries: commitRequest().entries.map(entry => (
+        entry.name === '林舟'
+          ? {
+              ...entry,
+              background: '苏绾的徒弟，在铁砧镇长大',
+              notes: '苏绾留给他的旧剑',
+              relationships: [{
+                target: '苏绾', relation: '师徒', direction: 'outgoing' as const,
+                sourceChapter: 1, evidence: '苏绾收林舟为徒',
+              }],
+              currentState: {
+                location: '北境', powerLevel: '炼气', physicalState: '轻伤',
+                mentalState: '警觉', keyItems: '苏绾的旧剑',
+                recentEvents: '林舟与苏绾重逢', updatedAtChapter: 3,
+                provenance: { source: 'author' as const },
+              },
+            }
+          : entry
+      )),
+    }))
+    db.prepare(`
+      INSERT INTO knowledge_events (event_id, character_name, source_chapter, status, payload_json)
+      VALUES (?, ?, ?, ?, ?)
+    `).run('ke-1', '林舟', 2, 'confirmed', JSON.stringify({
+      eventId: 'ke-1', character: '林舟', information: '苏绾还活着',
+      certainty: 'fact', falseBelief: false, learnedBy: '亲耳听见',
+      sourceChapter: 2, evidence: '苏绾在废墟中现身', status: 'confirmed',
+    }))
+    db.prepare(`
+      INSERT INTO planning_materials (id, name, kind, content, content_hash, status)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run('pm-1', '导入大纲', 'outline', '林舟与苏绾同行，寻找林舟的师父', 'source-hash', 'confirmed')
+
+    const renamed = CharacterRosterRepository.commit({
+      operationId: 'manual-edit-rename-card-prose',
+      expectedRevision: initial.revision,
+      schemaVersion: 1,
+      intent: 'manual_edit',
+      fullIdentityRename: true,
+      renames: [
+        { originalName: '林舟', newName: '陆舟' },
+        { originalName: '苏绾', newName: '沈绾' },
+      ],
+      entries: initial.snapshot.entries.map(entry => {
+        if (entry.name === '林舟') return { ...entry, name: '陆舟' }
+        if (entry.name === '苏绾') return { ...entry, name: '沈绾' }
+        return entry
+      }),
+    })
+
+    const card = renamed.snapshot.entries.find(entry => entry.name === '陆舟')!
+    expect(card.background).toBe('沈绾的徒弟，在铁砧镇长大')
+    expect(card.notes).toBe('沈绾留给他的旧剑')
+    expect(card.relationships[0]).toMatchObject({
+      target: '沈绾', relation: '师徒', direction: 'outgoing', sourceChapter: 1,
+      evidence: '沈绾收陆舟为徒',
+    })
+    expect(card.currentState).toMatchObject({
+      keyItems: '沈绾的旧剑', recentEvents: '陆舟与沈绾重逢', updatedAtChapter: 3,
+    })
+    expect(db.prepare('SELECT character_name, payload_json FROM knowledge_events WHERE event_id = ?').get('ke-1'))
+      .toMatchObject({
+        character_name: '陆舟',
+        payload_json: expect.stringContaining('"information":"沈绾还活着"'),
+      })
+    expect(db.prepare('SELECT background FROM characters WHERE name = ?').get('陆舟'))
+      .toEqual({ background: '沈绾的徒弟，在铁砧镇长大' })
+    expect(db.prepare('SELECT content, status FROM planning_materials WHERE name = ?').get('导入大纲'))
+      .toEqual({ content: '陆舟与沈绾同行，寻找陆舟的师父', status: 'confirmed' })
+    expect(renamed.snapshot.renderedMarkdown).toContain('- 背景：沈绾的徒弟，在铁砧镇长大')
+  })
+
+  it('rewrites planning prose on a default rename while leaving evidence-bound notes and dynamic state alone', () => {
+    const initial = CharacterRosterRepository.commit(commitRequest({
+      intent: 'manual_edit',
+      entries: commitRequest().entries.map(entry => (
+        entry.name === '林舟'
+          ? {
+              ...entry,
+              background: '苏绾的徒弟',
+              notes: '旧称林舟的定稿记录',
+              currentState: {
+                location: '北境', powerLevel: '', physicalState: '', mentalState: '',
+                keyItems: '', recentEvents: '林舟与苏绾重逢', updatedAtChapter: 2,
+                provenance: { source: 'author' as const },
+              },
+            }
+          : entry
+      )),
+    }))
+
+    const renamed = CharacterRosterRepository.commit({
+      operationId: 'manual-edit-terminology-only',
+      expectedRevision: initial.revision,
+      schemaVersion: 1,
+      intent: 'manual_edit',
+      renames: [
+        { originalName: '林舟', newName: '陆舟' },
+        { originalName: '苏绾', newName: '沈绾' },
+      ],
+      entries: initial.snapshot.entries.map(entry => {
+        if (entry.name === '林舟') return { ...entry, name: '陆舟' }
+        if (entry.name === '苏绾') return { ...entry, name: '沈绾' }
+        return entry
+      }),
+    })
+
+    const card = renamed.snapshot.entries.find(entry => entry.name === '陆舟')!
+    expect(card.background).toBe('沈绾的徒弟')
+    expect(card.notes).toBe('旧称林舟的定稿记录')
+    expect(card.currentState?.recentEvents).toBe('林舟与苏绾重逢')
+  })
+
   it('fails closed when a legacy direct card write makes the ready roster inconsistent', () => {
     const first = CharacterRosterRepository.commit(commitRequest())
     const existing = CharacterRepository.getByName('林舟')!

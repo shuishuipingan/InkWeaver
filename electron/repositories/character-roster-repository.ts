@@ -19,9 +19,11 @@ import {
 } from '../../src/shared/character-roster'
 import { getProjectDb } from '../database'
 import { CharacterRepository, type CharacterData } from './character-repository'
+import { PlanningMaterialRepository } from './planning-material-repository'
 import { ensureCharacterRosterSchema } from './character-roster-schema'
 import { CHARACTER_ROLE_LABELS, normalizeCharacterRole } from '../../src/shared/character-role'
 import { replaceCharacterNamesSimultaneously } from '../../src/shared/character-rename-references'
+import { normalizeKnowledgeEvent } from '../../src/shared/knowledge-event'
 
 interface CharacterRosterMetaRow {
   schema_version: number
@@ -309,6 +311,10 @@ function normalizeRequest(value: unknown): CharacterRosterCommitRequest {
     }
   }
   const renames = normalizeRenames(value.renames, intent)
+  const fullIdentityRename = value.fullIdentityRename === true
+  if (fullIdentityRename && !isManualEditIntent(intent)) {
+    throw new Error('只有手工角色管理可以提交整体改名')
+  }
   let expectedLegacyMarkdown: string | undefined
   if (isLegacyEvidenceIntent(intent)) {
     if (typeof value.expectedLegacyMarkdown !== 'string') {
@@ -324,6 +330,7 @@ function normalizeRequest(value: unknown): CharacterRosterCommitRequest {
     entries,
     intent,
     ...(renames?.length ? { renames } : {}),
+    ...(fullIdentityRename ? { fullIdentityRename } : {}),
     ...(isLegacyEvidenceIntent(intent)
       ? { expectedLegacyMarkdown }
       : {}),
@@ -363,6 +370,7 @@ function payloadHash(request: CharacterRosterCommitRequest): string {
   return hashText(JSON.stringify({
     schemaVersion: request.schemaVersion,
     intent: request.intent ?? 'initialize',
+    ...(request.fullIdentityRename ? { fullIdentityRename: true } : {}),
     ...(isLegacyEvidenceIntent(request.intent ?? 'initialize')
       ? { expectedLegacyMarkdown: request.expectedLegacyMarkdown }
       : {}),
@@ -712,16 +720,136 @@ function mapManualRelationshipTargets(
     // Omitted manual entries are deletes. Their structural edges must be
     // removed in this same commit; no stale relationship can survive.
     if (!finalNames.has(target) || target === entry.name) continue
-    const key = `${target}\u0000${relationship.relation}`
+    const key = `${target}\u0000${relationship.relation}\u0000${String(relationship.direction ?? '')}`
     if (seen.has(key)) continue
     seen.add(key)
-    relationships.push({ target, relation: relationship.relation })
+    // 方向、来源章节与证据是关系的既有事实，换名不是丢弃它们的理由。
+    relationships.push({ ...relationship, target })
   }
   return {
     ...entry,
     relationships: relationships.sort((left, right) => (
       compareText(left.target, right.target) || compareText(left.relation, right.relation)
     )),
+  }
+}
+
+/**
+ * Character cards carry author-visible prose that routinely names other
+ * characters. A rename that only rewrites keys and relationship targets leaves
+ * that prose pointing at names that no longer exist.
+ *
+ * Planning fields (appearance/personality/background/abilities/motivation/arc
+ * and the relationship description) are always rewritten. Notes, dynamic state,
+ * relationship evidence, and legacy free-text relations are evidence-bound
+ * records, so they are rewritten only for a full identity rename (拆书仿写),
+ * where the whole point is that no previous name survives anywhere.
+ */
+function rewriteEntryTextReferences(
+  entry: CharacterRosterEntry,
+  renames: readonly CharacterRosterRename[],
+  protectedNames: readonly string[],
+  fullIdentityRename: boolean,
+): CharacterRosterEntry {
+  const rewrite = (value: string) => replaceCharacterNamesSimultaneously(value, renames, protectedNames)
+  const currentState = entry.currentState
+  return {
+    ...entry,
+    appearance: rewrite(entry.appearance),
+    personality: rewrite(entry.personality),
+    background: rewrite(entry.background),
+    abilities: rewrite(entry.abilities),
+    motivation: rewrite(entry.motivation),
+    arc: rewrite(entry.arc),
+    ...(fullIdentityRename ? { notes: rewrite(entry.notes) } : {}),
+    ...(fullIdentityRename && entry.legacyRelationshipNotes
+      ? { legacyRelationshipNotes: rewrite(entry.legacyRelationshipNotes) }
+      : {}),
+    relationships: entry.relationships.map(relationship => ({
+      ...relationship,
+      relation: rewrite(relationship.relation),
+      ...(fullIdentityRename && relationship.evidence !== undefined
+        ? { evidence: rewrite(relationship.evidence) }
+        : {}),
+    })),
+    ...(fullIdentityRename && currentState
+      ? {
+          currentState: {
+            ...currentState,
+            location: rewrite(currentState.location),
+            powerLevel: rewrite(currentState.powerLevel),
+            physicalState: rewrite(currentState.physicalState),
+            mentalState: rewrite(currentState.mentalState),
+            keyItems: rewrite(currentState.keyItems),
+            recentEvents: rewrite(currentState.recentEvents),
+          },
+        }
+      : {}),
+  }
+}
+
+function tableExists(db: BetterSqlite3.Database, table: string): boolean {
+  return Boolean(db.prepare(
+    "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+  ).get(table))
+}
+
+/**
+ * Knowledge events are keyed by character name and feed the information-asymmetry
+ * prompt context. Renaming a character without them would orphan the events and
+ * leak the previous name back into later generation prompts.
+ */
+function updateKnowledgeEventReferencesForManualEdit(
+  db: BetterSqlite3.Database,
+  renames: readonly CharacterRosterRename[],
+  protectedNames: readonly string[],
+  rewriteProse: boolean,
+): void {
+  if (renames.length === 0 || !tableExists(db, 'knowledge_events')) return
+  const renameByOriginal = new Map(renames.map(rename => [rename.originalName, rename.newName]))
+  const rows = db.prepare('SELECT event_id, payload_json FROM knowledge_events').all() as Array<{
+    event_id: string
+    payload_json: string
+  }>
+  const update = db.prepare(`
+    UPDATE knowledge_events
+    SET character_name = ?, payload_json = ?, updated_at = datetime('now')
+    WHERE event_id = ?
+  `)
+  for (const row of rows) {
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(row.payload_json)
+    } catch {
+      continue
+    }
+    if (!isObject(parsed) || typeof parsed.character !== 'string') continue
+    const renamedCharacter = renameByOriginal.get(parsed.character) ?? parsed.character
+    const renameText = (value: unknown): unknown => (
+      typeof value === 'string' ? replaceCharacterNamesSimultaneously(value, renames, protectedNames) : value
+    )
+    const rewrite = (payload: Record<string, unknown>) => {
+      try {
+        return normalizeKnowledgeEvent(payload)
+      } catch {
+        return null
+      }
+    }
+    // Prose fields are rewritten only for a full identity rename and only while
+    // the event still validates (the normalizer bounds every text length); the
+    // identity field always follows the rename so the name-keyed query keeps
+    // finding this event.
+    const candidate = (rewriteProse ? rewrite({
+      ...parsed,
+      character: renamedCharacter,
+      information: renameText(parsed.information),
+      learnedBy: renameText(parsed.learnedBy),
+      evidence: renameText(parsed.evidence),
+    }) : null) ?? rewrite({ ...parsed, character: renamedCharacter })
+    if (!candidate) continue
+    const nextPayload = JSON.stringify(candidate)
+    if (nextPayload === row.payload_json) continue
+    update.run(candidate.character, nextPayload, row.event_id)
   }
 }
 
@@ -1106,9 +1234,21 @@ export class CharacterRosterRepository {
           },
         }
       })
-      const projection = renderCharacterRosterMarkdown(entriesWithProvenance)
+      // 改名必须在同一事务内贯穿整张角色档案，而不只是主键与关系目标：
+      // 否则档案自由文本里留着旧名，下一次生成又会把旧名带回正文。
+      const protectedNames = existingEntries.map(existing => existing.name)
+      const fullIdentityRename = request.fullIdentityRename === true
+      const renamedEntries = isManualEdit && (request.renames?.length ?? 0) > 0
+        ? entriesWithProvenance.map(entry => rewriteEntryTextReferences(
+            entry,
+            request.renames!,
+            protectedNames,
+            fullIdentityRename,
+          ))
+        : entriesWithProvenance
+      const projection = renderCharacterRosterMarkdown(renamedEntries)
       const projectionHash = hashText(projection)
-      const factHash = fullFactHash(entriesWithProvenance)
+      const factHash = fullFactHash(renamedEntries)
       const nextRevision = meta.revision + 1
 
       // adoption 的唯一职责是以已有结构化卡片重建只读投影。它不能重写
@@ -1117,21 +1257,27 @@ export class CharacterRosterRepository {
         // 手工保存提交的是完整名单快照。先清空再回填使删除、改名（包括交换）
         // 与资料变更受同一事务保护；transaction 回滚时不会留下半个名单。
         db.prepare('DELETE FROM characters').run()
-        for (const entry of entriesWithProvenance) {
+        for (const entry of renamedEntries) {
           CharacterRepository.upsert(characterFromEntry(entry))
         }
         updateBlueprintReferencesForManualEdit(
           db,
           renameByOriginal,
-          new Set(entriesWithProvenance.map(entry => entry.name)),
+          new Set(renamedEntries.map(entry => entry.name)),
         )
         updatePlanningTextReferencesForManualEdit(
-          db, request.renames ?? [], existingEntries.map(entry => entry.name),
+          db, request.renames ?? [], protectedNames,
         )
+        updateKnowledgeEventReferencesForManualEdit(
+          db, request.renames ?? [], protectedNames, fullIdentityRename,
+        )
+        if (fullIdentityRename && (request.renames?.length ?? 0) > 0 && tableExists(db, 'planning_materials')) {
+          PlanningMaterialRepository.renameCharacterReferences(request.renames!, protectedNames)
+        }
       } else if (!isLegacyCardsAdoption) {
         for (const entry of entriesWithProvenance) CharacterRepository.upsert(characterFromEntry(entry))
       }
-      recordStateHistory(db, entriesWithProvenance, intent)
+      recordStateHistory(db, renamedEntries, intent)
       const coreUpdate = db.prepare(`
         UPDATE project_core
         SET characters_arch = ?
@@ -1153,7 +1299,7 @@ export class CharacterRosterRepository {
       const snapshot = assertReadBack(
         db,
         nextRevision,
-        entriesWithProvenance,
+        renamedEntries,
         projection,
         projectionHash,
         factHash,
