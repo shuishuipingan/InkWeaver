@@ -477,9 +477,11 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
       projectSession,
       writingLanguage,
     )
-    const outlineSummary = novelConfig.coreOutline?.trim()
-      ? await cachedContextSummary(projectSession, 'architecture', 'core-outline', novelConfig.coreOutline,
-        { maxChars: 2_000, terms: this.chapterInfo.characters, chapterNumber: this.chapterInfo.chapterNumber }) : null
+    const outlineText = novelConfig.coreOutline?.trim() ?? ''
+    const outlineSummary = outlineText.length > 4_000
+      ? await cachedContextSummary(projectSession, 'architecture', 'core-outline', outlineText,
+        { maxChars: 4_000, terms: this.chapterInfo.characters, chapterNumber: this.chapterInfo.chapterNumber })
+      : outlineText ? { text: outlineText, originalChars: outlineText.length, retainedChars: outlineText.length, cacheHit: false } : null
     const draftNovelConfig = { ...novelConfig, ...(outlineSummary ? { coreOutline: outlineSummary.text } : {}) }
     const projectPrompts = await this.readProjectPrompts(
       expectedProjectPath,
@@ -669,11 +671,12 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
       }
 
       let previousEnding = this.previousDraftEnding ?? ''
-      const savedCandidateSummary = this.previousDraftContent?.trim()
-        ? await cachedContextSummary(projectSession, 'chapter-summary', `candidate:${this.chapterInfo.chapterNumber - 1}:${this.previousDraftVersion ?? 0}`,
-          this.previousDraftContent, { maxChars: 3_000, terms: this.chapterInfo.characters, chapterNumber: this.chapterInfo.chapterNumber }) : null
-      const savedCandidateContext = previousDraftContext(savedCandidateSummary
-        ? `${savedCandidateSummary.text}\n\n${previousChapterEnding(this.previousDraftContent ?? '')}` : '', this.previousDraftVersion)
+      // 1.2 时代候选稿 ≤12K 全文直传：模型模仿的是上一章原文笔触，摘要是
+      // 事实清单，模仿不出“有趣”。只有真正超长的候选稿才降级为摘要。
+      const candidateText = this.previousDraftContent?.trim() ?? ''
+      const savedCandidateContext = candidateText
+        ? previousDraftContext(candidateText, this.previousDraftVersion)
+        : ''
       let previousEndingSource: 'unfinished-candidate' | 'finalized-history' | 'none' = savedCandidateContext
         ? 'unfinished-candidate'
         : 'none'
@@ -1339,9 +1342,12 @@ ${visibleTail}`,
     const sections: DraftArchitectureSection[] = []
     const entries: ContextReceiptEntry[] = []
     for (const candidate of candidates.filter(section => section.text)) {
-      const summary = await cachedContextSummary(projectSession, 'architecture', candidate.sectionName, candidate.text,
-        { maxChars: candidate.sectionName === 'worldbuilding' ? 2_400 : 1_600,
-          terms: this.chapterInfo.characters, chapterNumber: this.chapterInfo.chapterNumber })
+      // 短设定原文直通不摘要（摘要会切掉氛围句）；只对真正超长的架构做摘录。
+      const architectureSummaryCap = candidate.sectionName === 'worldbuilding' ? 4_800 : 4_000
+      const summary = candidate.text.length <= architectureSummaryCap
+        ? { text: candidate.text, originalChars: candidate.text.length, retainedChars: candidate.text.length, cacheHit: false }
+        : await cachedContextSummary(projectSession, 'architecture', candidate.sectionName, candidate.text,
+          { maxChars: architectureSummaryCap, terms: this.chapterInfo.characters, chapterNumber: this.chapterInfo.chapterNumber })
       sections.push({ ...candidate, text: summary.text, degradation: undefined })
       entries.push({ id: `architecture:${candidate.sectionName}`, layer: 'fixed-rules', label: candidate.label,
         included: true, required: true, sourceKind: 'project-setting', cacheHit: summary.cacheHit,
