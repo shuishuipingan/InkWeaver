@@ -119,6 +119,48 @@ describe('provider catalog', () => {
     ])
   })
 
+  it.each([
+    // 手动输入：大小写不同
+    'GLM-5.3-FLASH',
+    // 手动输入：部署变体后缀
+    'glm-5.3-flash-32b',
+    // 手动输入：日期后缀
+    'glm-5.3-flash-0630',
+    // 手动输入：分隔符/空格变体
+    'glm5.3 flash',
+    'glm_5.3_flash',
+    // 手动输入：OpenRouter 风格路由后缀
+    'glm-5.3-flash:free',
+  ])('keeps the GLM reasoning mapping alive for manually entered model name %s', (modelName) => {
+    expect(resolveModelProfileReasoningMapping({
+      provider: 'bigmodel',
+      protocol: 'openai',
+      modelName,
+    })).toEqual({
+      adapter: 'glm-thinking',
+      supportedEfforts: ['low', 'medium', 'high', 'max'],
+      providerValues: { low: 'low', medium: 'medium', high: 'high', max: 'max' },
+    })
+    expect(resolveModelProfileCapabilities({
+      provider: 'bigmodel',
+      protocol: 'openai',
+      modelName,
+    })).toMatchObject({ reasoning: true, structuredOutput: true })
+  })
+
+  it('still rejects manually entered names that do not resolve to a preset model', () => {
+    expect(resolveModelProfileReasoningMapping({
+      provider: 'deepseek',
+      protocol: 'openai',
+      modelName: 'deepseek-chat',
+    })).toBeUndefined()
+    expect(resolveModelProfileReasoningMapping({
+      provider: 'bigmodel',
+      protocol: 'openai',
+      modelName: 'gpt-4o',
+    })).toBeUndefined()
+  })
+
   it('publishes Gemini 2.5 Flash-Lite as one exact official capability fact', () => {
     const gemini = createProviderCatalog().find((preset) => preset.provider === 'gemini')
 

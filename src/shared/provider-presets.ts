@@ -863,12 +863,13 @@ function validatedCapabilities(value: unknown): ModelCapabilities | undefined {
 }
 
 /**
- * 归一化模型名：去掉日期/版本/修订后缀，回退到基础型号。
- * 第三方中转站常用 "模型名-YYYYMMDD" / "模型名-0731" / "模型名-vN" 命名，
- * 使其能继承官方预设的推理映射与能力。
+ * 归一化模型名：去掉日期/版本/修订后缀与路由后缀，回退到基础型号，并做
+ * 大小写与分隔符折叠。第三方中转站常用 "模型名-YYYYMMDD" / "模型名-0731" /
+ * "模型名-vN" / "模型名:free"（OpenRouter 风格）命名，或直接改变大小写，
+ * 使手输名也能继承官方预设的推理映射与能力。
  */
 function normalizeModelNameForPreset(modelName: string): string {
-  const name = modelName.trim()
+  const name = modelName.trim().toLocaleLowerCase()
   // 去掉常见日期/版本后缀：
   //   -0731 (MMDD) / -20250831 (YYYYMMDD) / -2025-08-31 (ISO) /
   //   -v2 / -beta / -latest / -turbo-preview 等
@@ -876,18 +877,48 @@ function normalizeModelNameForPreset(modelName: string): string {
     .replace(/-(?:\d{4}|\d{6}|\d{8}|\d{4}-\d{2}-\d{2})$/u, '')
     .replace(/-(?:v|r|rc|beta|stable|latest)(\d*)$/iu, '')
     .replace(/-turbo-preview$/iu, '')
+    // OpenRouter 风格路由后缀：":free" / ":extended" / ":nitro" 等
+    .replace(/:[a-z0-9-]+$/iu, '')
     .trim()
   return base
 }
 
+/**
+ * 折叠后的比较键：小写并去掉空格、点号、连字符与下划线。
+ * 手动输入的 "GLM5.3 FLASH" / "glm_5_3_flash" 与预设 "glm-5.3-flash"
+ * 指向同一官方模型时，映射不再因为拼写风格差异而失效。
+ */
+function presetModelKey(modelName: string): string {
+  return modelName.replace(/[\s._-]+/gu, '')
+}
+
 function findPresetModel(preset: ProviderPreset, modelName: string): ModelPreset | undefined {
   const normalizedName = normalizeModelNameForPreset(modelName)
-  return preset.models.find(candidate => candidate.name === modelName)
+  const typedKey = presetModelKey(modelName)
+  const normalizedKey = presetModelKey(normalizedName)
+  const exact = preset.models.find(candidate => candidate.name === modelName)
     ?? preset.models.find(candidate => candidate.compatibilityAliases?.includes(modelName))
     ?? preset.models.find(candidate => candidate.capabilityAliases?.includes(modelName))
     ?? preset.models.find(candidate => candidate.name === normalizedName)
     ?? preset.models.find(candidate => candidate.compatibilityAliases?.includes(normalizedName))
     ?? preset.models.find(candidate => candidate.capabilityAliases?.includes(normalizedName))
+    ?? (typedKey.length < 3 ? undefined : preset.models.find(candidate => (
+      candidate.name === typedKey
+      || presetModelKey(candidate.name) === normalizedKey
+      || candidate.compatibilityAliases?.some(alias => presetModelKey(alias) === normalizedKey)
+      || candidate.capabilityAliases?.some(alias => presetModelKey(alias) === normalizedKey)
+    )))
+  if (exact) return exact
+  // 前缀回退：手输名常带部署变体后缀（如 glm-5.3-flash-32b、deepseek-flash-turbo）。
+  // 多个预设同为前缀时取最长命中（glm-5.3-flash-32b 命中 glm-5.3-flash 而非 glm-5.3），
+  // 无任何前缀命中则放弃。
+  const prefixed = preset.models
+    .filter(candidate => (
+      normalizedKey.startsWith(presetModelKey(candidate.name))
+      && presetModelKey(candidate.name).length >= 3
+    ))
+    .sort((left, right) => presetModelKey(right.name).length - presetModelKey(left.name).length)
+  return prefixed[0]
 }
 
 /** Whether the saved model id is documented as an API id or accepted compatibility alias. */
