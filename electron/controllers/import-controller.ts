@@ -45,25 +45,42 @@ import {
  * 导入小说控制器 — 处理文件选择与章节拆分
  *
  * 拆章策略按优先级顺序尝试匹配：
- * 1. 中文标准格式："第X章 标题" / "第X章：标题"
- * 2. 英文标准格式："Chapter X: Title"
- * 3. Markdown 标题格式："# 第X章 标题"
+ * 1. 中文标准格式："第X章/回/话/节 标题"（含阿拉伯数字与中文数字）
+ * 2. 中文特殊章节："序章 / 楔子 / 引子 / 尾声 / 番外 / 后记" 等
+ * 3. 英文标准格式："Chapter X: Title"
+ * 4. Markdown 标题格式："# 第X章 标题"
  * 如果所有正则均不命中，则将整个文件视为单章。
  */
 
 // ===== 拆章正则池 =====
 
-/** 中文"第X章"格式（支持中文数字和阿拉伯数字，冒号可有可无） */
-const RE_CN_CHAPTER = /^第[一二三四五六七八九十百千零\d]+章[\s：:·—-]*(.*)/
+const RE_CN_NUMBER = '[一二三四五六七八九十百千万零两\\d壹贰叁肆伍陆柒捌玖拾]+'
+
+/**
+ * 中文"第X章"格式（兼容卷）。章/卷后的标题可以直接相连（"第三章夜信"）。
+ */
+const RE_CN_CHAPTER = new RegExp(`^第(${RE_CN_NUMBER})(章|卷)[\\s：:·—-]*(.*)`)
+/**
+ * "第X回/话/节"只在有分隔符时才算章节标题：正文里"第二回合开始了"
+ * 这类句子不能被误判成章节边界。
+ */
+const RE_CN_EPISODE = new RegExp(`^第(${RE_CN_NUMBER})(回|话|节)[\\s：:·—-]+(.*)`)
+
+/** 中文特殊章节名（序章/楔子/尾声/番外…），这些同样是章节边界 */
+const CN_SPECIAL_KEYWORD = '(?:序章|序言|序幕|楔子|引子|前言|开篇|尾声|终章|结局篇|后记|番外[0-9一二三四五六七八九十]*|外传|附录|序)'
+const RE_CN_SPECIAL = new RegExp(`^(?:${CN_SPECIAL_KEYWORD})(?:$|[\\s：:·—-]+(.*))`)
 
 /** 英文 "Chapter X" 格式 */
 const RE_EN_CHAPTER = /^Chapter\s+(\d+)[\s：:·—-]*(.*)/i
 
-/** Markdown 标题格式："# 第X章" 或 "## Chapter X" */
-const RE_MD_HEADING = /^#{1,3}\s+(?:第[一二三四五六七八九十百千零\d]+章|Chapter\s+\d+)[\s：:·—-]*(.*)/i
+/** Markdown 标题格式："# 第X章" / "## Chapter X" / "# 楔子" */
+const RE_MD_HEADING = new RegExp(`^#{1,3}\\s+(?:第${RE_CN_NUMBER}(?:章|回|话|节|卷)|Chapter\\s+\\d+)[\\s：:·—-]*(.*)`, 'i')
+const RE_MD_SPECIAL = new RegExp(`^#{1,3}\\s+${CN_SPECIAL_KEYWORD}(?:$|[\\s：:·—-]+(.*))`)
 
 /** 所有候选正则 */
-const CHAPTER_PATTERNS = [RE_CN_CHAPTER, RE_EN_CHAPTER, RE_MD_HEADING]
+const CHAPTER_PATTERNS = [
+  RE_CN_CHAPTER, RE_CN_EPISODE, RE_CN_SPECIAL, RE_EN_CHAPTER, RE_MD_HEADING, RE_MD_SPECIAL,
+]
 
 const IMPORT_GRANT_TTL_MS = 5 * 60 * 1000
 
@@ -147,9 +164,11 @@ function importSelectionErrorMessage(
 /** 中文数字到阿拉伯数字的映射 */
 function chineseNumToArabic(str: string): number {
   const map: Record<string, number> = {
-    '零': 0, '一': 1, '二': 2, '三': 3, '四': 4,
+    '零': 0, '一': 1, '二': 2, '两': 2, '三': 3, '四': 4,
     '五': 5, '六': 6, '七': 7, '八': 8, '九': 9,
-    '十': 10, '百': 100, '千': 1000,
+    '十': 10, '百': 100, '千': 1000, '万': 10000,
+    '壹': 1, '贰': 2, '叁': 3, '肆': 4, '伍': 5,
+    '陆': 6, '柒': 7, '捌': 8, '玖': 9, '拾': 10,
   }
 
   // 纯阿拉伯数字
@@ -174,16 +193,17 @@ function chineseNumToArabic(str: string): number {
   return result + current
 }
 
-/** 从章节标题行提取章节号 */
+/** 从章节标题行提取章节号；无编号的特殊章节（楔子/序章/番外…）返回 0 */
 function extractChapterNumber(line: string): number {
-  // 尝试从"第X章"格式提取
-  const cnMatch = line.match(/第([一二三四五六七八九十百千零\d]+)章/)
+  // 尝试从"第X章/回/话/节/卷"格式提取（含 Markdown 前缀）
+  const cnMatch = line.match(new RegExp(`第(${RE_CN_NUMBER})(?:章|回|话|节|卷)`))
   if (cnMatch) return chineseNumToArabic(cnMatch[1])
 
   // 尝试从"Chapter X"格式提取
   const enMatch = line.match(/Chapter\s+(\d+)/i)
   if (enMatch) return parseInt(enMatch[1])
 
+  // 无编号的特殊章节（楔子/序章/番外…）交由自增序号处理
   return 0
 }
 
@@ -193,17 +213,24 @@ function isChapterHeading(line: string): boolean {
   return CHAPTER_PATTERNS.some(re => re.test(trimmed))
 }
 
+/** 去掉 Markdown 标题前缀 */
+function headingText(line: string): string {
+  return line.trim().replace(/^#{1,3}\s*/u, '').trim()
+}
+
 /** 从章节标题行提取标题文字（去掉"第X章"前缀） */
 function extractTitle(line: string): string {
   const trimmed = line.trim()
+  // 楔子/序章/番外 这类关键词本身就是标题的一部分，整行保留。
+  if (RE_CN_SPECIAL.test(trimmed) || RE_MD_SPECIAL.test(trimmed)) return headingText(trimmed)
   for (const re of CHAPTER_PATTERNS) {
     const match = trimmed.match(re)
     if (match) {
       // 取最后一个捕获组（标题部分）
       const title = match[match.length - 1]?.trim()
       if (title) return title
-      // 如果标题为空，返回完整行
-      return trimmed
+      // 如果标题为空，返回完整行（不含 Markdown 前缀）
+      return headingText(trimmed)
     }
   }
   return trimmed
@@ -228,11 +255,21 @@ function sourceMediaType(displayName: string): string {
   return extension === '.md' ? 'text/markdown' : 'text/plain'
 }
 
+/** 正文之前的书稿信息少于该长度时视为书名/作者行，不生成“前言”章节。 */
+const PREAMBLE_CHAPTER_MIN_CHARACTERS = 80
+
+function preambleChapterTitle(lines: readonly string[]): string {
+  const firstLine = lines.find(line => line.trim())?.trim() ?? ''
+  if (!firstLine || Array.from(firstLine).length > 40) return '前言'
+  return firstLine
+}
+
 /** 将单个文件内容拆分为章节数组 */
 function splitSingleFileContent(content: string, maxChapters: number): ParsedChapter[] {
   const lines = content.split('\n')
   const chapters: ParsedChapter[] = []
   let currentChapter: { headerLine: string; lines: string[] } | null = null
+  let preamble: string[] = []
   let autoNumber = 0
 
   const appendChapter = (chapter: ParsedChapter) => {
@@ -240,6 +277,19 @@ function splitSingleFileContent(content: string, maxChapters: number): ParsedCha
       throw new Error('IMPORT_CHAPTER_COUNT_EXCEEDED')
     }
     chapters.push(chapter)
+  }
+
+  const flushPreamble = () => {
+    const text = preamble.join('\n').trim()
+    preamble = []
+    // 短前言通常只是书名/作者/简介，单独成章会把后续章号整体推后一位。
+    if (text.length < PREAMBLE_CHAPTER_MIN_CHARACTERS) return
+    appendChapter({
+      number: 0,
+      title: preambleChapterTitle(text.split('\n')),
+      content: text,
+      wordCount: countDraftUnits(text),
+    })
   }
 
   for (const line of lines) {
@@ -258,15 +308,14 @@ function splitSingleFileContent(content: string, maxChapters: number): ParsedCha
           })
         }
       }
+      flushPreamble()
       // 开始新章节
       currentChapter = { headerLine: line, lines: [] }
     } else if (currentChapter) {
       currentChapter.lines.push(line)
     } else {
-      // 在第一个章节标题之前的内容 → 创建前言/序章
-      if (!currentChapter) {
-        currentChapter = { headerLine: line, lines: [] }
-      }
+      // 第一个章节标题之前的内容是书稿前言，不再丢掉首行正文。
+      preamble.push(line)
     }
   }
 
@@ -283,15 +332,99 @@ function splitSingleFileContent(content: string, maxChapters: number): ParsedCha
         wordCount: countDraftUnits(text),
       })
     }
+  } else {
+    flushPreamble()
   }
 
   return chapters
 }
 
-/** 如果内容中没有匹配到任何章节标题，则整文件视为一章 */
+/** 内容中是否存在任何可识别的章节标题；没有任何标记时改用结构回退切分。 */
 function hasChapterHeadings(content: string): boolean {
   const lines = content.split('\n')
   return lines.some(line => isChapterHeading(line))
+}
+
+/** 回退切分目标长度（字符）：无标记文本按此聚合成节。 */
+const FALLBACK_CHAPTER_TARGET_CHARACTERS = 3_000
+/** 少于该长度的尾节并入上一节，避免出现只有几行的“章节”。 */
+const FALLBACK_CHAPTER_MIN_CHARACTERS = 1_200
+
+/** 无标题章节的标签：取首行（够短时）作为可辨认的节名。 */
+function fallbackUnitTitle(text: string, index: number): string {
+  const firstLine = text.split('\n').find(line => line.trim())?.trim() ?? ''
+  const candidate = firstLine.replace(/[。！？!?…].*$/su, '').trim()
+  return candidate && Array.from(candidate).length <= 24 ? candidate : `第${index + 1}节`
+}
+
+/** 单段就超长（整章没有空行）时按句子边界切开，兜底再按长度硬切。 */
+function splitOversizedBlock(block: string): string[] {
+  const sentences = block.match(/[^。！？!?…\n]+[。！？!?…]*/gu) ?? [block]
+  const pieces: string[] = []
+  let current = ''
+  for (const sentence of sentences) {
+    if (current && Array.from(current).length >= FALLBACK_CHAPTER_TARGET_CHARACTERS) {
+      pieces.push(current.trim())
+      current = ''
+    }
+    current += sentence
+  }
+  if (current.trim()) pieces.push(current.trim())
+  return pieces.flatMap(piece => {
+    const characters = Array.from(piece)
+    if (characters.length <= FALLBACK_CHAPTER_TARGET_CHARACTERS * 2) return [piece]
+    const chunks: string[] = []
+    for (let offset = 0; offset < characters.length; offset += FALLBACK_CHAPTER_TARGET_CHARACTERS) {
+      chunks.push(characters.slice(offset, offset + FALLBACK_CHAPTER_TARGET_CHARACTERS).join(''))
+    }
+    return chunks
+  })
+}
+
+/**
+ * 没有任何章节标记的书（例如靠空行分节的长文）过去会被当成一整章，
+ * 拆解阶段因此只能看到开头、蓝图也只生成一条。这里按空行与段落边界
+ * 切成目标长度的连续片段，让拆解与蓝图生成有合理的章节粒度。
+ * 内容本身不超过目标长度时保持单章，不做无意义切分。
+ */
+function splitUnmarkedContent(
+  content: string,
+  maxChapters: number,
+): ParsedChapter[] {
+  const normalized = content.replace(/\r\n?/gu, '\n').trim()
+  if (!normalized) return []
+  const blocks = normalized.split(/\n\s*\n/u).map(block => block.trim()).filter(Boolean)
+  const units: string[] = []
+  let buffer: string[] = []
+  let bufferedCharacters = 0
+  const close = () => {
+    const text = buffer.join('\n\n').trim()
+    buffer = []
+    bufferedCharacters = 0
+    if (text) units.push(text)
+  }
+  for (const block of blocks) {
+    if (Array.from(block).length > FALLBACK_CHAPTER_TARGET_CHARACTERS * 2) {
+      close()
+      units.push(...splitOversizedBlock(block))
+      continue
+    }
+    buffer.push(block)
+    bufferedCharacters += Array.from(block).length
+    if (bufferedCharacters >= FALLBACK_CHAPTER_TARGET_CHARACTERS) close()
+  }
+  close()
+  if (units.length > 1 && Array.from(units.at(-1)!).length < FALLBACK_CHAPTER_MIN_CHARACTERS) {
+    const tail = units.pop()!
+    units[units.length - 1] = `${units.at(-1)!}\n\n${tail}`
+  }
+  if (units.length > maxChapters) throw new Error('IMPORT_CHAPTER_COUNT_EXCEEDED')
+  return units.map((text, index) => ({
+    number: index + 1,
+    title: fallbackUnitTitle(text, index),
+    content: text,
+    wordCount: countDraftUnits(text),
+  }))
 }
 
 export function registerImportController(
@@ -492,19 +625,19 @@ export function registerImportController(
               maxExtractedBytes: Math.min(EPUB_MAX_EXTRACTED_BYTES, remainingBytes),
             })
             contentBytes = reserveSourceBytes(extracted.map(chapter => chapter.content).join(''))
-            parsed = extracted.flatMap((chapter, index) => {
+            parsed = extracted.flatMap((chapter) => {
               if (hasChapterHeadings(chapter.content)) {
                 return splitSingleFileContent(
                   chapter.content,
                   limits.maxChapters - chapterCount,
                 )
               }
-              return [{
-                number: index + 1,
-                title: chapter.title,
-                content: chapter.content,
-                wordCount: countDraftUnits(chapter.content),
-              }]
+              // 单个 spine 文档没有章节标记时同样按结构回退切分；
+              // 第一段沿用文档标题，其余用首行标签。
+              return splitUnmarkedContent(chapter.content, limits.maxChapters - chapterCount)
+                .map((unit, unitIndex) => (
+                  unitIndex === 0 && chapter.title ? { ...unit, title: chapter.title } : unit
+                ))
             })
           } else {
             content = await fileSystem.readText(capability, remainingBytes)
@@ -523,14 +656,22 @@ export function registerImportController(
               }
               continue
             }
-            parsed = hasChapterHeadings(content)
-              ? splitSingleFileContent(content, limits.maxChapters - chapterCount)
-              : [{
-                  number: extractChapterNumber(path.basename(sourceFileName, path.extname(sourceFileName))) || 1,
-                  title: path.basename(sourceFileName, path.extname(sourceFileName)),
-                  content,
-                  wordCount: countDraftUnits(content),
-                }]
+            const fallbackUnits = hasChapterHeadings(content)
+              ? null
+              : splitUnmarkedContent(content, limits.maxChapters - chapterCount)
+            if (fallbackUnits) {
+              // 单节文件保持旧行为：用文件名当章节名。
+              const fileName = path.basename(sourceFileName, path.extname(sourceFileName))
+              parsed = fallbackUnits.length === 1 && fileName
+                ? [{
+                    ...fallbackUnits[0]!,
+                    number: extractChapterNumber(fileName) || fallbackUnits[0]!.number,
+                    title: fileName,
+                  }]
+                : fallbackUnits
+            } else {
+              parsed = splitSingleFileContent(content, limits.maxChapters - chapterCount)
+            }
           }
           sources.push({
             ...encoded,

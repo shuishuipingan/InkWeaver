@@ -119,6 +119,69 @@ describe('novel import external-file capability', () => {
     expect(inspections.activeCount()).toBe(1)
   })
 
+  it('splits front-matter specials (楔子/序章/番外) without turning book metadata into a chapter', async () => {
+    const selected = path.join(temporaryRoot, 'special-chapters.txt')
+    fs.writeFileSync(selected, [
+      '《测试书名》',
+      '作者：某人',
+      '',
+      '楔子',
+      '很久以前，天下大乱。',
+      '',
+      '第一章 雨夜',
+      '雨落长安，陆云飞归来。',
+      '第二回合开始了，这只是一句正文。',
+      '',
+      '第二章 重逢',
+      '她在旧巷重逢故人。',
+      '',
+      '番外 后日谈',
+      '多年以后，旧信重开。',
+    ].join('\n'), 'utf8')
+    mocks.showOpenDialog.mockResolvedValue({ canceled: false, filePaths: [selected] })
+
+    const result = await handler('dialog:select-novel-files')(event())
+
+    expect(result).toMatchObject({
+      success: true,
+      inspection: {
+        chapterCount: 4,
+        preview: [
+          { number: 1, title: '楔子' },
+          { number: 2, title: '雨夜' },
+          { number: 3, title: '重逢' },
+          { number: 4, title: '番外 后日谈' },
+        ],
+      },
+    })
+    // 书名/作者行既不能丢正文，也不能变成挤掉真正第一章的“第 1 章”。
+    const serialized = JSON.stringify(result)
+    expect(serialized).not.toContain('《测试书名》')
+    expect(serialized).not.toContain('作者：某人')
+  })
+
+  it('splits an unmarked blank-line-separated book into section-sized chapters instead of one giant chapter', async () => {
+    const selected = path.join(temporaryRoot, 'unmarked.txt')
+    const paragraph = (index: number) => `第${index}段开头。${'内容'.repeat(248)}`
+    fs.writeFileSync(selected, Array.from({ length: 24 }, (_, index) => paragraph(index + 1)).join('\n\n'), 'utf8')
+    mocks.showOpenDialog.mockResolvedValue({ canceled: false, filePaths: [selected] })
+
+    const result = await handler('dialog:select-novel-files')(event())
+
+    expect(result).toMatchObject({
+      success: true,
+      inspection: {
+        chapterCount: 4,
+        preview: [
+          { number: 1, title: '第1段开头' },
+          { number: 2, title: '第7段开头' },
+          { number: 3, title: '第13段开头' },
+          { number: 4, title: '第19段开头' },
+        ],
+      },
+    })
+  })
+
   it('reads EPUB bytes and splits multiple chapter headings inside one spine document', async () => {
     const selected = path.join(temporaryRoot, '长篇参考.epub')
     const archive = storedZip({

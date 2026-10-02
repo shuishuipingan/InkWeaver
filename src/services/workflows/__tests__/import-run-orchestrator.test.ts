@@ -118,6 +118,32 @@ afterEach(() => {
 })
 
 describe('ImportRunOrchestrator', () => {
+  it('samples the whole book for global and style inference instead of only its opening and ending', async () => {
+    const { deps } = harness(20, { stage: 'global' })
+    const samples: number[][] = []
+    const inferGlobal: ImportRunOrchestratorDependencies['inferGlobal'] = vi.fn(async (
+      chapters: ImportRunChapterSnapshot[], _stats, _run, commit,
+    ) => {
+      samples.push(chapters.map(item => item.number))
+      await commit({ global: true })
+    })
+    const analyzeStyle: ImportRunOrchestratorDependencies['analyzeStyle'] = vi.fn(async (
+      chapters: ImportRunChapterSnapshot[], _run, commit,
+    ) => {
+      samples.push(chapters.map(item => item.number))
+      await commit({ writingStyle: 'style' })
+    })
+    deps.inferGlobal = inferGlobal
+    deps.analyzeStyle = analyzeStyle
+
+    const orchestrator = new ImportRunOrchestrator(deps)
+    await orchestrator.executeStage('run-1', 'global', 'test-runner', { cancelled: false }, callbacks)
+    await orchestrator.executeStage('run-1', 'style', 'test-runner', { cancelled: false }, callbacks)
+
+    // 首尾仍在样本内，其余按全书位置均匀取样，避免只看开头就推断世界观。
+    expect(samples).toEqual([[1, 6, 11, 15, 20], [1, 6, 11, 15, 20]])
+  })
+
   it('runs author manuscripts through commit, publication, and postprocess without reference analysis', async () => {
     const { deps, getRun } = harness(2, {
       purpose: 'author-manuscript',

@@ -494,7 +494,7 @@ export const BUILTIN_PROMPTS: PromptTemplate[] = [
   "blueprints": [
     {
       "chapterNumber": 1,
-      "title": "引人入胜的标题",
+      "title": "本章的章节名",
       "role": "本章在全书结构中的功能，例如建置、发展、转折或高潮",
       "purpose": "本章主角最想解决的一件事",
       "characters": ["本章互动的要人A", "要人B"],
@@ -510,6 +510,7 @@ export const BUILTIN_PROMPTS: PromptTemplate[] = [
 
 要求：
 - 每章的 keyEvents 控制在 100-150 字以内，信息密度必须极高。
+- title 必须是真正的章节名：4-12 个字的简短具体短语，直接点出本章的核心事件、冲突、转折或悬念；不要书名号、引号、标点、章号、“标题：”前缀或副标题，也不要写成剧情梗概。
 - 每个对象必须包含完整的 chapterNumber、title、role、purpose、characters、relationships、keyEvents、suspenseHook；relationships 仅写本章可确认的角色关系，无则输出空数组。
 - 仅给出最终的 JSON 文本，不要任何客套解释、分析、计划、Markdown 或代码块。
 
@@ -570,7 +571,7 @@ export const BUILTIN_PROMPTS: PromptTemplate[] = [
   "blueprints": [
     {
       "chapterNumber": n,
-      "title": "引人入胜的标题",
+      "title": "本章的章节名",
       "role": "本章在全书结构中的功能，例如建置、发展、转折或高潮",
       "purpose": "本章主角最想解决的一件事",
       "characters": ["本章互动的要人A", "要人B"],
@@ -583,6 +584,7 @@ export const BUILTIN_PROMPTS: PromptTemplate[] = [
 
 要求：
 - 严格遵循上下文连贯，不要前后矛盾。
+- title 必须是真正的章节名：4-12 个字的简短具体短语，直接点出本章的核心事件、冲突、转折或悬念；不要书名号、引号、标点、章号、“标题：”前缀或副标题，也不要写成剧情梗概。
 - 每个对象必须包含完整的 chapterNumber、title、role、purpose、characters、relationships、keyEvents、suspenseHook；relationships 仅写本章可确认的角色关系，无则输出空数组。
 - 仅给出最终的 JSON 文本，不要解释、分析、计划、Markdown 或代码块。
 
@@ -1117,7 +1119,7 @@ severity 取值：error=严重矛盾强烈建议修复, warning=轻微不一致�
 }
 
 要求：
-1. characterCards 仅包含主角和重要配角（3-8人），不要填写次要龙套
+1. characterCards 覆盖主角和全书重要配角（3-12人），尽量把有名字、有戏份的角色都列出，不要只写三四个主角而遗漏重要配角
 2. 所有字段基于内容推断，未能确定的字段填写"（待确认）"
 3. relationships 必须使用数组；target 必须是 characterCards 中另一个角色的 name；relation 用短句写清关系类型、冲突或情感张力；没有关系则填 []
 4. currentState 应基于最新内容（结尾采样）推断，不是初始状态`,
@@ -1194,23 +1196,24 @@ severity 取值：error=严重矛盾强烈建议修复, warning=轻微不一致�
     key: 'infer_single_chapter_blueprint',
     name: '逆向推演单章蓝图',
     description: '从已有小说章节正文高精度反推出该章的结构化蓝图信息，用于导入旧作场景',
-    systemRole: '你是一位专业的网文结构分析师，擅长从正文中提取结构化蓝图信息。只依据提供的章节正文填写字段，并严格遵守运行时附加的 JSON 合同。',
+    systemRole: '你是一位专业的网文结构分析师，擅长从正文中逐章提取结构化蓝图信息。只为正文里明确标出的每一章填写字段，只依据提供的章节正文，并严格遵守运行时附加的 JSON 合同。',
     variables: {
-      chapter_content: '本章正文全文',
-      chapter_number: '本章序号',
-      chapter_title: '本章标题（来自拆章）',
+      chapter_content: '本批章节正文（每章以【第N章 标题】标记开头）',
+      chapter_number: '本批起始章节序号',
+      chapter_title: '本批各章标题（逗号分隔）',
       novel_config_summary: '全局配置脱水版',
     },
-    content: `请阅读以下已有章节正文，从中提取结构化蓝图信息。
+    content: `请阅读以下已有章节正文，逐章提取结构化蓝图信息。
 
 【全局小说设定概要】
 {{novel_config_summary}}
 
-【章节信息】
-- 章节序号：第 {{chapter_number}} 章
-- 拆章标题：{{chapter_title}}
+【本批章节信息】
+- 本批起始章节序号：第 {{chapter_number}} 章
+- 本批各章标题：{{chapter_title}}
+- 正文中每一章都以【第N章 标题】标记开头；必须为其中的每一章分别输出一个蓝图对象
 
-【本章正文】
+【本批章节正文】
 {{chapter_content}}
 
 ---
@@ -1220,10 +1223,12 @@ severity 取值：error=严重矛盾强烈建议修复, warning=轻微不一致�
 不得沿用单章对象格式；即使只有一章，也必须使用 blueprints 数组封装。
 
 要求：
-1. keyEvents 必须基于正文实际内容提取，不可臆造。
-2. characters 只列主要互动角色名（3-5个），不要列龙套。
-3. role 从正文的叙事功能判断（建置/发展/转折/高潮/结局/过渡等）。
-4. 仅输出 JSON，不要任何额外文字。`,
+1. 逐章独立分析：每个 chapterNumber 的 keyEvents、purpose、suspenseHook 只能来自该章标记之后的正文；不得只分析第一章，也不得把多章事件合并进同一章。
+2. keyEvents 必须基于正文实际内容提取，不可臆造；正文出现“中间省略”标记时，说明该章只提供了开头与结尾，不要为省略部分补写情节。
+3. title 写成 4-12 个字的常见章节名，直接点出该章核心事件、冲突或悬念；不要书名号、引号、章号或“标题：”前缀，也不要写成剧情梗概。
+4. characters 只列主要互动角色名（3-5个），不要列龙套。
+5. role 从正文的叙事功能判断（建置/发展/转折/高潮/结局/过渡等）。
+6. 仅输出 JSON，不要任何额外文字。`,
   },
 
   // ================================================================
@@ -1319,11 +1324,12 @@ severity 取值：error=严重矛盾强烈建议修复, warning=轻微不一致�
 }
 
 要求：
-1. characterCards 仅包含主角和重要配角（3-8人），不要填写次要龙套
-2. 所有字段基于检索片段推断，未能确定的填写"（待确认）"
+1. characterCards 覆盖主角和全书重要配角（3-12人），尽量把有名字、有戏份的角色都列出，不要只写三四个主角而遗漏重要配角
+2. 所有字段必须基于检索片段与正文证据写出最合理的具体内容：人名、地名、组织、功法、境界等一律沿用原文出现过的说法，不要用空泛概括替代；只有确实毫无线索时才写"（待确认）"，不要用它敷衍本可推断的字段
 3. relationships 必须使用数组；target 必须是 characterCards 中另一个角色的 name；relation 用短句写清关系类型、冲突或情感张力；没有关系则填 []
 4. currentState 应基于最新章节推断当前状态，而非初始状态
-5. plotStructure 和 narrativePOV 请根据实际叙事特征判断，而非猜测`,
+5. plotStructure 和 narrativePOV 请根据实际叙事特征判断，而非猜测
+6. coreOutline 要覆盖全书主线的阶段推进，worldSetting 要写出规则与限制，goldenFinger 要写清能力边界与代价；不要只写一句概括`,
   },
 ]
 

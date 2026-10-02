@@ -247,6 +247,52 @@ describe('InferBlueprintsPerChapterCommand', () => {
     expect(prompts[1]).not.toContain('正文证据'.repeat(100))
   })
 
+  it('keeps both the opening and the real ending of an over-budget chapter and demands per-chapter analysis', async () => {
+    const context = createContext()
+    const head = '开头证据'.repeat(2_000)
+    const tail = '结尾细节'.repeat(400)
+    context.data.chapters = [{
+      number: 1,
+      title: '第 1 章',
+      content: `${head}ENDING_MARKER${tail}`,
+      wordCount: 9_600,
+    }]
+    stubIpcInvoke(channel => {
+      if (channel === 'db:blueprint-commit-range') return { success: false, error: 'captured after prompt' }
+      throw new Error(`unexpected IPC ${channel}`)
+    })
+    const prompts: string[] = []
+    useLLMStore.setState({
+      defaultModelId: 'model-a',
+      generateStream: vi.fn<ReturnType<typeof useLLMStore.getState>['generateStream']>(async (messages, streamCallbacks) => {
+        prompts.push(messages.map(message => message.content).join('\n'))
+        streamCallbacks.onDone?.(JSON.stringify({ blueprints: [{
+          chapterNumber: 1,
+          title: '启程',
+          role: '建置',
+          purpose: '引出主角目标',
+          keyEvents: '主角发现异常',
+          characters: ['主角'],
+          relationships: [],
+          suspenseHook: '门外有人',
+        }] }), undefined, 'stop')
+        return 'import-blueprint-sampled-chapter'
+      }),
+    })
+
+    await expect(new InferBlueprintsPerChapterCommand().execute({
+      step: {}, context, callbacks,
+    })).rejects.toThrow('captured after prompt')
+
+    expect(prompts).toHaveLength(1)
+    expect(prompts[0]).toContain('中间省略约')
+    expect(prompts[0]).toContain('ENDING_MARKER')
+    expect(prompts[0]).toContain('逐章独立分析')
+    // 开头仍被保留但已按预算截断，避免整段超长正文灌进提示词。
+    expect(prompts[0]).toContain('开头证据')
+    expect(prompts[0]).not.toContain('开头证据'.repeat(1_200))
+  })
+
   it('explains bounded split retries instead of presenting the initial call count as a maximum', async () => {
     const context = createContext()
     context.data.chapters = Array.from({ length: 5 }, (_, index) => ({

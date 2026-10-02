@@ -60,7 +60,7 @@ export interface ImportedChapter {
 }
 
 const SHA256_HEX = /^[a-f0-9]{64}$/u
-const MAX_IMPORT_INFERENCE_CHARACTER_CARDS = 8
+const MAX_IMPORT_INFERENCE_CHARACTER_CARDS = 12
 const IMPORT_ENDPOINT_DELTA_CARD_KEYS = [
   'abilities',
   'age',
@@ -764,6 +764,33 @@ export class InferGlobalSettingsCommand extends BaseWorkflowCommand<void> {
 // 2. 按章逐一推演精准蓝图（限流并发）
 // =================================================================
 
+/** 单章送入推演的正文预算（字符）。 */
+const IMPORT_BLUEPRINT_CHAPTER_CHAR_BUDGET = 6000
+/** 预算中留给章末的比例：结尾冲突与悬念钩子决定 suspenseHook，不能被整段截掉。 */
+const IMPORT_BLUEPRINT_CHAPTER_TAIL_RATIO = 0.3
+
+/**
+ * 长章节不能只喂开头：转折与悬念钩子往往在章末。超出预算时保留开头与结尾，
+ * 并显式标注中间被省略，避免模型把没看到的正文当成“没有发生”。
+ */
+export function sampleChapterContentForInference(
+  content: string,
+  writingLanguage: 'zh-CN' | 'en-US',
+): string {
+  const trimmed = content.trim()
+  if (trimmed.length <= IMPORT_BLUEPRINT_CHAPTER_CHAR_BUDGET) return trimmed
+  const tailBudget = Math.max(
+    1_200,
+    Math.floor(IMPORT_BLUEPRINT_CHAPTER_CHAR_BUDGET * IMPORT_BLUEPRINT_CHAPTER_TAIL_RATIO),
+  )
+  const headBudget = IMPORT_BLUEPRINT_CHAPTER_CHAR_BUDGET - tailBudget
+  const omitted = trimmed.length - IMPORT_BLUEPRINT_CHAPTER_CHAR_BUDGET
+  const marker = writingLanguage === 'en-US'
+    ? `\n\n......（about ${omitted} characters omitted in the middle; the text below is the real chapter ending）\n\n`
+    : `\n\n……（中间省略约 ${omitted} 字；下方保留了本章真实结尾）\n\n`
+  return `${trimmed.slice(0, headBudget)}${marker}${trimmed.slice(-tailBudget)}`
+}
+
 export class InferBlueprintsPerChapterCommand extends BaseWorkflowCommand<void> {
   private static readonly MAX_CHAPTERS_PER_OPERATION = 50
   private static readonly MAX_ITEMS_PER_BATCH = 5
@@ -840,8 +867,8 @@ export class InferBlueprintsPerChapterCommand extends BaseWorkflowCommand<void> 
         activeChapterNumbers = items.map(item => item.number)
         const source = items.map(chapter => promptLanguageText(
           writingLanguage,
-          `【第${chapter.number}章 ${chapter.title || '无标题'}】\n${chapter.content.slice(0, 6000)}`,
-          `[Chapter ${chapter.number}: ${chapter.title || 'Untitled'}]\n${chapter.content.slice(0, 6000)}`,
+          `【第${chapter.number}章 ${chapter.title || '无标题'}】\n${sampleChapterContentForInference(chapter.content, writingLanguage)}`,
+          `[Chapter ${chapter.number}: ${chapter.title || 'Untitled'}]\n${sampleChapterContentForInference(chapter.content, writingLanguage)}`,
         )).join('\n\n')
         const prior = validatedPrefix.slice(-10)
           .map(item => promptLanguageText(
@@ -868,8 +895,17 @@ export class InferBlueprintsPerChapterCommand extends BaseWorkflowCommand<void> 
           + `${blueprintSemanticGenerationContract(writingLanguage)}\n`
           + promptLanguageText(
             writingLanguage,
-            `本批必须且只能完整返回以下 chapterNumber：${activeChapterNumbers.join('、')}。`,
-            `Return complete items for exactly these chapterNumber values: ${activeChapterNumbers.join(', ')}.`,
+            `本批必须且只能完整返回以下 chapterNumber：${activeChapterNumbers.join('、')}。\n`
+              + '逐章独立分析：每个 chapterNumber 的 role、purpose、keyEvents、suspenseHook 只能来自该章标记之后的正文，'
+              + '不得只分析第一章，也不得把多章事件合并进同一章；本章只写到一半时，不要为标记“省略”的部分编造情节。\n'
+              + '拆解要写足细节：keyEvents 可用 150-250 字写清本章的起因、关键转折与结果；characters 只列正文里真正出场的角色；'
+              + 'suspenseHook 写清章末留下的具体悬念，不要用一句话概括代替。',
+            `Return complete items for exactly these chapterNumber values: ${activeChapterNumbers.join(', ')}.\n`
+              + 'Analyze each chapter independently: role, purpose, keyEvents, and suspenseHook must come only from the text '
+              + 'after that chapter marker. Never analyze only the first chapter or merge events across chapters; do not invent '
+              + 'events for a section marked as omitted.\n'
+              + 'Keep the deconstruction detailed: keyEvents may use 150-250 characters covering the chapter\'s cause, turning '
+              + 'point, and outcome; characters must be ones that actually appear; suspenseHook must state the concrete cliffhanger.',
           )
         callbacks.log(text(
           `  正在推演第 ${activeChapterNumbers[0]}–${activeChapterNumbers.at(-1)} 章...`,

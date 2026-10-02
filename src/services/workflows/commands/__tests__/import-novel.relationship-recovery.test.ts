@@ -208,7 +208,7 @@ afterEach(() => {
 })
 
 describe('InferGlobalSettingsCommand relationship endpoint recovery', () => {
-  it('preserves an unresolved relationship clue in character notes when eight cards already fill the contract', async () => {
+  it('preserves an unresolved relationship clue in character notes when twelve cards already fill the contract', async () => {
     const invoke = stubSuccessfulImportIpc()
     const initial = validInference()
     initial.characterCards = [
@@ -220,6 +220,10 @@ describe('InferGlobalSettingsCommand relationship endpoint recovery', () => {
       card('沈珩', 'minor'),
       card('周砚', 'minor'),
       card('秦若', 'minor'),
+      card('裴肃', 'minor'),
+      card('祁澜', 'minor'),
+      card('温叙', 'minor'),
+      card('宋决', 'minor'),
     ]
     initial.characterCards[0].relationships.push({ target: '韩烁', relation: '旧债牵连' })
     const generateStream = respondWith([initial])

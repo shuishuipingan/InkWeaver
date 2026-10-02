@@ -19,6 +19,7 @@ import type { StepCallbacks } from '../../stores/workflow-store'
 import type { FinalizedDraftImportDraftReceipt, FinalizedDraftImportReceipt } from '../../shared/finalized-draft-import'
 
 export const IMPORT_CHAPTER_PAGE_SIZE = 100
+export const IMPORT_REPRESENTATIVE_CHAPTER_COUNT = 5
 export const IMPORT_KNOWLEDGE_BATCH_SIZE = IMPORT_RUN_KNOWLEDGE_BATCH_SIZE
 export const IMPORT_BLUEPRINT_BATCH_SIZE = IMPORT_RUN_BLUEPRINT_BATCH_SIZE
 const IMPORT_RUN_HEARTBEAT_MAX_INTERVAL_MS = 60_000
@@ -359,23 +360,43 @@ export class ImportRunOrchestrator {
     await this.dependencies.advanceStage(run.id, 'knowledge', 'global', execution.current)
   }
 
-  private async representativeChapters(runId: string): Promise<ImportRunChapterSnapshot[]> {
-    const first: ImportRunChapterSnapshot[] = []
-    const last: ImportRunChapterSnapshot[] = []
+  /**
+   * Sample the whole book instead of only its opening and ending: long novels
+   * shift their setting, cast, and style mid-book, so a first-3/last-2 sample
+   * can infer the wrong world. Memory stays bounded to the sample size.
+   */
+  private async representativeChapters(
+    runId: string,
+    totalChapters: number,
+  ): Promise<ImportRunChapterSnapshot[]> {
+    const targets = new Set<number>()
+    if (totalChapters > IMPORT_REPRESENTATIVE_CHAPTER_COUNT) {
+      const steps = IMPORT_REPRESENTATIVE_CHAPTER_COUNT - 1
+      for (let index = 0; index <= steps; index += 1) {
+        targets.add(Math.round((index * (totalChapters - 1)) / steps))
+      }
+    }
+    const selected = new Map<number, ImportRunChapterSnapshot>()
+    let position = 0
+    let first: ImportRunChapterSnapshot | null = null
+    let last: ImportRunChapterSnapshot | null = null
     let after = 0
     let page = await this.dependencies.listChapters(runId, after, IMPORT_CHAPTER_PAGE_SIZE)
     while (page.length > 0) {
       for (const chapter of page) {
-        if (first.length < 3) first.push(chapter)
-        last.push(chapter)
-        if (last.length > 2) last.shift()
+        if (first === null) first = chapter
+        last = chapter
+        if (targets.size === 0 || targets.has(position)) selected.set(chapter.number, chapter)
+        position += 1
       }
       after = page.at(-1)!.number
       page = await this.dependencies.listChapters(runId, after, IMPORT_CHAPTER_PAGE_SIZE)
     }
-    const selected = new Map<number, ImportRunChapterSnapshot>()
-    for (const chapter of [...first, ...last]) selected.set(chapter.number, chapter)
-    return [...selected.values()].sort((a, b) => a.number - b.number)
+    // totalChapters counts the manifest, which can drift from committed rows;
+    // the first and last chapter are always worth keeping.
+    if (first) selected.set(first.number, first)
+    if (last) selected.set(last.number, last)
+    return [...selected.values()].sort((left, right) => left.number - right.number)
   }
 
   private async executeDurableEffect(
@@ -445,7 +466,7 @@ export class ImportRunOrchestrator {
   private async executeGlobal(run: ImportRunSnapshot, execution: ImportRunExecutionState, context: ImportRunExecutionContext, callbacks: StepCallbacks) {
     if (!run.completedBatches.global?.includes('done')) {
       if (context.cancelled) throw new Error('Import cancelled at a safe boundary.')
-      const sample = await this.representativeChapters(run.id)
+      const sample = await this.representativeChapters(run.id, run.totalChapters)
       const committed = await this.executeDurableEffect(
         run, execution, 'global', 'done', 'global-facts', 'project-global-facts',
         commit => this.dependencies.inferGlobal(sample, {
@@ -465,7 +486,7 @@ export class ImportRunOrchestrator {
   private async executeStyle(run: ImportRunSnapshot, execution: ImportRunExecutionState, context: ImportRunExecutionContext, callbacks: StepCallbacks) {
     if (!run.completedBatches.style?.includes('done')) {
       if (context.cancelled) throw new Error('Import cancelled at a safe boundary.')
-      const sample = await this.representativeChapters(run.id)
+      const sample = await this.representativeChapters(run.id, run.totalChapters)
       const committed = await this.executeDurableEffect(
         run, execution, 'style', 'done', 'writing-style', 'project-writing-style',
         commit => this.dependencies.analyzeStyle(sample, run, commit),

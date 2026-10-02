@@ -44,7 +44,7 @@ export const IMPORT_INFERENCE_JSON_CONTRACT = `
     "currentState": {"location":"非空文本","powerLevel":"非空文本","physicalState":"非空文本","mentalState":"非空文本","keyItems":"非空文本","recentEvents":"非空文本","updatedAtChapter":0}
   }]
 }
-characterCards 必须有 3–8 项，name 唯一，至少一个 protagonist；关系不得自指，target 必须在本次 name 集合中。不得省略字段、使用中文枚举或以近义字段替代。`
+characterCards 必须有 3–12 项，name 唯一，至少一个 protagonist；关系不得自指，target 必须在本次 name 集合中。不得省略字段、使用中文枚举或以近义字段替代。`
 
 const EN_US_IMPORT_INFERENCE_JSON_CONTRACT = `
 [Immutable import-inference JSON contract]
@@ -69,7 +69,7 @@ Output one direct JSON object only, with no Markdown fence or explanation. It mu
     "currentState": {"location":"non-empty text","powerLevel":"non-empty text","physicalState":"non-empty text","mentalState":"non-empty text","keyItems":"non-empty text","recentEvents":"non-empty text","updatedAtChapter":0}
   }]
 }
-characterCards must contain 3–8 unique names and at least one protagonist. Relationships may not self-reference, and every target must occur in the same name set. Do not omit fields, translate enum values, or substitute synonym field names.`
+characterCards must contain 3–12 unique names and at least one protagonist. Relationships may not self-reference, and every target must occur in the same name set. Do not omit fields, translate enum values, or substitute synonym field names.`
 
 export function importInferenceJsonContract(writingLanguage: WritingLanguage): string {
   return promptLanguageText(
@@ -199,7 +199,7 @@ function currentState(value: unknown, path: string): NonNullable<CharacterRoster
 
 function decodeCards(value: unknown): CharacterRosterEntry[] {
   if (!Array.isArray(value)) throw new StructuredContractDiagnostic('invalid_type', 'characterCards')
-  if (value.length < 3 || value.length > 8) throw new StructuredContractDiagnostic('invalid_value', 'characterCards')
+  if (value.length < 3 || value.length > 12) throw new StructuredContractDiagnostic('invalid_value', 'characterCards')
   const cards = value.map((raw, index): CharacterRosterEntry => {
     const path = `characterCards[${index}]`
     const card = record(raw, path)
