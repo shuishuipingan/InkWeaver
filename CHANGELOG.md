@@ -2,19 +2,23 @@
 
 本文件按用户可见行为记录变更。桌面版本不发布 npm；DSH 插件沿用已发布的 `1.2.0` 包。`1.2.0` 已从同一源码 commit 完成工程验收、三平台资产回读和正式 Release；`1.1.0` 的历史 Release 收据保留在 `docs/upgrade/`，不与 1.2.0 混用。
 
-## 未发布
+## 1.3.11 — 2026-10-02
 
-- 没有任何章节标记、只靠空行分节的长文不再整本变成一章：按空行与段落边界切成约 3000 字的连续分节（单段超长时按句子边界切开），每节用首行做可辨认的标签；内容本身不长时仍保持单章与文件名标题。
-- 导入的全局设定与文风推演改为全书均匀取样（首尾加中段共 5 章），不再只读开头 3 章和结尾 2 章，长书中段的世界观与人物不会再被忽略。
-- 单章蓝图的字段上限放宽（目的 160→240 字、关键事件 400→700 字、悬念钩子 160→220 字），并明确要求拆解写足细节，减少模型写详细一点就整批校验失败重试的情况。
+- 拆书仿写的一键替换角色名现在贯穿整张角色档案：除角色主键、关系目标与蓝图结构化引用外，外貌、性格、背景、能力、动机、弧光、关系描述，以及备注、动态状态、关系证据、知情事件与已确认导入规划资料都会同步换名，作品里不再残留原名。图表术语校正式改名仍按原策略保留备注、动态状态与证据文本，不改写冻结事实。人物关系的方向、来源章节与证据在手工保存（含一键改名）时不再被丢弃。
+- 拆章支持“第X卷/回/话/节”与“序章/楔子/引子/前言/尾声/终章/番外/外传”等章节标记；书名与作者等前言短行不再被当成第一章，真正的第一章编号不再后移。没有任何章节标记、只靠空行分节的长文不再整本变成一章：按空行与段落边界切成约 3000 字的连续分节（单段超长时按句子边界切开），每节用首行做可辨认的标签；内容本身不长时仍保持单章与文件名标题。
+- 拆解仿写逐章独立分析：每章的关键事件、目的与悬念钩子只能来自该章正文，不会只拆第一章或把多章事件混写进同一章；超长章节保留开头与真实结尾，并标注中间省略，避免凭想象补全。导入推演的角色卡上限从 3-8 人放宽到 3-12 人并要求覆盖全书重要角色；可推断的设定字段不再用“（待确认）”敷衍。
+- 导入的全局设定与文风推演改为全书均匀取样（首尾加中段共 5 章），不再只读开头 3 章和结尾 2 章，长书中段的世界观与人物不会再被忽略。单章蓝图的字段上限放宽（目的 160→240 字、关键事件 400→700 字、悬念钩子 160→220 字），并要求拆解写足细节，减少模型写详细一点就整批校验失败重试的情况。
+- AI 批量生成章节名改为常见小说章节名风格：优先 4-12 字的简短具体标题，落库前自动去掉《书名号》、引号、章号与“标题：”前缀、结尾标点，并按全书已有章节名去重；生成章节蓝图时的标题也遵循同一命名约定。AI 生成书名会自动去掉书名号与引号，并在候选旁提示平台建议字数区间。
+- 保持 Windows、macOS、Linux x64 同提交发布。Linux 文件为 inkweaver-linux-x64-1.3.11.AppImage、inkweaver-linux-x64-1.3.11.deb、inkweaver-linux-x64-1.3.11.rpm 及 SHA-256；运行资格覆盖 Ubuntu 22.04、Debian 13、Fedora 44，glibc 2.35 基线及 --appimage-extract-and-run 检查继续有效，包未签名。
 
-- 拆书仿写的一键替换角色名现在贯穿整张角色档案：除角色主键、关系目标、蓝图结构化引用外，外貌、性格、背景、能力、动机、弧光、关系描述，以及备注、动态状态、关系证据、知情事件与已确认导入规划资料都会同步换名，作品里不再残留原名。图表术语校正式改名仍按原策略保留备注、动态状态与证据文本，避免改写冻结事实。
-- 人物关系的方向、来源章节与证据在手工保存（含一键改名）时不再被丢弃。
-- 拆章支持“第X卷/回/话/节”与“序章/楔子/引子/前言/尾声/终章/番外/后传”等章节标记；书名与作者等前言短行不再被当成第一章，真正的第一章编号不再后移。
-- 拆解仿写逐章独立分析：每章的关键事件、目的与悬念钩子只能来自该章正文，不会只拆第一章或把多章事件混写进同一章；超长章节保留开头与真实结尾，并标注中间省略，避免凭想象补全。
-- 导入推演的角色卡上限从 3-8 人放宽到 3-12 人并要求覆盖全书重要角色；可推断的设定字段不再用“（待确认）”敷衍。
-- AI 批量生成章节名改为常见小说章节名风格：优先 4-12 字的简短具体标题，落库前自动去掉《书名号》、引号、章号与“标题：”前缀、结尾标点，并按全书已有章节名去重；生成章节蓝图时的标题也遵循同一命名约定。
-- AI 生成书名会自动去掉书名号与引号，并在候选旁提示平台建议字数区间。
+## What's changed
+
+- The adaptation rename now carries through the whole character profile: appearance, personality, background, abilities, motivation, arc, and relationships, plus notes, dynamic state, relationship evidence, knowledge events, and confirmed planning materials, so no previous name survives. Terminology-only renames keep notes, state, and evidence text untouched. Relationship direction, source chapter, and evidence are no longer dropped on manual saves.
+- Chapter splitting recognizes 第X卷/回/话/节 and 序章/楔子/引子/前言/尾声/终章/番外/外传 headings, and book title or author preambles no longer consume the first chapter number. Books with no markers at all are split structurally into roughly 3,000-character sections along blank lines and paragraph boundaries instead of importing as one giant chapter; short single-chapter files keep their file-name title.
+- Blueprint inference analyzes each chapter independently, keeps both the opening and the real ending of an over-budget chapter, and states where text was omitted so no missing plot is invented. The inferred cast grows from 3-8 to 3-12 cards with a requirement to cover the book's important roles.
+- Global settings and writing-style inference sample five chapters evenly across the whole book instead of only the first three and last two. Single-chapter blueprint prose limits widen (purpose 240, key events 700, suspense hook 220 characters) so a detailed deconstruction is no longer rejected and retried as a batch.
+- Generated chapter titles now follow conventional chapter-naming practice: short, concrete names, cleaned of book-title marks, quotes, chapter numbers, numbering prefixes, and trailing punctuation, and deduplicated against the whole book. Blueprint generation and imported chapter blueprints follow the same convention, and generated book titles lose their wrappers with a platform length hint.
+- Continues Windows, macOS and Linux x64 same-commit releases. Linux packages: inkweaver-linux-x64-1.3.11.AppImage, inkweaver-linux-x64-1.3.11.deb, inkweaver-linux-x64-1.3.11.rpm with SHA-256. Qualification covers Ubuntu 22.04, Debian 13, Fedora 44, the glibc 2.35 baseline and --appimage-extract-and-run. Linux packages are unsigned.
 
 ## 1.3.10 — 2026-10-02
 
