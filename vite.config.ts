@@ -27,7 +27,19 @@ export default defineConfig({
         build: {
           // 强制输出 CommonJS，保证 better-sqlite3 等 native 模块能正常加载
           rollupOptions: {
-            external: ['better-sqlite3', '@lancedb/lancedb', 'yauzl'],
+            // 本地向量模型推理栈必须保持 external：打包进 bundle 后，
+            // 它内部的 require('.node') 在 ESM 主进程里没有 require 可用（启动即崩），
+            // 而且这些依赖本来就在 node_modules 里、运行时动态加载即可。
+            external: [
+              'better-sqlite3',
+              '@lancedb/lancedb',
+              'yauzl',
+              '@huggingface/transformers',
+              'onnxruntime-node',
+              'onnxruntime-common',
+              'onnxruntime-web',
+              'sharp',
+            ],
             output: {
               format: 'cjs'
             }
