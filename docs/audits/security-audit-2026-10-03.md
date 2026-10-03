@@ -1,66 +1,104 @@
 # 安全审计收据 — 2026-10-03（v1.3.14）
 
-本文记录 v1.3.14 发布前的一次完整静态安全审计：扫描来源、结论边界、逐类处置与遗留风险。
+本文记录 v1.3.14 的完整安全审计：扫描范围与限制、五次 Mimosa 扫描的密封标识与覆盖率、
+全部 32 条源码发现的逐条定性、依赖整改的前后对比，以及明确写出的"结论边界"。
+
 审计工具：Mimosa 深度静态扫描（`static_only_no_runtime_execution`）+ 依赖公告审计（`pnpm audit`）。
 
 ## 1. 扫描记录
 
-| 扫描 | scanId | seal | 结论 |
-| --- | --- | --- | --- |
-| 全量静态扫描（整改前） | `scan-2026-10-03T07-33-03.996Z-6e64cb4caf09` | `sha256:dafd6a2fa095fbecd7fe277a3522a2a49c90be5e377ba3be06f77203c4e41968` | 471 条（high 215 / medium 256），runStatus = inconclusive |
-| 全量静态扫描（复核） | `scan-2026-10-03T07-54-49.338Z-4075e77027e6` | `sha256:0d025c07ceef409e52e4ad9da4a2493270b86da6675c9db0be251b52028cd321` | 471 条，runStatus = inconclusive |
-| 全量静态扫描（整改后） | `scan-2026-10-03T08-03-07.985Z-3f51678038d1` | `sha256:810ef14b73bf6c651f561129b0769459ac334ecdb0e85d57dbeb4c0b647831f7` | 471 条（静态集合不变，见下） |
+| 扫描 | scanId | seal | 范围 | 覆盖 |
+| --- | --- | --- | --- | --- |
+| ① 全项目（含构建产物） | `scan-2026-10-03T07-33-03.996Z-6e64cb4caf09` | `sha256:dafd6a2fa095fbecd7fe277a3522a2a49c90be5e377ba3be06f77203c4e41968` | 948 文件 | 471 条发现；五阶段 completed；整体 inconclusive |
+| ② 全项目（复核） | `scan-2026-10-03T07-54-49.338Z-4075e77027e6` | `sha256:0d025c07ceef409e52e4ad9da4a2493270b86da6675c9db0be251b52028cd321` | 948 文件 | 同上 |
+| ③ 全项目（依赖整改后） | `scan-2026-10-03T08-03-07.985Z-3f51678038d1` | `sha256:810ef14b73bf6c651f561129b0769459ac334ecdb0e85d57dbeb4c0b647831f7` | 948 文件 | 同上 |
+| ④ **仅源码（本次结论依据）** | `scan-2026-10-03T11-53-13.380Z-5767ac854a02` | `sha256:430f7b51aa46333f101d0e37a6be91da5a5eae01d456569f4a0028b2e197e99d` | 942 文件 | **32 条发现**；五阶段 completed；整体 inconclusive |
+| ⑤ 对照：仅 `electron/` | `scan-2026-10-03T11-54-33.362Z-0eff68e200cd` | `sha256:91b8bc3674f039cf83f09446d9ebc931da2c0ba46f08c490a157b886f62750c8` | 212 文件 | 34 条发现；同一缺口 |
 
-扫描自报的覆盖缺口：`调用图部分不完整:部分调用为动态派发或超出分析规模,跨文件可达性可能不完整`。
-因此三次扫描的 runStatus 都是 **inconclusive**、`verdictEffect: none`：它们是待人工确认的静态线索，
-不是可执行结论，也不代表"项目安全"。本文不把扫描通过当作安全声明。
+扫描 ①-③ 包含 `dist/`、`dist-electron/`、`release/`、`.worktrees/` 等构建产物与额外工作树，
+其中压缩后的第三方 bundle（`dist-electron/transformers.node-*.js`）单独贡献了 152 条启发式线索；
+扫描 ④ 之前把构建产物、额外工作树、测试快照临时移出仓库，只扫描源码（还原见 §6）。
 
-## 2. 471 条的构成与逐类处置
+### 1.1 为什么工具给不出 "complete"（结构性上限，已用对照实验证明）
 
-| 类别 | 数量 | 处置 |
-| --- | --- | --- |
-| `dist-electron/transformers.node-*.js` 内的第三方打包产物（minified） | 152 high | 上游库（HuggingFace 运行时）被打进主进程 bundle；线索来自符号名启发式（`ssrf`、`mongo-sort-injection` 等），项目本身不使用 MongoDB，也未在推理路径拼接网络目标。不修改上游代码；随上游版本升级消化。 |
-| `dist-electron/*` 其它构建产物 | 42 | 与源码 1:1 对应的编译结果；按源码处置（下表）。 |
-| 源码：`electron/controllers/project-controller.ts` 等（环境变量 → 路径/进程） | 31 | 污点源是烟测专用环境变量（`AI_NOVEL_SMOKE_OPEN_PROJECT`、`AI_NOVEL_SMOKE_PROJECT_MARKER`、`AI_NOVEL_VELA_HOME`）。这些变量决定打开哪个项目、把标记写到哪、配置目录在哪。**判定：接受现状并记录**——利用前提是攻击者已经能控制本机进程的环境变量，即已经具备同等或更强的本地能力；且写入内容是固定结构的烟测 JSON。 |
-| `dist-electron/main.js` 的 `spawn`（不可信程序选择） | 4 | 源码层两处：`electron/mcp/mcp-manager.ts` 以**用户自己配置的** MCP 服务器命令启动子进程（`shell: false`，等同用户自行编辑配置）；`electron/security/windows-safe-file-system.ts` 在 Windows 用固定字面量 `powershell.exe`、其它平台用应用内置 helper 路径。两者都不由环境变量决定可执行文件。 |
-| MongoDB 动态排序字段注入 | 其余 medium | 项目不依赖 MongoDB，为启发式误报（命中 LanceDB/数组排序调用）。 |
+扫描 ④ 与 ⑤ 的 `coverage.json` 都是：
 
-Mimosa 的离线公告数据集在三次扫描中都报告"2 个包 / 5 条公告"，不随我们的整改变化；
-依赖侧的权威结论以 `pnpm audit` 为准（下一节）。
+- `phases`: threatModel / findingDiscovery / validation / pathAnalysis / reporting 全部 `completed`；
+- `gaps`: `["调用图部分不完整:部分调用为动态派发或超出分析规模,跨文件可达性可能不完整"]`；
+- `completeness: partial`、`runStatus: inconclusive`、`verdictEffect: none`。
 
-## 3. 依赖审计与整改（随 1.3.14 发布）
+对照实验：把扫描范围缩小到 212 个文件 / 4,644 个函数（仅主进程源码），缺口原文不变。
+因此该 `inconclusive` 来自分析器对 JS/TS **动态派发**的静态上限，与项目规模、构建产物无关；
+在这个代码库上它不可能产出 "complete/safe" 判定。按工具契约，`partial` 覆盖不得被表述为整体安全结论。
 
-`pnpm audit` 整改前后对比：
+## 2. 扫描 ④ 的 32 条发现：逐条定性
 
-| 指标 | 整改前 | 整改后 |
-| --- | --- | --- |
-| critical | 4 | 3 |
-| high | 68 | 53 |
-| moderate | 46 | 19 |
-| low | 8 | 2 |
+严重度：high 24 / medium 8；其中 28 条是工具标注的 "advisory（需人工确认）"，4 条是确定性规则。
 
-随包分发、本次已整改：
+### A. 环境变量 → 项目/数据路径（24 条，advisory）
 
-- `dompurify`（经 `monaco-editor` 进入渲染进程）→ **3.4.16**，修复多篇 XSS 公告；
-- `tar`（经 `onnxruntime-node` 分发）→ **7.5.22**，修复解压 DoS；
-- `js-yaml` → **4.3.2**（在 4.x 内，避免跨大版本）修复二次复杂度 DoS；
-- `builder-util-runtime`（electron-updater）→ **9.7.0**，修复跨源跳转泄露凭据；
-- Electron 运行时 **41.2.0 → 41.10.7**（同一大版本补丁线）。
+落点：`electron/controllers/project-controller.ts`（:240/:245/:289/:293/:294/:472/:473/:476/:545/:724/:728/:731/:759/:764/:788/:823/:843）。
+污点源是**烟测专用环境变量**：`AI_NOVEL_SMOKE_OPEN_PROJECT`、`AI_NOVEL_SMOKE_PROJECT_MARKER`、`AI_NOVEL_VELA_HOME`。
 
-记录为"不处理/随上游"：
+定性：**接受（记录在案）**。利用前提是攻击者已能控制本机进程的环境变量，即已具备同等或更强的本地能力；
+`project:smoke-open-confirm` 在写标记前要求"请求路径 == 已打开项目路径"，写入内容是固定结构的烟测 JSON；
+项目路径本身还会经 `sameCanonicalProjectRoot` / `canonicalProjectRoot`（`electron/services/project-access.ts`）做规范化比较。
 
-- `sharp@0.34.1` 的 libvips 公告只落在 `@huggingface/transformers` 的图像能力上，本应用的向量检索不经过该路径，且上游声明的依赖范围尚未放开到 0.35；
-- 其余公告只落在开发工具链（`vitest`、`@vitest/browser`、`electron-builder`、`postcss`、`@xmldom/xmldom`、`glob`、`vite` 等），不随应用分发。
+### B. 发布烟测入口（4 条，advisory）
 
-## 4. 本次审计的产出
+- `electron/main.ts:301` → `runReleaseOfficialHomepageSmoke` → `loadProbeDocument`（只读探测文档）；
+- `electron/main.ts:361/:364`、`electron/release-vector-smoke-runner.ts:15` → 命令行 `--ai-novel-release-smoke=<token>` → 向量/皮肤烟测。
 
-- 依赖整改：见上表，并在 `pnpm-workspace.yaml` 的 `overrides` 中固定；
-- 打包门禁修复：安装包冒烟在卸载前清理安装目录中残留的产品进程（见 `scripts/smoke-win-installer.ps1` 的 `Stop-AiNovelInstalledProcesses`），修复卸载后置条件间歇失败；
-- 发布门禁新增校验：ONNX Runtime 原生绑定、DirectML 运行时、非目标平台二进制残留、打包后可执行文件真实加载 onnxruntime。
+定性：**误报（有下游护栏）**。三条 CLI 入口都要求 token 同时出现在参数与环境变量中并匹配
+`/^[a-f0-9]{32,128}$/i`（`electron/services/release-vector-smoke.ts:52-54`），
+项目目录由 `createInternalProjectRoot()` 在系统临时目录内新建并校验边界（同文件 :69-84）。
 
-## 5. 遗留风险与边界
+### C. 确定性路径穿越规则（4 条，非 advisory，CWE-22）
 
-1. 三次静态扫描都是 inconclusive，且调用图不完整；本文不声明"无漏洞"或"项目安全"。
-2. 环境变量驱动的烟测钩子按设计保留（见第 2 节判定），需要在威胁模型上承认"能控制进程环境 = 已具备本地能力"。
-3. `sharp`、`dist-electron` 中第三方 bundle 的公告随上游版本消化。
-4. 本审计是静态审计 + 依赖公告审计，不含渗透测试、运行时动态分析或第三方代码审计。
+| # | 位置 | 规则描述 | 定性 | 证据 |
+| --- | --- | --- | --- | --- |
+| 29 | `electron/services/import-source-identity-secret.ts:17` | 动态路径片段进入读写 | **误报** | 文件名是常量 `SECRET_FILE_NAME`，路径 = `app.getPath('userData')` + 常量，无外部片段 |
+| 30 | `electron/services/project-snapshot-service.ts:47` | 同上 | **误报（护栏本身）** | 该行位于 `isWithin()`——专门实现根目录边界比较；调用方 `assertRestoreDestination()` 还额外拒绝"恢复到源项目内"。回归测试：`electron/services/__tests__/project-snapshot-service.test.ts:61` 断言 `/越界路径/` |
+| 31 | `electron/services/runtime-log-writer.ts:192` | 同上 | **按设计（目的即任意目标）** | `exportBundle(destination)` 是"导出日志到用户选择目录"的功能，目标路径本就允许任意；代码拒绝导出到日志源目录内，并已补边界测试 `runtime-log-writer.test.ts`（`rejects exporting a log bundle into its own source directory`，本次审计新增，14 用例通过） |
+| 32 | `electron/services/skin-service.ts:387` | 同上 | **误报 + 记录一处纵深建议** | 文件名 = `sha256(bytes)` 十六进制 + `png/jpg`（`assetFileFor()` / 调用点 :268-270），不含用户片段。纵深建议：`customSkin.revision` 来自持久化状态，若状态文件被篡改，读取侧会把 `../..` 拼进路径；影响为只读、且读到的内容仍要通过图像解码与尺寸上限（`MAX_SKIN_INPUT_BYTES`）校验，篡改者本来就已具备写 userData 的能力，故按"接受"处理并在此备案 |
+
+**A–C 合计：0 条可被外部触发的越权读写。** 所有需要"利用"的路径都要求攻击者先具备本地进程控制或本地文件写权限。
+
+## 3. 依赖侧：审计与整改（随 1.3.14 发布）
+
+`pnpm audit` 整改前后：critical 4→3、high 68→53、moderate 46→19、low 8→2。
+
+已整改（随包分发）：`dompurify` 3.4.16、`tar` 7.5.22、`js-yaml` 4.3.2（限 4.x）、
+`builder-util-runtime` 9.7.0、Electron 41.2.0→41.10.7。整改设置固定在 `pnpm-workspace.yaml` 的 `overrides`。
+
+记录为"不处理/随上游"：`sharp@0.34.1` 的 libvips 公告只在 `@huggingface/transformers` 的图像能力路径上
+（本应用向量检索不经过），且上游依赖范围尚未放开到 0.35；其余公告只落在开发工具链
+（`vitest`、`@vitest/browser`、`electron-builder`、`postcss`、`@xmldom/xmldom`、`glob`、`vite` 等），不随应用分发。
+
+Mimosa 自带的离线公告库在五次扫描中都固定返回"2 个包 / 5 条公告"，不随我们的整改变化；
+依赖侧的权威结论以 `pnpm audit` 为准。
+
+## 4. 运行时侧证据（与静态结论相互独立）
+
+- 打包后的 Windows 应用启动：主窗口正常、无错误对话框、`所有 Controller 已注册完成`、运行日志 20 分钟内 0 条 error；
+- 打包后真实推理：bge-small-zh-v1.5 走 DirectML 返回 2×512 维、L2 范数 1.0000；
+- 发布门禁：ONNX Runtime 原生绑定 / DirectML 运行时 / 非目标平台二进制缺失 / 打包后真实加载 onnxruntime；
+- 四平台云端资格构建（Windows、Linux x64、macOS arm64、macOS x64）在发布提交上全部通过。
+
+## 5. 结论
+
+1. **结论边界**：Mimosa 对本仓库的整体判定上限是 `inconclusive`（动态派发导致的调用图缺口，已用 212 文件对照扫描证明与规模无关）。本文**不声明"项目无漏洞"或"项目安全"**。
+2. **已完成的完整结论**：扫描 ④ 的 32 条源码发现已 100% 定性——24 条环境变量链（接受并记录）、4 条发布烟测入口（下游 token/边界护栏，误报）、4 条确定性路径规则（2 条常量/护栏误报、1 条按设计、1 条误报并备案纵深建议）；无一条可被未持有本地权限的外部攻击者触发。
+3. **依赖侧**：随包分发的 5 个组件已完成公告整改；剩余公告限于开发工具链与上游范围，已逐条备案。
+4. **可复核性**：扫描产物位于 `~/.mimosa/security-scans/<project-id>/<scanId>/`，seal 为三份语义文档
+   （`scan-manifest.json`、`findings.json`、`coverage.json`）的 SHA-256；seal 只能检测本地产物被改动，
+   不是数字签名，也不构成运行时证明。
+5. **未做的部分**：没有动态/运行时渗透测试，没有第三方代码审计，没有对 Chromium/Electron 二进制本身的分析。
+
+## 6. 扫描范围与还原
+
+扫描 ④ 前临时移出（同盘移动，扫描后已全部还原，`git status` 为空）：`dist/`、`dist-electron/`、
+`release/`、`.worktrees/`、`.runtime/`、`.superpowers/`、`.vitest-attachments/`、
+`plugins/inkweaver-dsh/.runtime/`、`.snapshot-test-*`（30 个测试快照）、`output/`、
+`.dsh-upgrade-inspect/`、`.playwright-cli/`、`.qualification-git-shim/`。
+因此扫描 ④ 覆盖的是**源码树**（942 文件，`node_modules` 未被纳入解析），不含构建产物。

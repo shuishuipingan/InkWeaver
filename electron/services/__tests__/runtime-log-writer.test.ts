@@ -291,4 +291,14 @@ describe('RuntimeLogWriter', () => {
       .toMatchObject({ schemaVersion: 1, files: expect.arrayContaining(['bundle-manifest.json']) })
     expect(readdirSync(root).some(name => name.endsWith('.jsonl'))).toBe(true)
   })
+
+  // 安全审计（docs/audits/security-audit-2026-10-03.md，发现 31）的反证：导出目标越界必须被拒绝。
+  it('rejects exporting a log bundle into its own source directory', async () => {
+    const root = mkdtempSync(path.join(tmpdir(), 'inkweaver-runtime-log-'))
+    const writer = new RuntimeLogWriter({ rootDir: root })
+    await writer.append(event(1))
+
+    await expect(writer.exportBundle(root)).rejects.toThrow('日志导出目录不能位于日志源目录内')
+    await expect(writer.exportBundle(path.join(root, 'nested'))).rejects.toThrow('日志导出目录不能位于日志源目录内')
+  })
 })
