@@ -16,11 +16,14 @@
     "node_modules/sharp/**/*",
     "node_modules/@img/**/*"
   ],
-  "afterPack": "scripts/linux-appimage-after-pack.cjs",
+  // 打包后裁剪非目标平台的推理二进制，并处理 AppImage 的沙箱助手。
+  "afterPack": "scripts/after-pack.cjs",
   "productName": "InkWeaver",
   "directories": {
     "output": "release/${version}"
   },
+  // 只允许这三个构建产物目录（以及 node_modules）进包；排除项必须与包含项并列写在这里，
+  // 平台级 files 只写排除项会被 electron-builder 当作“仅忽略”而回落为包含全部文件。
   "files": [
     "dist",
     "dist-electron",
@@ -29,11 +32,6 @@
     "!node_modules/onnxruntime-web/**/*"
   ],
   "mac": {
-    // 每个平台只保留自己的原生库，其余平台的 onnxruntime 二进制不随包分发。
-    "files": [
-      "!node_modules/onnxruntime-node/bin/napi-v3/win32/**/*",
-      "!node_modules/onnxruntime-node/bin/napi-v3/linux/**/*"
-    ],
     "target": ["dmg"],
     "publish": [
       {
@@ -56,10 +54,6 @@
     ]
   },
   "win": {
-    "files": [
-      "!node_modules/onnxruntime-node/bin/napi-v3/darwin/**/*",
-      "!node_modules/onnxruntime-node/bin/napi-v3/linux/**/*"
-    ],
     "target": [
       {
         "target": "nsis",
@@ -94,10 +88,6 @@
     "deleteAppDataOnUninstall": false
   },
   "linux": {
-    "files": [
-      "!node_modules/onnxruntime-node/bin/napi-v3/win32/**/*",
-      "!node_modules/onnxruntime-node/bin/napi-v3/darwin/**/*"
-    ],
     "target": ["AppImage", "deb", "rpm"],
     "artifactName": "inkweaver-linux-x64-${version}.${ext}",
     "maintainer": "InkWeaver Maintainers <shuishuipingan@users.noreply.github.com>",

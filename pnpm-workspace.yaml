@@ -1,3 +1,7 @@
+# pnpm 11 默认在 pnpm run/exec 前先跑一次 dependency-status 安装；本仓库依赖由显式
+# `pnpm install` 管理（CI 也单独安装），而这个隐式安装一旦触发会长时间无响应
+# （实测在安装收尾阶段挂起 10 分钟以上；打包时 electron-builder 内部调用 `pnpm exec` 同样被卡住）。
+verifyDepsBeforeRun: false
 allowBuilds:
   better-sqlite3: true
   electron: true

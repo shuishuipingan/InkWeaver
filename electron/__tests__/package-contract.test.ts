@@ -37,7 +37,7 @@ describe('release dependency contract', () => {
     expect(builder).toContain('"target": ["AppImage", "deb", "rpm"]')
     expect(builder).toContain('"artifactName": "inkweaver-linux-x64-${version}.${ext}"')
     expect(builder).toContain('node_modules/@lancedb/lancedb-linux-*/**/*')
-    expect(builder).toContain('"afterPack": "scripts/linux-appimage-after-pack.cjs"')
+    expect(builder).toContain('"afterPack": "scripts/after-pack.cjs"')
   })
 
   it('runs clean, native verification, and executable smoke gates for Windows builds', () => {

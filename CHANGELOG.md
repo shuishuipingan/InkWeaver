@@ -4,7 +4,7 @@
 
 ## 未发布
 
-- 打包与依赖：新增本地向量模型推理运行时（onnxruntime-node 等）后，安装包按平台只保留本平台原生库并剔除浏览器端运行时；原生依赖（推理运行时、sharp 图像库）纳入解包清单，保证打包后可用。仓库关闭 pnpm 的 peer 自动安装——开启时在本仓库的依赖图上新增依赖会长期无进展（实测），关闭后安装秒级完成。
+- 打包与依赖：新增本地向量模型推理运行时（onnxruntime-node 等）后，原生依赖（推理运行时、sharp 图像库）纳入解包清单，打包后可用；非目标平台/架构的推理二进制（darwin、linux、win32-arm64 共约 174MB）由 afterPack 钩子在打包后删除，Windows 包只保留 win32-x64 的 onnxruntime_binding.node、onnxruntime.dll 与 DirectML.dll。修复了一次打包回归：平台级 files 只写排除项时 electron-builder 会把过滤规则当作“仅忽略”并回落为包含全部文件，导致整个仓库目录（release 产物、.worktrees、工具缓存等）被打进 asar（实测 2.2GB）；现在包含项集中写在工作区级 files，asar 恢复到 268MB 且不含任何开发依赖。Windows 打包门禁新增校验：ONNX Runtime 原生绑定、DirectML 运行时、非目标平台二进制残留，以及用打包后的可执行文件真实加载 onnxruntime。仓库关闭 pnpm 的 peer 自动安装（开启时新增依赖长期无进展），并在 pnpm-workspace.yaml 关闭 verifyDepsBeforeRun——pnpm 11 默认在 pnpm run/exec 前先跑一次隐式安装，本仓库实测会在收尾阶段挂起十分钟以上，electron-builder 内部调用 pnpm exec 时同样被卡住；关闭后 pnpm run 直接 15 秒完成。
 - 内置本地向量模型（首跑可选下载）：知识库不再强制要求先配置 API 向量模型。设置 → 向量模型新增“内置本地向量模型”卡片，可浏览并下载离线模型（中文推荐 bge-small-zh-v1.5，另有 EmbeddingGemma Q8/F32、all-MiniLM-L6-v2、多语言 MiniLM-L12、Qwen3-Embedding-0.6B），每个模型附介绍、维度与近似体积；下载按 GPU → 核显 → CPU 自动选择执行后端并回退。向量来源支持 自动（本地优先回退 API）/ 仅本地 / 仅 API，默认自动；首次运行未配置任何向量模型时出现一次性引导弹窗。修复了未配置向量模型时反复调用主力对话模型 /embeddings 的问题：现在没有可用来源会明确报错或退化为全文检索。免费向量模型注册链接已更新。
 
 ## 1.3.13 — 2026-10-02
