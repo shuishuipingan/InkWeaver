@@ -170,7 +170,11 @@ describe('macOS ARM64 cloud build workflow contract', () => {
     expect(vectorRunnerBuildScript).toContain('release-vector-smoke-runner.ts')
     expect(vectorRunnerBuildScript).toContain("platform: 'node'")
     expect(vectorRunnerBuildScript).toContain("alias: { electron: path.join(repositoryRoot, 'scripts', 'release-vector-smoke-electron-stub.mjs') }")
-    expect(vectorRunnerBuildScript).toContain("external: ['better-sqlite3', '@lancedb/lancedb']")
+    // 原生/推理依赖必须保持 external：esbuild 无法打包 .node 文件（实测 macOS/Linux 资格构建因此失败）。
+    for (const external of ['better-sqlite3', '@lancedb/lancedb', '@huggingface/transformers', 'onnxruntime-node', 'sharp']) {
+      expect(vectorRunnerBuildScript).toContain(`'${external}',`)
+    }
+    expect(vectorRunnerBuildScript).toContain("external: [")
     expect(vectorRunnerBuildScript).toContain("define: { 'import.meta.url': '__aiNovelImportMetaUrl' }")
     expect(vectorRunnerSource).toContain('runReleaseVectorSmoke')
     expect(vectorRunnerSource).toContain('Packaged vector smoke timed out after 90 seconds')

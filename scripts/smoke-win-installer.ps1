@@ -93,9 +93,32 @@ function Stop-AiNovelInstalledProcesses {
   $prefix = (Resolve-Path -LiteralPath $InstallRoot).Path.TrimEnd('\') + '\'
   $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
   while ($true) {
+    # 残留子进程的 ExecutablePath 可能读不到（实测 GPU 子进程为空），
+    # 但命令行里一定带着自己的可执行文件路径，用它兜底匹配。
     $running = @(Get-CimInstance Win32_Process |
-      Where-Object { $_.ExecutablePath -like "$prefix*" })
-    if ($running.Count -eq 0) { return }
+      Where-Object {
+        $_.Name -like 'InkWeaver*' -and (
+          $_.ExecutablePath -like "$prefix*" -or
+          ($_.CommandLine -is [string] -and $_.CommandLine -like "*$prefix*")
+        )
+      })
+    if ($running.Count -eq 0) {
+      # 再确认 exe 映像已经不再被占用（能独占打开即可删）。
+      $installedExecutable = Join-Path $InstallRoot 'InkWeaver.exe'
+      if (-not (Test-Path -LiteralPath $installedExecutable -PathType Leaf)) { return }
+      try {
+        $stream = [System.IO.File]::Open($installedExecutable, [System.IO.FileMode]::Open, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None)
+        $stream.Dispose()
+        return
+      }
+      catch {
+        if ((Get-Date) -ge $deadline) {
+          throw "The installed executable image stayed locked: $installedExecutable"
+        }
+        Start-Sleep -Milliseconds 500
+        continue
+      }
+    }
     foreach ($process in $running) {
       Write-Host "Stopping product process before uninstall: pid=$($process.ProcessId) $($process.Name)"
       Stop-Process -Id $process.ProcessId -Force -ErrorAction SilentlyContinue
@@ -693,8 +716,16 @@ function Get-AiNovelSigningAcceptanceReceipt {
 function Assert-AiNovelUninstallPostcondition {
   param(
     [Parameter(Mandatory = $true)][string]$InstallRoot,
-    [Parameter(Mandatory = $true)][string]$InstalledExecutable
+    [Parameter(Mandatory = $true)][string]$InstalledExecutable,
+    # 卸载前的进程清理已经保证映像不再被占用；这里再给系统一个很短的沉降窗口，
+    # 之后仍存在就按失败处理（保证后置条件仍然严格）。
+    [int]$SettleTimeoutSeconds = 5
   )
+
+  $deadline = (Get-Date).AddSeconds($SettleTimeoutSeconds)
+  while ((Test-Path -LiteralPath $InstalledExecutable -PathType Leaf) -and (Get-Date) -lt $deadline) {
+    Start-Sleep -Milliseconds 500
+  }
 
   $installedExecutableExists = Test-Path -LiteralPath $InstalledExecutable -PathType Leaf
   if ($installedExecutableExists) {
