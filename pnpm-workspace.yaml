@@ -4,3 +4,7 @@ allowBuilds:
   electron-winstaller: true
   esbuild: true
   '@lancedb/lancedb-win32-x64-msvc': true
+  # 本地向量模型推理栈（用 @huggingface/transformers 加载 ONNX 权重）。
+  onnxruntime-node: true
+  protobufjs: true
+  sharp: true

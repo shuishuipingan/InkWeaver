@@ -34,6 +34,7 @@ vi.mock('../controllers/finalization-controller', () => ({ registerFinalizationC
 vi.mock('../controllers/chapter-lifecycle-controller', () => ({ registerChapterLifecycleController: vi.fn() }))
 vi.mock('../controllers/external-file-grant-controller', () => ({ registerExternalFileGrantController: vi.fn() }))
 vi.mock('../controllers/app-data-controller', () => ({ registerAppDataController: vi.fn() }))
+vi.mock('../controllers/local-embedding-controller', () => ({ registerLocalEmbeddingController: vi.fn() }))
 vi.mock('electron', () => ({
   ipcMain: { handle: vi.fn(), removeHandler: vi.fn() },
 }))

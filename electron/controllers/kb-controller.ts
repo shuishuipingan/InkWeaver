@@ -1,6 +1,7 @@
 import { app, ipcMain, dialog } from 'electron'
 import type { IpcMainInvokeEvent } from 'electron'
 import path from 'node:path'
+import fs from 'node:fs'
 import { readJsonFile, GLOBAL_CONFIG_PATH, DEFAULT_GLOBAL_CONFIG, MODELS_CONFIG_PATH } from '../utils/config-utils'
 import { GlobalConfig, ModelProfile } from '../../src/shared/ipc-channels'
 import { isProjectSessionContext } from '../../src/shared/project-session-context'
@@ -120,23 +121,80 @@ function isLegacyMigrationBlockedResult(value: unknown): boolean {
     && (value as { errorCode?: unknown }).errorCode === LEGACY_VECTOR_MIGRATION_BLOCKED
 }
 
-function getEmbeddingConfig(): { protocol: 'openai' | 'gemini'; model: { baseUrl: string; apiKey: string; modelName: string; embeddingOptions?: EmbeddingOptions } } | null {
-  const config = readJsonFile<GlobalConfig>(GLOBAL_CONFIG_PATH, DEFAULT_GLOBAL_CONFIG)
-  const targetModelId = config.defaultEmbeddingModelId || config.defaultModelId
-  if (!targetModelId) return null
+/**
+ * 解析本次知识库调用应使用的向量来源。
+ *
+ * - source 'local'：必须已有下载好的内置模型，否则返回 null（走 FTS 并提示）。
+ * - source 'auto'：内置模型已下载则优先本地；否则回退 API。
+ * - source 'api'：只走 API。
+ *
+ * 修复过的 bug：此前在没有配置向量模型时会回退到主力对话模型（defaultModelId）
+ * 去调 /embeddings——主力模型通常不支持该路由，导致每个分块批次都失败并被
+ * 反复重试。现在没有可用向量来源时直接返回 null，由调用方走 FTS 或明确报错。
+ */
+export function resolveEmbeddingCall(
+  global: GlobalConfig,
+  models: ModelProfile[],
+  isLocalReady: (modelId: string) => boolean,
+): { protocol: 'openai' | 'gemini' | 'local'; model: { baseUrl: string; apiKey: string; modelName: string; embeddingOptions?: EmbeddingOptions } } | null {
+  const source = global.embeddingSource === 'local' || global.embeddingSource === 'api'
+    ? global.embeddingSource
+    : 'auto'
+  const localModelId = typeof global.localEmbeddingModelId === 'string' ? global.localEmbeddingModelId.trim() : ''
 
-  const models = readJsonFile<ModelProfile[]>(MODELS_CONFIG_PATH, [])
-  const model = models.find((m) => m.id === targetModelId)
-  if (!model) return null
+  const localReady = localModelId !== '' && isLocalReady(localModelId)
+  if (source === 'local') {
+    if (!localReady) return null
+    return { protocol: 'local', model: { baseUrl: '', apiKey: '', modelName: localModelId } }
+  }
+
+  const targetModelId = global.defaultEmbeddingModelId
+  const model = targetModelId ? models.find((m) => m.id === targetModelId) : undefined
+  const apiUsable = !!model
+    && model.purposes.includes('embedding')
+    && !!model.baseUrl.trim()
+    && !!model.apiKey.trim()
+    // 只有 embedding 协议（openai/gemini）才能调 /embeddings 端点。
+    && (model.protocol === 'openai' || model.protocol === 'gemini')
+
+  if (source === 'auto' && localReady) {
+    // auto：本地可用优先；有 API 也只是省去网络调用。
+    return { protocol: 'local', model: { baseUrl: '', apiKey: '', modelName: localModelId } }
+  }
+  if (!model || !apiUsable) return null
   return {
-    protocol: model.protocol as 'openai' | 'gemini',
+    protocol: model.protocol,
     model: { baseUrl: model.baseUrl, apiKey: model.apiKey, modelName: model.modelName, embeddingOptions: model.embeddingOptions },
   }
+}
+
+function localEmbeddingRoot(): string {
+  // 延迟解析 userData：模块加载期不触碰 electron.app（部分测试会部分 mock electron）。
+  // eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  return (require('electron') as { app: { getPath(name: 'userData'): string } }).app.getPath('userData') + '/models/embedding'
+}
+
+function localEmbeddingReady(modelId: string): boolean {
+  try {
+    const dir = path.join(localEmbeddingRoot(), modelId)
+    return fs.existsSync(dir) && fs.readdirSync(dir, { recursive: true }).some(entry => String(entry).endsWith('.onnx'))
+  } catch {
+    return false
+  }
+}
+
+function getEmbeddingConfig(): { protocol: 'openai' | 'gemini' | 'local'; model: { baseUrl: string; apiKey: string; modelName: string; embeddingOptions?: EmbeddingOptions } } | null {
+  const config = readJsonFile<GlobalConfig>(GLOBAL_CONFIG_PATH, DEFAULT_GLOBAL_CONFIG)
+  const models = readJsonFile<ModelProfile[]>(MODELS_CONFIG_PATH, [])
+  return resolveEmbeddingCall(config, models, localEmbeddingReady)
 }
 
 function hasUsableEmbeddingConfig(
   config: ReturnType<typeof getEmbeddingConfig>,
 ): config is NonNullable<ReturnType<typeof getEmbeddingConfig>> {
+  // 本地协议没有 baseUrl/apiKey，可用性由模型文件是否已下载决定。
+  if (config?.protocol === 'local') return !!config.model.modelName.trim()
   return !!config && !!config.model.baseUrl.trim() && !!config.model.apiKey.trim()
 }
 
@@ -197,14 +255,16 @@ export function registerKBController(
       return { success: false, error: invalidExternalGrantText() }
     }
     const embConfig = getEmbeddingConfig()
-    const protocol = embConfig?.protocol ?? 'openai'
-    const model = embConfig?.model ?? { baseUrl: '', apiKey: '' }
+    if (!hasUsableEmbeddingConfig(embConfig)) {
+      // 修复：无可用向量来源时直接明确报错，而不是回退主力对话模型反复调用 /embeddings。
+      return { success: false, processed: 0, failed: 0, errorCode: 'EMBEDDING_MODEL_NOT_CONFIGURED', error: text('未配置向量模型：请下载内置本地向量模型或配置 API 向量模型。', 'No embedding model configured: download the built-in local embedding model or configure an API embedding model.') }
+    }
     return knowledgeBaseLoader.run((kb) => kb.importText(
       importedFile.content,
       importedFile.fileName,
       projectPath,
-      protocol,
-      model,
+      embConfig.protocol,
+      embConfig.model,
     ))
   })
 
@@ -230,8 +290,9 @@ export function registerKBController(
       return { success: false, importedCount: 0, failedFiles: [], error: invalidExternalGrantText() }
     }
     const embConfig = getEmbeddingConfig()
-    const protocol = embConfig?.protocol ?? 'openai'
-    const model = embConfig?.model ?? { baseUrl: '', apiKey: '' }
+    if (!hasUsableEmbeddingConfig(embConfig)) {
+      return { success: false, importedCount: 0, failedFiles: [], errorCode: 'EMBEDDING_MODEL_NOT_CONFIGURED', error: text('未配置向量模型：请下载内置本地向量模型或配置 API 向量模型。', 'No embedding model configured: download the built-in local embedding model or configure an API embedding model.') }
+    }
     return knowledgeBaseLoader.run(async (kb) => {
       const failedFiles: string[] = []
       let importedCount = 0
@@ -240,8 +301,8 @@ export function registerKBController(
           importedFile.content,
           importedFile.fileName,
           projectPath,
-          protocol,
-          model,
+          embConfig.protocol,
+          embConfig.model,
         )
         if (result.success) {
           importedCount++
@@ -253,12 +314,13 @@ export function registerKBController(
     })
   })
 
-  ipcMain.handle('kb:import-text', async (_event, text: string, fileName: string, expectedProjectPath: string) => {
+  ipcMain.handle('kb:import-text', async (_event, importedText: string, fileName: string, expectedProjectPath: string) => {
     const projectPath = requireProjectPath(expectedProjectPath)
     const embConfig = getEmbeddingConfig()
-    const protocol = embConfig?.protocol ?? 'openai'
-    const model = embConfig?.model ?? { baseUrl: '', apiKey: '' }
-    return knowledgeBaseLoader.run((kb) => kb.importText(text, fileName, projectPath, protocol, model))
+    if (!hasUsableEmbeddingConfig(embConfig)) {
+      return { success: false, errorCode: 'EMBEDDING_MODEL_NOT_CONFIGURED', error: text('未配置向量模型：请下载内置本地向量模型或配置 API 向量模型。', 'No embedding model configured: download the built-in local embedding model or configure an API embedding model.') }
+    }
+    return knowledgeBaseLoader.run((kb) => kb.importText(importedText, fileName, projectPath, embConfig.protocol, embConfig.model))
   })
 
   ipcMain.handle('kb:import-reference-text', async (
@@ -276,8 +338,9 @@ export function registerKBController(
     )
     const fileName = referenceImportDisplayName(binding)
     const embConfig = getEmbeddingConfig()
-    const protocol = embConfig?.protocol ?? 'openai'
-    const model = embConfig?.model ?? { baseUrl: '', apiKey: '' }
+    if (!hasUsableEmbeddingConfig(embConfig)) {
+      return { success: false, errorCode: 'EMBEDDING_MODEL_NOT_CONFIGURED', error: text('未配置向量模型：请下载内置本地向量模型或配置 API 向量模型。', 'No embedding model configured: download the built-in local embedding model or configure an API embedding model.') }
+    }
     return knowledgeBaseLoader.run(async (kb) => {
       const result = await kb.importReferenceText(
         binding.content,
@@ -287,8 +350,8 @@ export function registerKBController(
         runId,
         executionAuthority,
         projectPath,
-        protocol,
-        model,
+        embConfig.protocol,
+        embConfig.model,
       )
       if (result.success && result.docId) {
         ImportRunRepository.commitReferenceImportReceipt(

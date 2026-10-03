@@ -453,6 +453,34 @@ export interface LLMChannels {
     args: [profile: ModelProfile]
     return: ModelCapabilityProbeResult
   }
+  'llm:local-embedding-catalog': {
+    /** 列出内置本地向量模型目录、下载状态与当前来源配置。 */
+    args: []
+    return: {
+      entries: Array<{ modelId: string; displayName: string; dimension: number; approxSizeText: string; license: string; descriptionZh: string; descriptionEn: string; downloaded: boolean }>
+      source: 'auto' | 'local' | 'api'
+      selectedModelId: string | null
+      downloadedModelIds: string[]
+      cacheDir: string
+    }
+  }
+  'llm:local-embedding-set-source': {
+    args: [source: 'auto' | 'local' | 'api']
+    return: { success: boolean; source?: 'auto' | 'local' | 'api'; error?: string }
+  }
+  'llm:local-embedding-select-model': {
+    args: [modelId: string]
+    return: { success: boolean; selectedModelId?: string | null; error?: string }
+  }
+  'llm:local-embedding-download': {
+    /** 下载内置向量模型权重；进度经 'llm:local-embedding-progress' 事件推送。 */
+    args: [modelId: string]
+    return: { success: boolean; modelId?: string; error?: string }
+  }
+  'llm:local-embedding-delete': {
+    args: [modelId: string]
+    return: { success: boolean; error?: string }
+  }
   'llm:save-model': {
     args: [model: ModelProfile]
     return: { success: boolean }
@@ -490,6 +518,7 @@ export interface LLMChannels {
 
 export interface LLMStreamEvents {
   'llm:stream-chunk': { requestId: string; chunk: string }
+  'llm:local-embedding-progress': { modelId: string; status: 'downloading' | 'loading' | 'ready' | 'error' | 'uninstalled'; progress: number; file?: string; error?: string }
   'llm:stream-done': {
     requestId: string
     fullText: string

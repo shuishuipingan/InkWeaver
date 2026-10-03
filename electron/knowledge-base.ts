@@ -90,7 +90,7 @@ function migrationFailureDetails(error: unknown): { error: string; errorCode?: t
 }
 
 function embeddingSpaceFor(
-  protocol: 'openai' | 'gemini',
+  protocol: 'openai' | 'gemini' | 'local',
   model: { baseUrl: string; modelName?: string },
 ): EmbeddingSpaceIdentity {
   // 只持久化可公开比较的模型身份，绝不写入 API key。
@@ -109,7 +109,7 @@ function embeddingSpaceFor(
 export async function importDocument(
   filePath: string,
   projectPath: string,
-  protocol: 'openai' | 'gemini',
+  protocol: 'openai' | 'gemini' | 'local',
   model: { baseUrl: string; apiKey: string; modelName?: string; embeddingOptions?: EmbeddingOptions },
   onProgress?: (progress: number, message: string) => void,
 ): Promise<{ success: boolean; docId?: string; chunkCount?: number; error?: string; errorCode?: typeof LEGACY_VECTOR_MIGRATION_BLOCKED }> {
@@ -180,7 +180,7 @@ export async function importDocument(
 export async function searchKnowledge(
   query: string,
   projectPath: string,
-  protocol: 'openai' | 'gemini',
+  protocol: 'openai' | 'gemini' | 'local',
   model: { baseUrl: string; apiKey: string; modelName?: string; embeddingOptions?: EmbeddingOptions },
   topK: number = 5,
   chapterScope?: [number, number],
@@ -258,7 +258,7 @@ export async function getKnowledgeStats(projectPath: string): Promise<{
 export async function importFolder(
   folderPath: string,
   projectPath: string,
-  protocol: 'openai' | 'gemini',
+  protocol: 'openai' | 'gemini' | 'local',
   model: { baseUrl: string; apiKey: string; modelName?: string; embeddingOptions?: EmbeddingOptions },
   onProgress?: (current: number, total: number, fileName: string) => void,
 ): Promise<{
@@ -344,7 +344,7 @@ async function importTextInternal(
   text: string,
   fileName: string,
   projectPath: string,
-  protocol: 'openai' | 'gemini',
+  protocol: 'openai' | 'gemini' | 'local',
   model: { baseUrl: string; apiKey: string; modelName?: string; embeddingOptions?: EmbeddingOptions },
 ): Promise<{ success: boolean; docId?: string; chunkCount?: number; error?: string; errorCode?: typeof LEGACY_VECTOR_MIGRATION_BLOCKED }> {
   try {
@@ -403,7 +403,7 @@ export async function importText(
   text: string,
   fileName: string,
   projectPath: string,
-  protocol: 'openai' | 'gemini',
+  protocol: 'openai' | 'gemini' | 'local',
   model: { baseUrl: string; apiKey: string; modelName?: string; embeddingOptions?: EmbeddingOptions },
 ): Promise<{ success: boolean; docId?: string; chunkCount?: number; error?: string; errorCode?: typeof LEGACY_VECTOR_MIGRATION_BLOCKED }> {
   return importTextInternal(
@@ -513,7 +513,7 @@ async function performReferenceTextImport(
   stableKey: string,
   documentId: string,
   projectPath: string,
-  protocol: 'openai' | 'gemini',
+  protocol: 'openai' | 'gemini' | 'local',
   model: { baseUrl: string; apiKey: string; modelName?: string; embeddingOptions?: EmbeddingOptions },
   assertAuthority: () => void,
 ): Promise<ReferenceImportResult> {
@@ -663,7 +663,7 @@ export async function importReferenceText(
   runId: string,
   executionAuthority: ImportRunExecutionAuthority,
   projectPath: string,
-  protocol: 'openai' | 'gemini',
+  protocol: 'openai' | 'gemini' | 'local',
   model: { baseUrl: string; apiKey: string; modelName?: string; embeddingOptions?: EmbeddingOptions },
 ): Promise<ReferenceImportResult> {
   const stableKey = stableImportKey.trim()
@@ -724,7 +724,7 @@ export async function getVectorlessCount(projectPath: string): Promise<{ count: 
  */
 export async function backfillVectors(
   projectPath: string,
-  protocol: 'openai' | 'gemini',
+  protocol: 'openai' | 'gemini' | 'local',
   model: { baseUrl: string; apiKey: string; modelName?: string; embeddingOptions?: EmbeddingOptions },
 ): Promise<{
   success: boolean

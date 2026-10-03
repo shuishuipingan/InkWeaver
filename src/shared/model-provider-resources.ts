@@ -1,6 +1,6 @@
 /** Fixed external destinations shown in model-provider settings. */
 export const MODEL_PROVIDER_RESOURCE_URLS = {
-  'siliconflow-invite': 'https://cloud.siliconflow.cn/i/klFgdwZa',
+  'siliconflow-invite': 'https://cloud.siliconflow.cn/i/E9BGDAIP',
   'siliconflow-console': 'https://cloud.siliconflow.cn',
   'siliconflow-docs': 'https://docs.siliconflow.cn',
 } as const

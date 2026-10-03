@@ -25,6 +25,7 @@ import { Label } from '../ui/Label'
 import { NativeSelect } from '../ui/NativeSelect'
 import { cn } from '../../lib/utils'
 import { ipc } from '../../services/ipc-client'
+import { LocalEmbeddingCard } from './LocalEmbeddingCard'
 import { Switch } from '../ui/Switch'
 import { APP_BRAND } from '../../shared/brand'
 import { useLayoutStore, type SettingsSection } from '../../stores/layout-store'
@@ -290,23 +291,26 @@ function LLMSection({
           </div>
 
           {isEmbeddingSection && !editingModel && (
-            <div
-              className="flex items-center justify-between gap-4 rounded-xl px-4 py-3"
-              style={{ border: '1px solid var(--color-border)', backgroundColor: 'var(--color-panel)' }}
-            >
-              <div className="min-w-0">
-                <p className="text-xs font-semibold" style={{ color: 'var(--color-text)' }}>
-                  {text('免费向量模型推荐', 'Free embedding model recommendation')}
-                </p>
-                <p className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>
-                  {text('SiliconFlow 提供免费的 BAAI/bge-m3；注册后仅需填写 API Key 即可使用。', 'SiliconFlow provides the free BAAI/bge-m3 model. Register, then add your API Key to use it.')}
-                </p>
+            <>
+              <div
+                className="flex items-center justify-between gap-4 rounded-xl px-4 py-3"
+                style={{ border: '1px solid var(--color-border)', backgroundColor: 'var(--color-panel)' }}
+              >
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold" style={{ color: 'var(--color-text)' }}>
+                    {text('免费向量模型推荐', 'Free embedding model recommendation')}
+                  </p>
+                  <p className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>
+                    {text('SiliconFlow 提供免费的 BAAI/bge-m3；注册后仅需填写 API Key 即可使用。', 'SiliconFlow provides the free BAAI/bge-m3 model. Register, then add your API Key to use it.')}
+                  </p>
+                </div>
+                <Button type="button" size="sm" variant="outline" onClick={openSiliconFlowInvite} className="flex-shrink-0">
+                  {text('免费模型注册链接', 'Free model registration')}
+                  <ExternalLink size={13} />
+                </Button>
               </div>
-              <Button type="button" size="sm" variant="outline" onClick={openSiliconFlowInvite} className="flex-shrink-0">
-                {text('免费模型注册链接', 'Free model registration')}
-                <ExternalLink size={13} />
-              </Button>
-            </div>
+              <LocalEmbeddingCard />
+            </>
           )}
 
           {filtered.length === 0 ? (

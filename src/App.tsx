@@ -2,6 +2,7 @@ import { type ReactNode, useEffect } from 'react'
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels'
 import { type Theme, useThemeStore } from './stores/theme-store'
 import { useLayoutStore } from './stores/layout-store'
+import { LocalEmbeddingFirstRunDialog } from './components/dialogs/LocalEmbeddingFirstRunDialog'
 import { useLLMStore } from './stores/llm-store'
 import { useProjectStore } from './stores/project-store'
 import { useMCPStore } from './stores/mcp-store'
@@ -369,6 +370,7 @@ export default function App() {
         open={importNovelOpen}
         onClose={closeImportNovel}
       />
+      <LocalEmbeddingFirstRunDialog />
       <ChapterCreationDialog
         isOpen={chapterCreationOpen}
         prefill={chapterCreationPrefill}

@@ -11,6 +11,20 @@
 import { normalizeEmbeddingOptions } from '../src/shared/embedding-options'
 import { EmbeddingResponseValidationError } from './services/embedding-response-error'
 import { runtimeLogger } from './services/runtime-logger'
+import { createLocalEmbeddingEngine } from './services/local-embedding-engine'
+
+/**
+ * 本地向量引擎单例：模型缓存与权重落在用户数据目录。
+ * 延迟解析 userData（惰性 getter），避免模块加载期触碰 electron.app，
+ * 让纯函数测试与早于 app ready 的导入路径保持无副作用。
+ */
+export const localEmbeddingEngine = createLocalEmbeddingEngine({
+  get cacheDir() {
+    // eslint-disable-next-line global-require
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    return (require('electron') as { app: { getPath(name: 'userData'): string } }).app.getPath('userData') + '/models/embedding'
+  },
+})
 
 const RELEASE_SMOKE_BASE_URL_PREFIX = 'vela-release-smoke://'
 
@@ -320,7 +334,7 @@ export async function embedGemini(
 /** 统一的 Embedding 调用接口 */
 export async function generateEmbeddings(
   texts: string[],
-  protocol: 'openai' | 'gemini',
+  protocol: 'openai' | 'gemini' | 'local',
   model: { baseUrl: string; apiKey: string; modelName?: string },
   configuredBatchSize?: number,
   assertActive?: () => void,
@@ -329,6 +343,11 @@ export async function generateEmbeddings(
   if (texts.length === 0) return []
   const smokeEmbeddings = releaseSmokeEmbeddings(texts, model)
   if (smokeEmbeddings) return smokeEmbeddings
+
+  // 本地内置模型：不经过 HTTP，直接由本地引擎批量推理。
+  if (protocol === 'local') {
+    return localEmbeddingEngine.embed(model.modelName ?? '', texts)
+  }
 
   // 批量限制：每次最多 50 条
   // 旧配置未提供 batchSize 时保持原有协议默认值，避免升级后意外改变云端调用。

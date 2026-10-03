@@ -91,7 +91,24 @@ beforeAll(() => {
 beforeEach(() => {
   mocks.currentProjectPath = 'C:/projects/A'
   vi.clearAllMocks()
-  mocks.readJsonFile.mockImplementation((_path: string, fallback: unknown) => fallback)
+  mocks.readJsonFile.mockImplementation((filePath: string, fallback: unknown) => {
+    if (filePath === 'global.json') return { theme: 'dark', defaultModelId: 'chat-model', defaultEmbeddingModelId: 'embedding-model' }
+    if (filePath === 'models.json') {
+      return [{
+        id: 'embedding-model',
+        name: 'Embed',
+        provider: 'openai',
+        protocol: 'openai',
+        baseUrl: 'https://embedding.example/v1',
+        apiKey: 'configured-key',
+        modelName: 'embedding-model',
+        temperature: 0.7,
+        maxTokens: 1000,
+        purposes: ['embedding'],
+      }]
+    }
+    return fallback
+  })
   mocks.resolveReferenceImportAuthority.mockReturnValue({
     chapterNumber: 1,
     title: 'Chapter 1',
@@ -214,6 +231,8 @@ describe('knowledge-base controller project context guard', () => {
   })
 
   it('reports no rebuild action and makes no knowledge-base call without a usable embedding configuration', async () => {
+    // 覆盖 beforeEach 的默认实现：无任何向量配置时应走到“未配置”分支。
+    mocks.readJsonFile.mockImplementation((_path: string, fallback: unknown) => fallback)
     await expect(handler('kb:get-vector-rebuild-status')({}, 'C:/projects/A')).resolves.toEqual({
       embeddingConfigured: false,
       canRebuild: false,
@@ -246,10 +265,15 @@ describe('knowledge-base controller project context guard', () => {
       if (filePath === 'models.json') {
         return [{
           id: 'embedding-model',
+          name: 'Embed',
+          provider: 'openai',
           protocol: 'openai',
           baseUrl: 'https://embedding.example/v1',
           apiKey: 'configured-key',
           modelName: 'embedding-model',
+          temperature: 0.7,
+          maxTokens: 1000,
+          purposes: ['embedding'],
         }]
       }
       return fallback

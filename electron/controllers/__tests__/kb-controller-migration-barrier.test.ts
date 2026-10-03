@@ -24,11 +24,25 @@ vi.mock('../../services/project-access', () => ({
   projectAccess: { assertCurrentProjectContext: () => ({ rootPath: 'C:/projects/A' }) },
 }))
 vi.mock('../../utils/config-utils', () => ({
-  readJsonFile: vi.fn((_path: string, fallback: unknown) => fallback),
+  readJsonFile: vi.fn((path: string, fallback: unknown) => {
+    // 迁移屏障测试需要 import 通道走到屏障分支：提供一个可用的 API 向量配置。
+    if (path === 'models.json') {
+      return [{
+        id: 'embed-1', name: 'Embed', provider: 'openai', protocol: 'openai',
+        baseUrl: 'https://api.example.com', apiKey: 'key', modelName: 'bge-m3',
+        temperature: 0.7, maxTokens: 1000, purposes: ['embedding'],
+      }]
+    }
+    if (path === 'global.json') {
+      return { theme: 'dark', defaultModelId: 'chat-1', defaultEmbeddingModelId: 'embed-1' }
+    }
+    return fallback
+  }),
   GLOBAL_CONFIG_PATH: 'global.json',
   DEFAULT_GLOBAL_CONFIG: {},
   MODELS_CONFIG_PATH: 'models.json',
 }))
+
 vi.mock('../../services/knowledge-base-loader', () => ({ knowledgeBaseLoader: { run: mocks.run } }))
 vi.mock('../../i18n', () => ({
   mainText: (locale: string, zh: string, en: string) => locale === 'en-US' ? en : zh,
@@ -61,8 +75,9 @@ describe('knowledge-base controller migration barrier', () => {
     ['en-US', 'Legacy knowledge-base data must be repaired before continuing. Fix vectors.json in the project, then try again.'],
   ])('maps blocked search to a localized success:false result for %s', async (locale, expectedError) => {
     mocks.locale = locale
-    mocks.run.mockImplementation(async (operation: (kb: { searchKnowledgeFTS: () => Promise<never> }) => unknown) => (
+    mocks.run.mockImplementation(async (operation: (kb: { searchKnowledge?: () => Promise<never>; searchKnowledgeFTS: () => Promise<never> }) => unknown) => (
       await operation({
+        searchKnowledge: async () => { throw new LegacyVectorMigrationBlockedError('internal Chinese migration detail') },
         searchKnowledgeFTS: async () => { throw new LegacyVectorMigrationBlockedError('internal Chinese migration detail') },
       })
     ))
