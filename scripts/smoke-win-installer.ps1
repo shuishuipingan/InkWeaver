@@ -120,8 +120,18 @@ function Stop-AiNovelInstalledProcesses {
       }
     }
     foreach ($process in $running) {
-      Write-Host "Stopping product process before uninstall: pid=$($process.ProcessId) $($process.Name)"
-      Stop-Process -Id $process.ProcessId -Force -ErrorAction SilentlyContinue
+      $kind = if ([string]$process.CommandLine -match '--type=([a-z-]+)') { $Matches[1] } else { 'main' }
+      Write-Host "Stopping product process before uninstall: pid=$($process.ProcessId) $($process.Name) type=$kind"
+      $live = Get-Process -Id $process.ProcessId -ErrorAction SilentlyContinue
+      $closed = $false
+      if ($live -and $live.MainWindowHandle -ne 0) {
+        # 先请求窗口正常关闭，让应用自己退出（避免打断产品自身的退出流程）。
+        $closed = $live.CloseMainWindow()
+        if ($closed) { [void]$live.WaitForExit(5000) }
+      }
+      if ($live -and -not $live.HasExited) {
+        Stop-Process -Id $process.ProcessId -Force -ErrorAction SilentlyContinue
+      }
     }
     if ((Get-Date) -ge $deadline) {
       throw "Product processes kept running from the install root: $($running.Name -join ', ')"
