@@ -10,7 +10,11 @@
     "node_modules/@lancedb/lancedb-darwin-*/**/*",
     "node_modules/@lancedb/lancedb-linux-*/**/*",
     "node_modules/@lancedb/lancedb-win32-*/**/*",
-    "node_modules/@lancedb/lancedb-win32-x64-msvc/**/*"
+    "node_modules/@lancedb/lancedb-win32-x64-msvc/**/*",
+    // 本地向量模型推理的原生运行时与图像依赖：.node/.dll 必须落到磁盘才能加载。
+    "node_modules/onnxruntime-node/**/*",
+    "node_modules/sharp/**/*",
+    "node_modules/@img/**/*"
   ],
   "afterPack": "scripts/linux-appimage-after-pack.cjs",
   "productName": "InkWeaver",
@@ -20,9 +24,16 @@
   "files": [
     "dist",
     "dist-electron",
-    "build"
+    "build",
+    // 浏览器端推理运行时只用于 Web，Electron 主进程走 onnxruntime-node，剔除以免安装包无谓增大。
+    "!node_modules/onnxruntime-web/**/*"
   ],
   "mac": {
+    // 每个平台只保留自己的原生库，其余平台的 onnxruntime 二进制不随包分发。
+    "files": [
+      "!node_modules/onnxruntime-node/bin/napi-v3/win32/**/*",
+      "!node_modules/onnxruntime-node/bin/napi-v3/linux/**/*"
+    ],
     "target": ["dmg"],
     "publish": [
       {
@@ -45,6 +56,10 @@
     ]
   },
   "win": {
+    "files": [
+      "!node_modules/onnxruntime-node/bin/napi-v3/darwin/**/*",
+      "!node_modules/onnxruntime-node/bin/napi-v3/linux/**/*"
+    ],
     "target": [
       {
         "target": "nsis",
@@ -79,6 +94,10 @@
     "deleteAppDataOnUninstall": false
   },
   "linux": {
+    "files": [
+      "!node_modules/onnxruntime-node/bin/napi-v3/win32/**/*",
+      "!node_modules/onnxruntime-node/bin/napi-v3/darwin/**/*"
+    ],
     "target": ["AppImage", "deb", "rpm"],
     "artifactName": "inkweaver-linux-x64-${version}.${ext}",
     "maintainer": "InkWeaver Maintainers <shuishuipingan@users.noreply.github.com>",
