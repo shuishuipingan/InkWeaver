@@ -2,6 +2,23 @@
 # `pnpm install` 管理（CI 也单独安装），而这个隐式安装一旦触发会长时间无响应
 # （实测在安装收尾阶段挂起 10 分钟以上；打包时 electron-builder 内部调用 `pnpm exec` 同样被卡住）。
 verifyDepsBeforeRun: false
+# pnpm 11 只从工作区清单读取该设置（写在 .npmrc 里不生效，且本仓库的 peer 图在
+# 自动安装 peer 时会长期无进展），必须在这里显式关闭。
+autoInstallPeers: false
+# 安全审计（2026-10-03）跟着依赖树给出的整改：
+# - dompurify 经 monaco-editor 进入渲染进程且随包分发，旧版多篇 XSS 公告已在 3.4.0 修复；
+# - tar 经 onnxruntime-node 随包分发，解压 DoS 公告在 7.5.19 修复；
+# - js-yaml 随包分发（知识库依赖链），二次复杂度 DoS 公告在 4.3.2 修复；
+# - builder-util-runtime 随包分发（electron-updater），跨源跳转泄露凭据的公告在 9.7.0 修复。
+# 其余公告只落在开发工具链（vitest/electron-builder/postcss 等），或落在应用不会执行的路径上
+# （sharp 只被 @huggingface/transformers 的图像能力使用，本应用的向量检索不经过它；
+#  Electron 的补丁升级随本版本一并完成）。
+overrides:
+  dompurify: '>=3.4.0'
+  tar: '>=7.5.19'
+  # 保持在 4.x：>=4.3.2 会跨大版本解析到 5.x，可能破坏调用方。
+  js-yaml: '^4.3.2'
+  builder-util-runtime: '>=9.7.0'
 allowBuilds:
   better-sqlite3: true
   electron: true

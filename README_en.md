@@ -4,15 +4,15 @@
 
 InkWeaver is a local-first desktop workspace for long-form fiction. It brings project settings, characters, worldbuilding, chapter blueprints, prose, review, revision, and finalization into a traceable writing chain while keeping the author in control of every durable change.
 
-Current version: **v1.3.13**
+Current version: **v1.3.14**
 
 [Long-form context selection and budget guide](docs/features/draft-context-budget.md)
 
 > **Turn a long novel into one continuously developing story.** InkWeaver is a local-first AI writing workspace that connects story premises, character state, chapter blueprints, candidate drafts, evidence-backed review, and author-approved finalization into one traceable writing loop.
 
-Version 1.3.13 fixes the adaptation rename deadlock and widens its coverage, upgrades AI story direction into a real profile-level adjustment (full character profiles, relationships, and unfinished blueprint casts are now AI-editable), improves draft-generation extractive summaries, output reservations, and continuation coherence so worldbuilding and atmosphere survive, and keeps reasoning mappings alive for manually entered model names including the newly catalogued gemini-3.8-flash. Includes the [long-form context guide](docs/features/draft-context-budget.md) and the earlier [workflow audit repairs](docs/audits/workflow-audit-2026-10-01.md). The Release supports Windows, macOS and Linux x64; the DSH plugin remains in v1.2.0, and npm publication remains out of scope.
+Version 1.3.14 introduces **built-in local embedding models**: the knowledge library no longer requires an API embedding model first. On first run the app offers to download an offline model (bge-small-zh-v1.5 for Chinese, plus EmbeddingGemma, all-MiniLM-L6-v2, multilingual MiniLM, and Qwen3-Embedding variants, each with a description and size), and you can skip it and use an API embedding model instead. Downloads and retrieval pick GPU, then integrated GPU, then CPU, with automatic fallback, and the embedding source can be Auto, local-only, or API-only (Auto by default). It also fixes the old bug that kept calling the main chat model's /embeddings endpoint with no embedding model configured (the app now reports clearly or falls back to full-text search), repairs a packaging regression that packed the whole working tree into the installer (2.2GB asar to 268MB), and remediates the shipped dompurify and tar advisories found by the dependency audit. Includes the [long-form context guide](docs/features/draft-context-budget.md) and the earlier [workflow audit repairs](docs/audits/workflow-audit-2026-10-01.md). The Release supports Windows, macOS and Linux x64; the DSH plugin remains in v1.2.0, and npm publication remains out of scope.
 
-[Download v1.3.13](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.3.13) · [Start your first chapter in three minutes](docs/quickstart/README.md) · [Story direction guide](docs/features/story-direction-adjustment.md) · [Install the DSH plugin](plugins/inkweaver-dsh/README.md) · [Ask a question or report a problem](https://github.com/shuishuipingan/InkWeaver/issues/new/choose) · [Join the discussion](https://github.com/shuishuipingan/InkWeaver/discussions)
+[Download v1.3.14](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.3.14) · [Start your first chapter in three minutes](docs/quickstart/README.md) · [Story direction guide](docs/features/story-direction-adjustment.md) · [Install the DSH plugin](plugins/inkweaver-dsh/README.md) · [Ask a question or report a problem](https://github.com/shuishuipingan/InkWeaver/issues/new/choose) · [Join the discussion](https://github.com/shuishuipingan/InkWeaver/discussions)
 
 ![InkWeaver welcome screen](docs/assets/inkweaver-welcome.png)
 
@@ -63,7 +63,7 @@ InkWeaver is not a hosted model service or an online fiction platform. It includ
 - **Foreshadowing and narrative threads** track planned, planted, progressing, resolved, and overdue story threads.
 - **Per-chapter model and length control** applies to single and continuous writing runs. Duplicate jobs for the same target are blocked.
 - **Human-confirmed review loop** keeps AI findings editable and non-authoritative until the author confirms them, revises, and inspects the diff.
-- **Reference material and knowledge retrieval** support TXT, Markdown, and EPUB import, semantic search, and SQLite full-text fallback.
+- **Reference material and knowledge retrieval** support TXT, Markdown, and EPUB import, a downloadable built-in local embedding model for offline semantic search (optional first-run download, no API key, GPU then integrated GPU then CPU), your own API embedding model, and SQLite full-text fallback when no embedding source is available.
 - **Character cards and relationship graph** keep structured character facts and support zoom, pan, or clear operations.
 - **Recoverable operations** record safe-boundary progress for long generation, batch writing, imports, drafting, character extraction, review, review-driven revision, revision, finalization, finalization post-process repair, architecture generation, configuration generation, and chapter-blueprint generation. Resume actions reload authoritative sources or safe startup inputs and validate the current project lease without storing prose or model output in the checkpoint.
 - **Independent UI and writing languages** let the interface and the novel use different languages.
@@ -164,33 +164,33 @@ inkweaver-mac-arm64-<version>-installer.dmg
 inkweaver-mac-x64-<version>-installer.dmg
 ```
 
-The current macOS installers do not have a Developer ID signature and are not notarized. Download only from the [formal v1.3.13 Release](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.3.13) and follow the operating system's first-launch confirmation. The desktop Release contains 13 assets for Windows x64, macOS Apple Silicon, macOS Intel, and Linux x64; the DSH plugin tarball remains in the v1.2.0 Release.
+The current macOS installers do not have a Developer ID signature and are not notarized. Download only from the [formal v1.3.14 Release](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.3.14) and follow the operating system's first-launch confirmation. The desktop Release contains 13 assets for Windows x64, macOS Apple Silicon, macOS Intel, and Linux x64; the DSH plugin tarball remains in the v1.2.0 Release.
 
 ### Linux x64
 
-The v1.3.13 Linux packages are built for x64. Qualification tests cover Ubuntu 22.04, Debian 13, and Fedora 44; this does not claim compatibility for other distributions or Linux ARM64. Packages are built in an Ubuntu 22.04 environment with glibc 2.35, and qualification verifies that packaged binaries do not require a glibc symbol newer than 2.35.
+The v1.3.14 Linux packages are built for x64. Qualification tests cover Ubuntu 22.04, Debian 13, and Fedora 44; this does not claim compatibility for other distributions or Linux ARM64. Packages are built in an Ubuntu 22.04 environment with glibc 2.35, and qualification verifies that packaged binaries do not require a glibc symbol newer than 2.35.
 
-Download these files and their matching SHA-256 sidecars from the [formal v1.3.13 Release](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.3.13):
+Download these files and their matching SHA-256 sidecars from the [formal v1.3.14 Release](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.3.14):
 
-    inkweaver-linux-x64-1.3.13.AppImage
-    inkweaver-linux-x64-1.3.13.deb
-    inkweaver-linux-x64-1.3.13.rpm
+    inkweaver-linux-x64-1.3.14.AppImage
+    inkweaver-linux-x64-1.3.14.deb
+    inkweaver-linux-x64-1.3.14.rpm
 
 The AppImage launches directly when FUSE is available. Without FUSE, use its built-in extraction mode:
 
-    chmod +x inkweaver-linux-x64-1.3.13.AppImage
-    ./inkweaver-linux-x64-1.3.13.AppImage --appimage-extract-and-run
+    chmod +x inkweaver-linux-x64-1.3.14.AppImage
+    ./inkweaver-linux-x64-1.3.14.AppImage --appimage-extract-and-run
 
 AppImage uses the user namespace sandbox and requires the system to allow unprivileged user namespaces. If system policy disables this capability, use the corresponding deb/rpm installer.
 
 Install the deb package on Ubuntu/Debian or the rpm package on Fedora:
 
-    sudo apt install ./inkweaver-linux-x64-1.3.13.deb
-    sudo dnf install ./inkweaver-linux-x64-1.3.13.rpm
+    sudo apt install ./inkweaver-linux-x64-1.3.14.deb
+    sudo dnf install ./inkweaver-linux-x64-1.3.14.rpm
 
 Linux packages are unsigned. Verify the matching checksum file in the same directory before installation, for example:
 
-    sha256sum -c inkweaver-linux-x64-1.3.13.deb.sha256
+    sha256sum -c inkweaver-linux-x64-1.3.14.deb.sha256
 
 ## DeepSeek Harness plugin
 

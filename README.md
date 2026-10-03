@@ -4,15 +4,15 @@
 
 织墨 InkWeaver 是一款面向长篇小说创作的本地优先桌面工作台。它把项目设定、角色、世界观、章节蓝图、正文、审稿、修订与定稿组织成可追溯的创作链，让作者在保留最终决定权的前提下使用自己选择的 AI 模型。
 
-当前版本：**v1.3.13**
+当前版本：**v1.3.14**
 
 [长篇写作的资料选择与预算说明](docs/features/draft-context-budget.md)
 
 > **把一本长篇小说写成会持续发展的整体。** InkWeaver 是本地优先的 AI 小说创作工作台：它把故事设定、角色状态、章节蓝图、候选草稿、证据化审稿和作者定稿串成一条可追溯的连续写作链。
 
-v1.3.13 修复拆书仿写改名应用的交互死锁并把替换覆盖补齐，把 AI 全书方向调整升级为真正的档案级调整（人物档案全字段、人物关系、未定稿蓝图出场名单可由 AI 改写）；改进草稿生成的摘录摘要、输出预留与续写连贯性，保住世界观与氛围描写；修复手动输入模型名后推理强度映射失效的问题，并收录 gemini-3.8-flash。保留此前的[长篇写作资料选择说明](docs/features/draft-context-budget.md)与[工作流审计修复](docs/audits/workflow-audit-2026-10-01.md)。同一 Release 提供 Windows、macOS 和 Linux x64；DSH 插件沿用 v1.2.0，不发布 npm。
+v1.3.14 带来**内置本地向量模型**：知识库不再要求你先配好 API 向量模型。首次运行会询问是否下载一个离线模型（中文推荐 bge-small-zh-v1.5，另有 EmbeddingGemma、all-MiniLM-L6-v2、多语言 MiniLM、Qwen3-Embedding 等档位，均附介绍与体积），也可以直接跳过改用 API 向量模型；下载与检索在执行后端上按 GPU → 核显 → CPU 选择并自动回退，向量来源支持“自动 / 仅本地 / 仅 API”，默认自动。同时修复了未配置向量模型时反复调用主力对话模型 /embeddings 的旧问题（没有可用来源会明确报错或退化为全文检索），修掉了一次会把整个仓库目录打进安装包的打包回归（2.2GB asar → 268MB），并按依赖审计整改了随包分发的 dompurify 与 tar。保留此前的[长篇写作资料选择说明](docs/features/draft-context-budget.md)与[工作流审计修复](docs/audits/workflow-audit-2026-10-01.md)。同一 Release 提供 Windows、macOS 和 Linux x64；DSH 插件沿用 v1.2.0，不发布 npm。
 
-[下载 v1.3.13](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.3.13) · [三分钟开始第一章](docs/quickstart/README.md) · [全书方向调整指南](docs/features/story-direction-adjustment.md) · [安装 DSH 插件](plugins/inkweaver-dsh/README.md) · [提交问题或建议](https://github.com/shuishuipingan/InkWeaver/issues/new/choose) · [参与讨论](https://github.com/shuishuipingan/InkWeaver/discussions)
+[下载 v1.3.14](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.3.14) · [三分钟开始第一章](docs/quickstart/README.md) · [全书方向调整指南](docs/features/story-direction-adjustment.md) · [安装 DSH 插件](plugins/inkweaver-dsh/README.md) · [提交问题或建议](https://github.com/shuishuipingan/InkWeaver/issues/new/choose) · [参与讨论](https://github.com/shuishuipingan/InkWeaver/discussions)
 
 ![InkWeaver 欢迎页](docs/assets/inkweaver-welcome.png)
 
@@ -63,7 +63,7 @@ v1.3.13 修复拆书仿写改名应用的交互死锁并把替换覆盖补齐，
 - **伏笔与叙事线索系统**：记录计划、埋设、推进、回收与超期线索，让长线悬念可以检查和兑现。
 - **章节模型与字数控制**：单章和连续写作都使用本次选择的模型与目标字数；相同目标的重复任务会被阻止。
 - **人工审稿闭环**：AI 审稿不是自动改稿。作者先确认问题清单，再修稿、检查差异并决定最终文本。
-- **参考资料与知识库**：支持 TXT、Markdown 和 EPUB 导入；可使用向量检索，也可在未配置 Embedding 时使用全文检索。
+- **参考资料与知识库**：支持 TXT、Markdown 和 EPUB 导入；可下载内置本地向量模型离线检索（首跑可选，无需 API Key，GPU → 核显 → CPU 自动选择），也可使用自己的 API 向量模型，或在没有向量来源时使用全文检索。
 - **角色卡与关系图**：维护结构化人物事实，关系图支持缩放、平移和一键清空。
 - **可恢复任务**：长时间生成、批量章节、导入、单章写稿、人物提取、审稿、审稿驱动修稿、只读修稿、定稿、定稿后处理修复、架构生成、配置生成和章节蓝图生成具有不含正文的恢复收据；恢复时重新读取权威来源或安全启动参数并校验项目 lease，避免旧任务写入错误项目。
 - **中英文界面**：界面语言与小说写作语言相互独立。
@@ -160,33 +160,33 @@ inkweaver-mac-arm64-<版本号>-installer.dmg
 inkweaver-mac-x64-<版本号>-installer.dmg
 ```
 
-当前 macOS 安装包未代码签名（未使用 Developer ID 签名）且未公证。请只从[正式 v1.3.13 Release](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.3.13)下载，并按系统安全提示确认首次打开。桌面 Release 共 13 项资产，覆盖 Windows x64、macOS Apple Silicon、macOS Intel 和 Linux x64；DSH 插件 tarball 保留在 v1.2.0 Release。
+当前 macOS 安装包未代码签名（未使用 Developer ID 签名）且未公证。请只从[正式 v1.3.14 Release](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.3.14)下载，并按系统安全提示确认首次打开。桌面 Release 共 13 项资产，覆盖 Windows x64、macOS Apple Silicon、macOS Intel 和 Linux x64；DSH 插件 tarball 保留在 v1.2.0 Release。
 
 ### Linux x64
 
-v1.3.13 Linux 资产仅以 x64 构建。本次资格验证使用 Ubuntu 22.04、Debian 13 和 Fedora 44；不据此声明其他发行版或 Linux ARM64 已验证。包以 Ubuntu 22.04 的 glibc 2.35 环境构建，资格记录会检查打包文件所需的最高 glibc 符号版本不高于 2.35。
+v1.3.14 Linux 资产仅以 x64 构建。本次资格验证使用 Ubuntu 22.04、Debian 13 和 Fedora 44；不据此声明其他发行版或 Linux ARM64 已验证。包以 Ubuntu 22.04 的 glibc 2.35 环境构建，资格记录会检查打包文件所需的最高 glibc 符号版本不高于 2.35。
 
-从[正式 v1.3.13 Release](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.3.13)下载对应文件及各自的 SHA-256 校验文件：
+从[正式 v1.3.14 Release](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.3.14)下载对应文件及各自的 SHA-256 校验文件：
 
-    inkweaver-linux-x64-1.3.13.AppImage
-    inkweaver-linux-x64-1.3.13.deb
-    inkweaver-linux-x64-1.3.13.rpm
+    inkweaver-linux-x64-1.3.14.AppImage
+    inkweaver-linux-x64-1.3.14.deb
+    inkweaver-linux-x64-1.3.14.rpm
 
 AppImage 在 FUSE 可用时可直接启动。若系统没有 FUSE，可用内置提取运行模式：
 
-    chmod +x inkweaver-linux-x64-1.3.13.AppImage
-    ./inkweaver-linux-x64-1.3.13.AppImage --appimage-extract-and-run
+    chmod +x inkweaver-linux-x64-1.3.14.AppImage
+    ./inkweaver-linux-x64-1.3.14.AppImage --appimage-extract-and-run
 
 AppImage 使用用户命名空间 sandbox，系统需允许普通用户创建用户命名空间。若系统策略禁用了此能力，请使用对应的 deb/rpm 安装包。
 
 Ubuntu/Debian 可安装 deb，Fedora 可安装 rpm：
 
-    sudo apt install ./inkweaver-linux-x64-1.3.13.deb
-    sudo dnf install ./inkweaver-linux-x64-1.3.13.rpm
+    sudo apt install ./inkweaver-linux-x64-1.3.14.deb
+    sudo dnf install ./inkweaver-linux-x64-1.3.14.rpm
 
 Linux 安装包未签名。下载后先在同一目录核对对应校验文件，例如：
 
-    sha256sum -c inkweaver-linux-x64-1.3.13.deb.sha256
+    sha256sum -c inkweaver-linux-x64-1.3.14.deb.sha256
 
 ## DeepSeek Harness 插件
 
