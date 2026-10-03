@@ -10,7 +10,7 @@
 
 > **把一本长篇小说写成会持续发展的整体。** InkWeaver 是本地优先的 AI 小说创作工作台：它把故事设定、角色状态、章节蓝图、候选草稿、证据化审稿和作者定稿串成一条可追溯的连续写作链。
 
-v1.3.14 带来**内置本地向量模型**：知识库不再要求你先配好 API 向量模型。首次运行会询问是否下载一个离线模型（中文推荐 bge-small-zh-v1.5，另有 EmbeddingGemma、all-MiniLM-L6-v2、多语言 MiniLM、Qwen3-Embedding 等档位，均附介绍与体积），也可以直接跳过改用 API 向量模型；下载与检索在执行后端上按 GPU → 核显 → CPU 选择并自动回退，向量来源支持“自动 / 仅本地 / 仅 API”，默认自动。同时修复了未配置向量模型时反复调用主力对话模型 /embeddings 的旧问题（没有可用来源会明确报错或退化为全文检索），修掉了一次会把整个仓库目录打进安装包的打包回归（2.2GB asar → 268MB），并按依赖审计整改了随包分发的 dompurify 与 tar。保留此前的[长篇写作资料选择说明](docs/features/draft-context-budget.md)与[工作流审计修复](docs/audits/workflow-audit-2026-10-01.md)。同一 Release 提供 Windows、macOS 和 Linux x64；DSH 插件沿用 v1.2.0，不发布 npm。
+v1.3.14 带来**内置本地向量模型**：知识库不再要求你先配好 API 向量模型。首次运行会询问是否下载一个离线模型（中文推荐 bge-small-zh-v1.5，另有 EmbeddingGemma、all-MiniLM-L6-v2、多语言 MiniLM、Qwen3-Embedding 等档位，均附介绍与体积），也可以直接跳过改用 API 向量模型；下载与检索在执行后端上按 GPU → 核显 → CPU 选择并自动回退，向量来源支持“自动 / 仅本地 / 仅 API”，默认自动。同时修复了未配置向量模型时反复调用主力对话模型 /embeddings 的旧问题（没有可用来源会明确报错或退化为全文检索），修掉了一次会把整个仓库目录打进安装包的打包回归（2.2GB asar → 268MB），并按依赖审计整改了随包分发的 dompurify 与 tar。保留此前的[长篇写作资料选择说明](docs/features/draft-context-budget.md)与[工作流审计修复](docs/audits/workflow-audit-2026-10-01.md)，本版本的[安全审计收据](docs/audits/security-audit-2026-10-03.md)记录了扫描结论、依赖整改与遗留风险。同一 Release 提供 Windows、macOS 和 Linux x64；DSH 插件沿用 v1.2.0，不发布 npm。
 
 [下载 v1.3.14](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.3.14) · [三分钟开始第一章](docs/quickstart/README.md) · [全书方向调整指南](docs/features/story-direction-adjustment.md) · [安装 DSH 插件](plugins/inkweaver-dsh/README.md) · [提交问题或建议](https://github.com/shuishuipingan/InkWeaver/issues/new/choose) · [参与讨论](https://github.com/shuishuipingan/InkWeaver/discussions)
 

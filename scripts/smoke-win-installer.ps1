@@ -74,6 +74,39 @@ function Stop-AiNovelMonitoredProcess {
   }
 }
 
+<#
+.SYNOPSIS
+  在卸载前停掉仍从安装目录运行的产品进程。
+
+.DESCRIPTION
+  冒烟流程会多次启动/关闭应用；短命实例（向量、官网、皮肤冒烟）在 GPU 子进程刚
+  起步时退出时，可能留下仍在运行的 Electron 子进程。它持有 InkWeaver.exe 的映像，
+  卸载器就无法删除该文件，卸载后置条件会间歇性失败（实测 2026-10-03 两次）。
+  这里按可执行文件路径清理安装目录下的全部产品进程，并等待映像释放后再卸载。
+#>
+function Stop-AiNovelInstalledProcesses {
+  param(
+    [Parameter(Mandatory = $true)][string]$InstallRoot,
+    [int]$TimeoutSeconds = 15
+  )
+
+  $prefix = (Resolve-Path -LiteralPath $InstallRoot).Path.TrimEnd('\') + '\'
+  $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+  while ($true) {
+    $running = @(Get-CimInstance Win32_Process |
+      Where-Object { $_.ExecutablePath -like "$prefix*" })
+    if ($running.Count -eq 0) { return }
+    foreach ($process in $running) {
+      Write-Host "Stopping product process before uninstall: pid=$($process.ProcessId) $($process.Name)"
+      Stop-Process -Id $process.ProcessId -Force -ErrorAction SilentlyContinue
+    }
+    if ((Get-Date) -ge $deadline) {
+      throw "Product processes kept running from the install root: $($running.Name -join ', ')"
+    }
+    Start-Sleep -Milliseconds 500
+  }
+}
+
 function Get-AiNovelFileSha256 {
   param([Parameter(Mandatory = $true)][string]$Path)
 
@@ -963,6 +996,7 @@ finally {
   }
   elseif (Test-Path -LiteralPath $uninstaller -PathType Leaf) {
     try {
+      Stop-AiNovelInstalledProcesses -InstallRoot $installRoot
       Invoke-AiNovelMonitoredExecutable `
         -Path $uninstaller `
         -Arguments @('/S') `
