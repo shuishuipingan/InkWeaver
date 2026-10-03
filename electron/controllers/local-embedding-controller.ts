@@ -7,7 +7,7 @@
  * - localEmbeddingModelId: 当前选中的内置模型（auto 与 local 都读取它）。
  */
 
-import { ipcMain } from 'electron'
+import { app, ipcMain } from 'electron'
 import path from 'node:path'
 import fs from 'node:fs'
 
@@ -68,14 +68,10 @@ export function writeLocalEmbeddingConfig(update: {
 
 /** 模型权重缓存目录（transformers.js 下载落点）。 */
 export function localEmbeddingCacheDir(): string {
-  // 延迟解析 userData：模块加载期不触碰 electron.app（部分测试会部分 mock electron）。
+  // 只在函数调用时读取 electron.app（模块加载期无副作用）；打包后的主进程是 ESM，不能用 require。
   const root = process.env.AI_NOVEL_LOCAL_EMBEDDING_CACHE?.trim()
   if (root) return root
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const electron = require('electron') as { app: { getPath(name: 'userData'): string } }
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const nodePath = require('node:path') as typeof import('node:path')
-  return nodePath.join(electron.app.getPath('userData'), 'models', 'embedding')
+  return path.join(app.getPath('userData'), 'models', 'embedding')
 }
 
 function modelDir(modelId: string): string {

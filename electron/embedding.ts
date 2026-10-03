@@ -8,6 +8,8 @@
  * 本模块仅保留 Embedding API 调用和文本分块功能
  */
 
+import { app } from 'electron'
+
 import { normalizeEmbeddingOptions } from '../src/shared/embedding-options'
 import { EmbeddingResponseValidationError } from './services/embedding-response-error'
 import { runtimeLogger } from './services/runtime-logger'
@@ -15,14 +17,12 @@ import { createLocalEmbeddingEngine } from './services/local-embedding-engine'
 
 /**
  * 本地向量引擎单例：模型缓存与权重落在用户数据目录。
- * 延迟解析 userData（惰性 getter），避免模块加载期触碰 electron.app，
- * 让纯函数测试与早于 app ready 的导入路径保持无副作用。
+ * 用惰性 getter 解析 userData，模块加载期不触碰 electron.app（早于 app ready 的导入路径保持无副作用）。
+ * 注意：不能用 require('electron')——打包后的主进程是 ESM，没有 require（Linux 安装包实测启动即失败）。
  */
 export const localEmbeddingEngine = createLocalEmbeddingEngine({
   get cacheDir() {
-    // eslint-disable-next-line global-require
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    return (require('electron') as { app: { getPath(name: 'userData'): string } }).app.getPath('userData') + '/models/embedding'
+    return app.getPath('userData') + '/models/embedding'
   },
 })
 

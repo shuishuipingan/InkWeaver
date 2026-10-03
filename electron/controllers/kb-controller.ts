@@ -169,10 +169,8 @@ export function resolveEmbeddingCall(
 }
 
 function localEmbeddingRoot(): string {
-  // 延迟解析 userData：模块加载期不触碰 electron.app（部分测试会部分 mock electron）。
-  // eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  return (require('electron') as { app: { getPath(name: 'userData'): string } }).app.getPath('userData') + '/models/embedding'
+  // 只在函数调用时读取 electron.app（模块加载期无副作用）；打包后的主进程是 ESM，不能用 require。
+  return app.getPath('userData') + '/models/embedding'
 }
 
 function localEmbeddingReady(modelId: string): boolean {
