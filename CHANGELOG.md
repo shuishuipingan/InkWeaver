@@ -2,6 +2,46 @@
 
 本文件按用户可见行为记录变更。桌面版本不发布 npm；DSH 插件沿用已发布的 `1.2.0` 包。`1.2.0` 已从同一源码 commit 完成工程验收、三平台资产回读和正式 Release；`1.1.0` 的历史 Release 收据保留在 `docs/upgrade/`，不与 1.2.0 混用。
 
+## 1.3.16 — 2026-10-04
+
+### 修复
+
+- 修复已下载并选中的内置向量模型被误判为“未配置向量模型”：模型权重实际写入的目录与就绪判定检查的目录不一致，导致知识库导入与检索在模型已经下载的情况下仍报“未配置向量模型：请下载内置本地向量模型或配置 API 向量模型”。现在下载落点与就绪判定共用同一份路径约定，旧版本留下的另一种落点目录继续被识别，设置里显示为已下载的模型可以直接使用。
+
+- 修复同一模型仓库的不同量化档位互相冒充已下载：同一仓库的各个档位写入的是不同的权重文件，此前目录里只要存在任意一个权重，该仓库的所有档位都会被标成已下载，选中从未下载的档位后实际不可用。现在只有该档位自己的权重文件存在才算已下载。
+
+- 修复删除内置向量模型时旧落点目录残留：删除模型时同时清理新旧两种落点目录，不再残留旧布局下的权重文件。
+
+### 优化
+
+- 设置里的“已选中”不再等同于“可用”：内置向量模型卡片只在模型真正下载完成后显示就绪，选中尚未下载的档位会明确提示该档位还不可用，不再显示成可用状态。
+
+- 内置向量模型的来源选项说明改为中英文双语：界面语言为英文时按英文说明显示，不再只显示中文描述。
+
+### 发布
+
+- 保持 Windows、macOS、Linux x64 同提交发布。Linux 文件为 inkweaver-linux-x64-1.3.16.AppImage、inkweaver-linux-x64-1.3.16.deb、inkweaver-linux-x64-1.3.16.rpm 及 SHA-256；运行资格覆盖 Ubuntu 22.04、Debian 13、Fedora 44，glibc 2.35 基线及 --appimage-extract-and-run 检查继续有效，包未签名。
+
+## 1.3.16 — 2026-10-04 (English)
+
+### Fixed
+
+- Downloaded and selected built-in embedding models are no longer misreported as “no embedding model configured”: the directory the weights are actually written to did not match the directory the readiness check looked at, so knowledge-base import and search still failed with “No embedding model configured: download the built-in local embedding model or configure an API embedding model” even though the model was already downloaded. Downloads and the readiness check now share one path convention, the alternative layout left by older versions is still recognized, and a model that Settings shows as downloaded is ready to use.
+
+- Quantization tiers of the same model repository no longer stand in for one another: each tier of a repository writes its own weights file, but the presence of any single weights file used to mark every tier of that repository as downloaded, leaving a selected tier unusable when it had never been downloaded. A tier now counts as downloaded only when its own weights file is present.
+
+- Deleting a built-in embedding model no longer leaves the older layout behind: the removal clears both the current and the older layout directories.
+
+### Improved
+
+- “Selected” in Settings no longer means “ready”: the built-in embedding model card reports ready only after a model has actually finished downloading, and choosing a tier that has not been downloaded now says so explicitly instead of appearing available.
+
+- The built-in embedding model source options now carry bilingual copy: an English interface shows the English descriptions instead of the previously hard-coded Chinese text.
+
+### Release
+
+- Continues Windows, macOS and Linux x64 same-commit releases. Linux packages: inkweaver-linux-x64-1.3.16.AppImage, inkweaver-linux-x64-1.3.16.deb, inkweaver-linux-x64-1.3.16.rpm with SHA-256. Qualification covers Ubuntu 22.04, Debian 13, Fedora 44, the glibc 2.35 baseline and --appimage-extract-and-run. Linux packages are unsigned.
+
 ## 1.3.15 — 2026-10-03
 
 - 修复“❌ 生成失败：LLM 调用失败：GenerationHarnessError: 生成会话已用尽请求 Token 预算。”：根因是每次模型请求都把“本次请求最大可能输出”整份计入会话预算且从不退还——AI 助手对话、草稿续写、结构化多步生成因此在第 2～4 次请求就被误判为预算用尽，而实际输出往往只有几百 token。现在请求完成后按 provider 回报的 completion tokens 结算，未使用的预留立即释放回会话；provider 不回报用量时保留整份预留（fail-closed，不虚增可用预算）。同时把解析后的会话预算收敛到应用级安全上限内（单次请求 131,072、单会话 393,216 tokens），模型档案声明超大输出能力时不再突破上限；助手会话的调用次数上限从 8 提升到 16，为轮次内的上下文压缩请求留出余量。
