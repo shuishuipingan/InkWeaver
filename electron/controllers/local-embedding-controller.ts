@@ -8,7 +8,6 @@
  */
 
 import { app, ipcMain } from 'electron'
-import path from 'node:path'
 import fs from 'node:fs'
 
 import { GlobalConfig } from '../../src/shared/ipc-channels'
@@ -19,6 +18,11 @@ import {
   formatApproxBytes,
 } from '../services/local-embedding-catalog'
 import { LocalEmbeddingEngine, type TransformersModule } from '../services/local-embedding-engine'
+import {
+  isLocalEmbeddingModelDownloaded,
+  localEmbeddingModelDirCandidates,
+  resolveLocalEmbeddingCacheDir,
+} from '../services/local-embedding-storage'
 import { safeConsole } from '../utils/safe-console'
 
 export interface LocalEmbeddingEntryStatus {
@@ -66,25 +70,19 @@ export function writeLocalEmbeddingConfig(update: {
   return updated
 }
 
-/** 模型权重缓存目录（transformers.js 下载落点）。 */
+/** 模型权重缓存目录（transformers.js 下载落点）；解析规则与主进程其余调用点共用一处。 */
 export function localEmbeddingCacheDir(): string {
   // 只在函数调用时读取 electron.app（模块加载期无副作用）；打包后的主进程是 ESM，不能用 require。
-  const root = process.env.AI_NOVEL_LOCAL_EMBEDDING_CACHE?.trim()
-  if (root) return root
-  return path.join(app.getPath('userData'), 'models', 'embedding')
+  return resolveLocalEmbeddingCacheDir(app.getPath('userData'), process.env)
 }
 
-function modelDir(modelId: string): string {
-  return path.join(localEmbeddingCacheDir(), modelId)
-}
-
+/**
+ * 是否已有可用权重：真实落点是 Hub 布局（<cacheDir>/<org>/<name>/…），
+ * 同时兼容历史扁平目录（<cacheDir>/<id>）；判定只在候选目录内递归。
+ */
 function isDownloaded(modelId: string): boolean {
-  const dir = modelDir(modelId)
-  try {
-    return fs.existsSync(dir) && fs.readdirSync(dir, { recursive: true }).some(entry => String(entry).endsWith('.onnx'))
-  } catch {
-    return false
-  }
+  const spec = getLocalEmbeddingModelSpec(modelId) ?? { id: modelId, repo: modelId }
+  return isLocalEmbeddingModelDownloaded(localEmbeddingCacheDir(), spec)
 }
 
 export class LocalEmbeddingController {
@@ -164,7 +162,10 @@ export class LocalEmbeddingController {
       const spec = getLocalEmbeddingModelSpec(typeof modelId === 'string' ? modelId : '')
       if (!spec) return { success: false, error: '未知本地向量模型' }
       try {
-        fs.rmSync(modelDir(spec.id), { recursive: true, force: true })
+        // Hub 布局与历史扁平目录都要删；只删扁平目录会让用户点删除后权重仍留在磁盘上。
+        for (const candidate of localEmbeddingModelDirCandidates(localEmbeddingCacheDir(), spec)) {
+          fs.rmSync(candidate, { recursive: true, force: true })
+        }
         const config = readLocalEmbeddingConfig()
         const global = readJsonFile<GlobalConfig>(GLOBAL_CONFIG_PATH, DEFAULT_GLOBAL_CONFIG)
         writeJsonFile(GLOBAL_CONFIG_PATH, {

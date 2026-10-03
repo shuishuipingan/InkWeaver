@@ -14,6 +14,7 @@ import { normalizeEmbeddingOptions } from '../src/shared/embedding-options'
 import { EmbeddingResponseValidationError } from './services/embedding-response-error'
 import { runtimeLogger } from './services/runtime-logger'
 import { createLocalEmbeddingEngine } from './services/local-embedding-engine'
+import { resolveLocalEmbeddingCacheDir } from './services/local-embedding-storage'
 
 /**
  * 本地向量引擎单例：模型缓存与权重落在用户数据目录。
@@ -22,7 +23,8 @@ import { createLocalEmbeddingEngine } from './services/local-embedding-engine'
  */
 export const localEmbeddingEngine = createLocalEmbeddingEngine({
   get cacheDir() {
-    return app.getPath('userData') + '/models/embedding'
+    // 与下载/判定侧共用同一个解析函数，消除三处各自拼路径（含 env 覆盖语义）。
+    return resolveLocalEmbeddingCacheDir(app.getPath('userData'), process.env)
   },
 })
 

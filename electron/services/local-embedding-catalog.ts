@@ -4,7 +4,12 @@
  * 每个条目描述一个可通过 transformers.js 加载的 ONNX 模型：来源仓库、
  * 量化档位、输出维度、池化方式、近似下载体积与面向用户的介绍。
  * 下载体积为近似值（以仓库文件实测为准），仅用于展示。
+ *
+ * 档位类型与"档位 → 权重文件名"登记表物理定义在 local-embedding-storage（判定模块，
+ * 必须能被 node 直跑），此处按主进程惯例以不带扩展名的相对导入转出，依赖方向单向。
  */
+
+import type { LocalEmbeddingDtype } from './local-embedding-storage'
 
 export type LocalEmbeddingPool = 'cls' | 'mean'
 
@@ -14,8 +19,13 @@ export interface LocalEmbeddingModelSpec {
   displayName: string
   /** HuggingFace（或镜像）仓库 id，包含 ONNX 权重。 */
   repo: string
-  /** transformers.js 的 dtype 档位，决定下载的权重文件。 */
-  dtype: 'fp32' | 'fp16' | 'q8' | 'int8' | 'q4f16' | 'q4'
+  /**
+   * transformers.js 的 dtype 档位，决定下载的权重文件。
+   *
+   * 与 local-embedding-storage 的档位登记表、引擎的 LocalEmbeddingSpec.dtype 同源，
+   * 三处共用同一个联合类型，避免扩档时只有一边被改到。
+   */
+  dtype: LocalEmbeddingDtype
   /** 输出向量维度；写入向量库前会据此校验。 */
   dimension: number
   pooling: LocalEmbeddingPool
@@ -132,6 +142,14 @@ export function getLocalEmbeddingModelSpec(modelId: string): LocalEmbeddingModel
 export function localEmbeddingFingerprint(modelId: string): string {
   return `local|builtin|${modelId}`
 }
+
+/**
+ * 档位类型与"档位 → 权重文件名"登记表：物理定义在 local-embedding-storage
+ * （判定模块必须能被 node 直接跑，不能反向依赖本文件），此处对外转出，
+ * 使 catalog 仍是使用方唯一的引用入口。
+ */
+export { LOCAL_EMBEDDING_DTYPE_FILES, localEmbeddingWeightFile } from './local-embedding-storage'
+export type { LocalEmbeddingDtype } from './local-embedding-storage'
 
 /** 全局配置里的下载状态记录；真正落地以缓存目录存在文件为准。 */
 export interface LocalEmbeddingDownloadState {

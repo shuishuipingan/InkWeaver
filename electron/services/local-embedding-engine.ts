@@ -8,6 +8,8 @@
  * - 下载复用 transformers.js 自带缓存（userData/models/embedding），进度经回调上报。
  */
 
+import type { LocalEmbeddingDtype } from './local-embedding-storage'
+
 export interface LocalEmbeddingProgress {
   modelId: string
   status: 'downloading' | 'loading' | 'ready' | 'error' | 'uninstalled'
@@ -234,7 +236,8 @@ export class LocalEmbeddingEngine {
 export interface LocalEmbeddingSpec {
   id: string
   repo: string
-  dtype: 'fp32' | 'fp16' | 'q8' | 'int8' | 'q4f16' | 'q4'
+  /** 档位联合类型与登记表同源（local-embedding-storage），避免两处定义各自漂移。 */
+  dtype: LocalEmbeddingDtype
   pooling: 'cls' | 'mean'
 }
 

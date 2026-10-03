@@ -1,13 +1,17 @@
 import { app, ipcMain, dialog } from 'electron'
 import type { IpcMainInvokeEvent } from 'electron'
 import path from 'node:path'
-import fs from 'node:fs'
 import { readJsonFile, GLOBAL_CONFIG_PATH, DEFAULT_GLOBAL_CONFIG, MODELS_CONFIG_PATH } from '../utils/config-utils'
 import { GlobalConfig, ModelProfile } from '../../src/shared/ipc-channels'
 import { isProjectSessionContext } from '../../src/shared/project-session-context'
 import type { EmbeddingOptions } from '../../src/shared/embedding-options'
 import type { ImportRunExecutionAuthority } from '../../src/shared/import-run'
 import { knowledgeBaseLoader } from '../services/knowledge-base-loader'
+import { getLocalEmbeddingModelSpec } from '../services/local-embedding-catalog'
+import {
+  isLocalEmbeddingModelDownloaded,
+  resolveLocalEmbeddingCacheDir,
+} from '../services/local-embedding-storage'
 import { mainText } from '../i18n'
 import { getCurrentProjectPath } from '../database'
 import { projectAccess } from '../services/project-access'
@@ -168,18 +172,18 @@ export function resolveEmbeddingCall(
   }
 }
 
-function localEmbeddingRoot(): string {
-  // 只在函数调用时读取 electron.app（模块加载期无副作用）；打包后的主进程是 ESM，不能用 require。
-  return app.getPath('userData') + '/models/embedding'
-}
-
+/**
+ * 该内置模型是否已有可用权重。目录判定统一走 local-embedding-storage：
+ * transformers.js 的真实落点是 Hub 布局（<cacheDir>/<org>/<name>/…），历史扁平判定
+ * （<cacheDir>/<id>）会让已下载的模型在知识库链路被误判为未配置。
+ * 只在函数调用时读取 electron.app（模块加载期无副作用）；打包后的主进程是 ESM，不能用 require。
+ */
 function localEmbeddingReady(modelId: string): boolean {
-  try {
-    const dir = path.join(localEmbeddingRoot(), modelId)
-    return fs.existsSync(dir) && fs.readdirSync(dir, { recursive: true }).some(entry => String(entry).endsWith('.onnx'))
-  } catch {
-    return false
-  }
+  const spec = getLocalEmbeddingModelSpec(modelId) ?? { id: modelId, repo: modelId }
+  return isLocalEmbeddingModelDownloaded(
+    resolveLocalEmbeddingCacheDir(app.getPath('userData'), process.env),
+    spec,
+  )
 }
 
 function getEmbeddingConfig(): { protocol: 'openai' | 'gemini' | 'local'; model: { baseUrl: string; apiKey: string; modelName: string; embeddingOptions?: EmbeddingOptions } } | null {

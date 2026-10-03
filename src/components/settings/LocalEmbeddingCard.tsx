@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Check, Download, HardDrive, Loader2, MonitorDown, Trash2 } from 'lucide-react'
+import { AlertTriangle, Check, Download, HardDrive, Loader2, MonitorDown, Trash2 } from 'lucide-react'
 
 import { ipc } from '../../services/ipc-client'
 import { useLocaleStore } from '../../stores/locale-store'
@@ -137,6 +137,25 @@ export function LocalEmbeddingCard({ onDownloaded }: { onDownloaded?: (modelId: 
     )
   }
 
+  // 选中项是否真的可用取决于目录里的 downloaded，而不是 selectedModelId 非空。
+  const selectedModelId = catalog.selectedModelId
+  const selectedEntry = selectedModelId
+    ? (catalog.entries.find(entry => entry.modelId === selectedModelId) ?? null)
+    : null
+  const selectedReady = selectedEntry?.downloaded === true
+  // 只有「已选中但不可用」时才会渲染；目录里找不到该 id 与已下载失败的措辞分开。
+  const selectedNotice = !selectedModelId
+    ? null
+    : selectedEntry
+      ? text(
+        '已选中 ' + selectedModelId + '，但它尚未下载完成，当前不可用；展开模型列表后点击「下载」即可启用。',
+        selectedModelId + ' is selected but not downloaded yet, so it is not available. Expand the model list and choose Download to enable it.',
+      )
+      : text(
+        '已选中 ' + selectedModelId + '，但本机模型目录中没有它，当前不可用。',
+        selectedModelId + ' is selected but missing from the local model directory, so it is not available.',
+      )
+
   return (
     <div
       className="rounded-xl px-4 py-3 space-y-3"
@@ -162,10 +181,21 @@ export function LocalEmbeddingCard({ onDownloaded }: { onDownloaded?: (modelId: 
         </button>
       </div>
 
-      {catalog.selectedModelId && (
+      {selectedModelId && selectedReady && (
         <p className="text-xs flex items-center gap-1.5" style={{ color: 'var(--color-text)' }}>
           <Check size={12} style={{ color: 'var(--color-text-muted)' }} />
-          {text(`当前选中：${catalog.selectedModelId}`, `Selected: ${catalog.selectedModelId}`)}
+          {text(`当前选中：${selectedModelId}`, `Selected: ${selectedModelId}`)}
+        </p>
+      )}
+
+      {selectedModelId && !selectedReady && selectedNotice && (
+        <p
+          className="text-xs flex items-start gap-1.5"
+          style={{ color: 'var(--color-warning-text)' }}
+          data-local-embedding-selected-not-ready
+        >
+          <AlertTriangle size={12} className="flex-shrink-0 mt-0.5" />
+          <span>{selectedNotice}</span>
         </p>
       )}
 
@@ -204,7 +234,10 @@ export function LocalEmbeddingCard({ onDownloaded }: { onDownloaded?: (modelId: 
                   <p className="text-xs font-medium" style={{ color: 'var(--color-text)' }}>
                     {entry.displayName}
                     <span className="ml-2" style={{ color: 'var(--color-text-muted)' }}>
-                      {entry.dimension} 维 · 约 {entry.approxSizeText} · {entry.license}
+                      {text(
+                        `${entry.dimension} 维 · 约 ${entry.approxSizeText} · ${entry.license}`,
+                        `${entry.dimension} dims · ~${entry.approxSizeText} · ${entry.license}`,
+                      )}
                     </span>
                   </p>
                   {isDownloading ? (
