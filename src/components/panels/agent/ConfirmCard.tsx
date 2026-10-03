@@ -11,6 +11,7 @@ import { useAgentStore } from '../../../stores/agent-store'
 import { useLocaleStore } from '../../../stores/locale-store'
 import ConfigImpactPreview, { useConfigImpactPreview } from './ConfigImpactPreview'
 import DomainProposalDiff, { useDomainProposalPreview } from './DomainProposalDiff'
+import ChangePlanPreview, { useChangePlanPreview } from './ChangePlanPreview'
 
 interface Props {
   toolCall: ToolCallInfo
@@ -22,10 +23,13 @@ export default function ConfirmCard({ toolCall }: Props) {
   const { id, toolName, arguments: args } = toolCall
   const proposalPreview = useDomainProposalPreview(toolCall)
   const impactPreview = useConfigImpactPreview(toolCall, proposalPreview)
+  const changePlanPreview = useChangePlanPreview(toolCall)
   const [selectedImpactKeys, setSelectedImpactKeys] = useState<Set<string>>(() => new Set())
   const isDomainProposal = proposalPreview.kind !== 'none'
+  const isChangePlan = changePlanPreview.kind !== 'none'
   const impactReady = impactPreview.kind === 'none' || impactPreview.kind === 'valid'
-  const canApprove = (!isDomainProposal || proposalPreview.kind === 'valid') && impactReady
+  const changePlanReady = !isChangePlan || changePlanPreview.kind === 'valid'
+  const canApprove = (!isDomainProposal || proposalPreview.kind === 'valid') && impactReady && changePlanReady
 
   // 生成操作描述
   const description = generateDescription(toolName, args, text)
@@ -42,6 +46,7 @@ export default function ConfirmCard({ toolCall }: Props) {
       <div className="confirm-card-body">
         <div>{description}</div>
         <DomainProposalDiff toolCall={toolCall} preview={proposalPreview} />
+        <ChangePlanPreview preview={changePlanPreview} />
         <ConfigImpactPreview
           preview={impactPreview}
           selectedKeys={selectedImpactKeys}
@@ -52,7 +57,7 @@ export default function ConfirmCard({ toolCall }: Props) {
             return next
           })}
         />
-        {!isDomainProposal && Object.keys(args).length > 0 && (
+        {!isDomainProposal && !isChangePlan && Object.keys(args).length > 0 && (
           <div
             style={{
               marginTop: 6,
@@ -74,7 +79,7 @@ export default function ConfirmCard({ toolCall }: Props) {
 
       {/* 操作按钮 */}
       <div className="confirm-card-actions">
-        {isDomainProposal && (
+        {(isDomainProposal || isChangePlan) && (
           <button
             className="confirm-card-btn reject"
             onClick={() => void cancelGeneration()}
@@ -131,6 +136,8 @@ function generateDescription(
         `第 ${args.chapter_number ?? '？'} 章蓝图变更提案`,
         `Chapter ${args.chapter_number ?? '?'} blueprint change proposal`,
       )
+    case 'propose_change_plan':
+      return text('多实体改动计划', 'Multi-entity change plan')
     default:
       return `将执行操作：${toolName}`
   }

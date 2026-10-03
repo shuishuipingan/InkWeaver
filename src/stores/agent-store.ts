@@ -17,7 +17,9 @@ import { createGenerationRuntime } from '../services/generation/generation-runti
 import { runtimeLog } from '../services/runtime-log'
 
 export const AGENT_GENERATION_BUDGET = Object.freeze({
-  maxAttempts: 8,
+  // MAX_TOOL_ROUNDS 的 8 轮之外，上下文压缩摘要也在这份预算内发起请求，
+  // 因此调用次数上限要留出压缩余量，让轮次上限先于它生效。
+  maxAttempts: 16,
   maxRequestedOutputTokens: 262_144,
   maxRequestedOutputTokensPerAttempt: 131_072,
   deadlineMs: 45 * 60_000,

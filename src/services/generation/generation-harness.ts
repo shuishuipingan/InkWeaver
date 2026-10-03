@@ -151,7 +151,13 @@ export interface GenerationAttemptReceipt {
   budget: {
     attempt: number
     maxAttempts: number
+    /** Worst-case output this attempt reserved before dispatch. */
     requestedOutputTokens: number
+    /**
+     * Reserved output charged to the session so far: completed attempts count
+     * their provider-reported completion tokens, attempts without usage
+     * evidence keep their full reservation.
+     */
     cumulativeRequestedOutputTokens: number
     maxRequestedOutputTokens: number
     maxRequestedOutputTokensPerAttempt: number
@@ -688,20 +694,51 @@ export function createGenerationHarness(dependencies: {
         : resolveInitialCapabilities(frozenModel)
       // Large creative generations retain the model cap. Multi-step extraction
       // opts into bounded slices so its first request cannot reserve the run.
+      // The advertised model capability may raise a session above its intent
+      // budget, but never above the application-wide safety ceiling.
       const modelOutputCap = capabilities.maxOutputTokens ?? 0
       const effectiveTotalTokens = policy.respectIntentOutputCaps
         ? policy.maxRequestedOutputTokens
         : Math.max(policy.maxRequestedOutputTokens, modelOutputCap)
+      const effectivePerAttemptTokens = policy.respectIntentOutputCaps
+        ? policy.maxRequestedOutputTokensPerAttempt
+        : Math.max(policy.maxRequestedOutputTokensPerAttempt, modelOutputCap)
       const sessionBudget = Object.freeze({
         maxAttempts: policy.maxAttempts,
-        maxRequestedOutputTokens: effectiveTotalTokens,
-        maxRequestedOutputTokensPerAttempt: policy.respectIntentOutputCaps
-          ? policy.maxRequestedOutputTokensPerAttempt
-          : Math.max(policy.maxRequestedOutputTokensPerAttempt, modelOutputCap),
+        maxRequestedOutputTokens: Math.min(
+          effectiveTotalTokens,
+          GENERATION_ABSOLUTE_BUDGET_LIMITS.maxRequestedOutputTokens,
+        ),
+        maxRequestedOutputTokensPerAttempt: Math.min(
+          effectivePerAttemptTokens,
+          GENERATION_ABSOLUTE_BUDGET_LIMITS.maxRequestedOutputTokensPerAttempt,
+        ),
         deadlineAt: now() + policy.deadlineMs,
       })
       let attempts = 0
       let cumulativeRequestedOutputTokens = 0
+
+      // Each attempt reserves its worst-case output before dispatch so that
+      // requests sharing one session cannot together exceed its cap. Once the
+      // provider reports what it actually produced, the unused part of that
+      // hold is released — otherwise a single generous request would exhaust a
+      // multi-round session (for example an agent turn) even when its real
+      // output was tiny. Missing or malformed usage evidence keeps the hold.
+      const settleRequestedOutputTokens = (
+        requestedOutputTokens: number,
+        reportedCompletionTokens: number | null | undefined,
+      ): void => {
+        if (
+          typeof reportedCompletionTokens !== 'number'
+          || !Number.isSafeInteger(reportedCompletionTokens)
+          || reportedCompletionTokens < 0
+        ) return
+        const chargedOutputTokens = Math.min(reportedCompletionTokens, requestedOutputTokens)
+        cumulativeRequestedOutputTokens = Math.max(
+          0,
+          cumulativeRequestedOutputTokens - (requestedOutputTokens - chargedOutputTokens),
+        )
+      }
 
       const attemptReceipt = (
         purpose: string,
@@ -911,6 +948,7 @@ export function createGenerationHarness(dependencies: {
           // creative fact. Provider adapters may preserve omitted values and
           // this seam normalizes them fail-closed.
           const finishReason = completion.finishReason ?? 'unknown'
+          settleRequestedOutputTokens(maxOutputTokens, completion.usage?.completionTokens)
           const receipt = attemptReceipt(
             task.purpose,
             attempt,

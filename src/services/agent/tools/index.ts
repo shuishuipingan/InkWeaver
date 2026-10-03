@@ -20,6 +20,9 @@ import { startWorkflowTool } from './start-workflow.tool'
 import { proposeNovelConfigTool } from './propose-novel-config.tool'
 import { proposeChapterBlueprintTool } from './propose-chapter-blueprint.tool'
 import { readPlanningMaterialsTool } from './read-planning-materials.tool'
+import { analyzeProseQualityTool } from './analyze-prose-quality.tool'
+import { analyzeChangeImpactTool } from './analyze-change-impact.tool'
+import { proposeChangePlanTool } from './propose-change-plan.tool'
 
 /** 所有内置 Tool（供外部引用） */
 export const builtinTools = [
@@ -33,12 +36,15 @@ export const builtinTools = [
   readDraftsTool,
   listChaptersTool,
   readPlanningMaterialsTool,
+  analyzeProseQualityTool,
+  analyzeChangeImpactTool,
   // 行动 Tool（需确认）
   writeFileTool,
   openEditorTool,
   startWorkflowTool,
   proposeNovelConfigTool,
   proposeChapterBlueprintTool,
+  proposeChangePlanTool,
 ]
 
 /**

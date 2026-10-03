@@ -13,17 +13,37 @@
 
 import {
   toolRegistry,
+  describeToolContract,
+  missingRequiredArguments,
+  suggestToolNames,
   type AgentExecutionContext,
   type ToolResult,
   type ToolArtifact,
 } from './tool-registry'
 import { runtimeLog } from '../../services/runtime-log'
 import { createAgentExecutionContext } from './tools/project-context'
+import { GenerationHarnessError } from '../generation/generation-harness'
 
 // ===== 常量 =====
 
 /** ReAct 循环最大次数（防止死循环） */
 const MAX_TOOL_ROUNDS = 8
+
+/** 计划内的会话预算耗尽不是崩溃：保留已有内容并给出可继续的提示。 */
+const BUDGET_EXHAUSTION_CODES = new Set([
+  'REQUESTED_TOKEN_BUDGET_EXHAUSTED',
+  'ATTEMPT_BUDGET_EXHAUSTED',
+  'DEADLINE_EXHAUSTED',
+])
+
+function isPlannedSessionLimit(error: unknown): boolean {
+  return error instanceof GenerationHarnessError && BUDGET_EXHAUSTION_CODES.has(error.code)
+}
+
+/** 失败的工具调用也要变成可自我修复的观察结果，而不是死胡同。 */
+function errorObservation(name: string, message: string, guidance?: string): string {
+  return `<tool_result name="${name}" error="true">\n${message}${guidance ? `\n\n${guidance}` : ''}\n</tool_result>`
+}
 
 /** Tool 执行超时（毫秒） */
 const TOOL_TIMEOUT_MS = 30_000
@@ -309,9 +329,26 @@ export async function runAgentLoop(
     try {
       llmResponse = await generateFn(messages, modelId ?? '')
     } catch (error) {
+      const elapsedMs = Date.now() - roundStartedAt
+      // 取消与超时已经由 store 写入了停止状态：这里再报错会把它覆盖成"生成失败"。
+      if (abortSignal?.aborted) {
+        runtimeLog.warn('agent', `Agent 第 ${rounds} 轮生成已中止`, { elapsedMs, rounds })
+        return
+      }
+      // 会话预算用尽是计划内的上限，不是故障：保留已产出的内容，允许用户继续。
+      if (isPlannedSessionLimit(error)) {
+        runtimeLog.warn('agent', `Agent 第 ${rounds} 轮触及会话预算`, {
+          error: String(error),
+          elapsedMs,
+          rounds,
+        })
+        fullAssistantText += '\n\n⚠️ 本次会话已达到模型调用预算上限，已保留上面的内容。可重新发送消息从当前进度继续。'
+        callbacks.onDone(fullAssistantText, allToolCalls, allArtifacts)
+        return
+      }
       runtimeLog.error('agent', `Agent 第 ${rounds} 轮 LLM 调用失败`, {
         error: String(error),
-        elapsedMs: Date.now() - roundStartedAt,
+        elapsedMs,
       })
       callbacks.onError(`LLM 调用失败：${String(error)}`)
       return
@@ -363,6 +400,36 @@ export async function runAgentLoop(
     const observationParts: string[] = []
     const roundToolCalls = [...toolCalls]
 
+    // 同一条回复里连续出现的只读工具互不依赖：先并行发出，再按原顺序收集
+    // 结果与 UI 回调。观察顺序、确认门禁与取消语义都保持不变，只省掉串行往返。
+    // 键必须用调用对象本身：本轮中途可能插入新的工具调用，按下标记录会错位。
+    const prefetched = new Map<ParsedToolCall, Promise<ToolResult>>()
+    for (let scanIndex = 0; scanIndex < roundToolCalls.length; scanIndex += 1) {
+      const candidate = toolRegistry.get(roundToolCalls[scanIndex]!.name)
+      if (!candidate || candidate.requiresConfirmation || !candidate.isReadOnly) continue
+      let runEnd = scanIndex
+      while (runEnd + 1 < roundToolCalls.length) {
+        const next = toolRegistry.get(roundToolCalls[runEnd + 1]!.name)
+        if (!next || next.requiresConfirmation || !next.isReadOnly) break
+        runEnd += 1
+      }
+      if (runEnd === scanIndex) continue
+      for (let runIndex = scanIndex; runIndex <= runEnd; runIndex += 1) {
+        const call = roundToolCalls[runIndex]!
+        const promise = executeToolWithTimeout(
+          toolRegistry.get(call.name)!.execute,
+          call.arguments,
+          executionContext,
+          TOOL_TIMEOUT_MS,
+          abortSignal,
+        )
+        // 取消后可能不再按顺序消费，这里兜底避免未处理的 rejection。
+        promise.catch(() => {})
+        prefetched.set(call, promise)
+      }
+      scanIndex = runEnd
+    }
+
     for (let toolIndex = 0; toolIndex < roundToolCalls.length; toolIndex++) {
       if (abortSignal?.aborted) break
       const tc = roundToolCalls[toolIndex]
@@ -380,8 +447,29 @@ export async function runAgentLoop(
       if (!tool) {
         toolCallInfo.status = 'failed'
         toolCallInfo.error = `未知工具：${tc.name}`
+        callbacks.onToolCallStart(toolCallInfo)
         callbacks.onToolCallComplete(toolCallInfo)
-        observationParts.push(`<tool_result name="${tc.name}" error="true">\n未知工具：${tc.name}。可用工具：${toolRegistry.listAll().map(t => t.name).join(', ')}\n</tool_result>`)
+        const suggestions = suggestToolNames(tc.name)
+        observationParts.push(errorObservation(
+          tc.name,
+          `未知工具：${tc.name}。`,
+          `相近的已注册工具：${suggestions.join('、')}。请改用列表中的工具名重新调用。`,
+        ))
+        continue
+      }
+
+      // 参数不符合自身契约时不要带着残缺输入执行，直接把契约交还给模型。
+      const missingArguments = missingRequiredArguments(tool, tc.arguments)
+      if (missingArguments.length > 0) {
+        toolCallInfo.status = 'failed'
+        toolCallInfo.error = `缺少必填参数：${missingArguments.join('、')}`
+        callbacks.onToolCallStart(toolCallInfo)
+        callbacks.onToolCallComplete(toolCallInfo)
+        observationParts.push(errorObservation(
+          tc.name,
+          `缺少必填参数：${missingArguments.join('、')}`,
+          `${describeToolContract(tool)}\n请补齐参数后重新调用；不要重复提交完全相同的参数。`,
+        ))
         continue
       }
 
@@ -400,7 +488,7 @@ export async function runAgentLoop(
           toolCallInfo.status = 'failed'
           toolCallInfo.error = '用户拒绝执行'
           callbacks.onToolCallComplete(toolCallInfo)
-          observationParts.push(`<tool_result name="${tc.name}" error="true">\n用户拒绝了此操作\n</tool_result>`)
+          observationParts.push(errorObservation(tc.name, '用户拒绝了此操作。', '请勿再次调用该工具，改为向用户说明或提出替代方案。'))
           continue
         }
         // The waiting confirmation card already represents this call. Its
@@ -413,45 +501,55 @@ export async function runAgentLoop(
         callbacks.onToolCallStart(toolCallInfo)
       }
 
-      // 执行 Tool
+      // 执行 Tool（并行的只读调用在此处只做结果汇合）
       const toolStartedAt = Date.now()
+      const parallelRun = prefetched.has(tc)
       runtimeLog.info('agent', `执行工具 ${tc.name}`, {
         toolName: tc.name,
         arguments: tc.arguments,
+        parallel: parallelRun,
       })
 
       try {
-        const result = await executeToolWithTimeout(
-          tool.execute,
-          tc.arguments,
-          executionContext,
-          TOOL_TIMEOUT_MS,
-          abortSignal,
-        )
+        const prefetchedResult = prefetched.get(tc)
+        const resolved = prefetchedResult
+          ? await prefetchedResult
+          : await executeToolWithTimeout(
+            tool.execute,
+            tc.arguments,
+            executionContext,
+            TOOL_TIMEOUT_MS,
+            abortSignal,
+          )
         runtimeLog.info('agent', `工具 ${tc.name} 执行完成`, {
-          success: result.success,
-          contentChars: result.content?.length ?? 0,
+          success: resolved.success,
+          contentChars: resolved.content?.length ?? 0,
           elapsedMs: Date.now() - toolStartedAt,
-          error: result.error ?? undefined,
+          parallel: parallelRun,
+          error: resolved.error ?? undefined,
         })
 
         // 截断过长的结果
-        const truncatedContent = truncateResult(result.content, TOOL_RESULT_MAX_CHARS)
+        const truncatedContent = truncateResult(resolved.content, TOOL_RESULT_MAX_CHARS)
 
-        toolCallInfo.status = result.success ? 'completed' : 'failed'
+        toolCallInfo.status = resolved.success ? 'completed' : 'failed'
         toolCallInfo.result = truncatedContent
-        if (result.error) toolCallInfo.error = result.error
-        if (result.artifacts) allArtifacts.push(...result.artifacts)
+        if (resolved.error) toolCallInfo.error = resolved.error
+        if (resolved.artifacts) allArtifacts.push(...resolved.artifacts)
 
         callbacks.onToolCallComplete(toolCallInfo)
 
-        if (result.success) {
+        if (resolved.success) {
           observationParts.push(`<tool_result name="${tc.name}">\n${truncatedContent}\n</tool_result>`)
           if (tc.name === 'propose_novel_config' && confirmationDecision.blueprintProposals?.length) {
             roundToolCalls.splice(toolIndex + 1, 0, ...confirmationDecision.blueprintProposals)
           }
         } else {
-          observationParts.push(`<tool_result name="${tc.name}" error="true">\n${result.error ?? truncatedContent}\n</tool_result>`)
+          observationParts.push(errorObservation(
+            tc.name,
+            resolved.error ?? truncatedContent,
+            `${describeToolContract(tool)}\n请按上面的契约修正参数或改用其它工具，不要重复提交完全相同的调用。`,
+          ))
         }
       } catch (error) {
         toolCallInfo.status = 'failed'
@@ -461,7 +559,11 @@ export async function runAgentLoop(
           elapsedMs: Date.now() - toolStartedAt,
         })
         callbacks.onToolCallComplete(toolCallInfo)
-        observationParts.push(`<tool_result name="${tc.name}" error="true">\n执行异常：${String(error)}\n</tool_result>`)
+        observationParts.push(errorObservation(
+          tc.name,
+          `执行异常：${String(error)}`,
+          `${describeToolContract(tool)}\n请修正参数后重试，或改用其它工具完成同一目标。`,
+        ))
       }
     }
 

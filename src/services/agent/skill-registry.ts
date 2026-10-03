@@ -563,6 +563,65 @@ function registerBuiltinSkills(registry: SkillRegistryImpl): void {
 请先使用 read_project_state 了解项目的写作风格设定，
 再根据用户的具体问题提供定制化建议，并附上示例对比。`,
     },
+    {
+      metadata: {
+        name: 'prose-polish',
+        displayName: '文风打磨',
+        description: '用可复核的测量找出口语化重复、句长失衡与副词堆砌，给出逐处修改方案并对比修改前后的数据。',
+        whenToUse: '用户要求打磨文笔、去除重复句式、调整节奏时',
+        allowedTools: ['analyze_prose_quality', 'read_drafts', 'read_project_state', 'write_file'],
+        argumentHint: '章节号或要打磨的段落',
+        stages: ['polish', 'review'],
+      },
+      content: `# 文风打磨
+
+先用测量定位问题，再动笔修改；不要凭感觉声称"文笔变好了"。
+
+## 工作流
+1. 用 analyze_prose_quality 分析目标章节（或用户给出的段落），记录基线数据。
+2. 用 read_drafts 读取原文，逐条核对测量结果对应的具体位置。
+3. 按优先级给出修改方案，每处修改都引用触发它的数据：
+   - 句首/短语重复 → 改写重复的开头或句式结构
+   - 句长标准差低、平均句长偏高 → 拆句、插入短句制造节奏
+   - 副词/模糊词密度高 → 用具体动作或细节替换副词
+   - 长句占比过高 → 在语义停顿处断句
+4. 修改完成后再次调用 analyze_prose_quality 对比前后数据，明确说明哪些问题已消除、哪些仍在。
+5. 需要写入草稿时必须先向用户展示修改方案并等待确认，不要直接覆盖正文。`,
+    },
+    {
+      metadata: {
+        name: 'change-propagation',
+        displayName: '联动修改',
+        description: '一处改动智能牵动全局：先算出会受影响的人物档案、人物状态、章节蓝图、线索与规划资料，再一次性提交联动改动计划由作者确认。',
+        whenToUse: '用户要求修改设定、人物、剧情、世界观或任何会牵动多处的内容时',
+        allowedTools: ['analyze_change_impact', 'read_architecture', 'read_characters', 'read_blueprint', 'read_drafts', 'read_project_state', 'propose_change_plan'],
+        argumentHint: '要改什么、改成什么（例如"把玄真改成隐藏的反派"）',
+        stages: ['planning', 'drafting', 'polish'],
+      },
+      content: `# 联动修改
+
+一处改动往往牵动多处事实。先分析影响，再组织改动链，最后由作者确认执行。
+
+## 工作流
+1. 用作者的原话调用 analyze_change_impact，取得影响清单。不要跳过这一步去猜。
+2. 逐条判断清单上的对象是否真的需要改，并在计划里为每一项写明因果（reason）：
+   - 必须修改：与改动直接冲突的档案字段、状态、蓝图职责
+   - 需要复核：依赖旧设定的线索、规划资料、章节钩子
+   - 不可自动修改：已定稿正文、定稿交接与知情边界——只向作者说明要在哪里处理（改稿流程 / 故事连续性面板），不要放进计划
+3. 用 propose_change_plan 一次性提交计划（summary + items）。可用的条目类型：
+   - config：题材、视角、文风、篇幅等作品配置
+   - architecture：前提、世界观、剧情概要、核心大纲等架构正文
+   - character-profile / character-state：人物档案字段与结构化当前状态
+   - blueprint：章节蓝图的标题、职责、关键事件、出场人物、钩子、备注
+   - narrative-thread / planning-material：线索规划与候选规划资料
+4. 计划里不得包含新角色（必须先走角色候选确认）、不得改写已定稿章节。
+5. 作者批准后按依赖顺序写入，并把"已应用/已跳过/失败"的结果如数汇报；未应用的项目要说明原因和下一步。
+
+## 判断原则
+- 改动越底层（世界观、前提、题材），需要复核的面越广：先配置与架构，再人物档案与状态，然后蓝图，最后线索与资料。
+- 改动只涉及一个人物时，也要检查他的关系、出场章节与相关线索。
+- 状态类改动要给出 updatedAtChapter：说明从第几章之后成立。`,
+    },
   ]
 
   for (const { metadata, content } of builtins) {

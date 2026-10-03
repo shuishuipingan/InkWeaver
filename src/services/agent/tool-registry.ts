@@ -217,12 +217,14 @@ class ToolRegistryImpl {
 
 ### 重要规则
 
-1. **每次回复最多放一个** <tool_call> 标签。
-2. 调用工具后，系统会自动执行并返回 <tool_result> 结果。
-3. **收到 <tool_result> 后你必须继续推理**，根据工具返回的数据回答用户问题。不要就此停止。
-4. 如果一个工具的结果不够，你可以在下一轮继续调用另一个工具。
-5. 不要在正文中引用或复述 <tool_call> 标签的内容。
-6. 只读工具自动执行。写入型工具（标记 ⚠️）需要用户确认。
+1. 需要多项**互不依赖**的信息（例如同时读取蓝图、角色和章节列表）时，请在**同一条回复中给出多个** <tool_call> 标签；系统会并行执行并一次性返回全部结果，这样更快也更省轮次。
+2. **需要用户确认的工具**（标记 ⚠️）每次回复最多放一个，等结果返回后再决定下一步。
+3. 调用工具后，系统会自动执行并返回 <tool_result> 结果。
+4. **收到 <tool_result> 后你必须继续推理**，根据工具返回的数据回答用户问题。不要就此停止。
+5. 如果一个工具的结果不够，你可以在下一轮继续调用另一个工具。
+6. 不要在正文中引用或复述 <tool_call> 标签的内容。
+7. 只读工具自动执行。写入型工具（标记 ⚠️）需要用户确认。
+8. **作者要求修改设定、人物、剧情或任何内容时，先用 analyze_change_impact 算出会牵涉哪些方面，再用 propose_change_plan 提交联动改动**；不要用零散的单点修改代替整条改动链。
 
 ### 示例交互
 
@@ -278,6 +280,48 @@ class ToolRegistryImpl {
 export const toolRegistry = new ToolRegistryImpl()
 
 // ===== 工具函数：创建 Tool 的便捷方法 =====
+
+/**
+ * 把一次失败的调用变成可自我修复的观察结果：模型能看到确切的必填参数、
+ * 类型与枚举取值，而不是只看到"参数错误"后反复重试同样的输入。
+ */
+export function describeToolContract(tool: AgentTool): string {
+  const required = tool.inputSchema.required ?? []
+  const properties = Object.entries(tool.inputSchema.properties)
+  if (properties.length === 0) return `工具 ${tool.name} 不接受任何参数。`
+  const lines = properties.map(([name, schema]) => {
+    const marks = [
+      required.includes(name) ? '必填' : '可选',
+      schema.type,
+      ...(schema.enum ? [`可选值：${schema.enum.join(' | ')}`] : []),
+    ]
+    return `- ${name}（${marks.join('，')}）：${schema.description}`
+  })
+  return [`工具 ${tool.name} 的参数契约：`, ...lines].join('\n')
+}
+
+/** 按声明顺序列出缺失的必填参数；空白字符串视为缺失。 */
+export function missingRequiredArguments(
+  tool: AgentTool,
+  args: Record<string, unknown>,
+): string[] {
+  return (tool.inputSchema.required ?? []).filter((name) => {
+    const value = args[name]
+    if (value === undefined || value === null) return true
+    return typeof value === 'string' && !value.trim()
+  })
+}
+
+/** 为未知工具名给出一小段候选，避免模型在下一轮继续猜。 */
+export function suggestToolNames(name: string, limit = 5): string[] {
+  const all = toolRegistry.listAll().map(tool => tool.name)
+  const query = name.toLocaleLowerCase('en-US')
+  const related = all.filter(candidate => (
+    candidate.toLocaleLowerCase('en-US').includes(query)
+    || query.includes(candidate.toLocaleLowerCase('en-US'))
+  ))
+  return (related.length > 0 ? related : all).slice(0, limit)
+}
 
 /**
  * buildAgentTool — 创建 Agent Tool 的便捷方法（参考 Claude Code 的 buildTool）

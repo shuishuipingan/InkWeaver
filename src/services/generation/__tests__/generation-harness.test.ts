@@ -1243,6 +1243,134 @@ describe('GenerationHarness', () => {
     expect(JSON.stringify(recovered.receipt)).not.toContain('test-only-key')
   })
 
+  it('releases an unused per-attempt hold when the provider reports completion usage', async () => {
+    // An interactive agent turn runs several rounds under one frozen session.
+    // Charging every round its full worst-case reservation would exhaust the
+    // session after two rounds even though the real output was tiny.
+    const complete = vi.fn<CompletionPort['complete']>().mockResolvedValue({
+      content: 'round',
+      finishReason: 'stop',
+      usage: {
+        promptTokens: 1200,
+        completionTokens: 700,
+        totalTokens: 1900,
+        promptCacheHitTokens: null,
+        promptCacheMissTokens: null,
+      },
+    })
+    const harness = createGenerationHarness({
+      modelSource: {
+        snapshotDefaultModel: () => ({ revision: 'agent-model', model: model({ maxTokens: 128_000 }) }),
+      },
+      completionPort: { complete },
+      policy: {
+        maxAttempts: 8,
+        maxRequestedOutputTokens: 262_144,
+        maxRequestedOutputTokensPerAttempt: 131_072,
+        deadlineMs: 60_000,
+      },
+    })
+    const session = harness.openSession()
+
+    for (let round = 1; round <= 8; round += 1) {
+      const outcome = await session.complete({ ...task(), purpose: `agent-round-${round}` })
+      expect(outcome.status).toBe('completed')
+      expect(outcome.receipt.budget).toMatchObject({
+        attempt: round,
+        requestedOutputTokens: 128_000,
+        cumulativeRequestedOutputTokens: round * 700,
+      })
+    }
+    expect(complete).toHaveBeenCalledTimes(8)
+    expect(session.budget.maxRequestedOutputTokens).toBe(262_144)
+  })
+
+  it('keeps the reservation when the provider reports no completion usage', async () => {
+    const complete = vi.fn<CompletionPort['complete']>().mockResolvedValue({
+      content: 'round',
+      finishReason: 'stop',
+      usage: {
+        promptTokens: 1200,
+        completionTokens: null,
+        totalTokens: null,
+        promptCacheHitTokens: null,
+        promptCacheMissTokens: null,
+      },
+    })
+    const harness = createGenerationHarness({
+      modelSource: {
+        snapshotDefaultModel: () => ({ revision: 'agent-model', model: model({ maxTokens: 128_000 }) }),
+      },
+      completionPort: { complete },
+      policy: {
+        maxAttempts: 8,
+        maxRequestedOutputTokens: 262_144,
+        maxRequestedOutputTokensPerAttempt: 131_072,
+        deadlineMs: 60_000,
+      },
+    })
+    const session = harness.openSession()
+
+    const first = await session.complete(task())
+    expect(first.receipt.budget.cumulativeRequestedOutputTokens).toBe(128_000)
+    await session.complete(task())
+    await session.complete(task())
+    await expect(session.complete(task())).rejects.toMatchObject({
+      code: 'REQUESTED_TOKEN_BUDGET_EXHAUSTED',
+    })
+  })
+
+  it('never charges more than the reserved hold when usage over-reports', async () => {
+    const complete = vi.fn<CompletionPort['complete']>().mockResolvedValue({
+      content: 'round',
+      finishReason: 'stop',
+      usage: {
+        promptTokens: 10,
+        completionTokens: 999_999,
+        totalTokens: 1_000_009,
+        promptCacheHitTokens: null,
+        promptCacheMissTokens: null,
+      },
+    })
+    const session = createGenerationHarness({
+      modelSource: { snapshotDefaultModel: () => ({ revision: 'revision-a', model: model() }) },
+      completionPort: { complete },
+      policy: {
+        maxAttempts: 2,
+        maxRequestedOutputTokens: 5_000,
+        maxRequestedOutputTokensPerAttempt: 4_096,
+        deadlineMs: 60_000,
+      },
+    }).openSession()
+
+    const outcome = await session.complete(task())
+    expect(outcome.receipt.budget.cumulativeRequestedOutputTokens).toBe(4_096)
+  })
+
+  it('bounds a model capability above the application per-attempt ceiling', async () => {
+    const complete = vi.fn<CompletionPort['complete']>().mockResolvedValue({
+      content: 'complete',
+      finishReason: 'stop',
+    })
+    const session = createGenerationHarness({
+      modelSource: {
+        snapshotDefaultModel: () => ({ revision: 'huge-model', model: model({ maxTokens: 1_000_000 }) }),
+      },
+      completionPort: { complete },
+      policy: {
+        maxAttempts: 4,
+        maxRequestedOutputTokens: 16_384,
+        maxRequestedOutputTokensPerAttempt: 4096,
+        deadlineMs: 60_000,
+      },
+    }).openSession()
+
+    expect(session.budget.maxRequestedOutputTokensPerAttempt).toBe(131_072)
+    expect(session.budget.maxRequestedOutputTokens).toBe(393_216)
+    await session.complete(task())
+    expect(complete.mock.calls[0]?.[0].plan.maxOutputTokens).toBe(131_072)
+  })
+
   it('freezes the global attempt, requested-token, and deadline budget against caller mutation', async () => {
     let currentTime = 1000
     const complete = vi.fn<CompletionPort['complete']>().mockResolvedValue({
