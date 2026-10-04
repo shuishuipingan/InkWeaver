@@ -42,6 +42,22 @@ import { ImportRunRepository } from './repositories/import-run-repository'
 import { assertRequiredExpectedProjectPath } from './utils/project-context'
 import { safeConsole } from './utils/safe-console'
 
+// ===== 向量能力判定 =====
+
+/**
+ * 该向量配置是否可用于生成向量。
+ * - openai / gemini：需要 baseUrl 与 apiKey；
+ * - local（内置本地模型）：没有凭据，可用性由调用方（kb-controller）按模型文件校验，
+ *   这里必须放行，否则本地模型会被静默降级成纯 FTS。
+ */
+function canGenerateEmbeddings(
+  protocol: 'openai' | 'gemini' | 'local',
+  model: { baseUrl: string; apiKey: string },
+): boolean {
+  if (protocol === 'local') return true
+  return !!model.apiKey.trim() && !!model.baseUrl.trim()
+}
+
 // ===== 迁移状态跟踪 =====
 
 /** 已执行过迁移检查的项目路径集合 */
@@ -137,7 +153,7 @@ export async function importDocument(
 
     // 3. 可选：生成向量（如果有 Embedding 配置）
     let vectors: number[][] | undefined
-    if (model.apiKey) {
+    if (canGenerateEmbeddings(protocol, model)) {
       try {
         onProgress?.(20, `正在向量化 ${chunks.length} 个块...`)
         vectors = await generateEmbeddings(chunks, protocol, model, model.embeddingOptions?.batchSize)
@@ -190,7 +206,7 @@ export async function searchKnowledge(
 
   // 可选：生成查询向量
   let queryVector: number[] | undefined
-  if (model.apiKey && query.trim()) {
+  if (canGenerateEmbeddings(protocol, model) && query.trim()) {
     try {
       const [vec] = await generateEmbeddings([query], protocol, model, model.embeddingOptions?.batchSize)
       if (vec && vec.length > 0) {
@@ -362,7 +378,7 @@ async function importTextInternal(
 
     // 可选：生成向量
     let vectors: number[][] | undefined
-    if (model.apiKey) {
+    if (canGenerateEmbeddings(protocol, model)) {
       try {
         vectors = await generateEmbeddings(chunks, protocol, model, model.embeddingOptions?.batchSize)
       } catch (e) {
@@ -589,7 +605,7 @@ async function performReferenceTextImport(
     `).run(documentId)
 
     let vectors: number[][] | undefined
-    if (model.apiKey) {
+    if (canGenerateEmbeddings(protocol, model)) {
       try {
         vectors = await generateEmbeddings(
           chunks,
@@ -735,7 +751,7 @@ export async function backfillVectors(
 }> {
   try {
     await ensureMigration(projectPath)
-    if (!model.apiKey.trim() || !model.baseUrl.trim()) {
+    if (!canGenerateEmbeddings(protocol, model)) {
       return { success: false, processed: 0, failed: 0, error: '未配置 Embedding 模型' }
     }
     const space = embeddingSpaceFor(protocol, model)
