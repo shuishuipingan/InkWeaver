@@ -145,11 +145,18 @@ export class LocalEmbeddingEngine {
     }
   }
 
-  /** 应用 transformers.js 的缓存目录与下载源。 */
-  private applyEnvironment(mod: TransformersModule, remoteHost: string): void {
+  /**
+   * 应用 transformers.js 的缓存环境（下载与推理共用）。
+   *
+   * 推理路径同样必须设置 cacheDir：transformers.js 的默认 cacheDir 是**包内**的 .cache 目录，
+   * 打包后它位于只读的 app.asar 内部——那里既没有用户已下载的权重，FileCache.put 的 mkdir
+   * 也会直接失败（ENOTDIR）。此前只有下载路径设置它，于是"模型已下好、只做推理"的正常用户
+   * 必然失败。remoteHost 只在下载时需要（推理不联网）。
+   */
+  private applyCacheEnvironment(mod: TransformersModule, remoteHost?: string): void {
     try {
       mod.env.cacheDir = this.options.cacheDir
-      mod.env.remoteHost = remoteHost
+      if (remoteHost !== undefined) mod.env.remoteHost = remoteHost
       mod.env.allowLocalModels = true
     } catch {
       // 版本差异导致 env 不可写时不影响推理本身。
@@ -163,7 +170,7 @@ export class LocalEmbeddingEngine {
     const hosts = resolveRemoteHosts()
     let lastError: unknown = null
     for (const host of hosts) {
-      this.applyEnvironment(mod, host)
+      this.applyCacheEnvironment(mod, host)
       try {
         return await attempt()
       } catch (error) {
@@ -178,6 +185,8 @@ export class LocalEmbeddingEngine {
     this.emit({ modelId, status: 'loading', progress: 100 })
     const { loadModule } = this.options
     const mod = await loadModule()
+    // 推理前必须先落到用户缓存目录，否则用的是只读包内 .cache（打包后 ENOTDIR）。
+    this.applyCacheEnvironment(mod)
     const devices = resolveDeviceCandidates(this.options.devicePreference ?? 'auto', process.platform)
     let lastError: unknown = null
     for (const device of devices) {

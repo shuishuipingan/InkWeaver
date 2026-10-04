@@ -4,7 +4,7 @@
  * 为什么这里有两套布局（本次修复的根因）：
  * - 下载侧走 transformers.js，它按 HuggingFace Hub 约定把仓库 id 展开成目录树：
  *   `env.cacheDir = <cacheDir>` + `pipeline(task, spec.repo)` →
- *   `<cacheDir>/<org>/<name>/…`（见 local-embedding-engine.ts 的 applyEnvironment/ensureLoaded，
+ *   `<cacheDir>/<org>/<name>/…`（见 local-embedding-engine.ts 的 applyCacheEnvironment/ensureLoaded，
  *   以及 embedding.ts 传给引擎的 cacheDir）。
  * - 判定侧历史上按扁平模型 id 拼 `<cacheDir>/<id>`，与真实落点对不上，于是
  *   "已下载"的模型在知识库链路被判为未配置（EMBEDDING_MODEL_NOT_CONFIGURED）。

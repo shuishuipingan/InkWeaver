@@ -73,3 +73,6 @@ tailwind.config.js.bak
 /.dsh-upgrade-inspect/
 /_tmp_*
 /**/__screenshots__/
+
+# native 层解析字面量环境变量路径时可能产生的错位目录
+/%*%/
