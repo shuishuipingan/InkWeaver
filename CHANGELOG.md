@@ -2,6 +2,26 @@
 
 本文件按用户可见行为记录变更。桌面版本不发布 npm；DSH 插件沿用已发布的 `1.2.0` 包。`1.2.0` 已从同一源码 commit 完成工程验收、三平台资产回读和正式 Release；`1.1.0` 的历史 Release 收据保留在 `docs/upgrade/`，不与 1.2.0 混用。
 
+## 1.3.17 — 2026-10-04
+
+### 修复
+
+- 修复内置本地向量模型在导入知识库、检索资料与“检测并重建向量索引”时被误判为“未配置 Embedding 模型”：这三条链路沿用了 API 向量模型对凭据（Base URL 与 API Key）的要求，而本地模型本就没有凭据，于是导入时不会生成向量（静默退化为纯全文检索），重建索引则直接报错。现在本地模型在这三条链路正常生成向量，API 向量模型的行为与原有降级路径保持不变。
+
+### 发布
+
+- 保持 Windows、macOS、Linux x64 同提交发布。Linux 文件为 inkweaver-linux-x64-1.3.17.AppImage、inkweaver-linux-x64-1.3.17.deb、inkweaver-linux-x64-1.3.17.rpm 及 SHA-256；运行资格覆盖 Ubuntu 22.04、Debian 13、Fedora 44，glibc 2.35 基线及 --appimage-extract-and-run 检查继续有效，包未签名。
+
+## 1.3.17 — 2026-10-04 (English)
+
+### Fixed
+
+- Built-in local embedding models are no longer misreported as “no embedding model configured” when importing into the knowledge library, searching reference material, or detecting and rebuilding the vector index: those three paths reused the API embedding model's credential requirements (Base URL and API key), which a local model does not have, so imports produced no vectors at all (silently degrading to plain full-text search) and rebuilding the index failed outright. Local models now generate vectors on all three paths, while API embedding models keep their existing behaviour and fallback path.
+
+### Release
+
+- Continues Windows, macOS and Linux x64 same-commit releases. Linux packages: inkweaver-linux-x64-1.3.17.AppImage, inkweaver-linux-x64-1.3.17.deb, inkweaver-linux-x64-1.3.17.rpm with SHA-256. Qualification covers Ubuntu 22.04, Debian 13, Fedora 44, the glibc 2.35 baseline and --appimage-extract-and-run. Linux packages are unsigned.
+
 ## 1.3.16 — 2026-10-04
 
 ### 修复
