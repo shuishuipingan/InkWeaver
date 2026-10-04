@@ -2,6 +2,34 @@
 
 本文件按用户可见行为记录变更。桌面版本不发布 npm；DSH 插件沿用已发布的 `1.2.0` 包。`1.2.0` 已从同一源码 commit 完成工程验收、三平台资产回读和正式 Release；`1.1.0` 的历史 Release 收据保留在 `docs/upgrade/`，不与 1.2.0 混用。
 
+## 1.3.18 — 2026-10-04
+
+### 修复
+
+- 修复本地向量模型首次真正生成向量时报“未知本地向量模型”：在“检测并重建向量索引”、知识库导入与资料检索中，本地模型第一次实际参与向量生成时，推理引擎从未登记过模型档位——档位登记此前只发生在下载控制器的一个独立实例上，而真正用于推理的引擎单例没有登记，于是本地模型报“未知本地向量模型”。现在推理与下载共用同一个引擎实例，档位登记在同一处注入，本地模型可以正常生成向量；两个实例此前还会互相覆盖 transformers.js 的模块级缓存目录与下载源，该隐患一并消除。
+
+### 优化
+
+- 内置本地向量模型的向量生成改为分批执行：默认每批 16 条文本，可取消并记录进度，不再一次性把整个知识库（可达上千个文本块）交给推理，导入与重建索引期间界面更可用、中断更可控。
+
+### 发布
+
+- 保持 Windows、macOS、Linux x64 同提交发布。Linux 文件为 inkweaver-linux-x64-1.3.18.AppImage、inkweaver-linux-x64-1.3.18.deb、inkweaver-linux-x64-1.3.18.rpm 及 SHA-256；运行资格覆盖 Ubuntu 22.04、Debian 13、Fedora 44，glibc 2.35 基线及 --appimage-extract-and-run 检查继续有效，包未签名。
+
+## 1.3.18 — 2026-10-04 (English)
+
+### Fixed
+
+- Fixed the “unknown local embedding model” error the first time a local model actually generated vectors: in “detect and rebuild the vector index”, knowledge-library import, and reference search, the inference engine had never been given the model tier registration — tiers were registered only on a separate instance owned by the download controller, while the engine singleton used for inference had none, so the local model reported an unknown model. Inference and download now share one engine instance and register tiers in the same place, so local models generate vectors normally; the two instances could also overwrite each other's module-level transformers.js cache directory and download source, and that hazard is gone as well.
+
+### Improved
+
+- Built-in local embedding now generates vectors in batches of 16 by default, with cancellation and recorded progress, instead of handing the entire knowledge library (up to thousands of text chunks) to inference in one call, so import and index rebuild stay responsive and can be interrupted safely.
+
+### Release
+
+- Continues Windows, macOS and Linux x64 same-commit releases. Linux packages: inkweaver-linux-x64-1.3.18.AppImage, inkweaver-linux-x64-1.3.18.deb, inkweaver-linux-x64-1.3.18.rpm with SHA-256. Qualification covers Ubuntu 22.04, Debian 13, Fedora 44, the glibc 2.35 baseline and --appimage-extract-and-run. Linux packages are unsigned.
+
 ## 1.3.17 — 2026-10-04
 
 ### 修复
