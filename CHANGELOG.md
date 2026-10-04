@@ -2,6 +2,26 @@
 
 本文件按用户可见行为记录变更。桌面版本不发布 npm；DSH 插件沿用已发布的 `1.2.0` 包。`1.2.0` 已从同一源码 commit 完成工程验收、三平台资产回读和正式 Release；`1.1.0` 的历史 Release 收据保留在 `docs/upgrade/`，不与 1.2.0 混用。
 
+## 1.3.19 — 2026-10-04
+
+### 修复
+
+- 修复打包版上“检测并重建向量索引”报 ENOTDIR（不是目录）：本地推理此前没有把自己的模型目录告知推理组件，而是沿用了组件内置的缓存位置；打包后该位置位于只读的应用归档内部，写入必然失败，也找不到你已经下载好的模型。现在推理与下载使用同一个模型目录，已下载的模型会被直接使用，不再尝试写入应用包内部。
+
+### 发布
+
+- 保持 Windows、macOS、Linux x64 同提交发布。Linux 文件为 inkweaver-linux-x64-1.3.19.AppImage、inkweaver-linux-x64-1.3.19.deb、inkweaver-linux-x64-1.3.19.rpm 及 SHA-256；运行资格覆盖 Ubuntu 22.04、Debian 13、Fedora 44，glibc 2.35 基线及 --appimage-extract-and-run 检查继续有效，包未签名。
+
+## 1.3.19 — 2026-10-04 (English)
+
+### Fixed
+
+- Fixed “detect and rebuild the vector index” failing with ENOTDIR (not a directory) in packaged builds: local inference had not told the inference component where its own model directory is and instead kept the component's built-in cache location, which inside a packaged app sits in the read-only application archive — writing always failed and the models you had already downloaded could not be found. Inference and download now use the same model directory, an already-downloaded model is used directly, and nothing tries to write inside the application bundle.
+
+### Release
+
+- Continues Windows, macOS and Linux x64 same-commit releases. Linux packages: inkweaver-linux-x64-1.3.19.AppImage, inkweaver-linux-x64-1.3.19.deb, inkweaver-linux-x64-1.3.19.rpm with SHA-256. Qualification covers Ubuntu 22.04, Debian 13, Fedora 44, the glibc 2.35 baseline and --appimage-extract-and-run. Linux packages are unsigned.
+
 ## 1.3.18 — 2026-10-04
 
 ### 修复
