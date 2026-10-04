@@ -14,6 +14,7 @@ import { normalizeEmbeddingOptions } from '../src/shared/embedding-options'
 import { EmbeddingResponseValidationError } from './services/embedding-response-error'
 import { runtimeLogger } from './services/runtime-logger'
 import { createLocalEmbeddingEngine } from './services/local-embedding-engine'
+import { LOCAL_EMBEDDING_MODELS } from './services/local-embedding-catalog'
 import { resolveLocalEmbeddingCacheDir } from './services/local-embedding-storage'
 
 /**
@@ -26,6 +27,9 @@ export const localEmbeddingEngine = createLocalEmbeddingEngine({
     // 与下载/判定侧共用同一个解析函数，消除三处各自拼路径（含 env 覆盖语义）。
     return resolveLocalEmbeddingCacheDir(app.getPath('userData'), process.env)
   },
+  // 引擎自身不认识任何模型 id：档位登记必须由调用方注入，否则推理时 requireSpec 会抛
+  // "未知本地向量模型"。这里注入内置目录，与 local-embedding-controller 共用同一份登记。
+  specs: Object.fromEntries(LOCAL_EMBEDDING_MODELS.map(spec => [spec.id, spec])),
 })
 
 const RELEASE_SMOKE_BASE_URL_PREFIX = 'vela-release-smoke://'
@@ -333,6 +337,17 @@ export async function embedGemini(
   return validateGeminiEmbeddings(data, texts.length)
 }
 
+/**
+ * 本地模型单批文本数。
+ *
+ * 本地推理在 CPU/DirectML 上单批成本远高于 API 往返（无网络但有前向计算），
+ * 而 transformers.js 的注意力开销随批内 token 总量平方增长：一次丢进上千条长文本
+ * 会把峰值内存推到不可预期的量级（catalog 里最长档位 maxSequenceTokens 达 2048）。
+ * 默认取保守值，并对用户显式配置的 batchSize 设上限。
+ */
+const LOCAL_EMBEDDING_DEFAULT_BATCH_SIZE = 16
+const LOCAL_EMBEDDING_MAX_BATCH_SIZE = 32
+
 /** 统一的 Embedding 调用接口 */
 export async function generateEmbeddings(
   texts: string[],
@@ -346,9 +361,36 @@ export async function generateEmbeddings(
   const smokeEmbeddings = releaseSmokeEmbeddings(texts, model)
   if (smokeEmbeddings) return smokeEmbeddings
 
-  // 本地内置模型：不经过 HTTP，直接由本地引擎批量推理。
+  // 本地内置模型：不经过 HTTP，直接由本地引擎分批推理。
   if (protocol === 'local') {
-    return localEmbeddingEngine.embed(model.modelName ?? '', texts)
+    const modelId = model.modelName ?? ''
+    const localBatchSize = Math.min(
+      configuredBatchSize === undefined
+        ? LOCAL_EMBEDDING_DEFAULT_BATCH_SIZE
+        : normalizeEmbeddingOptions({ batchSize: configuredBatchSize }).batchSize,
+      LOCAL_EMBEDDING_MAX_BATCH_SIZE,
+    )
+    const batchCount = Math.ceil(texts.length / localBatchSize)
+    const vectors: number[][] = []
+    for (let i = 0; i < texts.length; i += localBatchSize) {
+      // 每批之间让取消信号生效，与 API 分支保持同一形状。
+      assertActive?.()
+      const batch = texts.slice(i, i + localBatchSize)
+      const batchVectors = await localEmbeddingEngine.embed(modelId, batch)
+      // 引擎已保证单批数量一致；这里再守一道，保证拼接结果与输入严格一一对应。
+      if (batchVectors.length !== batch.length) {
+        throw new Error(`本地向量模型返回数量不匹配：期望 ${batch.length}，实际 ${batchVectors.length}`)
+      }
+      vectors.push(...batchVectors)
+      runtimeLogger.debug('embedding', '本地向量分批进度', {
+        modelId,
+        batchIndex: Math.floor(i / localBatchSize) + 1,
+        batchCount,
+        batchSize: batch.length,
+        total: texts.length,
+      })
+    }
+    return vectors
   }
 
   // 批量限制：每次最多 50 条

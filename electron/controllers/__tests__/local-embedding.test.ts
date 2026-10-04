@@ -49,13 +49,21 @@ vi.mock('../../services/project-storage-preflight', () => ({
   projectStoragePreflightFailure: mocks.projectStoragePreflightFailure,
 }))
 
-vi.mock('../../utils/config-utils', () => ({
-  readJsonFile: mocks.readJsonFile,
-  writeJsonFile: mocks.writeJsonFile,
-  GLOBAL_CONFIG_PATH: 'global.json',
-  DEFAULT_GLOBAL_CONFIG: {},
-  MODELS_CONFIG_PATH: 'models.json',
-}))
+// 保留真实导出（尤其是 VELA_HOME）：controller 复用单例后新增了
+// controller → ../embedding → ../services/runtime-logger 的模块依赖，
+// runtime-logger 在模块求值时就要读 VELA_HOME。用 importOriginal 可以让本 mock
+// 对上游新增的导出免疫，不再因为漏列一个常量就整个文件加载失败。
+vi.mock('../../utils/config-utils', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../utils/config-utils')>()
+  return {
+    ...actual,
+    readJsonFile: mocks.readJsonFile,
+    writeJsonFile: mocks.writeJsonFile,
+    GLOBAL_CONFIG_PATH: 'global.json',
+    DEFAULT_GLOBAL_CONFIG: {},
+    MODELS_CONFIG_PATH: 'models.json',
+  }
+})
 
 vi.mock('../../services/knowledge-base-loader', () => ({
   knowledgeBaseLoader: { run: mocks.run },

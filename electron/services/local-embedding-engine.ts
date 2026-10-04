@@ -259,11 +259,16 @@ export interface TransformersModule {
 /** 应用级单例：所有本地向量调用共用一个引擎（模型只加载一次）。 */
 export function createLocalEmbeddingEngine(options: {
   cacheDir: string | (() => string)
+  /**
+   * 内置模型档位登记（id → 档位）。引擎自身不引用本地 catalog，保持零本地模块依赖；
+   * 缺省时 requireSpec 会抛"未知本地向量模型"，因此推理与下载都必须由调用方注入登记表。
+   */
+  specs?: Record<string, LocalEmbeddingSpec>
   idleUnloadMs?: number
   devicePreference?: 'auto' | 'gpu' | 'cpu'
 }): LocalEmbeddingEngine {
   const resolveCacheDir = () => (typeof options.cacheDir === 'string' ? options.cacheDir : options.cacheDir())
-  return new LocalEmbeddingEngine({
+  const engine = new LocalEmbeddingEngine({
     get cacheDir() {
       return resolveCacheDir()
     },
@@ -272,4 +277,6 @@ export function createLocalEmbeddingEngine(options: {
     // 运行时解析：推理组件是可选增强，缺失时相关功能优雅降级。
     loadModule: async () => await import(/* webpackIgnore: true */ '@huggingface/transformers' as string) as unknown as TransformersModule,
   })
+  if (options.specs) engine.setSpecs(options.specs)
+  return engine
 }

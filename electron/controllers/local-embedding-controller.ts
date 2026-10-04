@@ -17,13 +17,13 @@ import {
   getLocalEmbeddingModelSpec,
   formatApproxBytes,
 } from '../services/local-embedding-catalog'
-import { LocalEmbeddingEngine, type TransformersModule } from '../services/local-embedding-engine'
 import {
   isLocalEmbeddingModelDownloaded,
   localEmbeddingModelDirCandidates,
   resolveLocalEmbeddingCacheDir,
 } from '../services/local-embedding-storage'
 import { safeConsole } from '../utils/safe-console'
+import { localEmbeddingEngine } from '../embedding'
 
 export interface LocalEmbeddingEntryStatus {
   modelId: string
@@ -86,16 +86,11 @@ function isDownloaded(modelId: string): boolean {
 }
 
 export class LocalEmbeddingController {
-  private readonly engine: LocalEmbeddingEngine
-
-  constructor() {
-    this.engine = new LocalEmbeddingEngine({
-      cacheDir: localEmbeddingCacheDir(),
-      // 动态 import：推理组件缺失或未下载模型时，其余功能不受影响。
-      loadModule: async () => await import(/* webpackIgnore: true */ '@huggingface/transformers' as string) as unknown as TransformersModule,
-    })
-    this.engine.setSpecs(Object.fromEntries(LOCAL_EMBEDDING_MODELS.map(spec => [spec.id, spec])))
-  }
+  /**
+   * 复用 electron/embedding.ts 的应用级单例：下载与推理必须共用同一个引擎。
+   * 两个实例会各持一份已加载模型，并相互覆盖 transformers.js 的模块级 env（cacheDir/remoteHost）。
+   */
+  private readonly engine = localEmbeddingEngine
 
   register(): void {
     ipcMain.handle('llm:local-embedding-catalog', async () => {
