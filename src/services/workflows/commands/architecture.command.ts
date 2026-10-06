@@ -15,7 +15,8 @@ import {
   workflowWritingLanguage,
 } from '../workflow-project-session'
 import { characterArchitecturePrompts, promptLanguageText } from '../../prompt-language'
-import { stripThinkingTags } from '../workflow-utils'
+import { decodeJsonObjectCandidate, stripThinkingTags } from '../workflow-utils'
+import { StructuredContractDiagnostic } from '../../../shared/structured-contract-diagnostic'
 import type { NovelConfig, ProjectSessionContext } from '../../../shared/ipc-channels'
 import type { WritingLanguage } from '../../../shared/writing-language'
 import {
@@ -188,104 +189,88 @@ function promptUtf8Bytes(value: string): number {
   return new TextEncoder().encode(value).byteLength
 }
 
-function findCompleteJsonObjectEnd(source: string, start: number): number | undefined {
-  let depth = 0
-  let inString = false
-  let escaped = false
-  for (let index = start; index < source.length; index += 1) {
-    const char = source[index]
-    if (inString) {
-      if (escaped) {
-        escaped = false
-      } else if (char === '\\') {
-        escaped = true
-      } else if (char === '"') {
-        inString = false
-      }
-      continue
-    }
+// 结构化输出的候选收集与择优解码已下沉到 ../workflow-utils：
+// reasoning 模型常在正文外留下草稿 JSON，按"恰好一个候选"判失败会把合法结果一起拒掉。
 
-    if (char === '"') {
-      inString = true
-    } else if (char === '{') {
-      depth += 1
-    } else if (char === '}') {
-      depth -= 1
-      if (depth === 0) return index
-      if (depth < 0) return undefined
-    }
-  }
-  return undefined
+/**
+ * 解码角色身份清单。
+ *
+ * 校验失败一律抛 StructuredContractDiagnostic（code + 可定位 path），因为
+ * structured-batch-executor 只有拿到结构化诊断才会①把真实原因透给用户
+ * ②构建语义补全计划——普通 Error 会被兜底的"无法按合同解码"吞掉。
+ */
+export function decodeCharacterIdentityManifest(content: string): CharacterIdentitySlot[] {
+  return decodeJsonObjectCandidate(stripThinkingTags(content), decodeCharacterIdentityManifestCandidate)
 }
 
-function extractSingleCompleteJsonObject(content: string): string {
-  const source = stripThinkingTags(content).trim()
-  const candidates: string[] = []
-  let searchFrom = 0
-  while (searchFrom < source.length) {
-    const start = source.indexOf('{', searchFrom)
-    if (start === -1) break
-    const end = findCompleteJsonObjectEnd(source, start)
-    if (end === undefined) throw new Error('AI 返回包含截断 JSON 对象片段')
-
-    const candidate = source.slice(start, end + 1)
-    try {
-      if (isRecord(JSON.parse(candidate))) candidates.push(candidate)
-    } catch {
-      // Keep scanning for the one complete JSON object; malformed candidates
-      // are not repaired or accepted.
+function decodeCharacterIdentityManifestCandidate(candidate: string): CharacterIdentitySlot[] {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(candidate)
+  } catch {
+    throw new StructuredContractDiagnostic('invalid_json', '$')
+  }
+  if (!isRecord(parsed)) throw new StructuredContractDiagnostic('invalid_type', '$')
+  const slots = parsed.slots
+  if (!Array.isArray(slots)) throw new StructuredContractDiagnostic('missing_field', 'slots')
+  if (slots.length < MIN_CHARACTER_SLOTS || slots.length > MAX_CHARACTER_SLOTS) {
+    throw new StructuredContractDiagnostic('invalid_value', 'slots')
+  }
+  const readRequiredText = (source: Record<string, unknown>, field: string, path: string): string => {
+    const value = source[field]
+    if (typeof value !== 'string') throw new StructuredContractDiagnostic('invalid_type', path)
+    if (!value.trim()) throw new StructuredContractDiagnostic('invalid_value', path)
+    return value.trim()
+  }
+  const decoded = slots.map((slot, index) => {
+    const path = `slots[${index}]`
+    if (!isRecord(slot)) throw new StructuredContractDiagnostic('invalid_type', path)
+    const relations = slot.relations
+    if (!Array.isArray(relations)) throw new StructuredContractDiagnostic('missing_field', `${path}.relations`)
+    const role = slot.role
+    if (typeof role !== 'string') throw new StructuredContractDiagnostic('invalid_type', `${path}.role`)
+    if (!CHARACTER_ROSTER_ROLES.includes(role as CharacterRosterEntry['role'])) {
+      throw new StructuredContractDiagnostic('invalid_value', `${path}.role`)
     }
-    searchFrom = end + 1
-  }
-
-  if (candidates.length === 1) return candidates[0]
-  if (candidates.length > 1) throw new Error('AI 返回包含多个完整 JSON 对象，无法确定唯一结构化结果')
-  throw new Error('AI 返回未包含一个完整 JSON 对象')
-}
-
-function decodeCharacterIdentityManifest(content: string): CharacterIdentitySlot[] {
-  const parsed = JSON.parse(extractSingleCompleteJsonObject(content)) as { slots?: unknown }
-  if (!Array.isArray(parsed.slots)) throw new Error('角色身份清单缺少 slots')
-  if (parsed.slots.length < MIN_CHARACTER_SLOTS || parsed.slots.length > MAX_CHARACTER_SLOTS) {
-    throw new Error(`角色身份清单必须包含 ${MIN_CHARACTER_SLOTS}–${MAX_CHARACTER_SLOTS} 个角色`)
-  }
-  const slots = parsed.slots.map((candidate, index) => {
-    if (!isRecord(candidate)) throw new Error(`角色身份清单第 ${index + 1} 项无效`)
-    const relations = candidate.relations
-    if (!Array.isArray(relations)) throw new Error(`角色身份清单第 ${index + 1} 项缺少关系列表`)
-    if (
-      typeof candidate.slotId !== 'string' || !candidate.slotId.trim()
-      || typeof candidate.name !== 'string' || !candidate.name.trim()
-      || typeof candidate.role !== 'string' || !CHARACTER_ROSTER_ROLES.includes(candidate.role as CharacterRosterEntry['role'])
-      || typeof candidate.narrativeDuty !== 'string' || !candidate.narrativeDuty.trim()
-    ) throw new Error(`角色身份清单第 ${index + 1} 项字段不完整`)
     return {
-      slotId: candidate.slotId.trim(),
-      name: candidate.name.trim(),
-      role: candidate.role as CharacterRosterEntry['role'],
-      narrativeDuty: candidate.narrativeDuty.trim(),
+      slotId: readRequiredText(slot, 'slotId', `${path}.slotId`),
+      name: readRequiredText(slot, 'name', `${path}.name`),
+      role: role as CharacterRosterEntry['role'],
+      narrativeDuty: readRequiredText(slot, 'narrativeDuty', `${path}.narrativeDuty`),
       relations: relations.map((relation, relationIndex) => {
-        if (!isRecord(relation)
-          || typeof relation.targetSlotId !== 'string' || !relation.targetSlotId.trim()
-          || typeof relation.relation !== 'string' || !relation.relation.trim()) {
-          throw new Error(`角色身份清单第 ${index + 1} 项关系 ${relationIndex + 1} 无效`)
+        const relationPath = `${path}.relations[${relationIndex}]`
+        if (!isRecord(relation)) throw new StructuredContractDiagnostic('invalid_type', relationPath)
+        return {
+          targetSlotId: readRequiredText(relation, 'targetSlotId', `${relationPath}.targetSlotId`),
+          relation: readRequiredText(relation, 'relation', `${relationPath}.relation`),
         }
-        return { targetSlotId: relation.targetSlotId.trim(), relation: relation.relation.trim() }
       }),
     }
   })
-  const slotIds = new Set(slots.map(slot => slot.slotId))
-  const names = new Set(slots.map(slot => slot.name))
-  if (slotIds.size !== slots.length || names.size !== slots.length) throw new Error('角色身份清单包含重复 slotId 或姓名')
-  if (slots.filter(slot => slot.role === 'protagonist').length !== 1) throw new Error('角色身份清单必须恰好包含一个主角')
-  for (const slot of slots) {
-    for (const relation of slot.relations) {
-      if (!slotIds.has(relation.targetSlotId) || relation.targetSlotId === slot.slotId) {
-        throw new Error('角色身份清单关系端点不闭合或存在自指')
-      }
-    }
+
+  const seenSlotIds = new Map<string, number>()
+  const seenNames = new Map<string, number>()
+  decoded.forEach((slot, index) => {
+    if (seenSlotIds.has(slot.slotId)) throw new StructuredContractDiagnostic('duplicate_item', `slots[${index}].slotId`)
+    if (seenNames.has(slot.name)) throw new StructuredContractDiagnostic('duplicate_item', `slots[${index}].name`)
+    seenSlotIds.set(slot.slotId, index)
+    seenNames.set(slot.name, index)
+  })
+  if (decoded.filter(slot => slot.role === 'protagonist').length !== 1) {
+    throw new StructuredContractDiagnostic('invalid_value', 'slots')
   }
-  return slots
+  decoded.forEach((slot, index) => {
+    slot.relations.forEach((relation, relationIndex) => {
+      const endpointPath = `slots[${index}].relations[${relationIndex}].targetSlotId`
+      if (relation.targetSlotId === slot.slotId) {
+        throw new StructuredContractDiagnostic('relationship_self_reference', endpointPath)
+      }
+      if (!seenSlotIds.has(relation.targetSlotId)) {
+        throw new StructuredContractDiagnostic('relationship_endpoint_not_in_characters', endpointPath)
+      }
+    })
+  })
+  return decoded
 }
 
 function validateCharacterDetail(output: CharacterDetailOutput): string | undefined {
@@ -844,13 +829,17 @@ export class GenerateCharactersCommand extends BaseWorkflowCommand<string> {
       },
       inputKey: slot => slot.slotId,
       outputKey: entry => entry.slotId,
-      decode: (content) => {
-        const parsed = JSON.parse(extractSingleCompleteJsonObject(content)) as { entries?: unknown }
-        if (!Array.isArray(parsed.entries)) throw new Error(text(
-          '角色详情响应缺少 entries',
-          'The character-detail response is missing entries.',
-        ))
-        return parsed.entries.map((candidate) => {
+      decode: (content) => decodeJsonObjectCandidate(stripThinkingTags(content), (rawCandidate) => {
+        let parsed: unknown
+        try {
+          parsed = JSON.parse(rawCandidate)
+        } catch {
+          throw new StructuredContractDiagnostic('invalid_json', '$')
+        }
+        if (!isRecord(parsed)) throw new StructuredContractDiagnostic('invalid_type', '$')
+        const entries = parsed.entries
+        if (!Array.isArray(entries)) throw new StructuredContractDiagnostic('missing_field', 'entries')
+        return entries.map((candidate) => {
           if (!isRecord(candidate)) return candidate as unknown as CharacterDetailOutput
           const age = candidate.age
           const currentState = isRecord(candidate.currentState)
@@ -866,7 +855,7 @@ export class GenerateCharactersCommand extends BaseWorkflowCommand<string> {
             currentState,
           } as unknown as CharacterDetailOutput
         })
-      },
+      }),
       validateItem: (entry) => {
         const basicError = validateCharacterDetail(entry)
         if (basicError) return basicError

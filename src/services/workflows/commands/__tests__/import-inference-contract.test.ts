@@ -83,21 +83,26 @@ describe('decodeImportInferenceJson', () => {
     expectInvalidJson('下面是说明性文字，但没有结构化对象。')
   })
 
-  it('rejects a malformed JSON object candidate instead of scanning past it', () => {
+  it('skips a malformed JSON object candidate and accepts the complete object after it', () => {
     const json = JSON.stringify(validInference())
 
-    expectInvalidJson(`先给出一个错误对象：{"novelConfig":,}\n随后给出正确对象：${json}`)
+    // 择优语义：语法不完整的候选只跳过，不再让整次解析失败（reasoning 模型常先吐草稿）。
+    const parsed = decodeImportInferenceJson(`先给出一个错误对象：{"novelConfig":,}\n随后给出正确对象：${json}`)
+    expect(parsed.characterCards.map(card => card.name)).toEqual(['陆舟', '苏绾', '顾岩'])
   })
 
-  it('rejects multiple complete JSON objects as ambiguous output', () => {
+  it('accepts the first decodable object when several complete objects appear', () => {
     const json = JSON.stringify(validInference())
 
-    expectInvalidJson(`${json}\n${json}`)
+    // 不再把"多个候选"当歧义错误：按契约逐个尝试，取第一个能解码的。
+    const parsed = decodeImportInferenceJson(`${json}\n${json}`)
+    expect(parsed.characterCards).toHaveLength(3)
   })
 
-  it('rejects a trailing truncated JSON object fragment after a complete object', () => {
+  it('ignores a trailing truncated JSON object fragment after a complete object', () => {
     const json = JSON.stringify(validInference())
 
-    expectInvalidJson(`${json}\n{"novelConfig":`)
+    const parsed = decodeImportInferenceJson(`${json}\n{"novelConfig":`)
+    expect(parsed.novelConfig.genre).toBe('现实')
   })
 })

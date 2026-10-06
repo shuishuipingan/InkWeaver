@@ -199,10 +199,23 @@ describe('provider catalog', () => {
       maxOutputTokens: 65_536,
       reasoning: true,
     })
+  })
+
+  it('extends the Gemini family to unlisted generations while keeping the 2.5 floor', () => {
+    // 家族推断的目的就是让未收录的新代次也拿到映射；gemini-4.0-flash 正属此列。
     expect(resolveModelProfileReasoningMapping({
       provider: 'gemini',
       protocol: 'gemini',
       modelName: 'gemini-4.0-flash',
+    })).toMatchObject({
+      adapter: 'gemini-thinking-budget',
+      supportedEfforts: ['off', 'low', 'medium', 'high'],
+    })
+    // 下限以下（gemini-2.0）仍不推断，避免对老模型盲发参数。
+    expect(resolveModelProfileReasoningMapping({
+      provider: 'gemini',
+      protocol: 'gemini',
+      modelName: 'gemini-2.0-flash',
     })).toBeUndefined()
   })
 

@@ -992,6 +992,201 @@ export function resolveModelProfileCapabilities(
   return validatedCapabilities(model?.capabilities)
 }
 
+// ===== 推理强度家族推断 =====
+//
+// 精确命中永远优先（见下方 resolveModelProfileReasoningMapping）。这里是**兜底**：
+// 头部厂商不断出新模型（gpt-6.1-sol、claude-opus-5-5…），逐个手写条目既跟不上也不需要——
+// 适配器其实是按 provider + 模型家族聚集的。新增一个家族只需在下表加一行，
+// 不必理解下游的 effort 映射、协议判定或 UI 展示逻辑。
+
+/** 与同类精确条目**逐字一致**的映射常量：家族规则只引用它们，不另行定义取值。 */
+const REASONING_MAPPING_OPENAI_EFFORT: VerifiedReasoningMapping = {
+  adapter: 'openai-reasoning-effort',
+  supportedEfforts: ['low', 'medium', 'high'],
+  providerValues: { low: 'low', medium: 'medium', high: 'high' },
+}
+/** 与 gemini-3 系条目逐字一致（数字 thinkingBudget）。 */
+const REASONING_MAPPING_GEMINI_BUDGET: VerifiedReasoningMapping = {
+  adapter: 'gemini-thinking-budget',
+  supportedEfforts: ['off', 'low', 'medium', 'high'],
+  providerValues: { off: 0, low: 2048, medium: 16384, high: 49152 },
+}
+/** 与 deepseek-flash / deepseek-v4-pro 条目逐字一致。 */
+const REASONING_MAPPING_DEEPSEEK_THINKING: VerifiedReasoningMapping = {
+  adapter: 'deepseek-v4-thinking',
+  supportedEfforts: ['off', 'low', 'high', 'max'],
+  providerValues: { off: 'disabled', low: 'low', high: 'high', max: 'max' },
+  requestAliases: { medium: 'high' },
+}
+/** 与 qwen3-max 等条目逐字一致（注意与 deepseek 家族的取值并不相同）。 */
+const REASONING_MAPPING_QWEN_THINKING: VerifiedReasoningMapping = {
+  adapter: 'deepseek-v4-thinking',
+  supportedEfforts: ['off', 'high', 'max'],
+  providerValues: { off: 'disabled', high: 'high', max: 'max' },
+  requestAliases: { low: 'high', medium: 'high' },
+}
+/**
+ * 与 glm-5.3 条目逐字一致：GLM-5.3 强制思考、**不接受 thinking.type=disabled**，
+ * 因此家族兜底刻意不含 off —— 对尚不清楚是否支持关闭思考的新代次，宁可少一档，
+ * 也不盲发 disabled 把用户的请求打报错（用户选 off 时 closestEffectiveEffort 会降到 low）。
+ */
+const REASONING_MAPPING_GLM_EFFORT: VerifiedReasoningMapping = {
+  adapter: 'glm-thinking',
+  supportedEfforts: ['low', 'medium', 'high', 'max'],
+  providerValues: { low: 'low', medium: 'medium', high: 'high', max: 'max' },
+}
+/** 与 claude-sonnet-4.5 等条目逐字一致（thinking.type 开关）。 */
+const REASONING_MAPPING_ANTHROPIC_THINKING: VerifiedReasoningMapping = {
+  adapter: 'glm-thinking',
+  supportedEfforts: ['off', 'high'],
+  providerValues: { off: 'disabled', high: 'enabled' },
+  requestAliases: { low: 'high', medium: 'high' },
+}
+
+/** 一条家族规则：provider（+协议）与归一化模型名前缀命中时，复用给定的映射。 */
+export interface ReasoningFamilyRule {
+  /** 规则归属的 provider；provider 命中时只在该 provider 内匹配。 */
+  readonly provider: string
+  /** 该家族要求的调用协议（参数格式由协议决定，缺省不限制）。 */
+  readonly protocol: 'openai' | 'gemini'
+  /** 归一化（大小写/分隔符折叠）后的模型名前缀；必须取**该家族从该版本起确定为推理模型**的下限。 */
+  readonly prefixes: readonly string[]
+  /** 人类可读的家族说明。 */
+  readonly family: string
+  readonly mapping: VerifiedReasoningMapping
+}
+
+/**
+ * 家族规则表（数据驱动、可被测试直接导入）。
+ *
+ * 收录门槛是**「该家族从该版本起，全部型号都确定支持该 adapter」**，而不是"看起来像"：
+ * 只要家族内部支持面不一致，就宁可让新模型显示"不支持"，也绝不盲发参数把用户的 API 打报错。
+ * 目录里已有的精确条目永远优先，这里的下限只负责"目录尚未收录的新代次"。
+ *
+ * 已知被刻意排除的家族（都有实证）：
+ * - **mistral**：large/small/medium/codestral 参数集不同（mistral-medium-2505 不支持 reasoning_effort）。
+ * - **moonshot moonshot-v1-***：目录条目 reasoning=false 且无 reasoningMapping。
+ * - **GLM 家族**：同族对 off 的支持面不一致（4.5 系与 5.2 含 off；5.3 强制思考、无 off），
+ *   故家族兜底统一采用**不含 off** 的最保守取值。
+ * - **DeepSeek R 系**：官方 API 不通过 reasoning_effort 暴露思考强度，拿不准故不推断。
+ * - **OpenAI o1 / o2**：o1-preview / o1-mini 不接受 reasoning_effort，故从 o3 起。
+ * - **claude-2 及更早**：无 thinking 参数，故从 claude-3 起（两套命名都覆盖）。
+ */
+export const REASONING_FAMILY_RULES: readonly ReasoningFamilyRule[] = Object.freeze([
+  {
+    provider: 'openai',
+    protocol: 'openai',
+    family: 'OpenAI gpt-5+ / o3 及以后',
+    prefixes: ['gpt-5', 'gpt-6', 'gpt-7', 'gpt-8', 'gpt-9', 'o3', 'o4', 'o5', 'o6', 'o7', 'o8', 'o9'],
+    mapping: REASONING_MAPPING_OPENAI_EFFORT,
+  },
+  {
+    provider: 'xai',
+    protocol: 'openai',
+    family: 'xAI Grok 4+',
+    prefixes: ['grok-4', 'grok-5', 'grok-6', 'grok-7', 'grok-8', 'grok-9'],
+    mapping: REASONING_MAPPING_OPENAI_EFFORT,
+  },
+  {
+    provider: 'moonshot',
+    protocol: 'openai',
+    family: 'Moonshot Kimi K2+',
+    prefixes: ['kimi-k2', 'kimi-k3', 'kimi-k4', 'kimi-k5', 'kimi-k6', 'kimi-k7', 'kimi-k8', 'kimi-k9'],
+    mapping: REASONING_MAPPING_OPENAI_EFFORT,
+  },
+  {
+    provider: 'gemini',
+    protocol: 'gemini',
+    family: 'Gemini 2.5+ 思考预算（同一参数，仅预算数值随代次不同）',
+    prefixes: ['gemini-2.5', 'gemini-3', 'gemini-4', 'gemini-5', 'gemini-6', 'gemini-7', 'gemini-8', 'gemini-9'],
+    mapping: REASONING_MAPPING_GEMINI_BUDGET,
+  },
+  {
+    provider: 'deepseek',
+    protocol: 'openai',
+    family: 'DeepSeek V4+',
+    prefixes: ['deepseek-v4', 'deepseek-v5', 'deepseek-v6', 'deepseek-v7', 'deepseek-v8', 'deepseek-v9'],
+    mapping: REASONING_MAPPING_DEEPSEEK_THINKING,
+  },
+  {
+    provider: 'qwen',
+    protocol: 'openai',
+    family: 'Qwen 3+（qwen2.5 及更早不推断）',
+    prefixes: ['qwen3', 'qwen4', 'qwen5', 'qwen6', 'qwen7', 'qwen8', 'qwen9'],
+    mapping: REASONING_MAPPING_QWEN_THINKING,
+  },
+  {
+    provider: 'bigmodel',
+    protocol: 'openai',
+    family: 'GLM 4.5+ / 5+ / 6+（不含 off，见上方常量的说明）',
+    prefixes: ['glm-4.5', 'glm-5', 'glm-6', 'glm-7', 'glm-8', 'glm-9'],
+    mapping: REASONING_MAPPING_GLM_EFFORT,
+  },
+  {
+    provider: 'anthropic',
+    protocol: 'openai',
+    family: 'Claude 3+（thinking.type 开关；含 claude-opus/sonnet/haiku-N 两种命名）',
+    prefixes: [
+      'claude-3', 'claude-4', 'claude-5', 'claude-6', 'claude-7', 'claude-8', 'claude-9',
+      'claude-opus-4', 'claude-opus-5', 'claude-opus-6', 'claude-opus-7', 'claude-opus-8', 'claude-opus-9',
+      'claude-sonnet-4', 'claude-sonnet-5', 'claude-sonnet-6', 'claude-sonnet-7', 'claude-sonnet-8', 'claude-sonnet-9',
+      'claude-haiku-4', 'claude-haiku-5', 'claude-haiku-6', 'claude-haiku-7', 'claude-haiku-8', 'claude-haiku-9',
+    ],
+    mapping: REASONING_MAPPING_ANTHROPIC_THINKING,
+  },
+])
+
+/**
+ * 明确不参与家族推断的 provider：本地推理与聚合网关的参数透传行为不可预期，
+ * 盲发推理参数的风险高于收益。
+ */
+export const REASONING_FAMILY_EXCLUDED_PROVIDERS: readonly string[] = Object.freeze([
+  'ollama',
+  'siliconflow',
+  'novelai',
+])
+
+function cloneReasoningMapping(mapping: VerifiedReasoningMapping): VerifiedReasoningMapping {
+  return {
+    adapter: mapping.adapter,
+    supportedEfforts: [...mapping.supportedEfforts],
+    providerValues: { ...mapping.providerValues },
+    ...(mapping.requestAliases ? { requestAliases: { ...mapping.requestAliases } } : {}),
+  }
+}
+
+/**
+ * 家族推断：精确条目未命中时的兜底。
+ *
+ * - provider 命中规则表时，只在该 provider 的规则里按前缀匹配；
+ * - provider 为 custom 或不在规则表内（自建网关）时，仅按模型名匹配——模型名是用户自己填写的，
+ *   gpt/claude/gemini 这类名字本身就携带了参数格式信息；
+ * - ollama / siliconflow / novelai 与协议不匹配的情形一律返回 undefined（不猜）。
+ */
+function resolveReasoningFamilyMapping(
+  provider: string,
+  protocol: string,
+  modelName: string,
+): VerifiedReasoningMapping | undefined {
+  if (REASONING_FAMILY_EXCLUDED_PROVIDERS.includes(provider)) return undefined
+  const normalizedKey = presetModelKey(normalizeModelNameForPreset(modelName))
+  if (!normalizedKey) return undefined
+  // 必须先分清两类 provider，否则"内置但没有家族规则"的会被别的 provider 的前缀规则串台
+  // （例如收紧后被删掉规则的 mistral-large-3 曾被按模型名跨 family 命中）：
+  // - 目录里**本来就有模型条目**的内置 provider：没有自己的家族规则就不猜；
+  // - 真正的自建网关（custom、或目录里没有模型条目的 provider）：按模型名匹配。
+  const preset = BUILTIN_PRESETS.find(candidate => candidate.provider === provider)
+  const isCuratedProvider = preset !== undefined && preset.protocol === protocol && preset.models.length > 0
+  const providerHasRules = REASONING_FAMILY_RULES.some(rule => rule.provider === provider)
+  if (isCuratedProvider && !providerHasRules) return undefined
+  for (const rule of REASONING_FAMILY_RULES) {
+    if (isCuratedProvider && rule.provider !== provider) continue
+    if (rule.protocol !== protocol) continue
+    if (rule.prefixes.some(prefix => normalizedKey.startsWith(presetModelKey(prefix)))) return rule.mapping
+  }
+  return undefined
+}
+
 /**
  * Resolve only provider request mappings whose provider, protocol, and model id
  * match an app-maintained preset or vetted alias. User-entered capability flags
@@ -1010,17 +1205,15 @@ export function resolveModelProfileReasoningMapping(
   const protocol = profile.protocol
   const modelName = profile.modelName.trim()
   const preset = BUILTIN_PRESETS.find(candidate => candidate.provider === provider)
-  if (!preset || preset.protocol !== protocol) return undefined
+  // 自建 provider 没有内置预设，交给家族规则按模型名判断；内置 provider 仍要求协议一致。
+  if (preset && preset.protocol !== protocol) return undefined
 
   // 推理参数格式由 协议 + 模型名 决定，与网关地址无关。
   // 第三方中转站/代理使用同名主流模型时，也应采用官方预设的推理映射；
   // 前提是 provider 与协议一致、且模型名精确命中官方预设目录。
-  const mapping = findPresetModel(preset, modelName)?.reasoningMapping
-  if (!mapping) return undefined
-  return {
-    adapter: mapping.adapter,
-    supportedEfforts: [...mapping.supportedEfforts],
-    providerValues: { ...mapping.providerValues },
-    ...(mapping.requestAliases ? { requestAliases: { ...mapping.requestAliases } } : {}),
-  }
+  const mapping = preset ? findPresetModel(preset, modelName)?.reasoningMapping : undefined
+  if (mapping) return cloneReasoningMapping(mapping)
+  // 精确未命中：按模型家族兜底（新模型无需逐个登记）。返回的取值与同类精确条目逐字一致。
+  const family = resolveReasoningFamilyMapping(provider, protocol, modelName)
+  return family ? cloneReasoningMapping(family) : undefined
 }

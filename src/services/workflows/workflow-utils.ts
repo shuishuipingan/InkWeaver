@@ -10,6 +10,10 @@
 
 import type { StepCallbacks, WorkflowContext } from '../../stores/workflow-store'
 import type { AllInvokeChannels, InvokeChannel, ProjectSessionContext } from '../../shared/ipc-channels'
+import {
+  StructuredContractDiagnostic,
+  structuredContractDiagnostic,
+} from '../../shared/structured-contract-diagnostic'
 import { ipc } from '../ipc-client'
 
 /** Project-level post-processing is fail-closed: never borrow the active lease. */
@@ -50,6 +54,94 @@ export function stripThinkingTags(text: string): string {
     ? visibleSuffix
     : `${hiddenPrefix}${visibleSuffix}`
   return cleaned.replace(/<\/?think>/gi, '').trim()
+}
+
+// ===== 结构化输出提取（多候选择优） =====
+
+/** 找到从 start 开始的第一个完整 JSON 对象结束位置；未闭合返回 undefined。 */
+function findCompleteJsonObjectEnd(source: string, start: number): number | undefined {
+  let depth = 0
+  let inString = false
+  let escaped = false
+  for (let index = start; index < source.length; index += 1) {
+    const char = source[index]
+    if (inString) {
+      if (escaped) escaped = false
+      else if (char === '\\') escaped = true
+      else if (char === '"') inString = false
+      continue
+    }
+    if (char === '"') inString = true
+    else if (char === '{') depth += 1
+    else if (char === '}') {
+      depth -= 1
+      if (depth === 0) return index
+      if (depth < 0) return undefined
+    }
+  }
+  return undefined
+}
+
+/**
+ * 收集文本里所有**完整**的 JSON 对象候选。
+ *
+ * reasoning 模型常在正文之外留下草稿/示例 JSON，甚至留下未闭合的 `{`；未闭合片段只跳过
+ * 当前起点继续向后扫描，绝不因此整体失败——决定用哪个候选是解码器的责任。
+ */
+export function collectCompleteJsonObjectCandidates(source: string): string[] {
+  const candidates: string[] = []
+  let searchFrom = 0
+  while (searchFrom < source.length) {
+    const start = source.indexOf('{', searchFrom)
+    if (start === -1) break
+    const end = findCompleteJsonObjectEnd(source, start)
+    if (end === undefined) {
+      searchFrom = start + 1
+      continue
+    }
+    const candidate = source.slice(start, end + 1)
+    try {
+      const parsed = JSON.parse(candidate) as unknown
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) candidates.push(candidate)
+    } catch {
+      // 语法不完整的候选不参与择优，也不在这里修复。
+    }
+    searchFrom = end + 1
+  }
+  return candidates
+}
+
+/**
+ * 多候选择优解码：把每个候选依次交给 decode，返回第一个成功的结果。
+ *
+ * 全部失败时抛出**最具信息量**的诊断：优先带具体 path 的结构化诊断（并把候选索引写进
+ * path，便于定位是哪一段草稿出的问题）；没有具体诊断时用 invalid_envelope 指明候选数量。
+ * 绝不再返回"无法确定唯一结构化结果"这类不可行动的结论。
+ */
+export function decodeJsonObjectCandidate<T>(source: string, decode: (candidate: string) => T): T {
+  const candidates = collectCompleteJsonObjectCandidates(source)
+  if (candidates.length === 0) throw new StructuredContractDiagnostic('invalid_json', '$')
+  let best: { index: number; diagnostic: StructuredContractDiagnostic } | undefined
+  let firstError: unknown
+  for (const [index, candidate] of candidates.entries()) {
+    try {
+      return decode(candidate)
+    } catch (error) {
+      firstError ??= error
+      const diagnostic = structuredContractDiagnostic(error)
+      if (diagnostic && diagnostic.path !== '$' && best === undefined) best = { index, diagnostic }
+    }
+  }
+  if (best) {
+    // 单一候选保持原始 path（与"恰好一个"的旧行为一致）；只有多个候选时才加索引前缀，
+    // 让用户知道是哪一段草稿出的问题。
+    if (candidates.length === 1) throw best.diagnostic
+    throw new StructuredContractDiagnostic(best.diagnostic.code, `candidates[${best.index}].${best.diagnostic.path}`)
+  }
+  if (candidates.length > 1) {
+    throw new StructuredContractDiagnostic('invalid_envelope', `candidates[0..${candidates.length - 1}]`)
+  }
+  throw firstError instanceof Error ? firstError : new StructuredContractDiagnostic('invalid_json', '$')
 }
 
 // ===== 通用重试包装器 =====

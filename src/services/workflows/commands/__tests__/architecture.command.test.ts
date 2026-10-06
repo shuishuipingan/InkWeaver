@@ -855,7 +855,8 @@ describe('GenerateCharactersCommand structured roster seam', () => {
       novelConfig: { genre: '玄幻', totalChapters: 100, wordsPerChapter: 3000 } as never,
     })
 
-    await expect(command.execute({ step: {}, context, callbacks })).rejects.toThrow('角色身份清单缺少 slots')
+    // legacy entries 信封仍必须被拒；错误现在带上可定位的结构化诊断（code/path 一起透出）。
+    await expect(command.execute({ step: {}, context, callbacks })).rejects.toThrow(/code=missing_field path=slots/u)
     expect(generateStream).toHaveBeenCalledOnce()
     expect(invoke.mock.calls.map(([channel]) => channel).filter(ch => ch !== 'runtime:log')).toEqual(['db:project-core-get'])
   })
@@ -1029,7 +1030,7 @@ describe('GenerateCharactersCommand structured roster seam', () => {
     )
   })
 
-  it('rejects a manifest response with a truncated JSON fragment after a complete object before any roster commit', async () => {
+  it('ignores a truncated JSON fragment after a complete object instead of rejecting the manifest', async () => {
     const generateStream = createResponseStream([
       `${JSON.stringify(manifestFor(rosterEntries))}\n\n{"slots":[`,
       ...detailResponses(rosterEntries),
@@ -1081,10 +1082,11 @@ describe('GenerateCharactersCommand structured roster seam', () => {
       expectedProjectPath: projectAPath,
       novelConfig: { genre: '玄幻', totalChapters: 100, wordsPerChapter: 3000 } as never,
     })
-    await expect(command.execute({ step: {}, context, callbacks }))
-      .rejects.toThrow(/完整 JSON|截断/u)
+    // reasoning 模型常在完整 JSON 之后留下未闭合草稿片段；按新契约这类残片只跳过，
+    // 不再让整次生成失败（旧的"出现截断片段即拒绝"会误杀合法结果）。
+    await expect(command.execute({ step: {}, context, callbacks })).resolves.toBe(readyRoster.renderedMarkdown)
 
-    expect(invoke.mock.calls.map(([channel]) => channel).filter(ch => ch !== 'runtime:log')).not.toContain('db:character-roster-commit')
+    expect(invoke.mock.calls.filter(([channel]) => channel === 'db:character-roster-commit')).toHaveLength(1)
   })
 
   it('accepts fenced detail batches with leading prose after a raw manifest before one atomic roster commit', async () => {

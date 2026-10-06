@@ -4,6 +4,7 @@ import { StructuredContractDiagnostic } from '../../../shared/structured-contrac
 import type { NovelConfig } from '../../../shared/ipc-channels'
 import type { WritingLanguage } from '../../../shared/writing-language'
 import { promptLanguageText } from '../../prompt-language'
+import { collectCompleteJsonObjectCandidates } from '../workflow-utils'
 
 type InferredNovelConfig = Omit<NovelConfig, 'totalChapters' | 'wordsPerChapter'>
 
@@ -95,55 +96,21 @@ function normalizeImportInferenceJsonContent(content: string): string {
   return extractSingleCompleteJsonObject(trimEdgeWrapperResidue(content))
 }
 
-function findCompleteJsonObjectEnd(source: string, start: number): number | undefined {
-  let depth = 0
-  let inString = false
-  let escaped = false
-  for (let index = start; index < source.length; index += 1) {
-    const character = source[index]
-    if (inString) {
-      if (escaped) {
-        escaped = false
-      } else if (character === '\\') {
-        escaped = true
-      } else if (character === '"') {
-        inString = false
-      }
-      continue
-    }
-    if (character === '"') {
-      inString = true
-    } else if (character === '{') {
-      depth += 1
-    } else if (character === '}') {
-      depth -= 1
-      if (depth === 0) return index
-      if (depth < 0) return undefined
-    }
-  }
-  return undefined
-}
-
+/**
+ * 取第一个能解析成对象信封的完整候选（择优，而不是要求"恰好一个"）。
+ * reasoning 模型常在正文外留下草稿 JSON；按候选数量判失败会把合法结果一起拒掉。
+ * 全部候选都不成信封时仍抛 invalid_json（与既有失败语义一致）。
+ */
 function extractSingleCompleteJsonObject(source: string): string {
-  const candidates: string[] = []
-  let searchFrom = 0
-  while (searchFrom < source.length) {
-    const start = source.indexOf('{', searchFrom)
-    if (start === -1) break
-    const end = findCompleteJsonObjectEnd(source, start)
-    if (end === undefined) throw new StructuredContractDiagnostic('invalid_json', '$')
-
-    const candidate = source.slice(start, end + 1)
+  for (const candidate of collectCompleteJsonObjectCandidates(source)) {
     try {
       record(JSON.parse(candidate), '$')
+      return candidate
     } catch {
-      throw new StructuredContractDiagnostic('invalid_json', '$')
+      // 该候选不成信封，继续尝试下一个。
     }
-    candidates.push(candidate)
-    searchFrom = end + 1
   }
-  if (candidates.length !== 1) throw new StructuredContractDiagnostic('invalid_json', '$')
-  return candidates[0]
+  throw new StructuredContractDiagnostic('invalid_json', '$')
 }
 
 export function parseImportInferenceJsonObject(content: string): Record<string, unknown> {
