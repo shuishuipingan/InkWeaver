@@ -4,15 +4,15 @@
 
 织墨 InkWeaver 是一款面向长篇小说创作的本地优先桌面工作台。它把项目设定、角色、世界观、章节蓝图、正文、审稿、修订与定稿组织成可追溯的创作链，让作者在保留最终决定权的前提下使用自己选择的 AI 模型。
 
-当前版本：**v1.3.19**
+当前版本：**v1.3.20**
 
 [长篇写作的资料选择与预算说明](docs/features/draft-context-budget.md)
 
 > **把一本长篇小说写成会持续发展的整体。** InkWeaver 是本地优先的 AI 小说创作工作台：它把故事设定、角色状态、章节蓝图、候选草稿、证据化审稿和作者定稿串成一条可追溯的连续写作链。
 
-v1.3.19 修复打包版上“检测并重建向量索引”报 ENOTDIR（不是目录）的问题：本地推理此前没有把自己的模型目录告知推理组件，而是沿用了组件内置的缓存位置，打包后该位置位于只读的应用归档内部，写入必然失败，也找不到你已经下载好的模型。现在推理与下载使用同一个模型目录，已下载的模型会被直接使用，不再尝试写入应用包内部。保留此前的[长篇写作资料选择说明](docs/features/draft-context-budget.md)、[工作流审计修复](docs/audits/workflow-audit-2026-10-01.md)与[安全审计收据](docs/audits/security-audit-2026-10-03.md)。同一 Release 提供 Windows、macOS 和 Linux x64；DSH 插件沿用 v1.2.0，不发布 npm。
+v1.3.20 修复生成小说架构与目录时被固定提示词上限拦住的问题：这两条链路此前使用写死的输入上限（架构 24,000 字节、目录 16,384 字节），完全不看所用模型的上下文能力，使用大上下文模型时，一份合理的世界观设定（全局指导、主角设定、故事前提）就会被判超限而无法生成。现在它们与草稿链路一样按模型上下文动态计算输入上限（上下文未知时仍保守回退），同一份配置不再撞墙。保留此前的[长篇写作资料选择说明](docs/features/draft-context-budget.md)、[工作流审计修复](docs/audits/workflow-audit-2026-10-01.md)与[安全审计收据](docs/audits/security-audit-2026-10-03.md)。同一 Release 提供 Windows、macOS 和 Linux x64；DSH 插件沿用 v1.2.0，不发布 npm。
 
-[下载 v1.3.19](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.3.19) · [三分钟开始第一章](docs/quickstart/README.md) · [全书方向调整指南](docs/features/story-direction-adjustment.md) · [安装 DSH 插件](plugins/inkweaver-dsh/README.md) · [提交问题或建议](https://github.com/shuishuipingan/InkWeaver/issues/new/choose) · [参与讨论](https://github.com/shuishuipingan/InkWeaver/discussions)
+[下载 v1.3.20](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.3.20) · [三分钟开始第一章](docs/quickstart/README.md) · [全书方向调整指南](docs/features/story-direction-adjustment.md) · [安装 DSH 插件](plugins/inkweaver-dsh/README.md) · [提交问题或建议](https://github.com/shuishuipingan/InkWeaver/issues/new/choose) · [参与讨论](https://github.com/shuishuipingan/InkWeaver/discussions)
 
 ![InkWeaver 欢迎页](docs/assets/inkweaver-welcome.png)
 
@@ -160,33 +160,33 @@ inkweaver-mac-arm64-<版本号>-installer.dmg
 inkweaver-mac-x64-<版本号>-installer.dmg
 ```
 
-当前 macOS 安装包未代码签名（未使用 Developer ID 签名）且未公证。请只从[正式 v1.3.19 Release](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.3.19)下载，并按系统安全提示确认首次打开。桌面 Release 共 13 项资产，覆盖 Windows x64、macOS Apple Silicon、macOS Intel 和 Linux x64；DSH 插件 tarball 保留在 v1.2.0 Release。
+当前 macOS 安装包未代码签名（未使用 Developer ID 签名）且未公证。请只从[正式 v1.3.20 Release](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.3.20)下载，并按系统安全提示确认首次打开。桌面 Release 共 13 项资产，覆盖 Windows x64、macOS Apple Silicon、macOS Intel 和 Linux x64；DSH 插件 tarball 保留在 v1.2.0 Release。
 
 ### Linux x64
 
-v1.3.19 Linux 资产仅以 x64 构建。本次资格验证使用 Ubuntu 22.04、Debian 13 和 Fedora 44；不据此声明其他发行版或 Linux ARM64 已验证。包以 Ubuntu 22.04 的 glibc 2.35 环境构建，资格记录会检查打包文件所需的最高 glibc 符号版本不高于 2.35。
+v1.3.20 Linux 资产仅以 x64 构建。本次资格验证使用 Ubuntu 22.04、Debian 13 和 Fedora 44；不据此声明其他发行版或 Linux ARM64 已验证。包以 Ubuntu 22.04 的 glibc 2.35 环境构建，资格记录会检查打包文件所需的最高 glibc 符号版本不高于 2.35。
 
-从[正式 v1.3.19 Release](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.3.19)下载对应文件及各自的 SHA-256 校验文件：
+从[正式 v1.3.20 Release](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.3.20)下载对应文件及各自的 SHA-256 校验文件：
 
-    inkweaver-linux-x64-1.3.19.AppImage
-    inkweaver-linux-x64-1.3.19.deb
-    inkweaver-linux-x64-1.3.19.rpm
+    inkweaver-linux-x64-1.3.20.AppImage
+    inkweaver-linux-x64-1.3.20.deb
+    inkweaver-linux-x64-1.3.20.rpm
 
 AppImage 在 FUSE 可用时可直接启动。若系统没有 FUSE，可用内置提取运行模式：
 
-    chmod +x inkweaver-linux-x64-1.3.19.AppImage
-    ./inkweaver-linux-x64-1.3.19.AppImage --appimage-extract-and-run
+    chmod +x inkweaver-linux-x64-1.3.20.AppImage
+    ./inkweaver-linux-x64-1.3.20.AppImage --appimage-extract-and-run
 
 AppImage 使用用户命名空间 sandbox，系统需允许普通用户创建用户命名空间。若系统策略禁用了此能力，请使用对应的 deb/rpm 安装包。
 
 Ubuntu/Debian 可安装 deb，Fedora 可安装 rpm：
 
-    sudo apt install ./inkweaver-linux-x64-1.3.19.deb
-    sudo dnf install ./inkweaver-linux-x64-1.3.19.rpm
+    sudo apt install ./inkweaver-linux-x64-1.3.20.deb
+    sudo dnf install ./inkweaver-linux-x64-1.3.20.rpm
 
 Linux 安装包未签名。下载后先在同一目录核对对应校验文件，例如：
 
-    sha256sum -c inkweaver-linux-x64-1.3.19.deb.sha256
+    sha256sum -c inkweaver-linux-x64-1.3.20.deb.sha256
 
 ## DeepSeek Harness 插件
 

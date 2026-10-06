@@ -2,6 +2,26 @@
 
 本文件按用户可见行为记录变更。桌面版本不发布 npm；DSH 插件沿用已发布的 `1.2.0` 包。`1.2.0` 已从同一源码 commit 完成工程验收、三平台资产回读和正式 Release；`1.1.0` 的历史 Release 收据保留在 `docs/upgrade/`，不与 1.2.0 混用。
 
+## 1.3.20 — 2026-10-04
+
+### 修复
+
+- 修复生成小说架构与目录时被固定提示词上限拦住（报“提示词预算不足”）：这两条链路此前使用写死的输入上限（架构 24,000 字节、目录 16,384 字节），完全不看所用模型的上下文能力；使用大上下文模型时，一份合理的世界观设定（全局指导、主角设定、故事前提）就会被判超限而无法生成。现在它们与草稿链路一样按模型上下文动态计算输入上限（上下文未知时仍保守回退），同一份配置不再撞墙。
+
+### 发布
+
+- 保持 Windows、macOS、Linux x64 同提交发布。Linux 文件为 inkweaver-linux-x64-1.3.20.AppImage、inkweaver-linux-x64-1.3.20.deb、inkweaver-linux-x64-1.3.20.rpm 及 SHA-256；运行资格覆盖 Ubuntu 22.04、Debian 13、Fedora 44，glibc 2.35 基线及 --appimage-extract-and-run 检查继续有效，包未签名。
+
+## 1.3.20 — 2026-10-04 (English)
+
+### Fixed
+
+- Fixed novel-architecture and outline generation being blocked by fixed prompt limits (reported as “prompt budget exhausted”): both paths used hard-coded input ceilings (24,000 bytes for architecture, 16,384 bytes for the outline) that ignored the context capability of the selected model, so with a large-context model a reasonable worldbuilding set (global guidance, protagonist profile, story premise) was rejected as over budget and could not be generated. They now derive the input ceiling from the model's context the same way the drafting path does (falling back conservatively when the context is unknown), so the same configuration no longer hits the wall.
+
+### Release
+
+- Continues Windows, macOS and Linux x64 same-commit releases. Linux packages: inkweaver-linux-x64-1.3.20.AppImage, inkweaver-linux-x64-1.3.20.deb, inkweaver-linux-x64-1.3.20.rpm with SHA-256. Qualification covers Ubuntu 22.04, Debian 13, Fedora 44, the glibc 2.35 baseline and --appimage-extract-and-run. Linux packages are unsigned.
+
 ## 1.3.19 — 2026-10-04
 
 ### 修复
