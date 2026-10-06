@@ -2,6 +2,34 @@
 
 本文件按用户可见行为记录变更。桌面版本不发布 npm；DSH 插件沿用已发布的 `1.2.0` 包。`1.2.0` 已从同一源码 commit 完成工程验收、三平台资产回读和正式 Release；`1.1.0` 的历史 Release 收据保留在 `docs/upgrade/`，不与 1.2.0 混用。
 
+## 1.3.21 — 2026-10-06
+
+### 新增
+
+- 推理强度自动适配新模型：此前每个模型都必须在内置目录里逐个登记，否则设置里的推理强度显示“—(不支持/不发送参数)”；现在未登记的模型按厂商与模型家族自动匹配（覆盖 GPT-5 及以上与 o 系、Grok-4 及以上、Kimi K2 及以上、Gemini 2.5 及以上、DeepSeek V4 及以上、Qwen3 及以上、GLM-4.5/5 及以上、Claude 3 及以上），并沿用同类已验证模型的参数取值；确定不支持该参数的家族与网关型供应商保持不发送。
+
+### 修复
+
+- 修复生成小说架构或导入推导时结构化解码失败无法定位：之前只提示一句“结构化输出无法按合同解码”，没有出错位置；现在会给出错误码与具体路径（例如第几个角色的哪个字段）。同时，模型输出里出现多个 JSON 对象（推理模型常见）时会逐个按合同尝试并取可用的那个，而不再直接判为失败；未闭合的片段也不再让整次扫描失败。
+
+### 发布
+
+- 保持 Windows、macOS、Linux x64 同提交发布。Linux 文件为 inkweaver-linux-x64-1.3.21.AppImage、inkweaver-linux-x64-1.3.21.deb、inkweaver-linux-x64-1.3.21.rpm 及 SHA-256；运行资格覆盖 Ubuntu 22.04、Debian 13、Fedora 44，glibc 2.35 基线及 --appimage-extract-and-run 检查继续有效，包未签名。
+
+## 1.3.21 — 2026-10-06 (English)
+
+### Added
+
+- Reasoning effort now adapts to new models automatically: previously every model had to be registered in the built-in catalog one by one, and anything missing showed “—(unsupported / no parameters sent)” for reasoning effort in Settings. Unregistered models are now matched automatically by vendor and model family (covering GPT-5 and later plus the o series, Grok-4 and later, Kimi K2 and later, Gemini 2.5 and later, DeepSeek V4 and later, Qwen3 and later, GLM-4.5/5 and later, and Claude 3 and later) and reuse the parameter values of already-verified models in the same family, while families that certainly do not support the parameter and the gateway-style providers keep sending nothing.
+
+### Fixed
+
+- Fixed structured-decoding failures in novel-architecture generation and import inference being impossible to locate: the previous message was a single “structured output could not be decoded against the contract” with no position, and the decoder now reports an error code with a concrete path (for example which character's which field). When a model response contains several JSON objects (common with reasoning models), each is now tried against the contract and a decodable one is used instead of failing the whole run, and an unterminated fragment no longer fails the entire scan.
+
+### Release
+
+- Continues Windows, macOS and Linux x64 same-commit releases. Linux packages: inkweaver-linux-x64-1.3.21.AppImage, inkweaver-linux-x64-1.3.21.deb, inkweaver-linux-x64-1.3.21.rpm with SHA-256. Qualification covers Ubuntu 22.04, Debian 13, Fedora 44, the glibc 2.35 baseline and --appimage-extract-and-run. Linux packages are unsigned.
+
 ## 1.3.20 — 2026-10-04
 
 ### 修复
