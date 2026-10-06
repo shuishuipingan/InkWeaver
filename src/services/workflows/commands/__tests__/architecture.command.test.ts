@@ -6,6 +6,11 @@ import { useLocaleStore } from '../../../../stores/locale-store'
 import type { StepCallbacks, WorkflowContext } from '../../../../stores/workflow-store'
 import type { CharacterRosterEntry, CharacterRosterSnapshot } from '../../../../shared/character-roster'
 import {
+  DRAFT_CONTEXT_INPUT_LIMIT,
+  UNKNOWN_CONTEXT_INPUT_LIMIT,
+  resolveAdaptivePromptBudget,
+} from '../../../../shared/adaptive-prompt-budget'
+import {
   GenerateCharactersCommand as RuntimeGenerateCharactersCommand,
   GenerateConfigCommand as RuntimeGenerateConfigCommand,
   GenerateCoreSeedCommand,
@@ -608,7 +613,9 @@ describe('GenerateCharactersCommand structured roster seam', () => {
         genre: 'fantasy',
         totalChapters: 20,
         wordsPerChapter: 2500,
-        globalGuidance: 'G'.repeat(24_001),
+        // 预检上限已由 adaptive 接管：未知上下文时走 16_384 tokens 的保守值（≈32,702 字节），
+        // 旧的 24_000 字节硬上限不复存在，故夹具必须给出真正超限的输入。
+        globalGuidance: 'G'.repeat(40_001),
         referenceWorks: '',
       } as never,
     })
@@ -624,14 +631,14 @@ describe('GenerateCharactersCommand structured roster seam', () => {
       name: 'PromptBudgetExceededError',
       code: 'PROMPT_BUDGET_EXHAUSTED',
       report: {
-        limitUtf8Bytes: 24_000,
+        limitUtf8Bytes: 32_702,
         reservedOutputTokens: 8192,
         modelId: 'model-1',
         errorCode: 'PROMPT_BUDGET_EXHAUSTED',
         sections: expect.arrayContaining([
           {
             sectionName: 'global-guidance',
-            utf8Bytes: 24_020,
+            utf8Bytes: 40_020,
           },
         ]),
       },
@@ -779,7 +786,21 @@ describe('GenerateCharactersCommand structured roster seam', () => {
     expect(generateStream).toHaveBeenCalledTimes(9)
     const manifestPrompt = manifestMessages?.map(message => message.content).join('\n') ?? ''
     expect(manifestPrompt).not.toMatch(/appearance|currentState|"?entries"?/u)
-    expect(new TextEncoder().encode(manifestPrompt).byteLength).toBeLessThanOrEqual(24_000)
+    // 口径改为自适应推导：本夹具未注入模型能力 → 未知上下文（16_384 tokens）保守上限；
+    // legacy 的 24_000 字节不再是契约（它只是无自适应策略时的回退值）。
+    expect(new TextEncoder().encode(manifestPrompt).byteLength).toBeLessThanOrEqual(
+      resolveAdaptivePromptBudget(
+        {
+          // 只为推导自适应上限；这两个字段不参与本断言。
+          limitUtf8Bytes: 0,
+          sections: [],
+          adaptive: { maxInputTokens: DRAFT_CONTEXT_INPUT_LIMIT, unknownInputTokens: UNKNOWN_CONTEXT_INPUT_LIMIT },
+        },
+        null,
+        0,
+        2,
+      ).limitUtf8Bytes,
+    )
     expect(observedPrefixes).toEqual([[], ...names.slice(1).map((_, index) => names.slice(0, index + 1))])
     const detailPrompt = generateStream.mock.calls[1]?.[0].find(message => message.role === 'user')?.content ?? ''
     expect(detailPrompt).toContain('background 不超过 500 字符')
@@ -1423,7 +1444,9 @@ describe('GenerateCharactersCommand structured roster seam', () => {
 
   it('fails the protected length replacement before an additional provider call when its complete prompt exceeds the product budget', async () => {
     vi.spyOn(console, 'info').mockImplementation(() => {})
-    const generateStream = createResponseStream(['{"slots":['], ['length'])
+    // 首轮提示词仍在保守上限内，但截断输出本身很大：续写请求会带上它，从而必然超限。
+    // 这样"在额外 provider 调用之前失败"的原始意图得以保留，而不依赖恰好卡在旧 24_000 边界上。
+    const generateStream = createResponseStream(['{"slots":[' + 'x'.repeat(20_000)], ['length'])
     useLLMStore.setState({ defaultModelId: 'model-1', generateStream })
     const invoke = vi.fn(async (channel: string) => {
       if (channel === 'prompt:load-global') return []
@@ -1472,7 +1495,7 @@ describe('GenerateCharactersCommand structured roster seam', () => {
       name: 'PromptBudgetExceededError',
       code: 'PROMPT_BUDGET_EXHAUSTED',
       report: {
-        limitUtf8Bytes: 24_000,
+        limitUtf8Bytes: 32_702,
         errorCode: 'PROMPT_BUDGET_EXHAUSTED',
         sections: expect.arrayContaining([
           { sectionName: 'global-guidance', utf8Bytes: 22_519 },

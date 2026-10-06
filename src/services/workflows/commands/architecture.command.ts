@@ -26,6 +26,10 @@ import {
 } from '../../../shared/character-roster'
 import { createStructuredBatchExecutor, type StructuredBatchContract } from '../structured-batch-executor'
 import { formatPromptBudgetCompactionNotice } from '../../generation/prompt-budget-failure'
+import {
+  DRAFT_CONTEXT_INPUT_LIMIT,
+  UNKNOWN_CONTEXT_INPUT_LIMIT,
+} from '../../../shared/adaptive-prompt-budget'
 
 // --- 基础工具库 ---
 
@@ -171,6 +175,13 @@ interface CharacterDetailOutput extends Omit<CharacterRosterEntry, 'relationship
 const MIN_CHARACTER_SLOTS = 3
 const MAX_CHARACTER_SLOTS = 8
 const CHARACTER_DETAIL_BATCH_SIZE = 1
+/**
+ * 角色结构化上下文的 **legacy 默认上限**（UTF-8 字节）。
+ *
+ * 它只在没有自适应策略时生效；真实上限由 resolveAdaptivePromptBudget 按模型的
+ * contextWindowTokens 与输出预留动态计算（见下面两处 promptBudget.adaptive），
+ * 不要把它当成硬约束——一份详尽的世界观设定很容易超过 24 KB，却远低于模型能力。
+ */
 const MAX_CHARACTER_STRUCTURED_CONTEXT_UTF8_BYTES = 24_000
 
 function promptUtf8Bytes(value: string): number {
@@ -735,6 +746,7 @@ export class GenerateCharactersCommand extends BaseWorkflowCommand<string> {
         reasoningStage: 'planning',
         promptBudget: {
           limitUtf8Bytes: MAX_CHARACTER_STRUCTURED_CONTEXT_UTF8_BYTES,
+          adaptive: { maxInputTokens: DRAFT_CONTEXT_INPUT_LIMIT, unknownInputTokens: UNKNOWN_CONTEXT_INPUT_LIMIT },
           sections: [
             {
               sectionName: 'system-instructions',
@@ -798,6 +810,7 @@ export class GenerateCharactersCommand extends BaseWorkflowCommand<string> {
           ],
           promptBudget: {
             limitUtf8Bytes: fixedDetailRequestBytes + MAX_CHARACTER_STRUCTURED_CONTEXT_UTF8_BYTES,
+            adaptive: { maxInputTokens: DRAFT_CONTEXT_INPUT_LIMIT, unknownInputTokens: UNKNOWN_CONTEXT_INPUT_LIMIT },
             sections: [
               {
                 sectionName: 'system-instructions',

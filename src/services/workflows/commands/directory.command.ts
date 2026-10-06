@@ -24,6 +24,10 @@ import {
 } from '../../../shared/blueprint-semantic-contract'
 import { buildMissingSuspenseHookRepairPlan } from '../blueprint-semantic-repair'
 import { stripThinkingTags } from '../workflow-utils'
+import {
+  DRAFT_CONTEXT_INPUT_LIMIT,
+  UNKNOWN_CONTEXT_INPUT_LIMIT,
+} from '../../../shared/adaptive-prompt-budget'
 import { requireWorkflowProjectSession, workflowUiText, workflowWritingLanguage } from '../workflow-project-session'
 import { promptLanguageText } from '../../prompt-language'
 import {
@@ -121,6 +125,14 @@ function directoryGenerationFailureSummary(
   )).join('; ')
 }
 
+/**
+ * 紧凑蓝图提示词的 **legacy 回退上限**（UTF-8 字节）。
+ *
+ * 只在没有自适应策略时生效；真实上限由 resolveAdaptivePromptBudget 按模型
+ * contextWindowTokens 与输出预留动态计算（见下方 promptBudget.adaptive）。
+ * sections 里的 architecture / previous-blueprints / global-guidance 都随篇幅增长，
+ * 16 KB（约 5,400 汉字）对多章目录并不够，不要把它当硬约束。
+ */
 const COMPACT_BLUEPRINT_PROMPT_MAX_UTF8_BYTES = 16_384
 const COMPACT_ARCHITECTURE_MAX_UTF8_BYTES = 4_800
 const COMPACT_SYSTEM_ROLE_MAX_UTF8_BYTES = 600
@@ -201,6 +213,7 @@ function buildCompactBlueprintTask(input: {
     ],
     promptBudget: {
       limitUtf8Bytes: COMPACT_BLUEPRINT_PROMPT_MAX_UTF8_BYTES,
+      adaptive: { maxInputTokens: DRAFT_CONTEXT_INPUT_LIMIT, unknownInputTokens: UNKNOWN_CONTEXT_INPUT_LIMIT },
       sections: [
         { sectionName: 'system-instructions', messageIndex: 0, finalText: systemRole },
         factSection('target-chapter', 'targetChapterNumber'),
