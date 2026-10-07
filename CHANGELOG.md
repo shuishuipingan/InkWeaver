@@ -2,6 +2,30 @@
 
 本文件按用户可见行为记录变更。桌面版本不发布 npm；DSH 插件沿用已发布的 `1.2.0` 包。`1.2.0` 已从同一源码 commit 完成工程验收、三平台资产回读和正式 Release；`1.1.0` 的历史 Release 收据保留在 `docs/upgrade/`，不与 1.2.0 混用。
 
+## 1.3.28 — 2026-10-07
+
+### 修复
+
+- 切换项目后不再看到上一个项目的内容。助手会话在切换项目时会先清空再恢复新项目的会话，快速连续切换也不会串（先返回的旧项目结果会被丢弃）；工作流任务历史按当前项目显示，并且在内存里按项目分别保留，切回原项目时它的历史仍然在；运行日志带上项目归属，只显示应用级日志与当前项目的日志，不再把别的项目混进面板；“项目切换时重置助手状态”改挂在统一的项目打开/关闭入口，与角色、草稿的处理一致，不再依赖某个面板恰好挂载。
+- 顺带修掉三处库层问题：“清空定稿正文”过去没有清干净——定稿全文快照另存在一处、不在清理范围内，现已纳入，并补上另外两张漏清的表；修掉一个会让“从未用过摘要缓存的项目”整个清空操作失败的问题（那张表尚未创建却被直接清理）；同一个项目路径“删掉再重建”时不再跳过知识库迁移检查。
+- 清空范围也讲清楚了：清空对话框现在明示“助手会话记录不受影响”、逐项列出会清掉什么，并指路到助手面板的历史里删除会话；判据写进代码作为唯一事实源——清空生成数据清的是稿子，不是规划与决定。
+
+### 发布
+
+- 保持 Windows、macOS、Linux x64 同提交发布。Linux 文件为 inkweaver-linux-x64-1.3.28.AppImage、inkweaver-linux-x64-1.3.28.deb、inkweaver-linux-x64-1.3.28.rpm 及 SHA-256；运行资格覆盖 Ubuntu 22.04、Debian 13、Fedora 44，glibc 2.35 基线及 --appimage-extract-and-run 检查继续有效，包未签名。
+
+## 1.3.28 — 2026-10-07 (English)
+
+### Fixed
+
+- Switching projects no longer shows the previous project's content. Assistant conversations are cleared and then restored for the newly opened project, so rapid consecutive switches do not mix them up (a stale result from the earlier project is discarded); the workflow task history is shown for the current project and now kept per project in memory, so switching back still finds its history; runtime logs carry project ownership and only show application-level entries plus the current project's, instead of mixing another project into the panel; and “reset assistant state when the project changes” now hangs off the shared project open/close entry point, the same way characters and drafts do, rather than depending on a particular panel happening to mount.
+- Three further database-level problems found in the same sweep: “clear finalized prose” did not actually clear everything — the finalized full-text snapshot is stored separately and was not in scope, and it is now included along with two other tables that were being missed; a project that had never used the summary cache could fail the entire clear operation because that table did not exist yet but was cleared directly; and deleting then recreating the same project path no longer skips the knowledge-base migration check.
+- The scope of clearing is now stated outright: the dialog says that assistant conversation records are not affected, lists what will be cleared, and points to the assistant panel's history for deleting conversations. The rule lives in code as the single source of truth — clearing generated data clears the manuscript, not the plans and decisions.
+
+### Release
+
+- Continues Windows, macOS and Linux x64 same-commit releases. Linux packages: inkweaver-linux-x64-1.3.28.AppImage, inkweaver-linux-x64-1.3.28.deb, inkweaver-linux-x64-1.3.28.rpm with SHA-256. Qualification covers Ubuntu 22.04, Debian 13, Fedora 44, the glibc 2.35 baseline and --appimage-extract-and-run. Linux packages are unsigned.
+
 ## 1.3.27 — 2026-10-07
 
 ### 新增
