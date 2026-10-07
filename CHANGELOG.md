@@ -2,6 +2,30 @@
 
 本文件按用户可见行为记录变更。桌面版本不发布 npm；DSH 插件沿用已发布的 `1.2.0` 包。`1.2.0` 已从同一源码 commit 完成工程验收、三平台资产回读和正式 Release；`1.1.0` 的历史 Release 收据保留在 `docs/upgrade/`，不与 1.2.0 混用。
 
+## 1.3.26 — 2026-10-07
+
+### 新增
+
+- 助手现在可以批量创建角色档案。此前助手只能修改已有角色、无法新增，“一次性给出一批角色设定让助手建档”这件事一直做不成；现在可以一次提交一批新角色（作者只给一句话的，其余字段按已有架构补全），确认卡片逐个列出将新增的角色与人数变化（当前 N 人 → 提交后 M 人），作者批准后再写入。
+- 三条边界：不会臆造角色的当前状态——位置、境界、身心状态、随身物品一律留空待作者填写，而不是编造；与现有角色的姓名或别名冲突时会指名报错并且不提交；角色名单在提案期间被其他人改动时如实报出版本冲突并请作者重新发起，不自动重试覆盖。
+- 角色与势力分开处理：新增「批量建档」技能，并明确规定势力、组织、阵营这类内容写进架构的世界观正文，不塞进角色表；一批里同时有角色和势力时会分开提交。内置技能由 11 个增至 12 个。
+
+### 发布
+
+- 保持 Windows、macOS、Linux x64 同提交发布。Linux 文件为 inkweaver-linux-x64-1.3.26.AppImage、inkweaver-linux-x64-1.3.26.deb、inkweaver-linux-x64-1.3.26.rpm 及 SHA-256；运行资格覆盖 Ubuntu 22.04、Debian 13、Fedora 44，glibc 2.35 基线及 --appimage-extract-and-run 检查继续有效，包未签名。
+
+## 1.3.26 — 2026-10-07 (English)
+
+### Added
+
+- The assistant can now create character profiles in bulk. Previously it could only modify existing characters and had no way to add new ones, so handing it a batch of character concepts and asking it to file them never worked; it can now submit a batch of new characters at once (for any character described in a single sentence, the remaining fields are filled from your existing architecture) and the confirmation card lists every character to be added together with the roster change (currently N characters → M after submitting), which is written only after you approve.
+- Three boundaries: it never invents a character's current state — location, cultivation level, physical and mental condition, and carried items are left blank for you to fill rather than fabricated; a name that collides with an existing character's name or alias is reported by name and nothing is submitted; and if the roster is changed by someone else while the proposal is pending, the conflict is reported honestly and you are asked to start again rather than the change being retried over the top of the newer roster.
+- Characters and factions stay separate: a new “bulk profile” skill states that factions, organizations, and camps belong in the architecture's worldbuilding prose and must not be pushed into the character roster, and a batch containing both is submitted in separate parts. Built-in skills grow from 11 to 12.
+
+### Release
+
+- Continues Windows, macOS and Linux x64 same-commit releases. Linux packages: inkweaver-linux-x64-1.3.26.AppImage, inkweaver-linux-x64-1.3.26.deb, inkweaver-linux-x64-1.3.26.rpm with SHA-256. Qualification covers Ubuntu 22.04, Debian 13, Fedora 44, the glibc 2.35 baseline and --appimage-extract-and-run. Linux packages are unsigned.
+
 ## 1.3.25 — 2026-10-07
 
 ### 新增
