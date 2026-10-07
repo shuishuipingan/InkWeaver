@@ -61,11 +61,13 @@ afterEach(async () => {
   await act(async () => root.unmount())
   container.remove()
   useProjectStore.setState({ currentProject: null })
+  useAgentStore.getState().clearPendingConfirmations()
 })
 
 describe('Agent domain proposal confirmation', () => {
   it('shows an English field diff instead of raw tool JSON and approves the existing gate', async () => {
     useLocaleStore.setState({ locale: 'en-US', initialized: true })
+    useAgentStore.getState().beginToolConfirmation('config-1', () => {})
     await act(async () => root.render(<ConfirmCard toolCall={{
       id: 'config-1', toolName: 'propose_novel_config', arguments: { changes: { genre: 'Science fiction' } },
       status: 'waiting_confirm', source: 'builtin', projectSession: session,
@@ -87,6 +89,7 @@ describe('Agent domain proposal confirmation', () => {
       chapterNumber: 2, title: '旧标题', role: '发展', purpose: '推进调查', keyEvents: '找到线索',
       characters: ['林舟'], suspenseHook: '谁在说谎', userGuidance: '', notes: '', notesUpdatedAt: '',
     })
+    useAgentStore.getState().beginToolConfirmation('blueprint-1', () => {})
     await act(async () => root.render(<ConfirmCard toolCall={{
       id: 'blueprint-1', toolName: 'propose_chapter_blueprint',
       arguments: { chapter_number: 2, changes: { title: '新标题' } },
@@ -105,6 +108,7 @@ describe('Agent domain proposal confirmation', () => {
   it('disables approval after a project switch', async () => {
     useLocaleStore.setState({ locale: 'en-US', initialized: true })
     useProjectStore.setState({ currentProject: { ...project, id: 'B', sessionLease: 'lease-B', path: 'C:\\novels\\B' } as never })
+    useAgentStore.getState().beginToolConfirmation('stale-1', () => {})
     await act(async () => root.render(<ConfirmCard toolCall={{
       id: 'stale-1', toolName: 'propose_novel_config', arguments: { changes: { genre: 'Mystery' } },
       status: 'waiting_confirm', source: 'builtin', projectSession: session,
@@ -116,6 +120,7 @@ describe('Agent domain proposal confirmation', () => {
 
   it('cancels the whole Agent task without executing a domain write', async () => {
     useLocaleStore.setState({ locale: 'en-US', initialized: true })
+    useAgentStore.getState().beginToolConfirmation('cancel-1', () => {})
     await act(async () => root.render(<ConfirmCard toolCall={{
       id: 'cancel-1', toolName: 'propose_novel_config', arguments: { changes: { genre: 'Mystery' } },
       status: 'waiting_confirm', source: 'builtin', projectSession: session,
@@ -155,6 +160,7 @@ describe('Agent domain proposal confirmation', () => {
       throw new Error(`unexpected channel ${channel}`)
     })
 
+    useAgentStore.getState().beginToolConfirmation('impact-1', () => {})
     await act(async () => root.render(<ConfirmCard toolCall={{
       id: 'impact-1', toolName: 'propose_novel_config',
       arguments: {
@@ -201,6 +207,7 @@ describe('Agent domain proposal confirmation', () => {
       throw new Error(`unexpected channel ${channel}`)
     })
 
+    useAgentStore.getState().beginToolConfirmation('impact-cancel', () => {})
     await act(async () => root.render(<ConfirmCard toolCall={{
       id: 'impact-cancel', toolName: 'propose_novel_config',
       arguments: {

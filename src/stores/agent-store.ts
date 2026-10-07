@@ -103,15 +103,47 @@ interface AgentState {
   sendMessage: (content: string) => Promise<void>
   /** 取消当前生成 */
   cancelGeneration: () => Promise<void>
-  /** 响应 Tool 确认（用于 ConfirmCard） */
+  /** 响应 Tool 确认（用于 ConfirmCard）；返回 false 表示该确认已失效（没有等待中的 Promise）。 */
   resolveToolConfirmation: (
     toolCallId: string,
     confirmed: boolean,
     options?: { blueprintProposals?: readonly ConfigImpactBlueprintProposal[] },
+  ) => boolean
+  /**
+   * 等待确认的集合发生变化的计数。pendingConfirmations 是模块级 Map（不在 state 里），
+   * 组件订阅这个计数再调用 hasPendingConfirmation，才能拿到「这张卡是否还有效」的实时答案。
+   */
+  pendingConfirmationRevision: number
+  /** Agent 运行时登记一次等待用户确认的工具调用。 */
+  beginToolConfirmation: (
+    toolCallId: string,
+    resolve: (decision: boolean | ToolConfirmationDecision) => void,
   ) => void
+  /** 该 toolCallId 是否仍在等待确认（读的就是那份 pendingConfirmations）。 */
+  hasPendingConfirmation: (toolCallId: string) => boolean
+  /** 按拒绝结算并清空所有等待中的确认（取消、超时、测试清理）。 */
+  clearPendingConfirmations: () => void
+  /**
+   * 把一次「改动计划校验失败」作为新的用户回合回注给助手，让模型修正后重新提交。
+   * 先按拒绝结算悬挂的确认；助手仍在忙时返回 false（未发送）。
+   */
+  requestPlanRevision: (toolCallId: string, feedback: string) => Promise<boolean>
 }
 
 // ===== 工具函数 =====
+
+/** 「请助手修正此计划」等待当前回合收尾的上限；超时则不发新回合，让作者稍后重试。 */
+const AGENT_PLAN_REVISION_IDLE_TIMEOUT_MS = 45_000
+
+/** 轮询等待 Agent 回到空闲；读取函数由调用方注入，避免引用尚未定义的 store。 */
+async function waitForAgentIdle(isGenerating: () => boolean, timeoutMs: number): Promise<boolean> {
+  const startedAt = Date.now()
+  while (isGenerating()) {
+    if (Date.now() - startedAt >= timeoutMs) return false
+    await new Promise(resolve => setTimeout(resolve, 100))
+  }
+  return true
+}
 
 /** 生成唯一 ID */
 const genId = () => crypto.randomUUID()
@@ -192,6 +224,7 @@ export const useAgentStore = create<AgentState>()((set, get) => ({
   generating: false,
   activeRequestId: null,
   toolsInitialized: false,
+  pendingConfirmationRevision: 0,
 
   getActiveConversation: () => {
     const { conversations, activeConversationId } = get()
@@ -456,10 +489,7 @@ export const useAgentStore = create<AgentState>()((set, get) => ({
       clearActiveDeadlineTimer()
       activeDeadlineTimer = setTimeout(() => {
         abortController.abort()
-        for (const [, pending] of pendingConfirmations) {
-          pending.resolve(false)
-        }
-        pendingConfirmations.clear()
+        get().clearPendingConfirmations()
         if (activeAbortController === abortController) activeAbortController = null
         updateAssistantMsg(m => ({
           ...m,
@@ -548,7 +578,8 @@ export const useAgentStore = create<AgentState>()((set, get) => ({
 
             // 返回 Promise，等待用户通过 resolveToolConfirmation 响应
             return new Promise<boolean | ToolConfirmationDecision>((resolve) => {
-              pendingConfirmations.set(toolCall.id, { resolve })
+              // 通过 store 方法登记：确认集合一变化，失效的卡片就能立刻看到禁用原因。
+              get().beginToolConfirmation(toolCall.id, resolve)
             })
           },
           onDone: (fullText, toolCalls, artifacts) => {
@@ -653,11 +684,8 @@ export const useAgentStore = create<AgentState>()((set, get) => ({
       activeAbortController = null
     }
 
-    // P1-8: 清理所有等待确认的 Promise，防止内存泄漏
-    for (const [, pending] of pendingConfirmations) {
-      pending.resolve(false) // 取消时默认拒绝
-    }
-    pendingConfirmations.clear()
+    // P1-8: 清理所有等待确认的 Promise（取消时默认拒绝），并让失效卡片立即进入过期态
+    get().clearPendingConfirmations()
 
     // 找到正在 streaming 的消息，关闭其状态
     set(state => ({
@@ -674,11 +702,40 @@ export const useAgentStore = create<AgentState>()((set, get) => ({
 
   resolveToolConfirmation: (toolCallId, confirmed, options) => {
     const pending = pendingConfirmations.get(toolCallId)
-    if (pending) {
-      pending.resolve(confirmed && options?.blueprintProposals?.length
-        ? { confirmed: true, blueprintProposals: options.blueprintProposals }
-        : confirmed)
-      pendingConfirmations.delete(toolCallId)
+    // 找不到等待中的 Promise 说明这张卡已经失效（生成超时/被取消/已结算）；
+    // 返回 false 让调用方可以据此给出反馈，而不是静默吞掉点击。
+    if (!pending) return false
+    pending.resolve(confirmed && options?.blueprintProposals?.length
+      ? { confirmed: true, blueprintProposals: options.blueprintProposals }
+      : confirmed)
+    pendingConfirmations.delete(toolCallId)
+    set(state => ({ pendingConfirmationRevision: state.pendingConfirmationRevision + 1 }))
+    return true
+  },
+
+  beginToolConfirmation: (toolCallId, resolve) => {
+    pendingConfirmations.set(toolCallId, { resolve })
+    set(state => ({ pendingConfirmationRevision: state.pendingConfirmationRevision + 1 }))
+  },
+
+  hasPendingConfirmation: (toolCallId) => pendingConfirmations.has(toolCallId),
+
+  clearPendingConfirmations: () => {
+    for (const [, pending] of pendingConfirmations) {
+      pending.resolve(false)
     }
+    pendingConfirmations.clear()
+    set(state => ({ pendingConfirmationRevision: state.pendingConfirmationRevision + 1 }))
+  },
+
+  requestPlanRevision: async (toolCallId, feedback) => {
+    // 悬挂的确认先按「拒绝」结算：这次修正是一个新的助手回合，不能留着永远不落的 Promise。
+    get().resolveToolConfirmation(toolCallId, false)
+    // 拒绝会让 ReAct 循环继续；等它回到空闲再发送，避免与正在进行的循环抢同一会话。
+    const idle = await waitForAgentIdle(() => get().generating, AGENT_PLAN_REVISION_IDLE_TIMEOUT_MS)
+    if (!idle) return false
+    // 不 await 整个回合：生成进度交给既有的流式状态驱动 UI。
+    void get().sendMessage(feedback)
+    return true
   },
 }))

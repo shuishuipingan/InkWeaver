@@ -23,6 +23,12 @@ import { readPlanningMaterialsTool } from './read-planning-materials.tool'
 import { analyzeProseQualityTool } from './analyze-prose-quality.tool'
 import { analyzeChangeImpactTool } from './analyze-change-impact.tool'
 import { proposeChangePlanTool } from './propose-change-plan.tool'
+import { readReviewsTool } from './read-reviews.tool'
+import { readNarrativeThreadsTool } from './read-narrative-threads.tool'
+import { readChapterHandoffTool } from './read-chapter-handoff.tool'
+import { readKnowledgeEventsTool } from './read-knowledge-events.tool'
+import { readStoryContinuityTool } from './read-story-continuity.tool'
+import { readRevisionProposalsTool } from './read-revision-proposals.tool'
 
 /** 所有内置 Tool（供外部引用） */
 export const builtinTools = [
@@ -38,6 +44,13 @@ export const builtinTools = [
   readPlanningMaterialsTool,
   analyzeProseQualityTool,
   analyzeChangeImpactTool,
+  // 创作状态只读 Tool（审稿 / 线索 / 交接 / 知情边界 / 连续性 / 修订）
+  readReviewsTool,
+  readNarrativeThreadsTool,
+  readChapterHandoffTool,
+  readKnowledgeEventsTool,
+  readStoryContinuityTool,
+  readRevisionProposalsTool,
   // 行动 Tool（需确认）
   writeFileTool,
   openEditorTool,
