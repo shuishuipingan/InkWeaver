@@ -8,7 +8,7 @@ import {
     normalizeCharacterRole,
     type CharacterRole,
 } from '../../src/shared/character-role'
-import type { CharacterStateProvenance } from '../../src/shared/character-roster'
+import type { CharacterFactionEdge, CharacterStateProvenance } from '../../src/shared/character-roster'
 import { rewriteRelationshipsAfterRename } from '../../src/shared/character-rename-references'
 
 /** 角色卡动态状态 */
@@ -35,6 +35,8 @@ export interface CharacterData {
     abilities: string
     motivation: string
     relationships: string
+    /** 角色对势力的立场；缺省表示没有可依据的势力归属。 */
+    factionEdges?: CharacterFactionEdge[]
     arc: string
     notes: string
     currentState?: CharacterStateData
@@ -59,6 +61,26 @@ function rowToData(db: NonNullable<ReturnType<typeof getProjectDb>>, row: Record
         relationships: (row.relationships as string) || '',
         arc: (row.arc as string) || '',
         notes: (row.notes as string) || '',
+    }
+
+    // 势力立场：NULL/空 → 不设字段；非法 JSON（旧数据或手改库）视为无，
+    // 读取路径不能因为一列坏数据崩掉。
+    const factionEdgesJson = row.faction_edges
+    if (typeof factionEdgesJson === 'string' && factionEdgesJson.trim()) {
+        try {
+            const parsed: unknown = JSON.parse(factionEdgesJson)
+            if (Array.isArray(parsed)) {
+                const edges = parsed.filter((edge): edge is CharacterFactionEdge => (
+                    !!edge
+                    && typeof edge === 'object'
+                    && typeof (edge as { faction?: unknown }).faction === 'string'
+                    && typeof (edge as { stance?: unknown }).stance === 'string'
+                ))
+                if (edges.length > 0) data.factionEdges = edges
+            }
+        } catch {
+            // 视为无势力立场
+        }
     }
 
     // currentState 存在与否由列是否为 NULL 决定（chapter 0 为合法状态）
@@ -170,10 +192,10 @@ export class CharacterRepository {
         db.prepare(`
       INSERT INTO characters (
         name, role, gender, age, appearance, personality, background,
-        abilities, motivation, relationships, arc, notes,
+        abilities, motivation, relationships, faction_edges, arc, notes,
         cs_location, cs_power_level, cs_physical_state, cs_mental_state,
         cs_key_items, cs_recent_events, cs_updated_at_chapter
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(name) DO UPDATE SET
         role = excluded.role,
         gender = excluded.gender,
@@ -184,6 +206,7 @@ export class CharacterRepository {
         abilities = excluded.abilities,
         motivation = excluded.motivation,
         relationships = excluded.relationships,
+        faction_edges = excluded.faction_edges,
         arc = excluded.arc,
         notes = excluded.notes,
         cs_location = excluded.cs_location,
@@ -205,6 +228,10 @@ export class CharacterRepository {
             data.abilities,
             data.motivation,
             data.relationships,
+            // entry 级字段没有容器就没法往返，这里永远是整列覆盖（空数组写成 NULL）。
+            data.factionEdges && data.factionEdges.length > 0
+                ? JSON.stringify(data.factionEdges)
+                : null,
             data.arc,
             data.notes,
             cs?.location ?? '',

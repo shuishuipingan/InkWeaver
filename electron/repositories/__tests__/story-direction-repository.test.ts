@@ -116,7 +116,8 @@ describe('StoryDirectionRepository', () => {
       motivation TEXT DEFAULT '', relationships TEXT DEFAULT '', arc TEXT DEFAULT '', notes TEXT DEFAULT '',
       cs_location TEXT DEFAULT '', cs_power_level TEXT DEFAULT '', cs_physical_state TEXT DEFAULT '',
       cs_mental_state TEXT DEFAULT '', cs_key_items TEXT DEFAULT '', cs_recent_events TEXT DEFAULT '',
-      cs_updated_at_chapter INTEGER DEFAULT NULL, created_at TEXT DEFAULT (datetime('now')),
+      cs_updated_at_chapter INTEGER DEFAULT NULL,
+      faction_edges TEXT DEFAULT NULL, created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now'))
     )`)
     ensureCharacterRosterSchema(db)
@@ -146,7 +147,8 @@ describe('StoryDirectionRepository', () => {
       motivation TEXT DEFAULT '', relationships TEXT DEFAULT '', arc TEXT DEFAULT '', notes TEXT DEFAULT '',
       cs_location TEXT DEFAULT '', cs_power_level TEXT DEFAULT '', cs_physical_state TEXT DEFAULT '',
       cs_mental_state TEXT DEFAULT '', cs_key_items TEXT DEFAULT '', cs_recent_events TEXT DEFAULT '',
-      cs_updated_at_chapter INTEGER DEFAULT NULL, created_at TEXT DEFAULT (datetime('now')),
+      cs_updated_at_chapter INTEGER DEFAULT NULL,
+      faction_edges TEXT DEFAULT NULL, created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now'))
     )`)
     ensureCharacterRosterSchema(db)
@@ -232,7 +234,8 @@ describe('StoryDirectionRepository', () => {
       motivation TEXT DEFAULT '', relationships TEXT DEFAULT '', arc TEXT DEFAULT '', notes TEXT DEFAULT '',
       cs_location TEXT DEFAULT '', cs_power_level TEXT DEFAULT '', cs_physical_state TEXT DEFAULT '',
       cs_mental_state TEXT DEFAULT '', cs_key_items TEXT DEFAULT '', cs_recent_events TEXT DEFAULT '',
-      cs_updated_at_chapter INTEGER DEFAULT NULL, created_at TEXT DEFAULT (datetime('now')),
+      cs_updated_at_chapter INTEGER DEFAULT NULL,
+      faction_edges TEXT DEFAULT NULL, created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now'))
     )`)
     ensureCharacterRosterSchema(db)

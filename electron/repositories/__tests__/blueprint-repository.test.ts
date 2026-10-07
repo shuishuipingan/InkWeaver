@@ -88,6 +88,7 @@ function createBlueprintDb(filename: string | Buffer = ':memory:'): BetterSqlite
       cs_location TEXT DEFAULT '', cs_power_level TEXT DEFAULT '', cs_physical_state TEXT DEFAULT '',
       cs_mental_state TEXT DEFAULT '', cs_key_items TEXT DEFAULT '', cs_recent_events TEXT DEFAULT '',
       cs_updated_at_chapter INTEGER DEFAULT NULL,
+      faction_edges TEXT DEFAULT NULL,
       created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now'))
     );
   `)

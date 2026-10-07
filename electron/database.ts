@@ -63,6 +63,25 @@ export function getCurrentProjectPath(): string | null {
   return currentProjectPath
 }
 
+/**
+ * characters.faction_edges 的懒迁移。
+ *
+ * 角色对势力的立场是 entry 级字段：relationships 有列当容器，它没有，所以必须自己占一列，
+ * 否则保存即丢。老库是用 CREATE TABLE IF NOT EXISTS 建的，**不会自动补列** —— 先探再补。
+ * 抽成导出函数是为了让"旧库打开后自动迁移"能被直接测试。
+ */
+export function ensureCharacterFactionEdgesColumn(db: BetterSqlite3.Database): void {
+  const table = db.prepare(
+    "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'characters'",
+  ).get()
+  if (!table) return
+  const columns = new Set(
+    (db.prepare('PRAGMA table_info(characters)').all() as Array<{ name: string }>).map(column => column.name),
+  )
+  if (columns.has('faction_edges')) return
+  db.exec('ALTER TABLE characters ADD COLUMN faction_edges TEXT DEFAULT NULL')
+}
+
 /** 创建完整表结构（9 张核心表 + 2 张沿用表） */
 function createTables(db: BetterSqlite3.Database, importSourceSecret?: Buffer) {
   db.exec(`
@@ -145,6 +164,7 @@ function createTables(db: BetterSqlite3.Database, importSourceSecret?: Buffer) {
       abilities TEXT DEFAULT '',                  -- 能力
       motivation TEXT DEFAULT '',                 -- 动机
       relationships TEXT DEFAULT '',              -- 关系链
+      faction_edges TEXT DEFAULT NULL,            -- 势力立场（JSON 数组；NULL/空 = 无）
       arc TEXT DEFAULT '',                        -- 弧光
       notes TEXT DEFAULT '',                      -- 备忘录
       cs_location TEXT DEFAULT '',                -- 当前位置
@@ -1030,6 +1050,8 @@ function createTables(db: BetterSqlite3.Database, importSourceSecret?: Buffer) {
   }
   addDeletionTextColumn('legacy_knowledge_authorization', 'not_required')
   addDeletionTextColumn('legacy_knowledge_authorized_at', '')
+
+  ensureCharacterFactionEdgesColumn(db)
 
   // 旧项目把作者配置字段映射到架构字段，导致重开漂移。新列保持独立事实：
   // 大纲和世界设定可从旧显示来源无损继承；主角档案绝不复制 characters_arch，

@@ -25,6 +25,7 @@ import {
   formatRelationshipsForEditor,
   relationshipStorageFromEditor,
 } from '../../shared/relationship-presentation'
+import { factionEdgesFromEditor, formatFactionEdgesForEditor } from './faction-edges-editor'
 import {
   captureProjectSession,
   isProjectSessionCurrent,
@@ -72,6 +73,9 @@ export default function CharacterEditor({ projectKey }: { projectKey: string }) 
     : null
   const relationshipEditorText = selectedCard
     ? formatRelationshipsForEditor(selectedCard.relationships, { locale })
+    : ''
+  const factionEditorText = selectedCard
+    ? formatFactionEdgesForEditor(selectedCard.factionEdges)
     : ''
 
   const openRelationshipEvidence = async (chapterNumber: number) => {
@@ -347,6 +351,22 @@ export default function CharacterEditor({ projectKey }: { projectKey: string }) 
                   placeholder={text(
                     '每行一位角色，例如：陆云飞：竞争对手（权力斗争）',
                     'One character per line, for example: Lu Yunfei: rival (power struggle)',
+                  )}
+                />
+              </div>
+              <div>
+                <Label>{text('势力立场', 'Faction stances')}</Label>
+                <Textarea
+                  value={factionEditorText}
+                  onChange={(e) => updateCurrentField(
+                    selectedCard.name,
+                    'factionEdges',
+                    factionEdgesFromEditor(e.target.value),
+                  )}
+                  rows={2}
+                  placeholder={text(
+                    '每行一条，例如：仙盟 — 名义归属，暗中怀疑（没有势力立场可留空）',
+                    'One per line, for example: Jade Sect — nominally aligned, privately doubtful (leave empty when none)',
                   )}
                 />
               </div>

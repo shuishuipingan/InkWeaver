@@ -98,6 +98,7 @@ function createRealProjectDb(): BetterSqlite3.Database {
       cs_key_items TEXT DEFAULT '',
       cs_recent_events TEXT DEFAULT '',
       cs_updated_at_chapter INTEGER DEFAULT NULL,
+      faction_edges TEXT DEFAULT NULL,
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now'))
     );

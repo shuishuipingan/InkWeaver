@@ -16,6 +16,10 @@ import {
   type CharacterRosterRelationship,
   type CharacterRosterRole,
   type CharacterRosterSnapshot,
+  type CharacterFactionEdge,
+  type CharacterRosterRelationshipFacet,
+  RELATIONSHIP_FACET_KINDS,
+  type RelationshipFacetKind,
 } from '../../src/shared/character-roster'
 import { getProjectDb } from '../database'
 import { CharacterRepository, type CharacterData } from './character-repository'
@@ -170,6 +174,25 @@ function isLegacyEvidenceIntent(intent: CharacterRosterCommitIntent): boolean {
   return intent === 'legacy_repair' || intent === 'legacy_cards_adoption'
 }
 
+/**
+ * 多面关系的入口规范化。
+ *
+ * 容错规则与展示层的 facetsFromValue 一致：kind 非法或 text 为空的项**丢弃**，
+ * 不因为个别坏项整批拒绝；结果为空时归一为"不设字段"（旧数据形状不变）。
+ * 三个读取点（本函数、展示层、客户端）必须保持同一口径。
+ */
+function normalizeRelationshipFacets(value: unknown): CharacterRosterRelationshipFacet[] | undefined {
+  if (!Array.isArray(value)) return undefined
+  const facets = value.flatMap((item) => {
+    if (!isObject(item)) return []
+    const kind = typeof item.kind === 'string' ? item.kind.trim().toLowerCase() : ''
+    if (!RELATIONSHIP_FACET_KINDS.includes(kind as RelationshipFacetKind)) return []
+    const text = typeof item.text === 'string' ? item.text.trim() : ''
+    return text ? [{ kind: kind as RelationshipFacetKind, text }] : []
+  })
+  return facets.length > 0 ? facets : undefined
+}
+
 function normalizeRelationships(value: unknown, ownerName: string): CharacterRosterRelationship[] {
   if (!Array.isArray(value)) throw new Error(`角色「${ownerName}」的关系必须是列表`)
   const seen = new Set<string>()
@@ -198,9 +221,13 @@ function normalizeRelationships(value: unknown, ownerName: string): CharacterRos
     }
     const evidence = relationship.evidence === undefined ? undefined : requiredText(relationship.evidence, '关系证据')
     if (evidence !== undefined && evidence.length > 300) throw new Error('关系证据过长')
+    // 多面关系是关系数组的一部分：展示层明确从持久化 JSON 解析它，
+    // 写入侧若把它排除在白名单外，保存即丢（与 factionEdges 同一模式）。
+    const facets = normalizeRelationshipFacets(relationship.facets)
     return {
       target,
       relation,
+      ...(facets === undefined ? {} : { facets }),
       ...(direction === undefined ? {} : { direction: direction as 'outgoing' | 'incoming' | 'mutual' }),
       ...(sourceChapter === undefined ? {} : { sourceChapter: sourceChapter as number }),
       ...(evidence === undefined ? {} : { evidence }),
@@ -208,6 +235,33 @@ function normalizeRelationships(value: unknown, ownerName: string): CharacterRos
   }).sort((left, right) => (
     compareText(left.target, right.target) || compareText(left.relation, right.relation)
   ))
+}
+
+/**
+ * 势力立场的入口规范化。
+ *
+ * 提交请求经过 normalizeEntry 的显式投射：任何没在这里列出的字段都会在**入口**被丢掉，
+ * 后面的转换函数再怎么写也拿不到它 —— 这正是 factionEdges 保存后消失的第一个丢点。
+ */
+function normalizeFactionEdges(value: unknown, ownerName: string): CharacterFactionEdge[] | undefined {
+  if (value === undefined) return undefined
+  if (!Array.isArray(value)) throw new Error(`角色「${ownerName}」的势力立场格式无效`)
+  if (value.length === 0) return undefined
+  return value.map((raw) => {
+    if (!isObject(raw)) throw new Error(`角色「${ownerName}」的势力立场条目格式无效`)
+    const faction = requiredText(raw.faction, `角色「${ownerName}」的势力名`)
+    if (!faction) throw new Error(`角色「${ownerName}」的势力名不能为空`)
+    const stance = requiredText(raw.stance, `角色「${ownerName}」的势力立场`)
+    if (!stance) throw new Error(`角色「${ownerName}」的势力立场不能为空`)
+    const text = raw.text === undefined || raw.text === null
+      ? undefined
+      : requiredText(raw.text, `角色「${ownerName}」的势力立场依据`)
+    return {
+      faction,
+      stance,
+      ...(text?.trim() ? { text: text.trim() } : {}),
+    }
+  })
 }
 
 function normalizeEntry(
@@ -237,6 +291,7 @@ function normalizeEntry(
   const legacyRelationshipNotes = allowLegacyRelationshipNotes && typeof value.legacyRelationshipNotes === 'string'
     ? value.legacyRelationshipNotes.trim()
     : undefined
+  const factionEdges = normalizeFactionEdges(value.factionEdges, name)
   return {
     ...(characterId ? { characterId } : {}),
     name,
@@ -250,6 +305,7 @@ function normalizeEntry(
     abilities: requiredText(value.abilities, `角色「${name}」的能力`),
     motivation: requiredText(value.motivation, `角色「${name}」的动机`),
     relationships: normalizeRelationships(value.relationships, name),
+    ...(factionEdges?.length ? { factionEdges } : {}),
     arc: requiredText(value.arc, `角色「${name}」的弧光`),
     notes: requiredText(value.notes, `角色「${name}」的备注`),
     currentState: normalizeState(value.currentState),
@@ -337,6 +393,10 @@ function normalizeRequest(value: unknown): CharacterRosterCommitRequest {
   }
 }
 
+function relationshipFacetSortKey(relationship: CharacterRosterRelationship): string {
+  return (relationship.facets ?? []).map(facet => `${facet.kind}\u0000${facet.text}`).join('\u0001')
+}
+
 function canonicalEntries(entries: CharacterRosterEntry[]): CharacterRosterEntry[] {
   return [...entries]
     .map(entry => ({
@@ -351,9 +411,38 @@ function canonicalEntries(entries: CharacterRosterEntry[]): CharacterRosterEntry
       background: entry.background,
       abilities: entry.abilities,
       motivation: entry.motivation,
-      relationships: [...entry.relationships].sort((left, right) => (
-        compareText(left.target, right.target) || compareText(left.relation, right.relation)
-      )),
+      relationships: [...entry.relationships]
+        .map(relationship => (
+          relationship.facets?.length
+            ? {
+                ...relationship,
+                // facets 自身也排序，避免同一组维度因顺序不同而改变哈希
+                facets: [...relationship.facets].sort((left, right) => (
+                  compareText(left.kind, right.kind) || compareText(left.text, right.text)
+                )),
+              }
+            : relationship
+        ))
+        .sort((left, right) => (
+          compareText(left.target, right.target)
+          || compareText(left.relation, right.relation)
+          // 同 target+relation 时按 facets 连接串稳定排序，避免顺序抖动影响哈希
+          || compareText(relationshipFacetSortKey(left), relationshipFacetSortKey(right))
+        )),
+      // 势力立场必须进 canonical 形状：它参与 payloadHash 与 factHash，
+      // 不含它就会出现"两次 commit 一次带、一次不带，哈希却相同" →
+      // 幂等回放把势力立场静默抹掉（factionEdges 的第二个丢失入口）。
+      ...(entry.factionEdges?.length
+        ? {
+            factionEdges: [...entry.factionEdges]
+              .map(edge => ({
+                faction: edge.faction,
+                stance: edge.stance,
+                ...(edge.text?.trim() ? { text: edge.text } : {}),
+              }))
+              .sort((left, right) => compareText(left.faction, right.faction)),
+          }
+        : {}),
       arc: entry.arc,
       notes: entry.notes,
       ...(entry.currentState ? { currentState: entry.currentState } : {}),
@@ -467,6 +556,8 @@ function entryFromCharacter(db: BetterSqlite3.Database, character: CharacterData
     relationships: [...relationships].sort((left, right) => (
       compareText(left.target, right.target) || compareText(left.relation, right.relation)
     )),
+    // 从 characters.faction_edges 列还原；库内已按 faction 规范化，读取不再重排。
+    ...(character.factionEdges?.length ? { factionEdges: character.factionEdges } : {}),
     arc: character.arc,
     notes: character.notes,
     ...(currentState ? { currentState } : {}),
@@ -540,6 +631,8 @@ function characterFromEntry(entry: CharacterRosterEntry): CharacterData {
     relationships: entry.legacyRelationshipNotes?.trim()
       ? entry.legacyRelationshipNotes
       : JSON.stringify(entry.relationships),
+    // 势力立场是新增字段、无旧语义冲突，直接透传（不需要 legacyRelationshipNotes 那种 intent 保护）。
+    ...(entry.factionEdges?.length ? { factionEdges: entry.factionEdges } : {}),
     arc: entry.arc,
     notes: entry.notes,
     currentState: entry.currentState,
@@ -622,6 +715,15 @@ function mergeExistingEntryManualWins(
   merged.relationships = existing.legacyRelationshipNotes?.trim() || existing.relationships.length > 0
     ? existing.relationships
     : generated.relationships
+  // 势力立场与关系同属"事实列表"：作者已有的立场优先保留，只在旧值为空时接受本轮生成。
+  const mergedFactionEdges = existing.factionEdges?.length
+    ? existing.factionEdges
+    : generated.factionEdges
+  if (mergedFactionEdges?.length) {
+    merged.factionEdges = mergedFactionEdges
+  } else {
+    delete merged.factionEdges
+  }
   merged.currentState = mergeCurrentStateManualWins(existing.currentState, generated.currentState)
   return merged
 }
