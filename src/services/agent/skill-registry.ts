@@ -748,6 +748,36 @@ function registerBuiltinSkills(registry: SkillRegistryImpl): void {
 - 正文里找不到佐证时写「未在正文中找到佐证」，并列出检索过的关键词，不要脑补。
 - 统计口径要写清：本次覆盖的章节范围、检索了多少个关键词、有多少条线索因证据不足无法判定。`,
     },
+    {
+      metadata: {
+        name: 'cast-setup',
+        displayName: '批量建档',
+        description: '作者一次给出多名角色或势力设定时，把角色分流到角色表（新增提案）、把势力写进世界观正文，提交前先说明分流结果。',
+        whenToUse: '作者一次给出多名角色或势力的设定、要求批量建立或补全时',
+        allowedTools: ['read_architecture', 'read_characters', 'read_project_state', 'propose_new_characters', 'propose_change_plan', 'analyze_change_impact', 'read_narrative_threads'],
+        argumentHint: '角色或势力的设定清单',
+        stages: ['planning'],
+      },
+      content: `# 批量建档
+
+作者一次给一批设定时，先分清哪些是**角色**（进角色表）、哪些是**势力 / 组织 / 阵营**（进世界观正文），再动手。
+
+## 工作流
+1. 用 read_architecture 与 read_project_state 读现有世界设定与写作风格，用 read_characters 读现有角色名单与别名，避免与既有设定冲突或重复建档。
+2. 逐条分流，并在动手前把分流结果念给作者：
+   - **角色** → propose_new_characters（新增角色，每项至少 name 与 role）
+   - **势力 / 组织 / 阵营** → propose_change_plan 的 architecture 条目（写入世界观正文）。不要把它们塞进角色表：角色卡只有「当前位置 / 阵营」一个字段，装不下组织设定。
+3. 作者只给了一句话的，按已有架构与人设补全其余档案字段（外貌、性格、背景、能力、动机、关系、角色弧），但不得编造与既有设定冲突的事实；拿不准的字段留空，不要瞎填。
+4. 用 analyze_change_impact 评估这次建档会牵动哪些既有内容（例如新势力与已定稿事实的关系）；必要时用 read_narrative_threads 看新角色是否落在既有线索上。
+5. 提交：角色走 propose_new_characters（一次最多 12 名，超出分批）；势力与世界观调整走 propose_change_plan。两者都需要作者在确认卡片批准后才写入。
+6. 提交后如实汇报：新增了几名角色、世界观补了哪几段、哪些字段留空待补、哪些名字因重名被拒绝。
+
+## 判断原则
+- 重名要提示：与现有角色名或别名相同时不要静默覆盖，改名后重新提交（工具会指名冲突的那一个）。
+- 本技能只做**新增与补全**：不要顺手改动既有角色或架构的其它字段；要改已有实体请明确改用联动修改。
+- 势力若作者要求「能单独查阅」，建议把它作为规划资料提出，不要擅自新建实体类型。
+- 一批里既有角色又有势力时分开提交：角色走角色通道、势力走架构通道，不要混在一个计划里。`,
+    },
   ]
 
   for (const { metadata, content } of builtins) {

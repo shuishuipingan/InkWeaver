@@ -5,7 +5,7 @@ import { toolRegistry } from '../tool-registry'
 import { builtinTools } from '../tools'
 import { getAllSlashCommands } from '../intent-router'
 
-const NEW_SKILLS = ['chapter-brief', 'dialogue', 'pacing', 'thread-audit']
+const NEW_SKILLS = ['chapter-brief', 'dialogue', 'pacing', 'thread-audit', 'cast-setup']
 const LEGACY_SKILLS = [
   'review-chapter', 'brainstorm', 'character-analysis', 'continuity-check',
   'writing-coach', 'prose-polish', 'change-propagation',
@@ -32,8 +32,8 @@ describe('writing accelerator skills', () => {
     const names = skillRegistry.listAll().map(skill => skill.metadata.name)
     for (const name of NEW_SKILLS) expect(names).toContain(name)
     for (const name of LEGACY_SKILLS) expect(names).toContain(name)
-    expect(skillRegistry.listAll()).toHaveLength(11)
-    expect(skillRegistry.listBySource('builtin')).toHaveLength(11)
+    expect(skillRegistry.listAll()).toHaveLength(12)
+    expect(skillRegistry.listBySource('builtin')).toHaveLength(12)
   })
 
   it('declares complete metadata and a real workflow for every new skill', () => {
@@ -103,6 +103,17 @@ describe('writing accelerator skills', () => {
     expect(skillRegistry.get('character-analysis')!.metadata.stages).toEqual(['planning', 'review'])
     expect(skillRegistry.get('continuity-check')!.metadata.stages).toEqual(['review'])
     expect(skillRegistry.get('writing-coach')!.metadata.stages).toEqual(['drafting', 'polish'])
+  })
+
+  it('routes characters and factions to different channels in cast-setup', () => {
+    const castSetup = skillRegistry.get('cast-setup')!
+    expect(castSetup.metadata.stages).toEqual(['planning'])
+    expect(castSetup.metadata.allowedTools).toContain('propose_new_characters')
+    expect(castSetup.metadata.allowedTools).toContain('propose_change_plan')
+    expect(castSetup.content).toContain('propose_new_characters')
+    expect(castSetup.content).toContain('architecture')
+    expect(castSetup.content).toContain('角色卡只有「当前位置 / 阵营」一个字段')
+    expect(castSetup.content).toContain('一次最多 12 名')
   })
 
   it('keeps the safety boundary in the new writing-path skill', () => {

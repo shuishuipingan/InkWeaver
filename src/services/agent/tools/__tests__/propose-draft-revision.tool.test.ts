@@ -59,7 +59,7 @@ describe('propose_draft_revision tool', () => {
     expect(proposeDraftRevisionTool.description).toContain('不会直接改写草稿或定稿')
     expect(proposeDraftRevisionTool.description).toContain('write_file')
     expect(builtinTools.filter(tool => !tool.requiresConfirmation)).toHaveLength(18)
-    expect(builtinTools).toHaveLength(25)
+    expect(builtinTools).toHaveLength(26)
   })
 
   it('rejects an invalid chapter number before touching any channel', async () => {

@@ -64,7 +64,7 @@ describe('search_project tool', () => {
     expect(searchProjectTool.description).toContain('自己作品的正文')
     expect(searchProjectTool.description).toContain('search_knowledge')
     expect(builtinTools.filter(tool => !tool.requiresConfirmation)).toHaveLength(18)
-    expect(builtinTools).toHaveLength(25)
+    expect(builtinTools).toHaveLength(26)
   })
 
   it('rejects an empty query without touching the channel', async () => {

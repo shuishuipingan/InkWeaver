@@ -31,6 +31,7 @@ import { readStoryContinuityTool } from './read-story-continuity.tool'
 import { readRevisionProposalsTool } from './read-revision-proposals.tool'
 import { proposeDraftRevisionTool } from './propose-draft-revision.tool'
 import { searchProjectTool } from './search-project.tool'
+import { proposeNewCharactersTool } from './propose-new-characters.tool'
 
 /** 所有内置 Tool（供外部引用） */
 export const builtinTools = [
@@ -62,6 +63,7 @@ export const builtinTools = [
   proposeChapterBlueprintTool,
   proposeChangePlanTool,
   proposeDraftRevisionTool,
+  proposeNewCharactersTool,
 ]
 
 /**

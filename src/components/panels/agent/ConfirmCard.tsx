@@ -16,6 +16,7 @@ import ConfigImpactPreview, { useConfigImpactPreview } from './ConfigImpactPrevi
 import DomainProposalDiff, { useDomainProposalPreview } from './DomainProposalDiff'
 import ChangePlanPreview, { useChangePlanPreview } from './ChangePlanPreview'
 import DraftRevisionPreview, { useDraftRevisionPreview } from './DraftRevisionPreview'
+import NewCharactersPreview, { useNewCharactersPreview } from './NewCharactersPreview'
 
 interface Props {
   toolCall: ToolCallInfo
@@ -37,6 +38,7 @@ export default function ConfirmCard({ toolCall }: Props) {
   const impactPreview = useConfigImpactPreview(toolCall, proposalPreview)
   const changePlanPreview = useChangePlanPreview(toolCall)
   const revisionPreview = useDraftRevisionPreview(toolCall)
+  const newCharactersPreview = useNewCharactersPreview(toolCall)
   const [selectedImpactKeys, setSelectedImpactKeys] = useState<Set<string>>(() => new Set())
   const [revising, setRevising] = useState(false)
   const [revisionFailed, setRevisionFailed] = useState(false)
@@ -44,11 +46,16 @@ export default function ConfirmCard({ toolCall }: Props) {
   const isDomainProposal = proposalPreview.kind !== 'none'
   const isChangePlan = changePlanPreview.kind !== 'none'
   const isDraftRevision = revisionPreview.kind !== 'none'
+  const isNewCharacters = newCharactersPreview.kind !== 'none'
   const impactReady = impactPreview.kind === 'none' || impactPreview.kind === 'valid'
   const changePlanReady = !isChangePlan || changePlanPreview.kind === 'valid'
   const revisionReady = !isDraftRevision || revisionPreview.kind === 'valid'
+  const newCharactersReady = !isNewCharacters || (
+    newCharactersPreview.kind === 'valid'
+    && !newCharactersPreview.characters.some(character => character.conflict)
+  )
   const canApprove = (!isDomainProposal || proposalPreview.kind === 'valid')
-    && impactReady && changePlanReady && revisionReady
+    && impactReady && changePlanReady && revisionReady && newCharactersReady
 
   // 生成操作描述
   const description = generateDescription(toolName, args, text)
@@ -60,6 +67,19 @@ export default function ConfirmCard({ toolCall }: Props) {
 
   /** 说明「为什么现在不能批准」；校验进行中与校验失败必须是不同的话。 */
   const approvalBlockReason = (() => {
+    if (isNewCharacters && newCharactersPreview.kind === 'loading') {
+      return text('正在读取当前角色名单以核对重名，请稍候…', 'Reading the current roster to check for duplicate names, please wait…')
+    }
+    if (isNewCharacters && newCharactersPreview.kind === 'stale') {
+      return text('项目会话已变化，这批新增角色不能再批准。', 'The project session changed, so these new characters can no longer be approved.')
+    }
+    if (isNewCharacters && newCharactersPreview.kind === 'invalid') {
+      return text('这批角色无法预览（详见上方提示），批准已停用。', 'These characters cannot be previewed (see the notice above), so approval is disabled.')
+    }
+    if (isNewCharacters && newCharactersPreview.kind === 'valid'
+      && newCharactersPreview.characters.some(character => character.conflict)) {
+      return text('有角色与现有名单重名，请先改名再批准；本卡片不会覆盖已有角色。', 'Some names collide with the existing roster; rename them before approving. Existing characters are never overwritten.')
+    }
     if (isDraftRevision && revisionPreview.kind === 'loading') {
       return text('正在比对当前草稿与修订正文，请稍候…', 'Comparing the current draft with the revision, please wait…')
     }
@@ -156,6 +176,7 @@ export default function ConfirmCard({ toolCall }: Props) {
         <DomainProposalDiff toolCall={toolCall} preview={proposalPreview} />
         <ChangePlanPreview preview={changePlanPreview} />
         <DraftRevisionPreview preview={revisionPreview} />
+        <NewCharactersPreview preview={newCharactersPreview} />
         <ConfigImpactPreview
           preview={impactPreview}
           selectedKeys={selectedImpactKeys}
@@ -176,7 +197,7 @@ export default function ConfirmCard({ toolCall }: Props) {
           </div>
         )}
 
-        {!isDomainProposal && !isChangePlan && !isDraftRevision && Object.keys(args).length > 0 && (
+        {!isDomainProposal && !isChangePlan && !isDraftRevision && !isNewCharacters && Object.keys(args).length > 0 && (
           <div
             style={{
               marginTop: 6,
