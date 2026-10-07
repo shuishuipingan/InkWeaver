@@ -330,6 +330,12 @@ Produce a complete outline made of structural turning points rather than chapter
 3. Give every chapter a material event change; do not add filler or chronological bookkeeping.
 4. End every chapter with a concrete variable that creates forward pressure.
 
+[New characters]
+- New characters may debut in any chapter: supporting roles, antagonists, arc opponents, and small functional figures (shopkeeper, steward, message disciple, guard).
+- Give them a real full name and list them in characters; never use unnamed placeholders such as "some disciple" or "a man in black", and do not list unnamed background figures at all.
+- A new character must matter in that chapter (drive the event, create conflict, carry information, or block the protagonist); do not invent names just to fill the list.
+- The system creates a profile for every new character automatically, so introducing them is safe.
+
 [JSON output contract]
 Return exactly one object with a blueprints array. Every item must contain chapterNumber, title, role, purpose, characters, relationships, keyEvents, and suspenseHook. relationships contains only relationships established in that chapter and is [] when empty. keyEvents must concisely state actions, reversals, consequences, and relevant use of the central advantage.
 Return JSON only, with no Markdown, preface, analysis, plan, code fence, or reasoning.
@@ -359,6 +365,12 @@ Return JSON only, with no Markdown, preface, analysis, plan, code fence, or reas
 3. Resolve or intensify relevant open threats and planted clues.
 4. Give every chapter a material event change; do not add filler.
 5. Return exactly one JSON object with a blueprints array and no analysis, plan, explanation, Markdown, or code fence.
+
+[New characters]
+- New characters may debut in any chapter: supporting roles, antagonists, arc opponents, and small functional figures (shopkeeper, steward, message disciple, guard).
+- Give them a real full name and list them in characters; never use unnamed placeholders such as "some disciple" or "a man in black", and do not list unnamed background figures at all.
+- A new character must matter in that chapter (drive the event, create conflict, carry information, or block the protagonist); do not invent names just to fill the list.
+- The system creates a profile for every new character automatically, so introducing them is safe.
 
 [Author pacing and style guidance]
 {{pacing_guidance}}`,
@@ -610,6 +622,7 @@ The runtime appends the authoritative immutable JSON contract. Follow that contr
 2. Preserve every character name exactly as written.
 3. Describe this chapter's narrative function, immediate goal, causal events, and final hook concisely.
 4. The runtime appends the final immutable JSON contract; follow it over any alternative schema.
+5. characters lists the characters who actually act in this chapter. A character first appearing here is welcome: keep their real full name and the system creates their profile automatically — never use unnamed placeholders.
 
 Output JSON only, with no Markdown, explanation, or reasoning.`,
   },

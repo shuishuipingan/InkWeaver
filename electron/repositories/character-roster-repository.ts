@@ -679,6 +679,31 @@ function recordStateHistory(
   }
 }
 
+/**
+ * 蓝图同步的**空字段补齐**。
+ *
+ * 自动建档的候选（章节蓝图引入的新角色）只带 name/role/notes，资料八项全空；
+ * 档案填充步骤会在候选里带上生成出来的资料，但合并时**只允许填进旧值为空的字段**——
+ * 作者已写的内容一个字符都不覆盖（与 architecture_generation 的 fill-empty 同口径）。
+ * notes 是来源标记与作者备注的混合体，这里刻意不做任何改写。
+ */
+function fillEmptyEntryProfile(
+  existing: CharacterRosterEntry,
+  candidate: CharacterRosterEntry,
+): Partial<CharacterRosterEntry> {
+  const fields: Array<keyof Pick<
+    CharacterRosterEntry,
+    'gender' | 'age' | 'appearance' | 'personality' | 'background' | 'abilities' | 'motivation' | 'arc'
+  >> = ['gender', 'age', 'appearance', 'personality', 'background', 'abilities', 'motivation', 'arc']
+  const filled: Partial<CharacterRosterEntry> = {}
+  for (const field of fields) {
+    const current = typeof existing[field] === 'string' ? (existing[field] as string).trim() : ''
+    const incoming = typeof candidate[field] === 'string' ? (candidate[field] as string).trim() : ''
+    if (!current && incoming) Object.assign(filled, { [field]: incoming })
+  }
+  return filled
+}
+
 function mergeCurrentStateManualWins(
   existing: CharacterRosterCharacterState | undefined,
   generated: CharacterRosterCharacterState | undefined,
@@ -799,6 +824,8 @@ function mergeIncrementalEntriesWithExisting(
     // currentState。其他资料保留已有事实，避免工作流重写人工档案。
     const merged: CharacterRosterEntry = {
       ...existing,
+      // 蓝图同步额外承担"自动建档补空"：只填空字段，绝不覆盖作者内容。
+      ...(intent === 'blueprint_sync' ? fillEmptyEntryProfile(existing, candidate) : {}),
       relationships: candidate.relationships.length > 0
         ? candidate.relationships
         : existing.relationships,

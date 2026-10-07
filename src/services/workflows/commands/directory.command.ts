@@ -4,7 +4,7 @@ import { resolvePromptTemplate } from '../../prompt-templates'
 import { DirectoryPromptBuilder } from '../../prompts/prompt-builder'
 import { createGenerationRuntime, type GenerationRuntime } from '../../generation/generation-runtime'
 import { ipc } from '../../ipc-client'
-import type { GenerationTask } from '../../generation/generation-harness'
+import type { GenerationSession, GenerationTask } from '../../generation/generation-harness'
 import {
   createStructuredBatchExecutor,
   type StructuredBatchContract,
@@ -23,6 +23,7 @@ import {
   validateBlueprintSemanticItem,
 } from '../../../shared/blueprint-semantic-contract'
 import { buildMissingSuspenseHookRepairPlan } from '../blueprint-semantic-repair'
+import { enrichBlueprintCharacterProfiles } from '../blueprint-character-enrichment'
 import { stripThinkingTags } from '../workflow-utils'
 import {
   DRAFT_CONTEXT_INPUT_LIMIT,
@@ -451,7 +452,12 @@ export class GenerateDirectoryCommand extends BaseWorkflowCommand<ChapterBluepri
         budget: costPlan.runtimeBudget,
         ...(generationModelId ? { modelId: generationModelId } : {}),
       })
+      // 补档也要用**同一个生成会话**：callLLMWithBoundedCompletion 走的是
+      // requireGenerationExecution 守卫，而本命令从不经过 executeWithGenerationRuntime，
+      // 在生产链路里那条调用必然抛"生成调用必须位于命令执行期 GenerationRuntime 内"。
+      let generationSession: GenerationSession | null = null
       const batchResult = await runtime.execute(async ({ session }) => {
+        generationSession = session
         let promptBudgetPreflightReported = false
         const executor = createStructuredBatchExecutor({
           contract,
@@ -535,6 +541,57 @@ export class GenerateDirectoryCommand extends BaseWorkflowCommand<ChapterBluepri
         context.data.blueprintCharacterSyncReceipt = syncReceipt
       } catch {
         throw new DirectoryPostCommitSyncError(commitReceipt)
+      }
+
+      // 自动建档的空卡在这里补上资料。**失败不阻塞**：蓝图与空卡已经落库，
+      // 补档失败只记一条日志，绝不能让整个工作流报错。
+      try {
+        const enrichment = await enrichBlueprintCharacterProfiles({
+          expectedProjectPath,
+          projectSession: context.projectSession,
+          blueprints: newBlueprints,
+          writingLanguage,
+          generate: async ({ systemPrompt, prompt }) => {
+            if (!generationSession) throw new Error('生成会话不可用')
+            const outcome = await generationSession.complete({
+              purpose: 'blueprint-character-profiles',
+              output: 'structured-data',
+              messages: [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: prompt },
+              ],
+            })
+            return outcome.content ?? ''
+          },
+          log: message => callbacks.log(message),
+          uiText: (zh, en) => workflowUiText(context, zh, en),
+        })
+        if (enrichment.error) {
+          callbacks.log(workflowUiText(
+            context,
+            `角色档案补充未完成（不影响已生成的蓝图）：${enrichment.error}`,
+            `Character profiles were not filled in (the generated blueprints are unaffected): ${enrichment.error}`,
+          ))
+        } else if (enrichment.enriched.length > 0) {
+          callbacks.log(workflowUiText(
+            context,
+            `已为 ${enrichment.enriched.length} 名自动建档角色补充档案：${enrichment.enriched.join('、')}`,
+            `Filled in profiles for ${enrichment.enriched.length} auto-created characters: ${enrichment.enriched.join(', ')}`,
+          ))
+        }
+        if (enrichment.deferredForLimit > 0) {
+          callbacks.log(workflowUiText(
+            context,
+            `还有 ${enrichment.deferredForLimit} 名角色待补档，下次生成会继续补充`,
+            `${enrichment.deferredForLimit} more characters can be filled in on a later run`,
+          ))
+        }
+      } catch (error) {
+        callbacks.log(workflowUiText(
+          context,
+          `角色档案补充失败（不影响已生成的蓝图）：${String(error)}`,
+          `Character profile enrichment failed (the generated blueprints are unaffected): ${String(error)}`,
+        ))
       }
 
       context.data.newBlueprints = newBlueprints

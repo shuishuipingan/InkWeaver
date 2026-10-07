@@ -49,7 +49,7 @@ export function blueprintSemanticGenerationContract(writingLanguage: WritingLang
     return `[Immutable blueprint JSON contract]
 Output {"blueprints":[...]} only. Every item must contain all of these fields: ${BLUEPRINT_SEMANTIC_CONTRACT_MANIFEST.requiredFields.join(', ')}.
 chapterNumber must cover every target chapter exactly once, without duplicates or out-of-range values. title, role, purpose, keyEvents, and suspenseHook must be non-empty strings.
-characters must be an array containing at least one unique, non-empty full character name.
+characters must be an array containing at least one unique, non-empty full character name. New characters may debut in this chapter: give them a real full name (their profile is created automatically) — never list unnamed placeholders such as "some disciple".
 relationships is required and may be []; every item must contain non-empty from, to, and relation fields. from and to must exactly copy full names from the same item's characters array and may not self-reference.
 Limits: title ${BLUEPRINT_SEMANTIC_CONTRACT_MANIFEST.outputLimits.titleCharacters} characters; role ${BLUEPRINT_SEMANTIC_CONTRACT_MANIFEST.outputLimits.roleCharacters}; purpose ${BLUEPRINT_SEMANTIC_CONTRACT_MANIFEST.outputLimits.purposeCharacters}; keyEvents ${BLUEPRINT_SEMANTIC_CONTRACT_MANIFEST.outputLimits.keyEventsCharacters}; suspenseHook ${BLUEPRINT_SEMANTIC_CONTRACT_MANIFEST.outputLimits.suspenseHookCharacters}; characters at most ${BLUEPRINT_SEMANTIC_CONTRACT_MANIFEST.outputLimits.characterItems} items with names at most ${BLUEPRINT_SEMANTIC_CONTRACT_MANIFEST.outputLimits.characterNameCharacters} characters; relationships at most ${BLUEPRINT_SEMANTIC_CONTRACT_MANIFEST.outputLimits.relationshipItems} items with relation at most ${BLUEPRINT_SEMANTIC_CONTRACT_MANIFEST.outputLimits.relationshipCharacters} characters.
 Do not omit fields, combine chapters, rename fields, explain, or output Markdown or code fences.`
@@ -57,7 +57,7 @@ Do not omit fields, combine chapters, rename fields, explain, or output Markdown
   return `【不可变蓝图 JSON 合同】
 只输出 {"blueprints":[...]}，每项必须完整包含：${BLUEPRINT_SEMANTIC_CONTRACT_MANIFEST.requiredFields.join('、')}。
 chapterNumber 必须覆盖本批每个目标章节且不得重复或越界；title、role、purpose、keyEvents、suspenseHook 必须是非空字符串。
-characters 必须是至少含一个唯一非空角色名的字符串数组。
+characters 必须是至少含一个唯一非空角色名的字符串数组。允许新角色在本章首次登场——必须给真实姓名（系统会自动建立角色档案），不要写「路人甲」「某弟子」这类无名占位。
 relationships 必须是数组，无关系时传 []；每项必须含非空 from、to、relation，from/to 必须精确出现在同项 characters 中且不能自指。
 from/to 必须逐字复制同一项 characters 中的完整字符串；任一端点不在 characters 时，删除该关系或使用 []，不得发明别名、简称或补写角色。
 每项长度上限：title ${BLUEPRINT_SEMANTIC_CONTRACT_MANIFEST.outputLimits.titleCharacters} 字符、role ${BLUEPRINT_SEMANTIC_CONTRACT_MANIFEST.outputLimits.roleCharacters} 字符、purpose ${BLUEPRINT_SEMANTIC_CONTRACT_MANIFEST.outputLimits.purposeCharacters} 字符、keyEvents ${BLUEPRINT_SEMANTIC_CONTRACT_MANIFEST.outputLimits.keyEventsCharacters} 字符、suspenseHook ${BLUEPRINT_SEMANTIC_CONTRACT_MANIFEST.outputLimits.suspenseHookCharacters} 字符；characters 最多 ${BLUEPRINT_SEMANTIC_CONTRACT_MANIFEST.outputLimits.characterItems} 项且姓名最多 ${BLUEPRINT_SEMANTIC_CONTRACT_MANIFEST.outputLimits.characterNameCharacters} 字符；relationships 最多 ${BLUEPRINT_SEMANTIC_CONTRACT_MANIFEST.outputLimits.relationshipItems} 项且 relation 最多 ${BLUEPRINT_SEMANTIC_CONTRACT_MANIFEST.outputLimits.relationshipCharacters} 字符。

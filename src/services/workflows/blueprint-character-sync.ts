@@ -10,6 +10,8 @@ import {
   type CharacterRelationshipEdge,
 } from './character-card-normalizer'
 import { characterRosterEntryFromCard } from '../character-roster-client'
+import { inspectCharacterName } from '../../shared/character-name-guards'
+import type { CharacterRosterRole } from '../../shared/character-roster'
 import { randomUUID } from '../../utils/id'
 
 export interface BlueprintCharacterCandidateSource {
@@ -154,6 +156,39 @@ function formatCandidateSource(chapters: ReadonlySet<number>): string {
   return `自动候选来源：章节蓝图（第${ordered.join('、')}章）`
 }
 
+export interface BlueprintCharacterCandidatePartition<T> {
+  accepted: Array<T & { role: CharacterRosterRole }>
+  skipped: Array<{ name: string; reason: 'multiName' | 'factionLike' }>
+}
+
+/**
+ * 蓝图角色候选的划分：名字守卫 + 按戏份量推导定位。
+ *
+ * · 名字守卫复用共享的 inspectCharacterName：命中"多人合并成一个名字"或
+ *   "势力/组织名"的候选**不建卡**（v1.3.31 在架构解码与 agent 工具拦过同类问题，
+ *   蓝图这条路径当时没覆盖，同一个坑不能再踩）。
+ * · 定位按已提交的蓝图数据推导，而不是让模型猜：出场 ≥3 章 = 配角，1–2 章 = 龙套。
+ */
+export function partitionBlueprintCharacterCandidates<T extends { name: string; chapters: ReadonlySet<number> }>(
+  sources: readonly T[],
+): BlueprintCharacterCandidatePartition<T> {
+  const accepted: Array<T & { role: CharacterRosterRole }> = []
+  const skipped: Array<{ name: string; reason: 'multiName' | 'factionLike' }> = []
+  for (const source of sources) {
+    const inspection = inspectCharacterName(source.name)
+    if (inspection.multiName) {
+      skipped.push({ name: source.name, reason: 'multiName' })
+      continue
+    }
+    if (inspection.factionLike) {
+      skipped.push({ name: source.name, reason: 'factionLike' })
+      continue
+    }
+    accepted.push({ ...source, role: source.chapters.size >= 3 ? 'supporting' : 'minor' })
+  }
+  return { accepted, skipped }
+}
+
 function assertIpcSuccess(result: { success: boolean; error?: string }): void {
   if (!result.success) throw new Error(result.error || '同步蓝图角色候选失败')
 }
@@ -201,13 +236,24 @@ export async function syncBlueprintCharacterCandidates(
     collectRelationshipHints(blueprint.relationshipHints, allNames, resolveName, relationshipGraph)
   }
 
-  const rawCandidates = [...sourcesByKey]
-    .filter(([key]) => !existingByKey.has(key))
-    .map(([, source]) => ({
-      name: source.name,
-      role: 'supporting',
-      notes: formatCandidateSource(source.chapters),
-    }))
+  const partition = partitionBlueprintCharacterCandidates(
+    [...sourcesByKey]
+      .filter(([key]) => !existingByKey.has(key))
+      .map(([, source]) => source),
+  )
+  if (partition.skipped.length > 0) {
+    const multiNameCount = partition.skipped.filter(item => item.reason === 'multiName').length
+    // src 侧没有共享的 safeConsole（它只在 electron/utils 下），这里用标准 console。
+    console.info(
+      `[blueprint-character-sync] 已忽略 ${partition.skipped.length} 个疑似非单人名（多人合并 ${multiNameCount}、势力/组织 ${partition.skipped.length - multiNameCount}）：`
+      + partition.skipped.map(item => item.name).join('、'),
+    )
+  }
+  const rawCandidates = partition.accepted.map(source => ({
+    name: source.name,
+    role: source.role,
+    notes: formatCandidateSource(source.chapters),
+  }))
   const candidates = normalizeCharacterCardsForPersistence(rawCandidates).map(candidate => ({
     ...characterRosterEntryFromCard(candidate),
     relationships: relationshipGraph.get(candidate.name) ?? [],

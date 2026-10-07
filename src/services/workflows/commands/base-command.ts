@@ -195,7 +195,13 @@ export abstract class BaseWorkflowCommand<TResult = string> {
   /** Structured orchestrators may consume the same session; they cannot replace its budget. */
   protected requireGenerationExecution(): Readonly<ActiveGenerationExecution> {
     if (!this.activeGenerationExecution) {
-      throw new Error('生成调用必须位于命令执行期 GenerationRuntime 内。')
+      // 这里必须给出可诊断的提示：走过这条路的缺陷形态是"必然失败 + 被调用方 catch 吞成日志"，
+      // 在真实环境里会静默很久（directory.command 的补档就曾如此）。
+      throw new Error(
+        '生成调用必须位于命令执行期 GenerationRuntime 内。'
+        + '本命令未进入 GenerationRuntime：请检查是否遗漏 executeWithGenerationRuntime()，'
+        + '或改为使用 runtime.execute() 回调里提供的 session。',
+      )
     }
     return this.activeGenerationExecution
   }

@@ -1,14 +1,17 @@
-import { BaseWorkflowCommand, type CommandExecuteParams } from './base-command'
-import { ipc } from '../../ipc-client'
-import { requireIpcSuccess } from '../../ipc-result'
+/**
+ * 章节交接的提示词与解析辅助。
+ *
+ * 这里原本还有一个 `GenerateChapterHandoffCommand` 命令类：它全仓零引用，且调
+ * `this.callLLM` 却不进入 GenerationRuntime（被 task-106 的运行时入口契约抓到）。
+ * 章节交接的生产路径其实在 finalize-chapter.command.ts（它正确调用
+ * executeWithGenerationRuntime），所以那个类在 task-107 直接删除；
+ * 本文件只保留 finalize 复用的纯辅助函数。
+ */
 import {
   normalizeChapterHandoffCandidate,
   type ChapterHandoffSourceIdentity,
 } from '../../../shared/chapter-handoff'
-import type { ChapterHandoffRecord } from '../../../shared/chapter-handoff'
 import type { WritingLanguage } from '../../../shared/writing-language'
-import { sha256Hex } from '../../../shared/sha256-hex'
-import { requireWorkflowProjectSession, workflowWritingLanguage } from '../workflow-project-session'
 
 const HANDOFF_CONTEXT_MAX_CHARS = 16_000
 
@@ -20,10 +23,6 @@ export interface ChapterHandoffPromptInput {
   writingLanguage: WritingLanguage
 }
 
-export interface GenerateChapterHandoffParams extends ChapterHandoffPromptInput {
-  projectPath: string
-  draftId: number
-}
 
 function boundedContent(content: string): string {
   if (content.length <= HANDOFF_CONTEXT_MAX_CHARS) return content
@@ -99,52 +98,3 @@ export function parseChapterHandoffCompletion(
   }, source)
 }
 
-async function contentHash(content: string): Promise<string> {
-  return sha256Hex(content)
-}
-
-export class GenerateChapterHandoffCommand extends BaseWorkflowCommand<string> {
-  constructor(private readonly params: GenerateChapterHandoffParams) {
-    super()
-  }
-
-  async execute({ context, callbacks }: CommandExecuteParams): Promise<string> {
-    const projectSession = requireWorkflowProjectSession(context)
-    const writingLanguage = workflowWritingLanguage(context)
-    const source: ChapterHandoffSourceIdentity = {
-      handoffId: `chapter-handoff-${context.runId}-${this.params.chapterNumber}`,
-      draftId: this.params.draftId,
-      chapterNumber: this.params.chapterNumber,
-      sourceContentHash: await contentHash(this.params.content),
-    }
-    const raw = await this.callLLM(
-      buildChapterHandoffPrompt({ ...this.params, writingLanguage }),
-      writingLanguage === 'en-US'
-        ? 'You extract evidence-backed chapter handoffs for a long-form fiction editor. Return only the requested JSON object.'
-        : '你负责为长篇小说编辑器提取有正文证据的章节交接记录。只返回要求的 JSON 对象。',
-      callbacks,
-      {
-        purpose: 'chapter-handoff',
-        reasoningStage: 'review',
-        responseFormat: { type: 'json_object' },
-      },
-      context,
-    )
-    const candidate = parseChapterHandoffCompletion(raw, source)
-    const result = await ipc.invokeWithProjectSession(
-      projectSession,
-      'db:chapter-handoff-save-candidate',
-      candidate,
-      this.params.projectPath,
-    )
-    requireIpcSuccess(result, '保存章节交接候选')
-    const handoff = result.handoff as ChapterHandoffRecord | undefined
-    context.data.chapterHandoff = handoff ?? candidate
-    callbacks.log(writingLanguage === 'en-US'
-      ? 'Chapter handoff candidate saved for author confirmation.'
-      : '章节交接候选已保存，等待作者确认。')
-    return writingLanguage === 'en-US'
-      ? 'Chapter handoff candidate saved.'
-      : '章节交接候选已保存。'
-  }
-}

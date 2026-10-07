@@ -80,7 +80,8 @@ describe('blueprint character candidate sync', () => {
       entries: expect.arrayContaining([
         expect.objectContaining({
           name: '林岚',
-          role: 'supporting',
+          // 行为变更：定位改为按出场章节数推导 —— 只出场 1 章是龙套（minor），≥3 章才是配角。
+          role: 'minor',
           notes: '自动候选来源：章节蓝图（第1章）',
           relationships: [{ target: '周砚', relation: '共同追查真相' }],
         }),
