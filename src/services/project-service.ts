@@ -35,6 +35,17 @@ import {
 /** 存放解绑函数，用于 dispose 时清理 */
 let disposers: Array<() => void> = []
 
+/**
+ * 助手会话 store 的懒加载句柄。
+ * 本模块**不静态依赖** agent-store（那会把它整条依赖链拉进只用得到本模块的
+ * 调用方与测试的模块图），也不重复发起 import：首次之后复用同一个 promise。
+ */
+let agentStoreModule: Promise<typeof import('../stores/agent-store')> | null = null
+function loadAgentStore() {
+  agentStoreModule ??= import('../stores/agent-store')
+  return agentStoreModule
+}
+
 const ARCH_FILE_CORE_FIELDS = {
   'premise.md': { pathKey: 'premise', coreField: 'premise' },
   'characters.md': { pathKey: 'characters', coreField: 'charactersArch' },
@@ -296,6 +307,16 @@ export async function onProjectOpened(
   const text = useLocaleStore.getState().text
   if (!isProjectSessionCurrent(projectSession)) return { warnings: [] }
 
+  // 助手会话属于打开中的项目：与 character/draft 一样在统一入口重置 + 恢复，
+  // 不再依赖任何组件的挂载时机（那正是跨项目残留缺陷的成因模式）。
+  // 懒加载（非静态依赖）：避免把 agent-store 整条依赖链拉进只用得到 project-service
+  // 的调用方与测试的模块图。**不 await**：这条链首次加载会拖慢项目打开的关键路径
+  // （角色卡与草稿加载），而助手会话的恢复并不需要挡在前面。
+  void loadAgentStore().then(({ useAgentStore }) => {
+    useAgentStore.getState().resetAgentConversationsForProjectSwitch()
+    void useAgentStore.getState().restoreConversations()
+  })
+
   // 并行加载角色卡和草稿列表
   const results = await Promise.allSettled([
     useCharacterStore.getState().load(projectSession.projectPath, projectSession),
@@ -357,6 +378,11 @@ export async function onProjectClosed(projectPath: string | null): Promise<void>
 export function disableProjectBindingsPreservingDrafts(projectPath: string | null): void {
   useCharacterStore.getState().reset()
   useDraftStore.getState().reset()
+  // 助手会话没有「保留未保存草稿」的需求：解绑时清空内存。
+  // 同样走动态 import，保持本模块对 agent-store 的零静态依赖。
+  void loadAgentStore().then(({ useAgentStore }) => {
+    useAgentStore.getState().resetAgentConversationsForProjectSwitch()
+  })
 
   console.log('[ProjectService] 已停用项目数据绑定并保留未保存草稿:', projectPath)
 }

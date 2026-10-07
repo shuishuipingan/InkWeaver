@@ -29,6 +29,33 @@ interface ActiveStream {
 }
 
 const activeStreams = new Map<string, ActiveStream>()
+
+/**
+ * 中止当前所有在途的流式请求（项目切换/关闭时调用）。
+ *
+ * 项目归属改变后，旧项目的在途请求不应继续跑：写库侧虽然已被会话校验拦下（不会写进新项目），
+ * 但让它们自然跑完既浪费额度、也会让渲染层收到旧项目的流事件。
+ * 中止后 provider 会走既有的 onError 路径，渲染层通过 llm:stream-error 收到终止结果。
+ * 返回被中止的请求数（0 表示当时没有在途流）。
+ */
+export function abortActiveStreams(reason: string): number {
+  const requestIds = [...activeStreams.keys()]
+  for (const requestId of requestIds) {
+    const stream = activeStreams.get(requestId)
+    if (!stream) continue
+    try {
+      stream.recordCancelled()
+      stream.controller.abort()
+    } catch {
+      // 单个流中止失败不影响其余流
+    }
+    activeStreams.delete(requestId)
+  }
+  if (requestIds.length > 0) {
+    runtimeLogger.info('llm', '项目切换中止在途流', { count: requestIds.length, reason })
+  }
+  return requestIds.length
+}
 const CONNECTION_TEST_MAX_TOKENS = 1024
 const CLOSED_EXECUTION_LEASE_TOMBSTONE_TTL_MS = 5 * 60_000
 

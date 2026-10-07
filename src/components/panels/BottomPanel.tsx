@@ -12,6 +12,7 @@ import type { ProjectSessionContext } from '../../shared/ipc-channels'
 import type { RuntimeLogEvent, RuntimeLogStatus } from '../../shared/runtime-log'
 import {
   projectSessionContextFromProject,
+  sameProjectPathKey,
   sameProjectSessionContext,
 } from '../../shared/project-session-context'
 import { Button } from '../ui/Button'
@@ -167,6 +168,13 @@ export default function BottomPanel() {
 function TaskRunView() {
   const activeRuns = useWorkflowStore(s => s.activeRuns)
   const history = useWorkflowStore(s => s.history)
+  const currentProjectPath = useProjectStore(s => s.currentProject?.path ?? null)
+  // 历史任务只显示属于当前项目的 run：工作流历史在内存里累积，必须在这里按项目分流，
+  // 否则切到项目 B 后会看到项目 A 跑过的任务（跨项目串台）。没有打开项目时不显示历史。
+  const visibleHistory = useMemo(
+    () => (currentProjectPath ? history.filter(run => sameProjectPathKey(run.projectPath, currentProjectPath)) : []),
+    [currentProjectPath, history],
+  )
   const waitingRuns = useWorkflowStore(s => s.waitingRuns)
   const cancelWorkflow = useWorkflowStore(s => s.cancelWorkflow)
   const pauseWorkflow = useWorkflowStore(s => s.pauseWorkflow)
@@ -175,7 +183,7 @@ function TaskRunView() {
 
   console.log('[BottomPanel] TaskRunView render: activeRuns=', activeRuns.map(r => r.id.slice(0,8) + ':' + r.status + ':' + r.steps.map(s=>s.status).join('/')))
 
-  if (activeRuns.length === 0 && history.length === 0) {
+  if (activeRuns.length === 0 && visibleHistory.length === 0) {
     return (
       <div className="h-full overflow-y-auto pb-4">
         <WorkflowRecoveryReceipts />
@@ -192,7 +200,7 @@ function TaskRunView() {
       <WorkflowRecoveryReceipts />
       {/* 活跃任务列表（支持多个并行） */}
       {activeRuns.length > 0 && (
-        <div className="flex-shrink-0" style={{ borderBottom: history.length > 0 ? '1px solid var(--color-border)' : undefined }}>
+        <div className="flex-shrink-0" style={{ borderBottom: visibleHistory.length > 0 ? '1px solid var(--color-border)' : undefined }}>
           {activeRuns.map((run, idx) => {
             const runWaiting = waitingRuns[run.id]
             return (
@@ -212,14 +220,14 @@ function TaskRunView() {
         </div>
       )}
 
-      {/* 历史记录（简表） */}
-      {history.length > 0 && (
+      {/* 历史记录（简表，仅当前项目） */}
+      {visibleHistory.length > 0 && (
         <div className="flex-shrink-0">
           <div className="px-4 pt-3 pb-1 text-[0.68rem] font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>
             历史任务
           </div>
           <div className="px-2 pb-2">
-            {history.map((run) => (
+            {visibleHistory.map((run) => (
               <div
                 key={run.id}
                 className="flex items-center gap-2 px-2 py-1.5 rounded transition-colors hover:bg-[var(--color-hover)]"
@@ -808,6 +816,7 @@ function displayLogFromRuntime(event: RuntimeLogEvent): DisplayLog {
 export function LogsView() {
   const globalLogs = useWorkflowStore(s => s.globalLogs)
   const clearLogs = useWorkflowStore(s => s.clearLogs)
+  const currentProjectPath = useProjectStore(s => s.currentProject?.path ?? null)
   const locale = useLocaleStore(s => s.locale)
   const text = useLocaleStore(s => s.text)
   const { ref: logScrollRef, topShadow, bottomShadow } = useScrollShadow<HTMLDivElement>()
@@ -849,6 +858,8 @@ export function LogsView() {
   const displayLogs = useMemo<DisplayLog[]>(() => [
     ...persistedLogs.map(displayLogFromRuntime),
     ...globalLogs
+      // 有项目归属的日志只在它所属的项目里显示；启动期等无归属日志照常保留（应用级语义）。
+      .filter(log => !log.projectPath || (currentProjectPath ? sameProjectPathKey(log.projectPath, currentProjectPath) : false))
       .filter(log => !log.eventId || !persistedLogs.some(event => event.eventId === log.eventId))
       .map((log, index) => ({
         id: log.eventId ?? `workflow-memory:${index}:${log.time}:${log.message}`,
@@ -858,7 +869,7 @@ export function LogsView() {
         source: 'workflow-ui',
         process: 'renderer',
       })),
-  ], [globalLogs, persistedLogs])
+  ], [currentProjectPath, globalLogs, persistedLogs])
 
   useEffect(() => {
     if (autoScroll && logScrollRef.current) {

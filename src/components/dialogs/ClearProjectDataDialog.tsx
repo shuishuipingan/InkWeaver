@@ -150,6 +150,16 @@ export default function ClearProjectDataDialog({
                 'Only the selected generated data will be removed. The project folder and model settings are preserved. Note: selecting "Story architecture and outline" also permanently deletes all character cards.',
               )}
             </div>
+            <div
+              className="mt-1 text-xs"
+              data-testid="clear-project-data-assistant-scope"
+              style={{ color: 'var(--color-text-muted)' }}
+            >
+              {text(
+                '助手会话记录不受影响：本操作不会删除你与助手的对话历史（草稿正文、定稿、蓝图、架构与文风档案在勾选后会被清除）。如需清空对话，请到助手面板的历史记录里删除会话。',
+                'Assistant conversations are not affected: this never deletes your chat history (drafts, manuscripts, blueprints, architecture and style history are removed when selected). To clear conversations, use the assistant panel history.',
+              )}
+            </div>
           </div>
         </div>
 

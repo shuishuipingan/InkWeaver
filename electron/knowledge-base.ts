@@ -38,6 +38,7 @@ import {
   type KnowledgeCorpusKind,
 } from './vector-store'
 import { getCurrentProjectPath, getProjectDb } from './database'
+import { projectAccess } from './services/project-access'
 import { ImportRunRepository } from './repositories/import-run-repository'
 import { assertRequiredExpectedProjectPath } from './utils/project-context'
 import { safeConsole } from './utils/safe-console'
@@ -66,9 +67,30 @@ const migrationChecksInFlight = new Map<string, Promise<void>>()
 
 export { LEGACY_VECTOR_MIGRATION_BLOCKED, LegacyVectorMigrationBlockedError }
 
+/**
+ * 迁移检查的缓存键。
+ *
+ * 优先用**项目实例 id**（.vela/project.json 里的 UUID）而不是路径：项目被删除后在同一路径
+ * 重建时路径字符串相同、实例却完全不同，按路径缓存会静默跳过新实例的迁移检查
+ * （旧实现即如此）。取不到实例（未 beginSession / 根不可解析）时退回规范化路径键。
+ */
+export function resolveKnowledgeBaseMigrationKey(projectPath: string): string {
+  const active = projectAccess.captureCurrentSession()
+  if (active) {
+    try {
+      if (projectAccess.sameCanonicalProjectRoot(active.rootPath, projectPath)) {
+        return `instance:${active.projectId}`
+      }
+    } catch {
+      // 根路径不可解析（目录刚被删除等）时退回路径键，保持旧的保守行为。
+    }
+  }
+  return `path:${path.resolve(projectPath)}`
+}
+
 /** 确保旧数据已迁移 */
 async function ensureMigration(projectPath: string): Promise<void> {
-  const key = path.resolve(projectPath)
+  const key = resolveKnowledgeBaseMigrationKey(projectPath)
   if (migratedProjects.has(key)) return
   const existing = migrationChecksInFlight.get(key)
   if (existing) return await existing

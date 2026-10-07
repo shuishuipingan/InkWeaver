@@ -20,6 +20,7 @@ import {
   initProjectDatabase,
 } from '../database'
 import { closeConnection as closeVectorConnection } from '../vector-store'
+import { abortActiveStreams } from './llm-controller'
 import {
   ProjectCoreRepository,
   type ProjectCoreData,
@@ -159,6 +160,7 @@ function failedDatabaseState(): ProjectDatabaseState {
   // 回滚快照缺失、过期或恢复失败时，不能留下指向半切换项目的数据库或租约。
   // close 先于 invalidate，避免后续 IPC 将旧租约误认为仍可写。
   try {
+    abortActiveStreams('project-close-untrusted')
     closeProjectDatabase()
   } catch (closeError) {
     safeConsole.error('[Project] 关闭不可信项目数据库失败:', closeError)
@@ -268,6 +270,7 @@ function restoreProjectRollbackBoundary(
 
   // 首次启动没有旧项目可恢复。创建只负责落盘，因此显式关闭刚创建的
   // 数据库并清空租约，保持 renderer 随后调用 project:open 前的中立态。
+  abortActiveStreams('project-neutral')
   closeProjectDatabase()
   projectAccess.invalidateCurrentSession()
   const databaseState = neutralDatabaseState()
@@ -450,6 +453,8 @@ export function registerProjectController() {
   ) => {
     const openStartedAt = Date.now()
     runtimeLogger.info('project', '打开项目', { projectPath, requestToken })
+    // 项目归属即将改变：先中止旧项目仍在跑的在途流请求。
+    abortActiveStreams('project-open')
     latestProjectOpenRequestToken = requestToken
     return serializeProjectOpen(async () => {
       // 让已经发出的后续打开请求先登记身份，避免旧请求抢先切换全局数据库。
@@ -767,6 +772,7 @@ export function registerProjectController() {
       deletingCurrentProject = true
 
       if (deletingCurrentProject) {
+        abortActiveStreams('project-delete')
         closeVectorConnection(resolvedPath)
         closeProjectDatabase()
         databaseClosed = true

@@ -286,7 +286,14 @@ interface WorkflowState {
   /** 历史工作流记录 */
   history: WorkflowRun[]
   /** 全局日志（下方面板用） */
-  globalLogs: Array<{ time: string; level: 'info' | 'warn' | 'error'; message: string; eventId?: string }>
+  globalLogs: Array<{
+    time: string
+    level: 'info' | 'warn' | 'error'
+    message: string
+    eventId?: string
+    /** 产生这条日志时打开的项目；启动期等应用级日志没有归属（undefined）。 */
+    projectPath?: string
+  }>
 
   /** 兼容属性：第一个活跃工作流（供旧代码平稳过渡） */
   currentRun: WorkflowRun | null
@@ -375,8 +382,20 @@ function computeCompat(activeRuns: WorkflowRun[], waitingRuns: Record<string, { 
   }
 }
 
+/** 每个项目在内存里保留的历史条数。按项目分别计数，别的项目不会把它挤掉。 */
+const WORKFLOW_HISTORY_PER_PROJECT_LIMIT = 50
+
 function prependRunHistory(history: WorkflowRun[], run: WorkflowRun): WorkflowRun[] {
-  return [run, ...history.filter(previous => previous.id !== run.id)].slice(0, 50)
+  const ordered = [run, ...history.filter(previous => previous.id !== run.id)]
+  // 上限按 projectPath 分别计：切回旧项目时它的历史还在，
+  // 不会被后来项目的任务从全局 50 条里挤出去。
+  const counts = new Map<string, number>()
+  return ordered.filter(item => {
+    const projectKey = item.projectPath ?? ''
+    const next = (counts.get(projectKey) ?? 0) + 1
+    counts.set(projectKey, next)
+    return next <= WORKFLOW_HISTORY_PER_PROJECT_LIMIT
+  })
 }
 
 export const useWorkflowStore = create<WorkflowState>()((set, get) => ({
@@ -1061,11 +1080,14 @@ export const useWorkflowStore = create<WorkflowState>()((set, get) => ({
       ...runtimeContext,
       operation: runtimeContext?.operation ?? 'workflow.ui-log',
     })
+    const logProjectPath = useProjectStore.getState().currentProject?.path
     const entry = {
       time: new Date().toLocaleTimeString(locale),
       level,
       message,
       ...(eventId ? { eventId } : {}),
+      // 归属：记录日志时打开的项目。启动期/应用级日志没有项目，保持无归属并在 UI 上照常可见。
+      ...(logProjectPath ? { projectPath: logProjectPath } : {}),
     }
     set((s) => ({
       globalLogs: [...s.globalLogs, entry].slice(-500), // 保留最近 500 条

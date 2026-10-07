@@ -3,7 +3,6 @@ import { ArrowDown, Trash2, Workflow } from 'lucide-react'
 import { useAgentStore } from '../../../stores/agent-store'
 import { useLayoutStore } from '../../../stores/layout-store'
 import { useLocaleStore } from '../../../stores/locale-store'
-import { useProjectStore } from '../../../stores/project-store'
 import { APP_BRAND } from '../../../shared/brand'
 import AgentMessage from './AgentMessage'
 import AgentInputBox from './AgentInputBox'
@@ -17,13 +16,11 @@ import { formatRelativeTime } from '../../../utils/time'
 export default function AgentConversation() {
   const { getActiveConversation, showHistory } = useAgentStore()
   const activeConv = getActiveConversation()
-  const projectPath = useProjectStore(state => state.currentProject?.path ?? null)
-
-  // 打开或切换项目后，从本地项目库恢复一次会话列表（正文在选中时按需加载）。
+  // 挂载兜底：重置与恢复的主入口在 project-service（项目打开/关闭时，与 character/draft 一致），
+  // 这里只做一次幂等确保，不再自己判断项目路径变化——两处都判断就又成了两套真相。
   useEffect(() => {
-    if (!projectPath) return
-    void useAgentStore.getState().restoreConversations()
-  }, [projectPath])
+    useAgentStore.getState().ensureAgentConversationsRestored()
+  }, [])
 
   // 历史面板模式
   if (showHistory) {

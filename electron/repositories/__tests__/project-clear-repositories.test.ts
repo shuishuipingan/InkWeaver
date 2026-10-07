@@ -71,6 +71,13 @@ function createRealProjectDb(): BetterSqlite3.Database {
     );
     INSERT INTO project_core (id, writing_style, premise, characters_arch)
     VALUES ('main', '旧文风', '旧故事前提', '');
+    CREATE TABLE writing_style_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      previous_style TEXT DEFAULT '',
+      next_style TEXT DEFAULT '',
+      source_fingerprint TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    );
     CREATE TABLE characters (
       name TEXT PRIMARY KEY,
       role TEXT DEFAULT 'supporting',

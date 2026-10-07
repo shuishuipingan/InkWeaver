@@ -104,8 +104,19 @@ interface AgentState {
   historyHydrated: boolean
   /** 最近一次落库失败的说明；仅供状态展示，不影响对话。 */
   lastPersistenceWarning: string | null
-  /** 从项目库恢复会话元数据（应用启动或打开项目后调用一次）。 */
+  /**
+   * 切换项目时重置助手会话的内存态（必须先重置、再恢复，顺序不能颠倒）。
+   * 不变式：助手会话只属于打开中的项目，上一个项目的会话绝不允许活下来。
+   */
+  resetAgentConversationsForProjectSwitch: () => void
+  /** 从项目库恢复会话元数据（统一入口：project-service 在项目打开时调用）。 */
   restoreConversations: () => Promise<void>
+  /**
+   * 幂等兜底：视图挂载时若还没恢复过就恢复一次。
+   * 重置与恢复的**主入口是 project-service**，这里只处理「视图先挂载、项目后打开」的时序，
+   * 不参与项目切换判断——避免与统一入口形成两套真相。
+   */
+  ensureAgentConversationsRestored: () => void
   /** 按需加载某个会话的正文（已加载过则不再请求）。 */
   loadConversationMessages: (id: string) => Promise<void>
   /** 把某条助手消息的当前内存版本落库（幂等；一轮结束时调用）。 */
@@ -241,6 +252,13 @@ function activeProjectSession(): ProjectSessionContext | null {
 }
 
 /**
+ * 会话恢复的代次。
+ * 恢复是异步的：快速连续切换项目时，先发出的请求可能后返回，
+ * 必须靠代次判断「这次结果是否已经过期」，否则会把旧项目的会话写进新项目。
+ */
+let conversationRestoreSequence = 0
+
+/**
  * 会话落库的统一出口。
  *
  * 写入节流：流式生成期间**不落库**（逐条增量会在流式输出时打出成百上千次写），
@@ -374,15 +392,44 @@ export const useAgentStore = create<AgentState>()((set, get) => ({
     }
   },
 
+  resetAgentConversationsForProjectSwitch: () => {
+    // 悬挂确认属于上一个项目：按拒绝结算并清空（复用既有实现）。
+    get().clearPendingConfirmations()
+    // 正在进行的生成：中止请求，但**不**写任何「已停止生成」文案——
+    // 那些消息属于上一个项目，随这次重置一起丢弃。
+    if (activeAbortController) {
+      activeAbortController.abort()
+      activeAbortController = null
+    }
+    clearActiveDeadlineTimer()
+    // 让在途的恢复结果立即过期。
+    conversationRestoreSequence += 1
+    set({
+      conversations: [],
+      activeConversationId: null,
+      historyHydrated: false,
+      lastPersistenceWarning: null,
+      generating: false,
+      activeRequestId: null,
+    })
+  },
+
   restoreConversations: async () => {
+    // 代次：先发出的请求若后返回，必须被丢弃。
+    const sequence = ++conversationRestoreSequence
     const session = activeProjectSession()
     if (!session) {
-      // 没打开项目：助手会话只存在于内存，没有可恢复的库记录。
-      set({ historyHydrated: true })
+      // 没打开项目：助手会话只存在于内存、不落库，
+      // 也不该继续展示上一个项目的内容（同一套「会话属于当前项目」的不变式）。
+      set({ conversations: [], activeConversationId: null, historyHydrated: true })
       return
     }
+    const requestedProjectPath = session.projectPath
     try {
       const rows = await ipc.invokeWithProjectSession(session, 'db:agent-conversation-list', session.projectPath)
+      // 期间又切了项目（或发起了新一轮恢复）：这次结果已经过期，丢弃。
+      if (sequence !== conversationRestoreSequence) return
+      if (activeProjectSession()?.projectPath !== requestedProjectPath) return
       const metas = (Array.isArray(rows) ? rows : []) as AgentConversationMeta[]
       set(state => {
         const inMemory = new Map(state.conversations.map(conversation => [conversation.id, conversation]))
@@ -410,7 +457,8 @@ export const useAgentStore = create<AgentState>()((set, get) => ({
           }
         })
         const restoredIds = new Set(metas.map(meta => meta.id))
-        // 库里没有但内存里有消息的会话（本进程刚建、还没落库）保留在后面，不丢。
+        // 不变式：切项目时已先执行过 reset，所以此刻内存里不可能还有别的项目的会话——
+        // 这里的 notPersisted 只可能是「同一项目里刚建、还没来得及落库」的会话，按需要保留。
         const notPersisted = state.conversations.filter(conversation => !restoredIds.has(conversation.id) && conversation.messages.length > 0)
         return {
           conversations: [...restored, ...notPersisted],
@@ -422,6 +470,11 @@ export const useAgentStore = create<AgentState>()((set, get) => ({
       runtimeLog.warn('agent', '恢复助手会话失败', { error: String(error) })
       set({ historyHydrated: true, lastPersistenceWarning: '恢复会话列表' })
     }
+  },
+
+  ensureAgentConversationsRestored: () => {
+    if (get().historyHydrated) return
+    void get().restoreConversations()
   },
 
   loadConversationMessages: async (id) => {
