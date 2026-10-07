@@ -1,10 +1,10 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
-describe('v1.3.30 release metadata', () => {
+describe('v1.3.31 release metadata', () => {
   it('uses the release version in package metadata', () => {
     const pkg = JSON.parse(readFileSync('package.json', 'utf8')) as { version: string }
-    expect(pkg.version).toBe('1.3.30')
+    expect(pkg.version).toBe('1.3.31')
   })
 
   it('resolves the release tag and exact thirteen-asset contract from the package version', () => {
@@ -13,21 +13,21 @@ describe('v1.3.30 release metadata', () => {
       releaseAssets: Array<{ name: string }>
     }
 
-    expect(`v${pkg.version}`).toBe('v1.3.30')
+    expect(`v${pkg.version}`).toBe('v1.3.31')
     expect(profile.releaseAssets.map(({ name }) => name.replaceAll('{version}', pkg.version))).toEqual([
-      'inkweaver-setup-1.3.30.exe',
-      'inkweaver-setup-1.3.30.exe.blockmap',
+      'inkweaver-setup-1.3.31.exe',
+      'inkweaver-setup-1.3.31.exe.blockmap',
       'latest.yml',
-      'inkweaver-mac-arm64-1.3.30-installer.dmg',
-      'inkweaver-mac-arm64-1.3.30-installer.dmg.sha256',
-      'inkweaver-mac-x64-1.3.30-installer.dmg',
-      'inkweaver-mac-x64-1.3.30-installer.dmg.sha256',
-      'inkweaver-linux-x64-1.3.30.AppImage',
-      'inkweaver-linux-x64-1.3.30.AppImage.sha256',
-      'inkweaver-linux-x64-1.3.30.deb',
-      'inkweaver-linux-x64-1.3.30.deb.sha256',
-      'inkweaver-linux-x64-1.3.30.rpm',
-      'inkweaver-linux-x64-1.3.30.rpm.sha256',
+      'inkweaver-mac-arm64-1.3.31-installer.dmg',
+      'inkweaver-mac-arm64-1.3.31-installer.dmg.sha256',
+      'inkweaver-mac-x64-1.3.31-installer.dmg',
+      'inkweaver-mac-x64-1.3.31-installer.dmg.sha256',
+      'inkweaver-linux-x64-1.3.31.AppImage',
+      'inkweaver-linux-x64-1.3.31.AppImage.sha256',
+      'inkweaver-linux-x64-1.3.31.deb',
+      'inkweaver-linux-x64-1.3.31.deb.sha256',
+      'inkweaver-linux-x64-1.3.31.rpm',
+      'inkweaver-linux-x64-1.3.31.rpm.sha256',
     ])
   })
 
@@ -111,9 +111,9 @@ describe('v1.3.30 release metadata', () => {
     const changelog = readFileSync('CHANGELOG.md', 'utf8')
     for (const source of [quickstart, changelog]) {
       for (const expected of [
-        'inkweaver-linux-x64-1.3.30.AppImage',
-        'inkweaver-linux-x64-1.3.30.deb',
-        'inkweaver-linux-x64-1.3.30.rpm',
+        'inkweaver-linux-x64-1.3.31.AppImage',
+        'inkweaver-linux-x64-1.3.31.deb',
+        'inkweaver-linux-x64-1.3.31.rpm',
         'Ubuntu 22.04', 'Debian 13', 'Fedora 44', 'glibc 2.35',
         '--appimage-extract-and-run',
       ]) expect(source).toContain(expected)

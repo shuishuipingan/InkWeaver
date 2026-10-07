@@ -2,6 +2,30 @@
 
 本文件按用户可见行为记录变更。桌面版本不发布 npm；DSH 插件沿用已发布的 `1.2.0` 包。`1.2.0` 已从同一源码 commit 完成工程验收、三平台资产回读和正式 Release；`1.1.0` 的历史 Release 收据保留在 `docs/upgrade/`，不与 1.2.0 混用。
 
+## 1.3.31 — 2026-10-07
+
+### 修复
+
+- AI 生成角色资料时不再把多个角色合并进一张卡：此前生成链路只检查名字是否非空与是否重复，因此会出现一张卡的“姓名”栏是多个名字连在一起、下面的外貌、性格、背景、能力、动机也都是多人混合描述的情况；也会把势力当成角色，生成一张挂着“某某盟、某某宫与某某庭”的组织名兼“推动者”的角色卡。现在两处入口都会在提交前拦截——名字含多角色分隔符（顿号、逗号、分号，或“甲和乙”“甲与乙”这类并列写法），以及势力或组织的形态（名字含盟、宫、庭、宗、派、教等标志词且含推动者、成员、高层等聚合词）；拦截时会给出可执行的修正指引：把每个角色作为单独一项提交，每人一条。
+- 确实属于单个角色的真名（例如带间隔号的译名，或“王和芳”“和珅”这类名字）不受影响，必要时可在确认后使用豁免开关放行；「龙门」「明镜」这类不含聚合词的正常角色名同样不受影响。
+- 势力仍应写入架构的世界观，而不是角色表：生成提示词与批量建档技能都把这条从建议改成硬步骤，先分类角色与势力再提交。
+
+### 发布
+
+- 保持 Windows、macOS、Linux x64 同提交发布。Linux 文件为 inkweaver-linux-x64-1.3.31.AppImage、inkweaver-linux-x64-1.3.31.deb、inkweaver-linux-x64-1.3.31.rpm 及 SHA-256；运行资格覆盖 Ubuntu 22.04、Debian 13、Fedora 44，glibc 2.35 基线及 --appimage-extract-and-run 检查继续有效，包未签名。
+
+## 1.3.31 — 2026-10-07 (English)
+
+### Fixed
+
+- AI-generated character profiles are no longer merged into a single card: the generation path only checked that a name was non-empty and not duplicated, so a card could end up with several names concatenated in its name field and with appearance, personality, background, abilities, and motivation describing all of them at once; factions were turned into characters too, producing a card that combined an organization name with a role such as “instigator”. Both entry points now block these before submission — a name containing multiple-character separators (enumeration comma, comma, semicolon, or a conjunction form) and a faction/organization shape (a name containing markers such as alliance, palace, court, sect, school, or order together with an aggregating word such as instigator, member, or leadership); the block comes with an actionable instruction to submit each character as its own entry, one per person.
+- A genuine single-character name — for example a translated name with an interpunct, or names that merely contain a conjunction character — is unaffected, and can be released through an exemption switch after confirmation; ordinary character names without an aggregating word are likewise unaffected.
+- Factions still belong in the architecture's worldbuilding rather than the character roster: both the generation prompt and the bulk-profile skill now treat this as a hard step, classifying characters and factions before submitting.
+
+### Release
+
+- Continues Windows, macOS and Linux x64 same-commit releases. Linux packages: inkweaver-linux-x64-1.3.31.AppImage, inkweaver-linux-x64-1.3.31.deb, inkweaver-linux-x64-1.3.31.rpm with SHA-256. Qualification covers Ubuntu 22.04, Debian 13, Fedora 44, the glibc 2.35 baseline and --appimage-extract-and-run. Linux packages are unsigned.
+
 ## 1.3.30 — 2026-10-07
 
 ### 修复
