@@ -2,6 +2,30 @@
 
 本文件按用户可见行为记录变更。桌面版本不发布 npm；DSH 插件沿用已发布的 `1.2.0` 包。`1.2.0` 已从同一源码 commit 完成工程验收、三平台资产回读和正式 Release；`1.1.0` 的历史 Release 收据保留在 `docs/upgrade/`，不与 1.2.0 混用。
 
+## 1.3.27 — 2026-10-07
+
+### 新增
+
+- 助手的会话现在按项目保存在本地数据库中，重开应用后仍在。此前助手对话是纯内存的，关闭应用即全部丢失——作者与助手达成的重要决定（比如“这个设定定成 X”“这一章先不回收那条线索”）会随对话一起消失，每次新会话都要重新解释项目。现在历史面板里的会话会保留下来，打开即可继续；会话列表只取元数据，选中某个会话时才按需加载正文，不会一次拉取全部内容；面板顶部显示当前状态（已保存 / 读取中 / 最近一次保存失败），空状态也有可读提示。
+- 两条可感知的取舍：流式生成期间不写库，只在你发出消息时、以及助手一轮结束（正常完成、出错或被取消）时保存，避免流式输出打出成百上千次写入；保存失败不会打断对话——落库异常只记一条警告并在面板上显示“最近一次保存失败”，对话本身照常进行，不弹出错误。
+- 删除与清空会话是永久操作，会同时删除本地项目库中的记录（界面已明确提示）。
+
+### 发布
+
+- 保持 Windows、macOS、Linux x64 同提交发布。Linux 文件为 inkweaver-linux-x64-1.3.27.AppImage、inkweaver-linux-x64-1.3.27.deb、inkweaver-linux-x64-1.3.27.rpm 及 SHA-256；运行资格覆盖 Ubuntu 22.04、Debian 13、Fedora 44，glibc 2.35 基线及 --appimage-extract-and-run 检查继续有效，包未签名。
+
+## 1.3.27 — 2026-10-07 (English)
+
+### Added
+
+- Assistant conversations are now stored per project in the local database and survive restarting the application. They used to live only in memory, so closing the application lost every conversation — including the decisions you and the assistant had reached, such as fixing a setting a certain way or leaving a thread unresolved for a chapter — and each new conversation meant explaining the project again. Conversations in the history panel are now kept and can be reopened to continue; the list loads metadata only and a single conversation's text is fetched when you select it, rather than everything at once; and the panel header shows the current state (saved / loading / last save failed) with a readable empty state.
+- Two visible trade-offs: nothing is written during streaming, so saving happens when you send a message and when a turn finishes (completed, failed, or cancelled), which avoids hundreds of writes from streamed output; and a save failure never interrupts the conversation — a database error only records a warning and shows “last save failed” in the panel while the conversation continues without an error dialog.
+- Deleting or clearing a conversation is permanent and also removes its records from the local project database, as the interface states.
+
+### Release
+
+- Continues Windows, macOS and Linux x64 same-commit releases. Linux packages: inkweaver-linux-x64-1.3.27.AppImage, inkweaver-linux-x64-1.3.27.deb, inkweaver-linux-x64-1.3.27.rpm with SHA-256. Qualification covers Ubuntu 22.04, Debian 13, Fedora 44, the glibc 2.35 baseline and --appimage-extract-and-run. Linux packages are unsigned.
+
 ## 1.3.26 — 2026-10-07
 
 ### 新增
