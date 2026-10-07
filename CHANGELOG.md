@@ -2,6 +2,26 @@
 
 本文件按用户可见行为记录变更。桌面版本不发布 npm；DSH 插件沿用已发布的 `1.2.0` 包。`1.2.0` 已从同一源码 commit 完成工程验收、三平台资产回读和正式 Release；`1.1.0` 的历史 Release 收据保留在 `docs/upgrade/`，不与 1.2.0 混用。
 
+## 1.3.24 — 2026-10-07
+
+### 新增
+
+- 助手现在可以检索自己作品的正文（search_project）：按关键词在正文里检索，结果按章节分组，逐条给出「第 N 章（定稿 / v3 草稿）＋ 匹配点前后约 60 字的片段」，命中字在片段里加【】标记，并给出该版本的命中总次数（命中多处时说明列出的是前 K 处）与总量统计，完整保留章节号、版本、字数等出处便于作者复核；可限定只搜定稿或只搜草稿。此前助手只能检索导入的参考资料，项目正文（定稿与各版草稿）没有检索入口，作者问“某件信物或某句设定在第几章出现过”实际答不了——只能逐章读草稿，既慢又占上下文。现在不需要逐章读草稿，且只返回片段、不返回整章正文，既省上下文也避免把作者的长文反复搬进对话。
+
+### 发布
+
+- 保持 Windows、macOS、Linux x64 同提交发布。Linux 文件为 inkweaver-linux-x64-1.3.24.AppImage、inkweaver-linux-x64-1.3.24.deb、inkweaver-linux-x64-1.3.24.rpm 及 SHA-256；运行资格覆盖 Ubuntu 22.04、Debian 13、Fedora 44，glibc 2.35 基线及 --appimage-extract-and-run 检查继续有效，包未签名。
+
+## 1.3.24 — 2026-10-07 (English)
+
+### Added
+
+- The assistant can now search the prose of your own project (search_project): a keyword search across the manuscript returns matches grouped by chapter, each with “chapter N (finalized / draft v3) plus a roughly 60-character excerpt around the match”, the matched characters marked inside the excerpt, the hit count for that version (noting when only the first K of many are listed) and overall totals, keeping full provenance (chapter number, version, word count) for review, and it can be limited to finalized or draft text only. Previously the assistant could only search imported reference material, and the project's own prose — finalized chapters and every draft version — had no search entry point, so a question such as “which chapter mentioned this keepsake or this setting” could not really be answered and reading drafts chapter by chapter was the only option, which was slow and consumed context. That is no longer needed, and only excerpts are returned rather than whole chapters, which saves context and avoids pulling your long text into the conversation repeatedly.
+
+### Release
+
+- Continues Windows, macOS and Linux x64 same-commit releases. Linux packages: inkweaver-linux-x64-1.3.24.AppImage, inkweaver-linux-x64-1.3.24.deb, inkweaver-linux-x64-1.3.24.rpm with SHA-256. Qualification covers Ubuntu 22.04, Debian 13, Fedora 44, the glibc 2.35 baseline and --appimage-extract-and-run. Linux packages are unsigned.
+
 ## 1.3.23 — 2026-10-07
 
 ### 新增
