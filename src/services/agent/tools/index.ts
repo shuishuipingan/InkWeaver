@@ -29,6 +29,7 @@ import { readChapterHandoffTool } from './read-chapter-handoff.tool'
 import { readKnowledgeEventsTool } from './read-knowledge-events.tool'
 import { readStoryContinuityTool } from './read-story-continuity.tool'
 import { readRevisionProposalsTool } from './read-revision-proposals.tool'
+import { proposeDraftRevisionTool } from './propose-draft-revision.tool'
 
 /** 所有内置 Tool（供外部引用） */
 export const builtinTools = [
@@ -58,6 +59,7 @@ export const builtinTools = [
   proposeNovelConfigTool,
   proposeChapterBlueprintTool,
   proposeChangePlanTool,
+  proposeDraftRevisionTool,
 ]
 
 /**

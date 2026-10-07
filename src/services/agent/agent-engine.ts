@@ -387,6 +387,9 @@ export async function runAgentLoop(
         rounds,
         fullTextChars: fullAssistantText.length,
         toolCalls: allToolCalls.length,
+        // 本轮真正调用过的工具名与最终状态：下次「宣布了却没调用」可以一眼看出来。
+        toolNames: allToolCalls.map(toolCall => toolCall.toolName),
+        toolOutcomes: summarizeToolOutcomes(allToolCalls),
       })
       callbacks.onDone(fullAssistantText, allToolCalls, allArtifacts)
       return
@@ -481,12 +484,14 @@ export async function runAgentLoop(
       if (tool.requiresConfirmation) {
         toolCallInfo.status = 'waiting_confirm'
         callbacks.onToolCallStart(toolCallInfo)
+        runtimeLog.info('agent', `工具 ${tc.name} 等待作者确认`, { toolName: tc.name })
 
         const response = await callbacks.onToolCallConfirmRequired(toolCallInfo)
         confirmationDecision = typeof response === 'boolean' ? { confirmed: response } : response
         if (!confirmationDecision.confirmed) {
           toolCallInfo.status = 'failed'
           toolCallInfo.error = '用户拒绝执行'
+          runtimeLog.warn('agent', `作者拒绝执行工具 ${tc.name}`, { toolName: tc.name })
           callbacks.onToolCallComplete(toolCallInfo)
           observationParts.push(errorObservation(tc.name, '用户拒绝了此操作。', '请勿再次调用该工具，改为向用户说明或提出替代方案。'))
           continue
@@ -506,7 +511,9 @@ export async function runAgentLoop(
       const parallelRun = prefetched.has(tc)
       runtimeLog.info('agent', `执行工具 ${tc.name}`, {
         toolName: tc.name,
-        arguments: tc.arguments,
+        // 不记参数正文（可能包含作者原创内容），只留键名便于诊断。
+        argumentKeys: Object.keys(tc.arguments).join(','),
+        requiresConfirmation: tool.requiresConfirmation,
         parallel: parallelRun,
       })
 
@@ -522,6 +529,8 @@ export async function runAgentLoop(
             abortSignal,
           )
         runtimeLog.info('agent', `工具 ${tc.name} 执行完成`, {
+          toolName: tc.name,
+          status: resolved.success ? 'completed' : 'failed',
           success: resolved.success,
           contentChars: resolved.content?.length ?? 0,
           elapsedMs: Date.now() - toolStartedAt,
@@ -586,11 +595,21 @@ export async function runAgentLoop(
     fullTextChars: fullAssistantText.length,
     toolCalls: allToolCalls.length,
     artifacts: allArtifacts.length,
+    toolNames: allToolCalls.map(toolCall => toolCall.toolName),
+    toolOutcomes: summarizeToolOutcomes(allToolCalls),
   })
   callbacks.onDone(fullAssistantText, allToolCalls, allArtifacts)
 }
 
 // ===== 工具函数 =====
+
+/**
+ * 本轮调用过的工具名与最终状态（不记参数正文）。
+ * 诊断用：结束日志里能直接看出「说了要改稿，到底调用了哪些工具、哪个被拒绝」。
+ */
+function summarizeToolOutcomes(toolCalls: ToolCallInfo[]): string[] {
+  return toolCalls.map(toolCall => toolCall.toolName + ':' + (toolCall.status ?? 'unknown'))
+}
 
 /** 解析的 Tool 调用 */
 interface ParsedToolCall {
