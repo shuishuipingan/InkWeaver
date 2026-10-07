@@ -56,7 +56,8 @@ import { StyleHistoryRepository } from '../repositories/style-history-repository
 import { KnowledgeEventRepository } from '../repositories/knowledge-event-repository'
 import { ProjectSnapshotService } from '../services/project-snapshot-service'
 import { ContentSearchRepository } from '../repositories/content-search-repository'
-import type { ContentSearchParams } from '../../src/shared/ipc-channels'
+import { AgentConversationRepository } from '../repositories/agent-conversation-repository'
+import type { AgentMessageAppendInput, ContentSearchParams } from '../../src/shared/ipc-channels'
 import { safeConsole } from '../utils/safe-console'
 
 type ProjectDatabaseHandler = (event: unknown, ...args: never[]) => unknown
@@ -127,6 +128,10 @@ const MUTATING_DATABASE_CHANNELS = new Set([
   'db:character-extraction-candidate-status',
   'db:character-extraction-candidates-stale',
   'db:writing-style-history-record',
+  'db:agent-conversation-save',
+  'db:agent-message-append',
+  'db:agent-conversation-delete',
+  'db:agent-conversation-clear',
 ])
 
 function registerProjectDatabaseHandler(channel: string, handler: ProjectDatabaseHandler): void {
@@ -1285,6 +1290,47 @@ ipcMain.handle('db:revision-create', async (_event, params: {
   ipcMain.handle('db:post-process-is-all-passed', async (_event, sourceType: string, sourceId: string, expectedProjectPath: string) => {
     assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
     return PostProcessRepository.isAllCriticalPassed(sourceType, sourceId)
+  })
+
+  // ============================================================
+  // 9. agent conversations（助手会话持久化）
+  // ============================================================
+  ipcMain.handle('db:agent-conversation-list', async (_event, expectedProjectPath: string) => {
+    assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+    return AgentConversationRepository.list()
+  })
+
+  ipcMain.handle('db:agent-conversation-load', async (_event, conversationId: string, expectedProjectPath: string) => {
+    assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+    return AgentConversationRepository.load(conversationId)
+  })
+
+  ipcMain.handle('db:agent-conversation-save', async (
+    _event,
+    params: { id: string; title: string; mode: string; modelId?: string | null },
+    expectedProjectPath: string,
+  ) => {
+    assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+    return AgentConversationRepository.saveMeta(params)
+  })
+
+  ipcMain.handle('db:agent-message-append', async (
+    _event,
+    params: { conversationId: string; message: AgentMessageAppendInput },
+    expectedProjectPath: string,
+  ) => {
+    assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+    return AgentConversationRepository.appendMessage(params)
+  })
+
+  ipcMain.handle('db:agent-conversation-delete', async (_event, conversationId: string, expectedProjectPath: string) => {
+    assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+    return AgentConversationRepository.deleteConversation(conversationId)
+  })
+
+  ipcMain.handle('db:agent-conversation-clear', async (_event, expectedProjectPath: string) => {
+    assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+    return AgentConversationRepository.clearAll()
   })
 
   // ============================================================

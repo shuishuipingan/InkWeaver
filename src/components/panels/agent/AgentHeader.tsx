@@ -146,11 +146,15 @@ export default function AgentHeader() {
                     danger
                     onClick={async () => {
                       setShowMore(false)
-                      const ok = await confirm('确定要清空所有对话记录？\n此操作不可撤销。', {
-                        title: '清空对话记录',
-                        confirmText: '确认清空',
-                        danger: true,
-                      })
+                      const agentText = useLocaleStore.getState().text
+                      const ok = await confirm(
+                        agentText('确定要清空所有对话记录？\n这会永久删除本地项目库中的会话与消息，且不可撤销。', 'Clear every conversation? This permanently deletes the stored conversations and messages from the local project library, and cannot be undone.'),
+                        {
+                          title: agentText('清空对话记录', 'Clear conversations'),
+                          confirmText: agentText('确认永久清空', 'Delete permanently'),
+                          danger: true,
+                        },
+                      )
                       if (ok) useAgentStore.getState().clearAll()
                     }}
                   />

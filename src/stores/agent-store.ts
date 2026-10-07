@@ -15,6 +15,10 @@ import type { ToolArtifact } from '../services/agent/tool-registry'
 import { createAgentExecutionContext } from '../services/agent/tools/project-context'
 import { createGenerationRuntime } from '../services/generation/generation-runtime'
 import { runtimeLog } from '../services/runtime-log'
+import { ipc } from '../services/ipc-client'
+import type { AgentConversationMeta, AgentMessageRecord, ProjectSessionContext } from '../shared/ipc-channels'
+import { projectSessionContextFromProject } from '../shared/project-session-context'
+import { useProjectStore } from './project-store'
 
 export const AGENT_GENERATION_BUDGET = Object.freeze({
   // MAX_TOOL_ROUNDS 的 8 轮之外，上下文压缩摘要也在这份预算内发起请求，
@@ -56,6 +60,11 @@ export interface AgentConversation {
   mode: AgentMode
   /** 当前会话使用的模型 ID（null 表示使用默认） */
   modelId: string | null
+  /**
+   * 正文是否已从项目库加载（或本来就是本进程新建的空会话）。
+   * 列表通道只返回元数据，正文在 selectConversation 时按需 load 一次。
+   */
+  messagesLoaded?: boolean
 }
 
 // ===== Store 状态接口 =====
@@ -89,8 +98,18 @@ interface AgentState {
   selectConversation: (id: string) => void
   /** 删除指定会话 */
   deleteConversation: (id: string) => void
-  /** 清空所有会话 */
+  /** 清空所有会话（永久删除：同时删除本地项目库中的记录） */
   clearAll: () => void
+  /** 会话是否已从项目库恢复（UI 据此显示「会话已保存在本地项目库」）。 */
+  historyHydrated: boolean
+  /** 最近一次落库失败的说明；仅供状态展示，不影响对话。 */
+  lastPersistenceWarning: string | null
+  /** 从项目库恢复会话元数据（应用启动或打开项目后调用一次）。 */
+  restoreConversations: () => Promise<void>
+  /** 按需加载某个会话的正文（已加载过则不再请求）。 */
+  loadConversationMessages: (id: string) => Promise<void>
+  /** 把某条助手消息的当前内存版本落库（幂等；一轮结束时调用）。 */
+  persistAssistantMessage: (conversationId: string, messageId: string) => Promise<void>
   /** 切换历史面板 */
   toggleHistory: () => void
   /** 设置历史面板可见性 */
@@ -214,6 +233,40 @@ function clearActiveDeadlineTimer(): void {
   }
 }
 
+// ===== 会话持久化（项目库） =====
+
+/** 当前项目的冻结会话；没有打开项目时助手会话只存在于内存，不落库。 */
+function activeProjectSession(): ProjectSessionContext | null {
+  return projectSessionContextFromProject(useProjectStore.getState().currentProject)
+}
+
+/**
+ * 会话落库的统一出口。
+ *
+ * 写入节流：流式生成期间**不落库**（逐条增量会在流式输出时打出成百上千次写），
+ * 只在「一轮结束」的三个出口落最终助手消息 —— onDone / onError / cancelGeneration；
+ * 用户消息在发送时立即落库。
+ *
+ * 失败降级：任何落库失败或异常都只记一条 runtimeLog 警告并返回 false，绝不抛出。
+ * 对话不依赖持久化，落库失败不能打断作者，UI 也不弹错误（只更新状态提示）。
+ */
+async function persistAgentState(
+  description: string,
+  task: () => Promise<{ ok: boolean; error?: string }>,
+): Promise<boolean> {
+  try {
+    const result = await task()
+    if (!result.ok) {
+      runtimeLog.warn('agent', `会话落库失败：${description}`, { error: result.error ?? '未知原因' })
+      return false
+    }
+    return true
+  } catch (error) {
+    runtimeLog.warn('agent', `会话落库异常：${description}`, { error: String(error) })
+    return false
+  }
+}
+
 // ===== Zustand Store =====
 
 export const useAgentStore = create<AgentState>()((set, get) => ({
@@ -225,6 +278,8 @@ export const useAgentStore = create<AgentState>()((set, get) => ({
   activeRequestId: null,
   toolsInitialized: false,
   pendingConfirmationRevision: 0,
+  historyHydrated: false,
+  lastPersistenceWarning: null,
 
   getActiveConversation: () => {
     const { conversations, activeConversationId } = get()
@@ -258,12 +313,30 @@ export const useAgentStore = create<AgentState>()((set, get) => ({
       conversations: [newConv, ...state.conversations],
       activeConversationId: newConv.id,
       showHistory: false,
+      // 新会话立刻与项目库对齐：元数据马上落库，正文为空。
+      historyHydrated: true,
     }))
+    const session = activeProjectSession()
+    if (session) {
+      void persistAgentState('保存会话元数据', async () => {
+        const saved = await ipc.invokeWithProjectSession(session, 'db:agent-conversation-save', {
+          id: newConv.id,
+          title: newConv.title,
+          mode: newConv.mode,
+          modelId: newConv.modelId,
+        }, session.projectPath)
+        return { ok: Boolean(saved) }
+      }).then(ok => {
+        if (!ok) set({ lastPersistenceWarning: '保存会话元数据' })
+      })
+    }
     return newConv
   },
 
   selectConversation: (id) => {
     set({ activeConversationId: id, showHistory: false })
+    // 正文按需加载：列表通道只给元数据，这里补一次（已加载过则直接返回，不重复请求）。
+    void get().loadConversationMessages(id)
   },
 
   deleteConversation: (id) => {
@@ -275,10 +348,156 @@ export const useAgentStore = create<AgentState>()((set, get) => ({
         : state.activeConversationId
       return { conversations: filtered, activeConversationId: nextId }
     })
+    // 永久删除：连同该会话在本地项目库中的记录一起删除（失败只记警告，不回滚内存状态）。
+    const session = activeProjectSession()
+    if (session) {
+      void persistAgentState('删除会话', async () => {
+        const result = await ipc.invokeWithProjectSession(session, 'db:agent-conversation-delete', id, session.projectPath) as { success?: boolean; error?: string }
+        return { ok: result?.success === true, error: result?.error }
+      }).then(ok => {
+        if (!ok) set({ lastPersistenceWarning: '删除会话' })
+      })
+    }
   },
 
   clearAll: () => {
     set({ conversations: [], activeConversationId: null })
+    // 永久清空：删除本地项目库里本项目的全部助手会话与消息（不触及其它项目）。
+    const session = activeProjectSession()
+    if (session) {
+      void persistAgentState('清空会话', async () => {
+        const result = await ipc.invokeWithProjectSession(session, 'db:agent-conversation-clear', session.projectPath) as { success?: boolean; error?: string }
+        return { ok: result?.success === true, error: result?.error }
+      }).then(ok => {
+        if (!ok) set({ lastPersistenceWarning: '清空会话' })
+      })
+    }
+  },
+
+  restoreConversations: async () => {
+    const session = activeProjectSession()
+    if (!session) {
+      // 没打开项目：助手会话只存在于内存，没有可恢复的库记录。
+      set({ historyHydrated: true })
+      return
+    }
+    try {
+      const rows = await ipc.invokeWithProjectSession(session, 'db:agent-conversation-list', session.projectPath)
+      const metas = (Array.isArray(rows) ? rows : []) as AgentConversationMeta[]
+      set(state => {
+        const inMemory = new Map(state.conversations.map(conversation => [conversation.id, conversation]))
+        const restored: AgentConversation[] = metas.map(meta => {
+          const existing = inMemory.get(meta.id)
+          if (existing) {
+            return {
+              ...existing,
+              title: meta.title,
+              mode: meta.mode as AgentMode,
+              modelId: meta.modelId,
+              createdAt: meta.createdAt,
+              updatedAt: meta.updatedAt,
+            }
+          }
+          return {
+            id: meta.id,
+            title: meta.title,
+            // 列表通道不返回正文：先占位，选中时再 load。
+            messages: [],
+            createdAt: meta.createdAt,
+            updatedAt: meta.updatedAt,
+            mode: meta.mode as AgentMode,
+            modelId: meta.modelId,
+          }
+        })
+        const restoredIds = new Set(metas.map(meta => meta.id))
+        // 库里没有但内存里有消息的会话（本进程刚建、还没落库）保留在后面，不丢。
+        const notPersisted = state.conversations.filter(conversation => !restoredIds.has(conversation.id) && conversation.messages.length > 0)
+        return {
+          conversations: [...restored, ...notPersisted],
+          historyHydrated: true,
+          lastPersistenceWarning: null,
+        }
+      })
+    } catch (error) {
+      runtimeLog.warn('agent', '恢复助手会话失败', { error: String(error) })
+      set({ historyHydrated: true, lastPersistenceWarning: '恢复会话列表' })
+    }
+  },
+
+  loadConversationMessages: async (id) => {
+    const conversation = get().conversations.find(item => item.id === id)
+    if (!conversation) return
+    // 只加载一次：已加载过、或本会话在内存里已有消息（例如正在进行的对话）都不再请求。
+    if (conversation.messagesLoaded || conversation.messages.length > 0) {
+      if (!conversation.messagesLoaded) {
+        set(state => ({
+          conversations: state.conversations.map(item => (item.id === id ? { ...item, messagesLoaded: true } : item)),
+        }))
+      }
+      return
+    }
+    const session = activeProjectSession()
+    if (!session) return
+    try {
+      const loaded = await ipc.invokeWithProjectSession(session, 'db:agent-conversation-load', id, session.projectPath) as {
+        conversation?: AgentConversationMeta | null
+        messages?: AgentMessageRecord[]
+      }
+      const records = Array.isArray(loaded?.messages) ? loaded.messages : []
+      const loadedMessages: AgentMessage[] = records.map(record => ({
+        id: record.id,
+        role: record.role as AgentMessage['role'],
+        content: record.content,
+        createdAt: record.createdAt,
+        ...(Array.isArray(record.toolCalls) && record.toolCalls.length > 0 ? { toolCalls: record.toolCalls as ToolCallInfo[] } : {}),
+        ...(Array.isArray(record.artifacts) && record.artifacts.length > 0 ? { artifacts: record.artifacts as ToolArtifact[] } : {}),
+      }))
+      set(state => ({
+        conversations: state.conversations.map(item => (item.id === id
+          ? {
+              ...item,
+              title: loaded?.conversation?.title ?? item.title,
+              updatedAt: loaded?.conversation?.updatedAt ?? item.updatedAt,
+              messages: loadedMessages,
+              messagesLoaded: true,
+            }
+          : item)),
+      }))
+    } catch (error) {
+      runtimeLog.warn('agent', '加载会话正文失败', { error: String(error) })
+      set(state => ({
+        lastPersistenceWarning: '加载会话正文',
+        conversations: state.conversations.map(item => (item.id === id ? { ...item, messagesLoaded: true } : item)),
+      }))
+    }
+  },
+
+  /**
+   * 一轮结束（onDone / onError / cancelGeneration）时落最终助手消息。
+   * 流式期间的增量只更新内存，不落库；同 id 重复 append 在主进程幂等，重复调用安全。
+   */
+  persistAssistantMessage: async (conversationId, messageId) => {
+    const session = activeProjectSession()
+    if (!session) return
+    const conversation = get().conversations.find(item => item.id === conversationId)
+    const message = conversation?.messages.find(item => item.id === messageId)
+    if (!conversation || !message) return
+    const ok = await persistAgentState('追加助手消息', async () => {
+      const result = await ipc.invokeWithProjectSession(session, 'db:agent-message-append', {
+        conversationId,
+        message: {
+          id: message.id,
+          role: 'assistant' as const,
+          content: message.content,
+          createdAt: message.createdAt,
+          ...(message.toolCalls && message.toolCalls.length > 0 ? { toolCalls: message.toolCalls } : {}),
+          ...(message.artifacts && message.artifacts.length > 0 ? { artifacts: message.artifacts } : {}),
+        },
+      }, session.projectPath) as { success?: boolean; error?: string }
+      return { ok: result?.success === true, error: result?.error }
+    })
+    // 不再补 save：append 会顺带刷新 updated_at，逐条 save 只会让历史面板顺序自己动。
+    if (!ok) set({ lastPersistenceWarning: '追加助手消息' })
   },
 
   toggleHistory: () => {
@@ -417,6 +636,40 @@ export const useAgentStore = create<AgentState>()((set, get) => ({
           : c
       ),
     }))
+
+    // 用户消息在发送时立即落库；助手消息要等一轮结束（onDone / onError / cancelGeneration）。
+    const persistSession = activeProjectSession()
+    if (persistSession) {
+      void persistAgentState('追加用户消息', async () => {
+        const result = await ipc.invokeWithProjectSession(persistSession, 'db:agent-message-append', {
+          conversationId: convId,
+          message: {
+            id: userMsg.id,
+            role: 'user' as const,
+            content: userMsg.content,
+            createdAt: userMsg.createdAt,
+          },
+        }, persistSession.projectPath) as { success?: boolean; error?: string }
+        return { ok: result?.success === true, error: result?.error }
+      }).then(ok => {
+        if (!ok) set({ lastPersistenceWarning: '追加用户消息' })
+      })
+    }
+
+    // 首条消息会把标题从「新对话」改成真实标题：这是唯一需要补 save 的时机。
+    if (isFirstMsg && persistSession) {
+      void persistAgentState('更新会话元数据', async () => {
+        const saved = await ipc.invokeWithProjectSession(persistSession, 'db:agent-conversation-save', {
+          id: convId,
+          title: newTitle,
+          mode: conv.mode,
+          modelId: conv.modelId,
+        }, persistSession.projectPath)
+        return { ok: Boolean(saved) }
+      }).then(ok => {
+        if (!ok) set({ lastPersistenceWarning: '更新会话元数据' })
+      })
+    }
 
     // 辅助函数：更新助手消息
     const updateAssistantMsg = (updater: (msg: AgentMessage) => AgentMessage) => {
@@ -606,6 +859,8 @@ export const useAgentStore = create<AgentState>()((set, get) => ({
                 c.id === convId ? { ...c, updatedAt: Date.now() } : c
               ),
             }))
+            // 一轮在这里结束：落最终助手消息（流式期间的增量从未落库）。
+            void get().persistAssistantMessage(convId, assistantMsg.id)
           },
           onError: (error) => {
             clearActiveDeadlineTimer()
@@ -615,6 +870,8 @@ export const useAgentStore = create<AgentState>()((set, get) => ({
               streaming: false,
             }))
             set({ generating: false, activeRequestId: null })
+            // 失败也是一轮的结束：把已经产出的内容落库，便于下次打开时看到。
+            void get().persistAssistantMessage(convId, assistantMsg.id)
           },
         },
         abortController.signal,
@@ -687,7 +944,12 @@ export const useAgentStore = create<AgentState>()((set, get) => ({
     // P1-8: 清理所有等待确认的 Promise（取消时默认拒绝），并让失效卡片立即进入过期态
     get().clearPendingConfirmations()
 
-    // 找到正在 streaming 的消息，关闭其状态
+    // 找到正在 streaming 的消息：先记下它们，关闭状态后再把最终内容落库。
+    const streamingTargets = get().conversations.flatMap(conversation =>
+      conversation.messages
+        .filter(message => message.streaming)
+        .map(message => ({ conversationId: conversation.id, messageId: message.id })),
+    )
     set(state => ({
       generating: false,
       activeRequestId: null,
@@ -698,6 +960,10 @@ export const useAgentStore = create<AgentState>()((set, get) => ({
         ),
       })),
     }))
+    // 取消同样是一轮的结束：把被中止的助手消息按最终内容落库（同 id 重复 append 幂等）。
+    for (const target of streamingTargets) {
+      void get().persistAssistantMessage(target.conversationId, target.messageId)
+    }
   },
 
   resolveToolConfirmation: (toolCallId, confirmed, options) => {

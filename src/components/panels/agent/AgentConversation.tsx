@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { ArrowDown, Trash2, Workflow } from 'lucide-react'
 import { useAgentStore } from '../../../stores/agent-store'
 import { useLayoutStore } from '../../../stores/layout-store'
+import { useLocaleStore } from '../../../stores/locale-store'
+import { useProjectStore } from '../../../stores/project-store'
 import { APP_BRAND } from '../../../shared/brand'
 import AgentMessage from './AgentMessage'
 import AgentInputBox from './AgentInputBox'
@@ -15,6 +17,13 @@ import { formatRelativeTime } from '../../../utils/time'
 export default function AgentConversation() {
   const { getActiveConversation, showHistory } = useAgentStore()
   const activeConv = getActiveConversation()
+  const projectPath = useProjectStore(state => state.currentProject?.path ?? null)
+
+  // 打开或切换项目后，从本地项目库恢复一次会话列表（正文在选中时按需加载）。
+  useEffect(() => {
+    if (!projectPath) return
+    void useAgentStore.getState().restoreConversations()
+  }, [projectPath])
 
   // 历史面板模式
   if (showHistory) {
@@ -215,6 +224,9 @@ function AgentToolbar() {
 
 function AgentHistoryPanel() {
   const { conversations, activeConversationId, selectConversation, deleteConversation, setShowHistory } = useAgentStore()
+  const historyHydrated = useAgentStore(state => state.historyHydrated)
+  const lastPersistenceWarning = useAgentStore(state => state.lastPersistenceWarning)
+  const text = useLocaleStore(state => state.text)
 
   // 按更新时间倒序排列
   const sorted = [...conversations].sort((a, b) => b.updatedAt - a.updatedAt)
@@ -226,8 +238,17 @@ function AgentHistoryPanel() {
         className="flex items-center justify-between px-3 py-2 flex-shrink-0"
         style={{ borderBottom: '1px solid var(--color-border)' }}
       >
-        <span className="text-xs font-medium" style={{ color: 'var(--color-text-secondary)' }}>
-          全部对话
+        <span className="flex flex-col">
+          <span className="text-xs font-medium" style={{ color: 'var(--color-text-secondary)' }}>
+            {text('全部对话', 'All conversations')}
+          </span>
+          <span className="text-[0.65rem]" style={{ color: 'var(--color-text-muted)' }} data-agent-history-source>
+            {lastPersistenceWarning
+              ? text('会话保存在本地项目库（最近一次保存失败：' + lastPersistenceWarning + '）', 'Conversations are stored in the local project library (last save failed: ' + lastPersistenceWarning + ')')
+              : historyHydrated
+                ? text('会话已保存在本地项目库，重启后仍在', 'Conversations are saved in the local project library and survive restarts')
+                : text('正在读取本地项目库中的会话…', 'Loading conversations from the local project library…')}
+          </span>
         </span>
         <button
           onClick={() => setShowHistory(false)}
@@ -241,8 +262,15 @@ function AgentHistoryPanel() {
       {/* 会话列表 */}
       <div className="flex-1 overflow-y-auto px-2 py-2">
         {sorted.length === 0 ? (
-          <div className="flex items-center justify-center h-24 text-xs" style={{ color: 'var(--color-text-muted)' }}>
-            暂无对话记录
+          <div
+            className="flex flex-col items-center justify-center h-24 gap-1 px-4 text-center text-xs"
+            style={{ color: 'var(--color-text-muted)' }}
+            data-agent-history-empty
+          >
+            <span>{text('本地项目库里还没有会话记录', 'No conversations stored in this project yet')}</span>
+            <span className="text-[0.65rem]">
+              {text('新对话会自动保存到本地项目库，重启应用后仍然可见。', 'New conversations are saved automatically and stay available after a restart.')}
+            </span>
           </div>
         ) : (
           sorted.map(conv => (
@@ -276,6 +304,7 @@ function RecentConversationItem({
   onClick: () => void
   onDelete: () => void
 }) {
+  const text = useLocaleStore(state => state.text)
   return (
     <button
       onClick={onClick}
@@ -301,7 +330,7 @@ function RecentConversationItem({
           }}
           className="hidden group-hover:flex items-center justify-center w-4 h-4 rounded opacity-50 hover:opacity-100 transition-opacity"
           style={{ color: 'var(--color-text-secondary)' }}
-          title="删除对话"
+          title={text('永久删除这个会话（同时删除本地项目库中的记录）', 'Delete this conversation permanently (also removes it from the local project library)')}
         >
           <Trash2 size={12} />
         </button>

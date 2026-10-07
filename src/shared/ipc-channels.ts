@@ -811,6 +811,46 @@ export interface ContentSearchHit {
   excerpts: ContentSearchExcerpt[]
 }
 
+/** 助手会话元数据（列表接口只返回它，**不含 messages**）。 */
+export interface AgentConversationMeta {
+  id: string
+  title: string
+  /** 'planning' | 'fast'（以字符串保存，避免上下游版本漂移时读不出来）。 */
+  mode: string
+  /** 会话使用的模型 id；null 表示跟随默认。 */
+  modelId: string | null
+  /** 毫秒时间戳（渲染层 AgentConversation 用的是 number）。 */
+  createdAt: number
+  updatedAt: number
+  /** 该会话当前持久化的消息条数（派生字段，便于列表展示）。 */
+  messageCount: number
+}
+
+/** 持久化的助手消息；toolCalls / artifacts 为原始 JSON 数组，null 表示未记录。 */
+export interface AgentMessageRecord {
+  id: string
+  conversationId: string
+  /** 会话内单调递增序号，用于稳定排序。 */
+  seq: number
+  /** 'user' | 'assistant' | 'system'。 */
+  role: string
+  /** 正文；写入时已按上限截断（超长会带截断标记）。 */
+  content: string
+  toolCalls: unknown[] | null
+  artifacts: unknown[] | null
+  createdAt: number
+}
+
+/** append 的入参（createdAt 缺省取当前时间）。 */
+export interface AgentMessageAppendInput {
+  id: string
+  role: string
+  content: string
+  createdAt?: number
+  toolCalls?: unknown[]
+  artifacts?: unknown[]
+}
+
 export interface DatabaseChannels {
   'db:close': { args: [expectedProjectPath: string]; return: { success: boolean } }
 
@@ -1159,6 +1199,41 @@ export interface DatabaseChannels {
   'db:post-process-mark-step-ok': { args: [runId: string, stepKey: string, expectedProjectPath: string]; return: { success: boolean; error?: string } }
   'db:post-process-mark-step-failed': { args: [runId: string, stepKey: string, errorMsg: string, expectedProjectPath: string]; return: { success: boolean; error?: string } }
   'db:post-process-is-all-passed': { args: [sourceType: string, sourceId: string, expectedProjectPath: string]; return: boolean }
+
+  // 8. agent conversations（助手会话持久化）
+  /**
+   * 全部会话的**元数据**（不含 messages，按 updated_at 倒序）。
+   * 正文只在 db:agent-conversation-load 时按需取，避免一次拉全量。
+   */
+  'db:agent-conversation-list': { args: [expectedProjectPath: string]; return: AgentConversationMeta[] }
+  /** 读单个会话的元数据与消息（消息按 seq 升序）。不存在时 conversation 为 null。 */
+  'db:agent-conversation-load': {
+    args: [conversationId: string, expectedProjectPath: string]
+    return: { conversation: AgentConversationMeta | null; messages: AgentMessageRecord[] }
+  }
+  /** upsert 会话元数据（幂等）；已存在时保留 createdAt，只更新 title/mode/modelId/updatedAt。 */
+  'db:agent-conversation-save': {
+    args: [params: { id: string; title: string; mode: string; modelId?: string | null }, expectedProjectPath: string]
+    return: AgentConversationMeta
+  }
+  /**
+   * 追加一条消息（seq = 会话内最大 seq + 1）。同 id 重复调用幂等，不重复插入。
+   * 正文超长会按上限截断并附截断标记；超出会话消息上限时淘汰最旧的。
+   */
+  'db:agent-message-append': {
+    args: [params: { conversationId: string; message: AgentMessageAppendInput }, expectedProjectPath: string]
+    return: { success: boolean; message?: AgentMessageRecord; error?: string }
+  }
+  /** 删除会话及其全部消息（显式事务删除，不依赖外键 pragma 状态）。 */
+  'db:agent-conversation-delete': {
+    args: [conversationId: string, expectedProjectPath: string]
+    return: { success: boolean; removedMessages?: number; error?: string }
+  }
+  /** 清空全部助手会话与消息。 */
+  'db:agent-conversation-clear': {
+    args: [expectedProjectPath: string]
+    return: { success: boolean; removedConversations?: number; removedMessages?: number; error?: string }
+  }
 
   // 沿用旧表
   'db:log-llm-call': { args: [call: Record<string, unknown>, expectedProjectPath: string]; return: { success: boolean } }
