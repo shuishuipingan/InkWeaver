@@ -2,6 +2,32 @@
 
 本文件按用户可见行为记录变更。桌面版本不发布 npm；DSH 插件沿用已发布的 `1.2.0` 包。`1.2.0` 已从同一源码 commit 完成工程验收、三平台资产回读和正式 Release；`1.1.0` 的历史 Release 收据保留在 `docs/upgrade/`，不与 1.2.0 混用。
 
+## 1.3.29 — 2026-10-07
+
+### 修复
+
+- 章节目录生成一次可以覆盖全书：此前每批 5 章、输出预算固定、会话窗口钉死 10 分钟、应用级调用上限 32 次，四重保守上限叠加，180 章必然撞墙（旧值下连 50 章的单任务都会被拒绝）。现在每批 12 章，输出预算按批次推导，会话窗口按批数伸缩，应用级调用上限提升到 512 次、单任务范围提升到 240 章；180 章可以一次生成全部，超过 240 章会在开工前给出分次引导。
+- 目录生成失败时更可读：失败信息带上章节进度（例如“已生成 X/Y 章，剩余 Z 章”），不再只有一句“超过会话截止时间”。
+- 角色关系图谱支持多面关系：此前每对角色之间只有一条关系句子，多个角色因此看起来共用同一份图谱；现在每对角色可有 2-4 条不同维度的关系（立场 / 情感 / 依赖 / 知情 / 历史），打开角色卡即可逐条查看，编辑保存不会丢失。
+- 角色可以带势力立场：每个角色可有 0-3 条对具体势力的立场与依据；生成时要求每条都有依据、编不出就省略，解析层强制查重（同一目标不得重复、同一维度不得重复），不守约的输出会被精确定位并拒绝。旧项目数据完全兼容。
+
+### 发布
+
+- 保持 Windows、macOS、Linux x64 同提交发布。Linux 文件为 inkweaver-linux-x64-1.3.29.AppImage、inkweaver-linux-x64-1.3.29.deb、inkweaver-linux-x64-1.3.29.rpm 及 SHA-256；运行资格覆盖 Ubuntu 22.04、Debian 13、Fedora 44，glibc 2.35 基线及 --appimage-extract-and-run 检查继续有效，包未签名。
+
+## 1.3.29 — 2026-10-07 (English)
+
+### Fixed
+
+- Chapter-outline generation can now cover a whole book in one run: it previously combined four separate conservative ceilings — 5 chapters per semantic batch, a fixed output budget, a session window pinned at 10 minutes, and an application-level cap of 32 calls — so 180 chapters could not finish, and even a 50-chapter single task was rejected under the old values. Batches now hold 12 chapters, the output budget is derived from the batch size, the session window scales with the number of batches, and the application-level limits rise to 512 calls and a 240-chapter single-task range; 180 chapters can be generated in one run, and anything beyond 240 chapters gets a split-run guidance before work starts.
+- Outline-generation failures are more readable: the message now carries chapter progress (for example “X of Y chapters generated, Z remaining”) instead of only “the session deadline was exceeded”.
+- The character relationship graph supports multi-faceted relationships: each pair of characters previously held a single relationship sentence, which made several characters look as if they shared one graph. A pair can now carry 2-4 relationships along different dimensions (allegiance, emotion, dependence, knowledge, history), visible one by one on the character card, and edits are not lost on save.
+- Characters can carry faction stances: each character may have 0-3 stances toward specific factions, each with its supporting evidence. Generation requires evidence for every entry and omits what it cannot support, the parsing layer enforces de-duplication (no repeated target, no repeated dimension), and non-conforming output is rejected with its exact location. Existing project data remains fully compatible.
+
+### Release
+
+- Continues Windows, macOS and Linux x64 same-commit releases. Linux packages: inkweaver-linux-x64-1.3.29.AppImage, inkweaver-linux-x64-1.3.29.deb, inkweaver-linux-x64-1.3.29.rpm with SHA-256. Qualification covers Ubuntu 22.04, Debian 13, Fedora 44, the glibc 2.35 baseline and --appimage-extract-and-run. Linux packages are unsigned.
+
 ## 1.3.28 — 2026-10-07
 
 ### 修复

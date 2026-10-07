@@ -4,15 +4,15 @@
 
 InkWeaver is a local-first desktop workspace for long-form fiction. It brings project settings, characters, worldbuilding, chapter blueprints, prose, review, revision, and finalization into a traceable writing chain while keeping the author in control of every durable change.
 
-Current version: **v1.3.28**
+Current version: **v1.3.29**
 
 [Long-form context selection and budget guide](docs/features/draft-context-budget.md)
 
 > **Turn a long novel into one continuously developing story.** InkWeaver is a local-first AI writing workspace that connects story premises, character state, chapter blueprints, candidate drafts, evidence-backed review, and author-approved finalization into one traceable writing loop.
 
-Version 1.3.28 fixes the previous project's content still showing after you switch projects. Assistant conversations are cleared and then restored for the newly opened project, so rapid consecutive switches do not mix them up; the workflow task history is shown for the current project and kept per project in memory, so switching back still finds its history; runtime logs carry project ownership and only show application-level entries plus the current project's instead of mixing another project into the panel; and the timing of resetting assistant state now hangs off the shared project open/close entry point, the same way characters and drafts do, rather than depending on a particular panel happening to mount. Three database-level problems were fixed in the same pass: "clear finalized prose" did not actually clear everything (the finalized full-text snapshot is stored separately and was out of scope), which is now included together with two other tables that were being missed; a project that had never used the summary cache no longer fails the entire clear operation because a table did not exist yet; and deleting then recreating the same project path no longer skips the knowledge-base migration check. The scope of clearing is stated outright: the dialog says assistant conversation records are not affected, lists what will be cleared, and points to the assistant panel's history for deleting conversations — the rule being that clearing generated data clears the manuscript, not the plans and decisions. Includes the [long-form context guide](docs/features/draft-context-budget.md), the [workflow audit repairs](docs/audits/workflow-audit-2026-10-01.md), and the [security audit receipt](docs/audits/security-audit-2026-10-03.md). The Release supports Windows, macOS and Linux x64; the DSH plugin remains in v1.2.0, and npm publication remains out of scope.
+Version 1.3.29 fixes two paths. Chapter-outline generation can now cover a whole book in one run: it previously combined four separate conservative ceilings — 5 chapters per batch, a fixed output budget, a session window pinned at 10 minutes, and an application-level cap of 32 calls — so 180 chapters could not finish, and even a 50-chapter single task was rejected under the old values. Batches now hold 12 chapters, the output budget is derived from the batch size, the session window scales with the number of batches, and the limits rise to 512 calls and a 240-chapter single-task range; 180 chapters can be generated in one run, anything beyond 240 chapters gets split-run guidance before work starts, and failure messages carry progress such as "X of Y chapters generated, Z remaining". The character relationship graph now supports multi-faceted relationships: each pair previously held a single sentence, which made several characters look as if they shared one graph, whereas a pair can now carry 2-4 relationships along different dimensions (allegiance, emotion, dependence, knowledge, history), visible one by one on the character card and preserved on save. Characters can also carry 0-3 stances toward specific factions with supporting evidence, generation requires evidence for every entry and omits what it cannot support, the parsing layer enforces de-duplication, and existing project data remains fully compatible. Includes the [long-form context guide](docs/features/draft-context-budget.md), the [workflow audit repairs](docs/audits/workflow-audit-2026-10-01.md), and the [security audit receipt](docs/audits/security-audit-2026-10-03.md). The Release supports Windows, macOS and Linux x64; the DSH plugin remains in v1.2.0, and npm publication remains out of scope.
 
-[Download v1.3.28](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.3.28) · [Start your first chapter in three minutes](docs/quickstart/README.md) · [Story direction guide](docs/features/story-direction-adjustment.md) · [Install the DSH plugin](plugins/inkweaver-dsh/README.md) · [Ask a question or report a problem](https://github.com/shuishuipingan/InkWeaver/issues/new/choose) · [Join the discussion](https://github.com/shuishuipingan/InkWeaver/discussions)
+[Download v1.3.29](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.3.29) · [Start your first chapter in three minutes](docs/quickstart/README.md) · [Story direction guide](docs/features/story-direction-adjustment.md) · [Install the DSH plugin](plugins/inkweaver-dsh/README.md) · [Ask a question or report a problem](https://github.com/shuishuipingan/InkWeaver/issues/new/choose) · [Join the discussion](https://github.com/shuishuipingan/InkWeaver/discussions)
 
 ![InkWeaver welcome screen](docs/assets/inkweaver-welcome.png)
 
@@ -164,33 +164,33 @@ inkweaver-mac-arm64-<version>-installer.dmg
 inkweaver-mac-x64-<version>-installer.dmg
 ```
 
-The current macOS installers do not have a Developer ID signature and are not notarized. Download only from the [formal v1.3.28 Release](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.3.28) and follow the operating system's first-launch confirmation. The desktop Release contains 13 assets for Windows x64, macOS Apple Silicon, macOS Intel, and Linux x64; the DSH plugin tarball remains in the v1.2.0 Release.
+The current macOS installers do not have a Developer ID signature and are not notarized. Download only from the [formal v1.3.29 Release](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.3.29) and follow the operating system's first-launch confirmation. The desktop Release contains 13 assets for Windows x64, macOS Apple Silicon, macOS Intel, and Linux x64; the DSH plugin tarball remains in the v1.2.0 Release.
 
 ### Linux x64
 
-The v1.3.28 Linux packages are built for x64. Qualification tests cover Ubuntu 22.04, Debian 13, and Fedora 44; this does not claim compatibility for other distributions or Linux ARM64. Packages are built in an Ubuntu 22.04 environment with glibc 2.35, and qualification verifies that packaged binaries do not require a glibc symbol newer than 2.35.
+The v1.3.29 Linux packages are built for x64. Qualification tests cover Ubuntu 22.04, Debian 13, and Fedora 44; this does not claim compatibility for other distributions or Linux ARM64. Packages are built in an Ubuntu 22.04 environment with glibc 2.35, and qualification verifies that packaged binaries do not require a glibc symbol newer than 2.35.
 
-Download these files and their matching SHA-256 sidecars from the [formal v1.3.28 Release](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.3.28):
+Download these files and their matching SHA-256 sidecars from the [formal v1.3.29 Release](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.3.29):
 
-    inkweaver-linux-x64-1.3.28.AppImage
-    inkweaver-linux-x64-1.3.28.deb
-    inkweaver-linux-x64-1.3.28.rpm
+    inkweaver-linux-x64-1.3.29.AppImage
+    inkweaver-linux-x64-1.3.29.deb
+    inkweaver-linux-x64-1.3.29.rpm
 
 The AppImage launches directly when FUSE is available. Without FUSE, use its built-in extraction mode:
 
-    chmod +x inkweaver-linux-x64-1.3.28.AppImage
-    ./inkweaver-linux-x64-1.3.28.AppImage --appimage-extract-and-run
+    chmod +x inkweaver-linux-x64-1.3.29.AppImage
+    ./inkweaver-linux-x64-1.3.29.AppImage --appimage-extract-and-run
 
 AppImage uses the user namespace sandbox and requires the system to allow unprivileged user namespaces. If system policy disables this capability, use the corresponding deb/rpm installer.
 
 Install the deb package on Ubuntu/Debian or the rpm package on Fedora:
 
-    sudo apt install ./inkweaver-linux-x64-1.3.28.deb
-    sudo dnf install ./inkweaver-linux-x64-1.3.28.rpm
+    sudo apt install ./inkweaver-linux-x64-1.3.29.deb
+    sudo dnf install ./inkweaver-linux-x64-1.3.29.rpm
 
 Linux packages are unsigned. Verify the matching checksum file in the same directory before installation, for example:
 
-    sha256sum -c inkweaver-linux-x64-1.3.28.deb.sha256
+    sha256sum -c inkweaver-linux-x64-1.3.29.deb.sha256
 
 ## DeepSeek Harness plugin
 
