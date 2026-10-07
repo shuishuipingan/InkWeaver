@@ -4,15 +4,15 @@
 
 织墨 InkWeaver 是一款面向长篇小说创作的本地优先桌面工作台。它把项目设定、角色、世界观、章节蓝图、正文、审稿、修订与定稿组织成可追溯的创作链，让作者在保留最终决定权的前提下使用自己选择的 AI 模型。
 
-当前版本：**v1.3.24**
+当前版本：**v1.3.25**
 
 [长篇写作的资料选择与预算说明](docs/features/draft-context-budget.md)
 
 > **把一本长篇小说写成会持续发展的整体。** InkWeaver 是本地优先的 AI 小说创作工作台：它把故事设定、角色状态、章节蓝图、候选草稿、证据化审稿和作者定稿串成一条可追溯的连续写作链。
 
-v1.3.24 让助手可以检索你自己作品的正文。新增 search_project：按关键词在正文里检索，结果按章节分组，逐条给出「第 N 章（定稿 / v3 草稿）＋ 匹配点前后约 60 字的片段」，命中字在片段里加【】标记，并给出该版本的命中总次数与总量统计，完整保留章节号、版本、字数等出处便于复核；可限定只搜定稿或只搜草稿。此前助手只能检索导入的参考资料，项目正文（定稿与各版草稿）没有检索入口，作者问“某件信物或某句设定在第几章出现过”实际答不了，只能逐章读草稿，既慢又占上下文。它只返回片段、不返回整章正文，既省上下文也避免把长文反复搬进对话。保留此前的[长篇写作资料选择说明](docs/features/draft-context-budget.md)、[工作流审计修复](docs/audits/workflow-audit-2026-10-01.md)与[安全审计收据](docs/audits/security-audit-2026-10-03.md)。同一 Release 提供 Windows、macOS 和 Linux x64；DSH 插件沿用 v1.2.0，不发布 npm。
+v1.3.25 新增四个写作技能，内置技能由 7 个增至 11 个。章节开写简报（/chapter-brief）把上一章的未完成动作与待回应问题、该章蓝图职责、这一章该推进或回收的伏笔、出场角色此刻各自知道什么与情绪余波汇总成一份开写前简报，此前只能手工翻各个面板；对白打磨（/dialogue）先用正文检索取该角色过往台词建立“声音基线”，再逐处对照用词层级、句长、称呼方式与回避习惯，每处修改都写明它偏离了哪条基线证据（章节号 + 片段），样本不足时会说明是推断而非测量；节奏诊断（/pacing）按“该章是否完成了蓝图赋予它的职责”判断，标出无推进章、重复功能章与被压缩的转折，铺垫章与喘息章不算问题；线索审计（/thread-audit）拿线索的规划状态去正文里核对“已埋/已回收”是否属实，输出带正文证据的审计表，找不到佐证就如实写“未找到”。涉及改写的技能走修订提案、先展示方案等确认，绝不直接覆盖正文；已定稿章节只给建议。保留此前的[长篇写作资料选择说明](docs/features/draft-context-budget.md)、[工作流审计修复](docs/audits/workflow-audit-2026-10-01.md)与[安全审计收据](docs/audits/security-audit-2026-10-03.md)。同一 Release 提供 Windows、macOS 和 Linux x64；DSH 插件沿用 v1.2.0，不发布 npm。
 
-[下载 v1.3.24](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.3.24) · [三分钟开始第一章](docs/quickstart/README.md) · [全书方向调整指南](docs/features/story-direction-adjustment.md) · [安装 DSH 插件](plugins/inkweaver-dsh/README.md) · [提交问题或建议](https://github.com/shuishuipingan/InkWeaver/issues/new/choose) · [参与讨论](https://github.com/shuishuipingan/InkWeaver/discussions)
+[下载 v1.3.25](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.3.25) · [三分钟开始第一章](docs/quickstart/README.md) · [全书方向调整指南](docs/features/story-direction-adjustment.md) · [安装 DSH 插件](plugins/inkweaver-dsh/README.md) · [提交问题或建议](https://github.com/shuishuipingan/InkWeaver/issues/new/choose) · [参与讨论](https://github.com/shuishuipingan/InkWeaver/discussions)
 
 ![InkWeaver 欢迎页](docs/assets/inkweaver-welcome.png)
 
@@ -160,33 +160,33 @@ inkweaver-mac-arm64-<版本号>-installer.dmg
 inkweaver-mac-x64-<版本号>-installer.dmg
 ```
 
-当前 macOS 安装包未代码签名（未使用 Developer ID 签名）且未公证。请只从[正式 v1.3.24 Release](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.3.24)下载，并按系统安全提示确认首次打开。桌面 Release 共 13 项资产，覆盖 Windows x64、macOS Apple Silicon、macOS Intel 和 Linux x64；DSH 插件 tarball 保留在 v1.2.0 Release。
+当前 macOS 安装包未代码签名（未使用 Developer ID 签名）且未公证。请只从[正式 v1.3.25 Release](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.3.25)下载，并按系统安全提示确认首次打开。桌面 Release 共 13 项资产，覆盖 Windows x64、macOS Apple Silicon、macOS Intel 和 Linux x64；DSH 插件 tarball 保留在 v1.2.0 Release。
 
 ### Linux x64
 
-v1.3.24 Linux 资产仅以 x64 构建。本次资格验证使用 Ubuntu 22.04、Debian 13 和 Fedora 44；不据此声明其他发行版或 Linux ARM64 已验证。包以 Ubuntu 22.04 的 glibc 2.35 环境构建，资格记录会检查打包文件所需的最高 glibc 符号版本不高于 2.35。
+v1.3.25 Linux 资产仅以 x64 构建。本次资格验证使用 Ubuntu 22.04、Debian 13 和 Fedora 44；不据此声明其他发行版或 Linux ARM64 已验证。包以 Ubuntu 22.04 的 glibc 2.35 环境构建，资格记录会检查打包文件所需的最高 glibc 符号版本不高于 2.35。
 
-从[正式 v1.3.24 Release](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.3.24)下载对应文件及各自的 SHA-256 校验文件：
+从[正式 v1.3.25 Release](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.3.25)下载对应文件及各自的 SHA-256 校验文件：
 
-    inkweaver-linux-x64-1.3.24.AppImage
-    inkweaver-linux-x64-1.3.24.deb
-    inkweaver-linux-x64-1.3.24.rpm
+    inkweaver-linux-x64-1.3.25.AppImage
+    inkweaver-linux-x64-1.3.25.deb
+    inkweaver-linux-x64-1.3.25.rpm
 
 AppImage 在 FUSE 可用时可直接启动。若系统没有 FUSE，可用内置提取运行模式：
 
-    chmod +x inkweaver-linux-x64-1.3.24.AppImage
-    ./inkweaver-linux-x64-1.3.24.AppImage --appimage-extract-and-run
+    chmod +x inkweaver-linux-x64-1.3.25.AppImage
+    ./inkweaver-linux-x64-1.3.25.AppImage --appimage-extract-and-run
 
 AppImage 使用用户命名空间 sandbox，系统需允许普通用户创建用户命名空间。若系统策略禁用了此能力，请使用对应的 deb/rpm 安装包。
 
 Ubuntu/Debian 可安装 deb，Fedora 可安装 rpm：
 
-    sudo apt install ./inkweaver-linux-x64-1.3.24.deb
-    sudo dnf install ./inkweaver-linux-x64-1.3.24.rpm
+    sudo apt install ./inkweaver-linux-x64-1.3.25.deb
+    sudo dnf install ./inkweaver-linux-x64-1.3.25.rpm
 
 Linux 安装包未签名。下载后先在同一目录核对对应校验文件，例如：
 
-    sha256sum -c inkweaver-linux-x64-1.3.24.deb.sha256
+    sha256sum -c inkweaver-linux-x64-1.3.25.deb.sha256
 
 ## DeepSeek Harness 插件
 

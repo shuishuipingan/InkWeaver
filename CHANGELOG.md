@@ -2,6 +2,36 @@
 
 本文件按用户可见行为记录变更。桌面版本不发布 npm；DSH 插件沿用已发布的 `1.2.0` 包。`1.2.0` 已从同一源码 commit 完成工程验收、三平台资产回读和正式 Release；`1.1.0` 的历史 Release 收据保留在 `docs/upgrade/`，不与 1.2.0 混用。
 
+## 1.3.25 — 2026-10-07
+
+### 新增
+
+- 新增四个写作技能（内置技能由 7 个增至 11 个），都是开写与改稿流程里会直接用到的动作。
+- 章节开写简报（/chapter-brief）：准备开写下一章时的“交接班”——把上一章留下的未完成动作与待回应问题、该章蓝图职责、该在这一章推进或回收的伏笔、出场角色此刻各自知道什么、上一章的情绪余波汇总成一份开写前简报，并列出待确认项；此前只能手工翻各个面板。
+- 对白打磨（/dialogue）：先用正文检索取出该角色过往台词建立“声音基线”，再逐处对照用词层级、句长、称呼方式与回避习惯；每处修改都写明它偏离了哪条基线证据（章节号 + 片段），基线样本不足时会说明是推断而非测量。
+- 节奏诊断（/pacing）：判据是“该章是否完成了蓝图赋予它的职责”，而不是“有没有大事件”；标出无推进章、重复功能章、被压缩的转折与线索断层，每条附章节号与蓝图或工作单原文；铺垫章与喘息章不算问题。
+- 线索审计（/thread-audit）：拿线索的规划状态去正文里核对“已埋 / 已回收”是否属实，输出审计表（线索 → 规划状态 → 正文证据 → 落差 → 建议动作）；找不到佐证时如实写“未找到”。
+- 四个技能都遵守既有安全边界：涉及改写的（对白打磨）走修订提案、先展示方案等作者确认，绝不直接覆盖正文；已定稿章节只给建议，并说明应在哪一章处理。
+
+### 发布
+
+- 保持 Windows、macOS、Linux x64 同提交发布。Linux 文件为 inkweaver-linux-x64-1.3.25.AppImage、inkweaver-linux-x64-1.3.25.deb、inkweaver-linux-x64-1.3.25.rpm 及 SHA-256；运行资格覆盖 Ubuntu 22.04、Debian 13、Fedora 44，glibc 2.35 基线及 --appimage-extract-and-run 检查继续有效，包未签名。
+
+## 1.3.25 — 2026-10-07 (English)
+
+### Added
+
+- Four new writing skills (built-in skills grow from 7 to 11), each one an action you reach for while planning or revising rather than a setting you configure.
+- Chapter brief (/chapter-brief): the handover before you start the next chapter — the unfinished actions and open questions the previous chapter left behind, what the chapter blueprint asks for, the threads this chapter should advance or pay off, what each appearing character knows at this point, and the previous chapter's emotional carry-over, gathered into one pre-writing brief with the items still to confirm. Previously this meant leafing through several panels by hand.
+- Dialogue polish (/dialogue): first builds a “voice baseline” from a character's past lines using manuscript search, then checks each passage against it for word register, sentence length, forms of address, and avoidance habits. Every proposed change states which piece of baseline evidence it departs from (chapter number plus excerpt), and when the baseline sample is thin the skill says it is inferring rather than measuring.
+- Pacing diagnosis (/pacing): judged by whether a chapter fulfils the responsibility its blueprint gives it, not by whether something big happens. It flags chapters with no forward movement, chapters that repeat another chapter's function, compressed turning points, and thread gaps, each with a chapter number and the blueprint or work-sheet text behind it; setup chapters and breathing chapters are not treated as problems.
+- Thread audit (/thread-audit): takes each thread's planned state and checks it against the manuscript to see whether “planted / paid off” is actually true, producing an audit table (thread → planned state → manuscript evidence → gap → suggested action), and plainly writing “not found” when there is no supporting evidence.
+- All four skills respect the existing safety boundaries: anything that rewrites text (dialogue polish) goes through a revision proposal that is shown for your confirmation first and never overwrites prose directly, and finalized chapters receive suggestions only, with a note of which chapter they should be handled in.
+
+### Release
+
+- Continues Windows, macOS and Linux x64 same-commit releases. Linux packages: inkweaver-linux-x64-1.3.25.AppImage, inkweaver-linux-x64-1.3.25.deb, inkweaver-linux-x64-1.3.25.rpm with SHA-256. Qualification covers Ubuntu 22.04, Debian 13, Fedora 44, the glibc 2.35 baseline and --appimage-extract-and-run. Linux packages are unsigned.
+
 ## 1.3.24 — 2026-10-07
 
 ### 新增
