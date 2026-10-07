@@ -2,6 +2,34 @@
 
 本文件按用户可见行为记录变更。桌面版本不发布 npm；DSH 插件沿用已发布的 `1.2.0` 包。`1.2.0` 已从同一源码 commit 完成工程验收、三平台资产回读和正式 Release；`1.1.0` 的历史 Release 收据保留在 `docs/upgrade/`，不与 1.2.0 混用。
 
+## 1.3.23 — 2026-10-07
+
+### 新增
+
+- 助手现在可以提案修改正文（propose_draft_revision）：助手按作者要求给出修订后的完整正文，以提案形式提交，并在确认卡片上直接给出逐行差异预览（新增/删除标记、未改动段折叠、字数前后对比与增减），作者看清改了什么再决定；提案绑定基准正文指纹以防覆盖，字数统计与修稿工作流同源。批准后仍由作者在既有修订界面完成合并，助手不会直接改写或覆盖正文。此前作者说“帮我把这段改紧凑些”，只能启动整套修稿工作流。
+
+### 修复
+
+- 修复助手“说了要改却什么都没发生”：助手会在正文里宣布“我现在提交改动计划”，然后结束回合，界面上不会出现任何确认卡片。根因不在界面（确认卡片只要被调用就必然出现），而是工具提示词从未说明“仅在正文里说明你要做什么不会执行任何操作，只有真的写出 `<tool_call>` 标签才会运行”；现已补上这条硬规则与一个正反示例，并要求宣布之后必须在同一条回复里紧接着给出调用标签、不要分两步。同一缺陷覆盖所有写入型工具。另补工具调用台账日志（记录本轮调用了哪些工具及各自结果，只记参数名不记正文），使这类问题以后可一眼诊断。
+
+### 发布
+
+- 保持 Windows、macOS、Linux x64 同提交发布。Linux 文件为 inkweaver-linux-x64-1.3.23.AppImage、inkweaver-linux-x64-1.3.23.deb、inkweaver-linux-x64-1.3.23.rpm 及 SHA-256；运行资格覆盖 Ubuntu 22.04、Debian 13、Fedora 44，glibc 2.35 基线及 --appimage-extract-and-run 检查继续有效，包未签名。
+
+## 1.3.23 — 2026-10-07 (English)
+
+### Added
+
+- The assistant can now propose a revision to your prose (propose_draft_revision): it returns the revised full text as a proposal and the confirmation card shows a line-by-line diff preview directly (added/removed markers, unchanged runs collapsed, word counts before and after with the delta), so you can see exactly what changed before deciding. The proposal is bound to the base-text fingerprint so it cannot overwrite newer prose, and its word counting is shared with the revision workflow. After approval you still complete the merge in the existing revision view — the assistant never rewrites or overwrites prose on its own. Previously, asking to tighten a passage could only start the whole revision workflow.
+
+### Fixed
+
+- Fixed the assistant “saying it would change something and then nothing happening”: it would announce in prose that it was submitting a change plan, end the turn, and no confirmation card ever appeared. The cause was not the interface (a confirmation card always appears once the tool is called) but the tool prompt, which never stated that describing what you intend to do in prose performs no action and that only actually emitting a `<tool_call>` tag runs anything. That hard rule and a positive/negative example are now in place, together with a requirement to emit the call tag in the same reply right after announcing rather than in two steps; the same defect covered every write-type tool. A tool-call ledger was also added (recording which tools this turn called and how each resolved, keeping parameter names but never prose), so this class of problem is diagnosable at a glance.
+
+### Release
+
+- Continues Windows, macOS and Linux x64 same-commit releases. Linux packages: inkweaver-linux-x64-1.3.23.AppImage, inkweaver-linux-x64-1.3.23.deb, inkweaver-linux-x64-1.3.23.rpm with SHA-256. Qualification covers Ubuntu 22.04, Debian 13, Fedora 44, the glibc 2.35 baseline and --appimage-extract-and-run. Linux packages are unsigned.
+
 ## 1.3.22 — 2026-10-07
 
 ### 新增
