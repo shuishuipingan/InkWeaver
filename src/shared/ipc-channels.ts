@@ -777,6 +777,40 @@ export interface WritingStyleHistoryRecord {
   createdAt: string
 }
 
+/** 正文检索的匹配片段：匹配点前后各约 60 字（首尾不足则截断）。正文本身不出库。 */
+export interface ContentSearchExcerpt {
+  /** 片段文本。 */
+  text: string
+  /** query 在该片段中的起始下标（UTF-16 code unit，与 JS 字符串下标一致）。 */
+  matchStart: number
+  /** query 的字符长度。 */
+  matchLength: number
+}
+
+/** 检索范围：定稿 / 全部草稿（含未定稿） / 两者。 */
+export type ContentSearchScope = 'finalized' | 'drafts' | 'all'
+
+export interface ContentSearchParams {
+  query: string
+  /** 缺省 'all'（定稿 + 全部草稿）。 */
+  scope?: ContentSearchScope
+  /** 缺省 20，上限 50；超出按上限处理，不报错。 */
+  limit?: number
+}
+
+/** 一条命中：草稿元数据 + 最多 3 条匹配片段。**不含整章正文**。 */
+export interface ContentSearchHit {
+  chapterNumber: number
+  version: number
+  status: string
+  contentId: number
+  draftId: number
+  wordCount: number | null
+  /** 该版本正文中的命中总次数（可能大于 excerpts.length）。 */
+  matchCount: number
+  excerpts: ContentSearchExcerpt[]
+}
+
 export interface DatabaseChannels {
   'db:close': { args: [expectedProjectPath: string]; return: { success: boolean } }
 
@@ -921,6 +955,14 @@ export interface DatabaseChannels {
   }
   'db:draft-create': { args: [params: { chapterNumber: number; version: number; source: 'write' | 'rewrite'; content: string; wordCount: number }, expectedProjectPath: string]; return: { success: boolean; id?: number; error?: string } }
   'db:draft-list': { args: [chapterNumber: number, expectedProjectPath: string]; return: DraftMeta[] }
+  /**
+   * 正文检索：对 contents.body 做参数化 LIKE 扫描（ESCAPE 转义，作者输入的 %/_/\ 按字面量匹配），
+   * join drafts 得到章节/版本/状态；只返回匹配片段，正文不出库。
+   */
+  'db:content-search': {
+    args: [params: ContentSearchParams, expectedProjectPath: string]
+    return: ContentSearchHit[]
+  }
   'db:draft-list-all': { args: [expectedProjectPath: string]; return: DraftMeta[] }
   'db:draft-get-meta': { args: [id: number, expectedProjectPath: string]; return: DraftMeta | null }
   'db:draft-get-full': { args: [id: number, expectedProjectPath: string]; return: DraftFull | null }

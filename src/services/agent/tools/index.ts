@@ -30,6 +30,7 @@ import { readKnowledgeEventsTool } from './read-knowledge-events.tool'
 import { readStoryContinuityTool } from './read-story-continuity.tool'
 import { readRevisionProposalsTool } from './read-revision-proposals.tool'
 import { proposeDraftRevisionTool } from './propose-draft-revision.tool'
+import { searchProjectTool } from './search-project.tool'
 
 /** 所有内置 Tool（供外部引用） */
 export const builtinTools = [
@@ -52,6 +53,7 @@ export const builtinTools = [
   readKnowledgeEventsTool,
   readStoryContinuityTool,
   readRevisionProposalsTool,
+  searchProjectTool,
   // 行动 Tool（需确认）
   writeFileTool,
   openEditorTool,

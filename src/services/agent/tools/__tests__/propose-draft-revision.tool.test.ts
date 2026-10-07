@@ -58,8 +58,8 @@ describe('propose_draft_revision tool', () => {
     // 硬边界必须写在给模型看的 description 里。
     expect(proposeDraftRevisionTool.description).toContain('不会直接改写草稿或定稿')
     expect(proposeDraftRevisionTool.description).toContain('write_file')
-    expect(builtinTools.filter(tool => !tool.requiresConfirmation)).toHaveLength(17)
-    expect(builtinTools).toHaveLength(24)
+    expect(builtinTools.filter(tool => !tool.requiresConfirmation)).toHaveLength(18)
+    expect(builtinTools).toHaveLength(25)
   })
 
   it('rejects an invalid chapter number before touching any channel', async () => {

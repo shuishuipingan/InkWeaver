@@ -66,8 +66,8 @@ describe('creation state read tools', () => {
       expect(tool.requiresConfirmation).toBe(false)
       expect(tool.description.length).toBeGreaterThan(20)
     }
-    expect(builtinTools.filter(tool => !tool.requiresConfirmation)).toHaveLength(17)
-    expect(builtinTools).toHaveLength(24)
+    expect(builtinTools.filter(tool => !tool.requiresConfirmation)).toHaveLength(18)
+    expect(builtinTools).toHaveLength(25)
   })
 
   it.each(creationStateTools.map(tool => [tool.name, tool] as const))(

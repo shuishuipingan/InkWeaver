@@ -55,6 +55,8 @@ import { StoryContinuityRepository } from '../repositories/story-continuity-repo
 import { StyleHistoryRepository } from '../repositories/style-history-repository'
 import { KnowledgeEventRepository } from '../repositories/knowledge-event-repository'
 import { ProjectSnapshotService } from '../services/project-snapshot-service'
+import { ContentSearchRepository } from '../repositories/content-search-repository'
+import type { ContentSearchParams } from '../../src/shared/ipc-channels'
 import { safeConsole } from '../utils/safe-console'
 
 type ProjectDatabaseHandler = (event: unknown, ...args: never[]) => unknown
@@ -730,6 +732,16 @@ export function registerDatabaseController() {
   ipcMain.handle('db:draft-list-all', async (_event, expectedProjectPath: string) => {
     assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
     return DraftRepository.listAll()
+  })
+
+  // 正文检索：只读通道（不进 MUTATING 白名单），返回匹配片段而非正文；异常照常抛出便于上游定位。
+  ipcMain.handle('db:content-search', async (
+    _event,
+    params: ContentSearchParams,
+    expectedProjectPath: string,
+  ) => {
+    assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+    return ContentSearchRepository.search(params)
   })
 
   ipcMain.handle('db:draft-get-meta', async (_event, id: number, expectedProjectPath: string) => {
