@@ -1,8 +1,15 @@
 import type { Locale } from '../i18n/types'
+import {
+  RELATIONSHIP_FACET_KINDS,
+  type CharacterRosterRelationshipFacet,
+  type RelationshipFacetKind,
+} from './character-roster'
 
 export interface RelationshipEdge {
   target: string
   relation: string
+  /** 多面关系（旧数据没有该字段，行为不变）。 */
+  facets?: CharacterRosterRelationshipFacet[]
   direction?: 'outgoing' | 'incoming' | 'mutual'
   sourceChapter?: number
   evidence?: string
@@ -33,6 +40,19 @@ function textValue(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value.trim() : null
 }
 
+/** 多面关系：只保留 kind 合法且 text 非空的条目；完全没有时返回 undefined（旧数据形状不变）。 */
+function facetsFromValue(value: unknown): CharacterRosterRelationshipFacet[] | undefined {
+  if (!Array.isArray(value)) return undefined
+  const facets = value.flatMap((item) => {
+    if (!isRecord(item)) return []
+    const kind = typeof item.kind === 'string' ? item.kind.trim().toLowerCase() : ''
+    if (!RELATIONSHIP_FACET_KINDS.includes(kind as RelationshipFacetKind)) return []
+    const text = textValue(item.text)
+    return text ? [{ kind: kind as RelationshipFacetKind, text }] : []
+  })
+  return facets.length > 0 ? facets : undefined
+}
+
 function relationshipEdgeFromRecord(value: UnknownRecord): RelationshipEdge | null {
   const target = textValue(value.target) ?? textValue(value.name)
   const relation = textValue(value.relation) ?? textValue(value.label)
@@ -42,9 +62,11 @@ function relationshipEdgeFromRecord(value: UnknownRecord): RelationshipEdge | nu
   const evidence = evidenceValue === null ? undefined : evidenceValue
   if (direction !== undefined && !['outgoing', 'incoming', 'mutual'].includes(String(direction))) return null
   if (sourceChapter !== undefined && (!Number.isSafeInteger(sourceChapter) || Number(sourceChapter) < 1)) return null
+  const facets = facetsFromValue(value.facets)
   return target && relation ? {
     target,
     relation,
+    ...(facets === undefined ? {} : { facets }),
     ...(direction === undefined ? {} : { direction: direction as RelationshipEdge['direction'] }),
     ...(sourceChapter === undefined ? {} : { sourceChapter: Number(sourceChapter) }),
     ...(evidence === undefined ? {} : { evidence }),
@@ -126,8 +148,31 @@ function formatRelationForEditor(relation: string): string {
     : relationType.value
 }
 
-function formatRelationshipEdgeForEditor(edge: RelationshipEdge): string {
-  return `${edge.target}：${formatRelationForEditor(edge.relation)}`
+const FACET_KIND_LABELS: Readonly<Record<Locale, Readonly<Record<RelationshipFacetKind, string>>>> = {
+  'zh-CN': { stance: '立场', emotion: '情感', dependency: '依赖', knowledge: '知情', history: '历史' },
+  'en-US': { stance: 'Stance', emotion: 'Emotion', dependency: 'Dependency', knowledge: 'Knowledge', history: 'History' },
+}
+
+/** 编辑器里的 kind 标签 → kind（中英都认，大小写不敏感）。 */
+function facetKindFromLabel(label: string): RelationshipFacetKind | null {
+  const wanted = label.trim().toLowerCase()
+  for (const locale of ['zh-CN', 'en-US'] as const) {
+    for (const kind of RELATIONSHIP_FACET_KINDS) {
+      if (FACET_KIND_LABELS[locale][kind].toLowerCase() === wanted) return kind
+    }
+  }
+  return null
+}
+
+/**
+ * 一条关系渲染成「主行 + 缩进的多面关系行」。
+ * 这些 facet 行由 parseEditorLines 反向解析，所以编辑器往返不会丢多面信息。
+ */
+function formatRelationshipEdgeForEditor(edge: RelationshipEdge, locale: Locale = 'zh-CN'): string {
+  const head = `${edge.target}：${formatRelationForEditor(edge.relation)}`
+  if (!edge.facets || edge.facets.length === 0) return head
+  const facetLines = edge.facets.map(facet => `  · [${FACET_KIND_LABELS[locale][facet.kind]}] ${facet.text}`)
+  return [head, ...facetLines].join('\n')
 }
 
 function knownNameSet(options: RelationshipTextOptions): Set<string> | null {
@@ -144,7 +189,8 @@ function isAllowedEdge(edge: RelationshipEdge, options: RelationshipTextOptions)
 function deduplicateEdges(edges: readonly RelationshipEdge[]): RelationshipEdge[] {
   const seen = new Set<string>()
   return edges.filter((edge) => {
-    const key = `${edge.target}\u0000${edge.relation}\u0000${String(edge.direction ?? '')}\u0000${String(edge.sourceChapter ?? '')}\u0000${edge.evidence ?? ''}`
+    const facetKey = (edge.facets ?? []).map(facet => facet.kind + ':' + facet.text).join('|')
+    const key = `${edge.target}\u0000${edge.relation}\u0000${String(edge.direction ?? '')}\u0000${String(edge.sourceChapter ?? '')}\u0000${edge.evidence ?? ''}\u0000${facetKey}`
     if (seen.has(key)) return false
     seen.add(key)
     return true
@@ -173,14 +219,25 @@ function parseEditorLines(value: string, options: RelationshipTextOptions): Rela
   const lines = value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
   if (lines.length === 0) return []
 
-  const edges = lines.map((line) => {
+  const edges: RelationshipEdge[] = []
+  for (const line of lines) {
+    // 多面关系行（形如「· [立场] …」）：挂到上一条关系上，不单独成边。
+    const facetMatch = line.match(/^(?:[·•\-]\s*)?\[([^\[\]]+)\]\s*(.+)$/u)
+    if (facetMatch) {
+      const kind = facetKindFromLabel(facetMatch[1]!)
+      const last = edges[edges.length - 1]
+      if (kind && last) {
+        last.facets = [...(last.facets ?? []), { kind, text: facetMatch[2]!.trim() }]
+      }
+      continue
+    }
     const match = line.match(/^(.+?)[：:]\s*(.+)$/)
     if (!match) return null
     const target = match[1].trim()
     const relation = match[2].trim()
     if (!target || !relation || target === options.selfName || !names.has(target)) return null
-    return { target, relation }
-  })
+    edges.push({ target, relation })
+  }
 
   return edges.every((edge): edge is RelationshipEdge => edge !== null)
     ? edges
@@ -219,7 +276,7 @@ export function formatRelationshipsForEditor(
       ? UNKNOWN_JSON_RELATIONSHIP_GUIDANCE[options.locale ?? 'zh-CN']
       : value
   }
-  return relationships.map(formatRelationshipEdgeForEditor).join('\n')
+  return relationships.map(edge => formatRelationshipEdgeForEditor(edge, options.locale ?? 'zh-CN')).join('\n')
 }
 
 /**

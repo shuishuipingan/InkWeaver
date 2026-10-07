@@ -13,6 +13,7 @@ import {
   DirectoryPostCommitCancellationError,
   DirectoryPostCommitSyncError,
   DirectoryCharacterSyncPendingError,
+  DirectoryBlueprintContractError,
   DirectoryCostLimitError,
   GenerateDirectoryCommand,
   retryDirectoryCharacterSync,
@@ -485,7 +486,7 @@ describe('GenerateDirectoryCommand', () => {
     expect(createRuntime).not.toHaveBeenCalled()
   })
 
-  it('keeps a larger logical range in one transaction while the executor makes ordered five-item batches', async () => {
+  it('keeps a larger logical range in one transaction while the executor emits it as one semantic batch', async () => {
     const invoke = stubIpcInvoke(successfulCommitHandler())
     const observedRanges: Array<[number, number]> = []
     let firstPrompt = ''
@@ -518,7 +519,8 @@ describe('GenerateDirectoryCommand', () => {
     })
 
     expect(result.map(item => item.chapterNumber)).toEqual([1, 2, 3, 4, 5, 6, 7])
-    expect(observedRanges).toEqual([[1, 5], [6, 7]])
+    // 12 章/批：7 章落在同一个语义批次内（旧上限 5 会拆成 5+2）
+    expect(observedRanges).toEqual([[1, 7]])
     expect(firstPrompt).toContain('【不可变蓝图 JSON 合同】')
     for (const field of ['chapterNumber', 'title', 'role', 'purpose', 'keyEvents', 'characters', 'relationships', 'suspenseHook']) {
       expect(firstPrompt).toContain(field)
@@ -528,9 +530,9 @@ describe('GenerateDirectoryCommand', () => {
     expect(createRuntime).toHaveBeenCalledWith({
       modelId: 'selected-directory-model',
       budget: {
-        maxAttempts: 17,
+        maxAttempts: 16,
         maxRequestedOutputTokens: 131_072,
-        maxRequestedOutputTokensPerAttempt: 16_384,
+        maxRequestedOutputTokensPerAttempt: 14_400,
         respectIntentOutputCaps: true,
         deadlineMs: 600_000,
       },
@@ -569,12 +571,13 @@ describe('GenerateDirectoryCommand', () => {
 
     expect(result.map(item => item.chapterNumber))
       .toEqual([10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20])
-    expect(observedRanges).toEqual([[10, 14], [15, 19], [20, 20]])
+    // 12 章/批：11 章的追加范围不再拆分
+    expect(observedRanges).toEqual([[10, 20]])
     expect(createRuntime).toHaveBeenCalledWith({
       budget: {
-        maxAttempts: 26,
+        maxAttempts: 24,
         maxRequestedOutputTokens: 131_072,
-        maxRequestedOutputTokensPerAttempt: 16_384,
+        maxRequestedOutputTokensPerAttempt: 14_400,
         respectIntentOutputCaps: true,
         deadlineMs: 600_000,
       },
@@ -655,9 +658,10 @@ describe('GenerateDirectoryCommand', () => {
     const createRuntime = vi.fn(async () => testRuntime(generationSession(async () => {
       throw new Error('must not generate')
     })))
+    // 单任务上限现在是 240 章（用户的 180 章诉求在内）；超出才在开工前拒绝。
     const command = new GenerateDirectoryCommand(
-      { mode: 'full', count: 51 },
-      { ...projectSnapshot, novelConfig: { ...projectSnapshot.novelConfig, totalChapters: 51 } },
+      { mode: 'full', count: 241 },
+      { ...projectSnapshot, novelConfig: { ...projectSnapshot.novelConfig, totalChapters: 241 } },
       { createRuntime },
     )
 
@@ -668,8 +672,8 @@ describe('GenerateDirectoryCommand', () => {
     }).then(() => null, error => error as unknown)
 
     expect(failure).toBeInstanceOf(DirectoryCostLimitError)
-    expect(failure).toMatchObject({ code: 'DIRECTORY_TASK_COST_LIMIT', chapterCount: 51 })
-    expect((failure as Error).message).toMatch(/每段不超过 50 章/u)
+    expect(failure).toMatchObject({ code: 'DIRECTORY_TASK_COST_LIMIT', chapterCount: 241 })
+    expect((failure as Error).message).toMatch(/每段不超过 240 章/u)
     expect(createRuntime).not.toHaveBeenCalled()
     expect(invoke.mock.calls.map(([channel]) => channel)).not.toContain('db:blueprint-commit-range')
   })
@@ -743,7 +747,7 @@ describe('GenerateDirectoryCommand', () => {
       budget: {
         maxAttempts: 12,
         maxRequestedOutputTokens: 131_072,
-        maxRequestedOutputTokensPerAttempt: 16_384,
+        maxRequestedOutputTokensPerAttempt: 14_400,
         respectIntentOutputCaps: true,
         deadlineMs: 600_000,
       },
@@ -851,7 +855,7 @@ describe('GenerateDirectoryCommand', () => {
     expect(invoke.mock.calls.map(([channel]) => channel)).not.toContain('db:blueprint-upsert-many')
   })
 
-  it('replays the observed split sequence and recovers chapter 18 with one bounded compact task', async () => {
+  it('replays the observed split sequence when a single batch is length-truncated twice', async () => {
     const invoke = stubIpcInvoke(successfulCommitHandler())
     const observed: Array<{ range: [number, number]; purpose: string }> = []
     const lengthAttempts = new Set([1, 3, 6, 8, 10, 11])
@@ -898,21 +902,14 @@ describe('GenerateDirectoryCommand', () => {
     const result = await command.execute({ step: {}, context, callbacks: stepCallbacks() })
 
     expect(result.map(item => item.chapterNumber)).toEqual([10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20])
+    // 12 章/批：11 章先作为一个批次发出；第 1、3 次 length 截断各折半一次，
+    // 第 5 次补齐 —— 不再出现旧实现那种 14 段碎片，也没有 compact-single 兜底。
     expect(observed).toEqual([
+      { range: [10, 20], purpose: 'chapter-blueprint-directory' },
       { range: [10, 14], purpose: 'chapter-blueprint-directory' },
-      { range: [10, 11], purpose: 'chapter-blueprint-directory' },
-      { range: [12, 14], purpose: 'chapter-blueprint-directory' },
-      { range: [12, 12], purpose: 'chapter-blueprint-directory' },
-      { range: [13, 14], purpose: 'chapter-blueprint-directory' },
-      { range: [15, 19], purpose: 'chapter-blueprint-directory' },
-      { range: [15, 16], purpose: 'chapter-blueprint-directory' },
-      { range: [17, 19], purpose: 'chapter-blueprint-directory' },
-      { range: [17, 17], purpose: 'chapter-blueprint-directory' },
-      { range: [18, 19], purpose: 'chapter-blueprint-directory' },
-      { range: [18, 18], purpose: 'chapter-blueprint-directory' },
-      { range: [18, 18], purpose: 'chapter-blueprint-directory:compact-single:chapter-18' },
-      { range: [19, 19], purpose: 'chapter-blueprint-directory' },
-      { range: [20, 20], purpose: 'chapter-blueprint-directory' },
+      { range: [15, 20], purpose: 'chapter-blueprint-directory' },
+      { range: [15, 17], purpose: 'chapter-blueprint-directory' },
+      { range: [18, 20], purpose: 'chapter-blueprint-directory' },
     ])
     expect(invoke.mock.calls.filter(([channel]) => channel === 'db:blueprint-commit-range'))
       .toHaveLength(1)
@@ -1382,5 +1379,68 @@ describe('GenerateDirectoryCommand', () => {
     expect(setResumeMetadata).toHaveBeenCalledWith({ directoryCharacterSyncOperationId: 'blueprint-sync-directory-test-run-1-1' })
     expect(failure).toMatchObject({ commitReceipt: { chapterNumbers: [1] } })
     expect((failure as Error).message).toContain('蓝图已提交')
+  })
+
+  it('splits a batch that stops early and reports chapter progress in the failure', async () => {
+    // 只借 stubIpcInvoke 提供的 window/IPC 替身，本用例不检查具体调用参数。
+    stubIpcInvoke(successfulCommitHandler())
+    const attempted: Array<[number, number]> = []
+    const session = generationSession(async task => {
+      const range = taskRange(task)
+      attempted.push(range)
+      // 每次只交前两章：模型自然停笔（stop），批次始终不完整 —— 复现事故现场形态
+      return {
+        status: 'completed' as const,
+        content: blueprintJson([range[0], Math.min(range[0] + 1, range[1])]),
+        finishReason: 'stop' as const,
+        receipt: generationReceipt(attempted.length, 'stop', task.purpose),
+      }
+    })
+    const command = new GenerateDirectoryCommand(
+      { mode: 'full', count: 6 },
+      { ...projectSnapshot, novelConfig: { ...projectSnapshot.novelConfig, totalChapters: 6 } },
+      { createRuntime: vi.fn(async () => testRuntime(session)) },
+    )
+
+    const failure = await command.execute({ step: {}, context: workflowContext(), callbacks: stepCallbacks() })
+      .catch(error => error as unknown)
+
+    // 缺项会触发递归拆分（而不是静默原样重发）；失败信息必须带章节进度而不是只有"超过截止时间"
+    expect(attempted.length).toBeGreaterThan(1)
+    expect(failure).toBeInstanceOf(DirectoryBlueprintContractError)
+    expect((failure as Error).message).toMatch(/已生成 \d+\/6 章/)
+  })
+
+  it('runs a 180-chapter scope in one task without hitting the range cap or the deadline', async () => {
+    stubIpcInvoke(successfulCommitHandler())
+    const observedRanges: Array<[number, number]> = []
+    const session = generationSession(async task => {
+      const range = taskRange(task)
+      observedRanges.push(range)
+      return {
+        status: 'completed' as const,
+        content: blueprintJson(Array.from({ length: range[1] - range[0] + 1 }, (_, index) => range[0] + index)),
+        finishReason: 'stop' as const,
+        receipt: generationReceipt(observedRanges.length, 'stop', task.purpose),
+      }
+    })
+    const createRuntime = vi.fn(async () => testRuntime(session))
+    const command = new GenerateDirectoryCommand(
+      { mode: 'full', count: 180 },
+      { ...projectSnapshot, novelConfig: { ...projectSnapshot.novelConfig, totalChapters: 180 } },
+      { createRuntime },
+    )
+
+    // 用户的诉求："一次生成全部章节" —— 180 章不再被 50 章硬墙拦下
+    await command.execute({ step: {}, context: workflowContext(), callbacks: stepCallbacks() })
+
+    // 12 章/批 → 15 个语义批次，覆盖 1–180 章
+    expect(observedRanges).toHaveLength(15)
+    expect(observedRanges[0]).toEqual([1, 12])
+    expect(observedRanges.at(-1)).toEqual([169, 180])
+    // 预算链与之自洽：37.5 分钟窗口 + 能装下完整拆分树（376）的调用上限
+    expect(createRuntime).toHaveBeenCalledWith(expect.objectContaining({
+      budget: expect.objectContaining({ deadlineMs: 4_500_000, maxAttempts: 376 }),
+    }))
   })
 })

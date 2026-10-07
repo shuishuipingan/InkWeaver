@@ -28,9 +28,40 @@ export type CharacterRosterStatus =
   | 'legacy_repair_required'
   | 'inconsistent'
 
+/**
+ * 关系的多个维度。同一对角色可以有多条不同 kind 的关系文本，
+ * 而不是把整段关系压成 relation 里的一句话。
+ */
+export const RELATIONSHIP_FACET_KINDS = ['stance', 'emotion', 'dependency', 'knowledge', 'history'] as const
+
+export type RelationshipFacetKind = typeof RELATIONSHIP_FACET_KINDS[number]
+
+export interface CharacterRosterRelationshipFacet {
+  kind: RelationshipFacetKind
+  /** 该维度的一句话描述；没有依据时不要写这条 facet，而不是填占位。 */
+  text: string
+}
+
+/**
+ * 角色对一个势力 / 组织 / 阵营的立场。
+ *
+ * 势力在本项目里不是实体（只存在于世界观正文与角色卡的 location），所以势力关系
+ * 挂在**角色**上而不是图上：每个角色各自维护对若干势力的立场，天然就是「一个角色一份」，
+ * 不会像独立势力表那样引出跨表引用、去重与迁移成本。
+ */
+export interface CharacterFactionEdge {
+  faction: string
+  /** 一句话立场，例如「名义归属，暗中怀疑」。 */
+  stance: string
+  /** 可选的补充依据。 */
+  text?: string
+}
+
 export interface CharacterRosterRelationship {
   target: string
   relation: string
+  /** 多面关系。缺省时按单一 relation 显示（旧数据原样可用）。 */
+  facets?: CharacterRosterRelationshipFacet[]
   direction?: 'outgoing' | 'incoming' | 'mutual'
   sourceChapter?: number
   evidence?: string
@@ -71,6 +102,8 @@ export interface CharacterRosterEntry {
   abilities: string
   motivation: string
   relationships: CharacterRosterRelationship[]
+  /** 角色对势力的立场；缺省表示该角色没有可依据的势力归属。 */
+  factionEdges?: CharacterFactionEdge[]
   arc: string
   notes: string
   currentState?: CharacterRosterCharacterState

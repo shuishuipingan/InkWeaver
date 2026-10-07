@@ -327,6 +327,8 @@ export class GenerateDirectoryCommand extends BaseWorkflowCommand<ChapterBluepri
     if (!template) throw new Error('模板丢失')
 
     let activeRange = { startChapter, endChapter }
+    const batchStartedAt = Date.now()
+    let deadlineWarningLogged = false
     const droppedRelationshipCountByChapter = new Map<number, number>()
     const contract: StructuredBatchContract<number, ChapterBlueprint> = {
       retryInvalidOutputWithSmallerBatch: true,
@@ -343,6 +345,19 @@ export class GenerateDirectoryCommand extends BaseWorkflowCommand<ChapterBluepri
         ))
 
         const previous = [...existingBlueprints, ...validatedPrefix]
+        // 本批缺失清单：上一轮 stop 但批次不完整时，必须告诉模型"还缺哪几章"。
+        // 事故现场就是每轮原样重发同样的提示（messageChars 只 +750）→ 仍 stop → 耗尽截止时间。
+        const producedInBatch = new Set(validatedPrefix.map(entry => entry.chapterNumber))
+        const missingChapters = items.filter(chapter => !producedInBatch.has(chapter))
+        const elapsedMs = Date.now() - batchStartedAt
+        if (!deadlineWarningLogged && elapsedMs >= costPlan.runtimeBudget.deadlineMs * 0.8) {
+          deadlineWarningLogged = true
+          callbacks.log(workflowUiText(
+            context,
+            `⚠ 本任务活动时间已超过会话窗口的 80%；已完成到第 ${Math.max(startChapter, batchStart - 1)} 章（范围 ${startChapter}–${endChapter}）。`,
+            `⚠ This run has used over 80% of its session window; completed through chapter ${Math.max(startChapter, batchStart - 1)} (range ${startChapter}–${endChapter}).`,
+          ))
+        }
         const chapterList = previous.slice(-100)
           .map(chapter => promptLanguageText(
             writingLanguage,
@@ -362,6 +377,13 @@ export class GenerateDirectoryCommand extends BaseWorkflowCommand<ChapterBluepri
           .build()
           + `\n\n${blueprintSemanticGenerationContract(writingLanguage)}`
           + (confirmedPlanningMaterials ? `\n\n【作者已确认规划资料】\n${confirmedPlanningMaterials}` : '')
+          + (missingChapters.length > 0 && missingChapters.length < items.length
+            ? `\n\n${promptLanguageText(
+              writingLanguage,
+              `【本轮缺失清单】上一轮响应提前结束（finishReason=stop），本批第 ${batchStart}–${batchEnd} 章仍缺少：第 ${missingChapters.join('、')} 章。必须在本次全部补齐，不要重述已完成的章节。`,
+              `[Missing items] The previous response stopped early. Within batch ${batchStart}–${batchEnd} these chapters are still missing: ${missingChapters.join(', ')}. Produce all of them now; do not repeat completed chapters.`,
+            )}`
+            : '')
 
         return {
           purpose: 'chapter-blueprint-directory',
@@ -459,10 +481,17 @@ export class GenerateDirectoryCommand extends BaseWorkflowCommand<ChapterBluepri
       if (!batchResult.ok) {
         const generationSummary = directoryGenerationFailureSummary(batchResult.receipt.attempts)
         callbacks.log(`蓝图生成失败收据：${generationSummary}`)
+        // 失败信息必须带进度：作者看到的不该只是一句"超过会话截止时间"。
+        const producedCount = Math.max(0, Math.min(chapterCount, activeRange.startChapter - startChapter))
+        const progress = promptLanguageText(
+          writingLanguage,
+          `已生成 ${producedCount}/${chapterCount} 章（范围第 ${startChapter}–${endChapter} 章），剩余 ${chapterCount - producedCount} 章`,
+          `${producedCount}/${chapterCount} chapters produced (range ${startChapter}–${endChapter}); ${chapterCount - producedCount} remaining`,
+        )
         if (batchResult.failure.diagnostic) {
-          throw new DirectoryBlueprintContractError(batchResult.failure.diagnostic, generationSummary)
+          throw new DirectoryBlueprintContractError(batchResult.failure.diagnostic, `${progress}；${generationSummary}`)
         }
-        throw new Error(`${batchResult.failure.message}；${generationSummary}`)
+        throw new Error(`${batchResult.failure.message}；${progress}；${generationSummary}`)
       }
 
       const droppedRelationshipCount = [...droppedRelationshipCountByChapter.values()]
@@ -511,6 +540,15 @@ export class GenerateDirectoryCommand extends BaseWorkflowCommand<ChapterBluepri
       context.data.newBlueprints = newBlueprints
       context.data.existingBlueprints = existingBlueprints
       callbacks.log(`共生成 ${newBlueprints.length} 章蓝图`)
+      if (endChapter < totalChapters) {
+        const nextStart = endChapter + 1
+        const nextEnd = Math.min(totalChapters, nextStart + MAX_BLUEPRINT_CHAPTERS_PER_TASK - 1)
+        callbacks.log(workflowUiText(
+          context,
+          `本次已生成第 ${startChapter}–${endChapter} 章；如需后续章节，请再生成第 ${nextStart}–${nextEnd} 章（单次最多 ${MAX_BLUEPRINT_CHAPTERS_PER_TASK} 章）。`,
+          `Generated chapters ${startChapter}–${endChapter}. To continue, run chapters ${nextStart}–${nextEnd} next (up to ${MAX_BLUEPRINT_CHAPTERS_PER_TASK} per task).`,
+        ))
+      }
       return newBlueprints
     } finally {
       cancellation.dispose()

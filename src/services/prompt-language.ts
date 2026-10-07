@@ -70,7 +70,15 @@ keyItems 可为非空字符串或非空字符串数组；recentEvents 可为非�
 ${context}
 
 【身份清单合同】
-只输出 {"slots":[...]}，角色数量必须为 ${minimum}–${maximum}。每项必须含 slotId、name、role、narrativeDuty、relations；relations 每项含 targetSlotId、relation。slotId/name 必须唯一，role 仅 protagonist/antagonist/supporting/minor，且恰好一个 protagonist；关系只能引用本清单其他 slotId。`,
+只输出 {"slots":[...]}，角色数量必须为 ${minimum}–${maximum}。每项必须含 slotId、name、role、narrativeDuty、relations；relations 每项含 targetSlotId、relation，可含 facets；slotId/name 必须唯一，role 仅 protagonist/antagonist/supporting/minor，且恰好一个 protagonist；关系只能引用本清单其他 slotId，且同一个 targetSlotId 只出现一次。
+
+【多面关系与势力合同】
+**关系不是一句话，是多个维度**：同一对角色之间可以同时存在立场冲突、情感、依赖、知情差异与历史。
+- 每对**主要角色**（主角 ↔ 主要配角 / 对手）必须给出 2–4 条 facets，至少覆盖 stance（立场）与 emotion（情感）；次要角色对给 1–2 条即可，不要为凑数而写。
+- facets[].kind 只能取：stance（立场 / 阵营冲突）、emotion（情感）、dependency（依赖 / 把柄 / 利益绑定）、knowledge（知情差异：谁知道什么、误以为什么）、history（历史：旧恩旧怨、前史事件）。
+- 每条 facet 的 text 必须能指回上下文里已给出的事实；拿不准就**省略这条 facet**，不要写「待确认」「未知」「暂无」这类占位。
+- 想表达同一对角色的多个维度时，写进这条 relations 的 facets，**不要**拆成多条 relations。
+- 势力（门派 / 组织 / 阵营 / 家族）不是独立实体：为每个角色在 factionEdges 里给出 0–3 条 {"faction":"仙盟","stance":"名义归属，暗中怀疑"}；只写上下文里有依据的势力，没有就省略该字段。`,
     detailTask: input => `【角色详情上下文】
 ${input.context}
 
@@ -102,7 +110,15 @@ Do not output relationships, schemaVersion, a rendered character map, explanatio
 ${context}
 
 [Identity manifest contract]
-Output {"slots":[...]} only, with ${minimum}–${maximum} characters. Every item must contain slotId, name, role, narrativeDuty, and relations; every relation must contain targetSlotId and relation. slotId and name must be unique. role must be protagonist, antagonist, supporting, or minor, with exactly one protagonist. Relationships may reference only another slotId in this manifest.`,
+Output {"slots":[...]} only, with ${minimum}–${maximum} characters. Every item must contain slotId, name, role, narrativeDuty, and relations; every relation must contain targetSlotId and relation and may contain facets. slotId and name must be unique. role must be protagonist, antagonist, supporting, or minor, with exactly one protagonist. Relationships may reference only another slotId in this manifest, and each targetSlotId may appear only once.
+
+[Multi-facet and faction contract]
+A relationship is not one sentence but several dimensions: alignment conflict, emotion, dependency, knowledge gaps, and history can coexist between the same two characters.
+- For every major pair (protagonist vs. main supporting character or antagonist) provide 2–4 facets covering at least stance and emotion; minor pairs need 1–2 only. Never pad to hit a count.
+- facets[].kind must be one of: stance (alignment or camp conflict), emotion, dependency (leverage or binding interest), knowledge (who knows or wrongly believes what), history (old debts, grudges, earlier events).
+- Every facet text must trace back to facts already present in the context. If you cannot ground it, omit that facet — never write placeholders such as "to be confirmed", "unknown", or "n/a".
+- Put extra dimensions of the same pair inside that relation's facets instead of repeating the target in several relations.
+- Factions (sects, organizations, camps, houses) are not entities: give each character 0–3 factionEdges shaped {"faction":"Jade Sect","stance":"nominally aligned, privately doubtful"}. Include only factions the context supports; omit the field when there are none.`,
     detailTask: input => `[Character-detail context]
 ${input.context}
 

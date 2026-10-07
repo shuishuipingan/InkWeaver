@@ -24,6 +24,10 @@ import {
   CHARACTER_ROSTER_ROLES,
   type CharacterRosterCommitRequest,
   type CharacterRosterEntry,
+  RELATIONSHIP_FACET_KINDS,
+  type CharacterFactionEdge,
+  type CharacterRosterRelationshipFacet,
+  type RelationshipFacetKind,
 } from '../../../shared/character-roster'
 import { createStructuredBatchExecutor, type StructuredBatchContract } from '../structured-batch-executor'
 import { formatPromptBudgetCompactionNotice } from '../../generation/prompt-budget-failure'
@@ -165,7 +169,14 @@ interface CharacterIdentitySlot {
   name: string
   role: CharacterRosterEntry['role']
   narrativeDuty: string
-  relations: Array<{ targetSlotId: string; relation: string }>
+  relations: Array<{
+    targetSlotId: string
+    relation: string
+    /** 多面关系：同一对角色之间的多个维度（可选，向后兼容）。 */
+    facets?: CharacterRosterRelationshipFacet[]
+  }>
+  /** 角色对势力的立场（可选）。 */
+  factionEdges?: CharacterFactionEdge[]
 }
 
 interface CharacterDetailOutput extends Omit<CharacterRosterEntry, 'relationships'> {
@@ -222,6 +233,40 @@ function decodeCharacterIdentityManifestCandidate(candidate: string): CharacterI
     if (!value.trim()) throw new StructuredContractDiagnostic('invalid_value', path)
     return value.trim()
   }
+
+  /** 多面关系：kind 必须取自受控枚举，text 必须非空；缺省 / 空数组按「没有」处理。 */
+  const readFacets = (value: unknown, path: string): CharacterRosterRelationshipFacet[] | undefined => {
+    if (value === undefined || value === null) return undefined
+    if (!Array.isArray(value)) throw new StructuredContractDiagnostic('invalid_type', path)
+    if (value.length === 0) return undefined
+    return value.map((facet, index) => {
+      const facetPath = `${path}[${index}]`
+      if (!isRecord(facet)) throw new StructuredContractDiagnostic('invalid_type', facetPath)
+      const kind = facet.kind
+      if (typeof kind !== 'string' || !RELATIONSHIP_FACET_KINDS.includes(kind as RelationshipFacetKind)) {
+        throw new StructuredContractDiagnostic('invalid_value', `${facetPath}.kind`)
+      }
+      return {
+        kind: kind as RelationshipFacetKind,
+        text: readRequiredText(facet, 'text', `${facetPath}.text`),
+      }
+    })
+  }
+
+  /** 角色对势力的立场；faction 与 stance 必须非空，text 可选。 */
+  const readFactionEdges = (value: unknown, path: string): CharacterFactionEdge[] | undefined => {
+    if (value === undefined || value === null) return undefined
+    if (!Array.isArray(value)) throw new StructuredContractDiagnostic('invalid_type', path)
+    if (value.length === 0) return undefined
+    return value.map((edge, index) => {
+      const edgePath = `${path}[${index}]`
+      if (!isRecord(edge)) throw new StructuredContractDiagnostic('invalid_type', edgePath)
+      const faction = readRequiredText(edge, 'faction', `${edgePath}.faction`)
+      const stance = readRequiredText(edge, 'stance', `${edgePath}.stance`)
+      const detail = typeof edge.text === 'string' && edge.text.trim() ? edge.text.trim() : undefined
+      return { faction, stance, ...(detail ? { text: detail } : {}) }
+    })
+  }
   const decoded = slots.map((slot, index) => {
     const path = `slots[${index}]`
     if (!isRecord(slot)) throw new StructuredContractDiagnostic('invalid_type', path)
@@ -240,11 +285,17 @@ function decodeCharacterIdentityManifestCandidate(candidate: string): CharacterI
       relations: relations.map((relation, relationIndex) => {
         const relationPath = `${path}.relations[${relationIndex}]`
         if (!isRecord(relation)) throw new StructuredContractDiagnostic('invalid_type', relationPath)
+        const facets = readFacets(relation.facets, `${relationPath}.facets`)
         return {
           targetSlotId: readRequiredText(relation, 'targetSlotId', `${relationPath}.targetSlotId`),
           relation: readRequiredText(relation, 'relation', `${relationPath}.relation`),
+          ...(facets ? { facets } : {}),
         }
       }),
+      ...((): { factionEdges?: CharacterFactionEdge[] } => {
+        const factionEdges = readFactionEdges(slot.factionEdges, `${path}.factionEdges`)
+        return factionEdges ? { factionEdges } : {}
+      })(),
     }
   })
 
@@ -260,6 +311,9 @@ function decodeCharacterIdentityManifestCandidate(candidate: string): CharacterI
     throw new StructuredContractDiagnostic('invalid_value', 'slots')
   }
   decoded.forEach((slot, index) => {
+    // 同一个 targetSlotId 只允许出现一次：同一对角色之间的多个维度写在 facets 里。
+    // 允许重复会让正文角色长出两条指向同一人的并行边——正是「图谱不细致」的同族形态。
+    const seenEndpoints = new Set<string>()
     slot.relations.forEach((relation, relationIndex) => {
       const endpointPath = `slots[${index}].relations[${relationIndex}].targetSlotId`
       if (relation.targetSlotId === slot.slotId) {
@@ -267,6 +321,19 @@ function decodeCharacterIdentityManifestCandidate(candidate: string): CharacterI
       }
       if (!seenSlotIds.has(relation.targetSlotId)) {
         throw new StructuredContractDiagnostic('relationship_endpoint_not_in_characters', endpointPath)
+      }
+      if (seenEndpoints.has(relation.targetSlotId)) {
+        throw new StructuredContractDiagnostic('duplicate_item', endpointPath)
+      }
+      seenEndpoints.add(relation.targetSlotId)
+
+      // 同一条关系里同一个维度只允许一条：重复会让界面出现「两条立场」这种观感缺陷。
+      const seenFacetKinds = new Set<RelationshipFacetKind>()
+      for (const [facetIndex, facet] of (relation.facets ?? []).entries()) {
+        if (seenFacetKinds.has(facet.kind)) {
+          throw new StructuredContractDiagnostic('duplicate_item', `slots[${index}].relations[${relationIndex}].facets[${facetIndex}].kind`)
+        }
+        seenFacetKinds.add(facet.kind)
       }
     })
   })
@@ -897,10 +964,14 @@ export class GenerateCharactersCommand extends BaseWorkflowCommand<string> {
     const entries = detailExecution.items.map((detail) => {
       const entry: Record<string, unknown> = { ...detail }
       delete entry.slotId
-      entry.relationships = manifestById.get(detail.slotId)!.relations.map(relation => ({
+      const slot = manifestById.get(detail.slotId)!
+      entry.relationships = slot.relations.map(relation => ({
         target: manifestById.get(relation.targetSlotId)!.name,
         relation: relation.relation,
+        // 多面关系随关系一起写入；旧数据没有 facets 时不产生该字段。
+        ...(relation.facets?.length ? { facets: relation.facets } : {}),
       }))
+      if (slot.factionEdges?.length) entry.factionEdges = slot.factionEdges
       return entry as unknown as CharacterRosterEntry
     })
     const candidate = { schemaVersion: CHARACTER_ROSTER_SCHEMA_VERSION, entries }

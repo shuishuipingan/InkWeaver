@@ -81,11 +81,20 @@ export interface GenerationHarnessPolicy {
  * Application-wide safety ceiling. Workflows may choose smaller intent budgets,
  * but no model capability or caller may enlarge one run beyond these bounds.
  */
+/**
+ * Application-wide safety ceiling. Workflows may choose smaller intent budgets,
+ * but no model capability or caller may enlarge one run beyond these bounds.
+ *
+ * maxAttempts / deadlineMs 必须 ≥ 工作流派生出的预算，否则"工作流自己算得很合理、
+ * 却被这道墙原样拒绝"：章节目录在 12 章/批、180 章的完整拆分树下需要 376 次物理调用
+ * （旧的 32 连 36 个语义批次的基线都装不下，连 50 章任务的 106 次都会被拒），
+ * 而"每批各拆一次"的现场形态需要 75 分钟（240 章口径 100 分钟）。
+ */
 export const GENERATION_ABSOLUTE_BUDGET_LIMITS = Object.freeze({
-  maxAttempts: 32,
+  maxAttempts: 512,
   maxRequestedOutputTokens: 393_216,
   maxRequestedOutputTokensPerAttempt: 131_072,
-  deadlineMs: 60 * 60_000,
+  deadlineMs: 120 * 60_000,
 })
 
 export type CapabilityEvidenceSource = ModelExecutionCapabilityEvidenceSource

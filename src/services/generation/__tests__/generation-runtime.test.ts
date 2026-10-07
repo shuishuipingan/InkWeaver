@@ -148,10 +148,11 @@ describe('GenerationRuntime', () => {
   })
 
   it.each([
-    ['attempts', { maxAttempts: 33, maxRequestedOutputTokens: 4096, maxRequestedOutputTokensPerAttempt: 4096, deadlineMs: 60_000 }],
+    // 应用级绝对墙现在是 512 次 / 120 分钟（必须 ≥ 工作流派生出的预算）
+    ['attempts', { maxAttempts: 513, maxRequestedOutputTokens: 4096, maxRequestedOutputTokensPerAttempt: 4096, deadlineMs: 60_000 }],
     ['total requested tokens', { maxAttempts: 1, maxRequestedOutputTokens: 393_217, maxRequestedOutputTokensPerAttempt: 4096, deadlineMs: 60_000 }],
     ['per-attempt requested tokens', { maxAttempts: 1, maxRequestedOutputTokens: 131_073, maxRequestedOutputTokensPerAttempt: 131_073, deadlineMs: 60_000 }],
-    ['deadline', { maxAttempts: 1, maxRequestedOutputTokens: 4096, maxRequestedOutputTokensPerAttempt: 4096, deadlineMs: 3_600_001 }],
+    ['deadline', { maxAttempts: 1, maxRequestedOutputTokens: 4096, maxRequestedOutputTokensPerAttempt: 4096, deadlineMs: 7_200_001 }],
   ])('rejects an oversized %s budget before reading a model or opening a lease', async (_label, budget) => {
     const snapshotDefaultModelId = vi.fn(() => 'model-a')
     const beginModelExecution = vi.fn<GenerationRuntimeEnvironment['beginModelExecution']>()
