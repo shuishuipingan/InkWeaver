@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client'
 
 import '../../../index.css'
 import RelationshipGraph from '../RelationshipGraph'
+import { resolveFrameBudgetMs } from './relationship-graph-performance-budget'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -84,20 +85,12 @@ describe('RelationshipGraph performance evidence', () => {
     let longTaskObserverEntryCount = 0
     try {
       try { longTaskObserver?.observe({ entryTypes: ['longtask'] }) } catch { /* unsupported in this browser */ }
-      // Headless CI runners can expose a throttled requestAnimationFrame clock
-      // (for example, ~100 ms on an Intel macOS runner). Measure that clock
-      // before rendering the graph so the test distinguishes environment timer
-      // granularity from graph-induced frame loss. On a normal 60 Hz browser
-      // the effective budget remains 33 ms; a throttled runner gets a bounded
-      // proportional budget rather than a false product failure.
+      // 环境归一化：渲染图之前先测 runner 自己的 rAF 时钟（headless 环境可能被节流到
+      // 约 100ms 一帧），再按它设一个有界比例预算，把「环境慢」与「图变慢」分开。
+      // 系数 1.5 的依据与三次失败的实测比率见 relationship-graph-performance-budget.ts。
       const environmentIntervals = await collectAnimationFrameIntervals(1_000)
       const environmentFrameP95Ms = percentile95(environmentIntervals)
-      const frameBudgetMs = Math.max(
-        33,
-        Number.isFinite(environmentFrameP95Ms)
-          ? Math.ceil(environmentFrameP95Ms * 1.25)
-          : 33,
-      )
+      const frameBudgetMs = resolveFrameBudgetMs(environmentFrameP95Ms)
       const startedAt = performance.now()
       await act(async () => {
         root.render(
