@@ -4,15 +4,15 @@
 
 InkWeaver is a local-first desktop workspace for long-form fiction. It brings project settings, characters, worldbuilding, chapter blueprints, prose, review, revision, and finalization into a traceable writing chain while keeping the author in control of every durable change.
 
-Current version: **v1.3.21**
+Current version: **v1.3.22**
 
 [Long-form context selection and budget guide](docs/features/draft-context-budget.md)
 
 > **Turn a long novel into one continuously developing story.** InkWeaver is a local-first AI writing workspace that connects story premises, character state, chapter blueprints, candidate drafts, evidence-backed review, and author-approved finalization into one traceable writing loop.
 
-Version 1.3.21 gives new models reasoning-effort support automatically and makes architecture-generation failures locatable. Previously every model had to be registered in the built-in catalog one by one, and anything missing showed "—(unsupported / no parameters sent)" for reasoning effort in Settings; unregistered models are now matched automatically by vendor and model family (covering GPT-5 and later plus the o series, Grok-4 and later, Kimi K2 and later, Gemini 2.5 and later, DeepSeek V4 and later, Qwen3 and later, GLM-4.5/5 and later, and Claude 3 and later) and reuse the parameter values of already-verified models in the same family, while families that certainly do not support the parameter and the gateway-style providers keep sending nothing. A structured result that cannot be decoded during novel-architecture generation or import inference no longer produces a single unlocatable message either: the decoder reports an error code with a concrete path (for example which character's which field), tries each JSON object when a response contains several, and no longer fails the whole scan over an unterminated fragment. Includes the [long-form context guide](docs/features/draft-context-budget.md), the [workflow audit repairs](docs/audits/workflow-audit-2026-10-01.md), and the [security audit receipt](docs/audits/security-audit-2026-10-03.md). The Release supports Windows, macOS and Linux x64; the DSH plugin remains in v1.2.0, and npm publication remains out of scope.
+Version 1.3.22 lets the assistant read your creative state and stops the confirmation card from getting stuck. Six new read-only tools — review findings, narrative threads and foreshadowing, chapter handoffs, knowledge boundaries, story-continuity sheets, and revision proposals — answer questions that previously had no reply, such as what a review found in a chapter, how far along each thread is, what state the previous chapter ended in, or who learned a secret in chapter N. Author-confirmed records are returned by default, candidates must be requested explicitly and are labelled one by one, and the read-only tool count grows from 11 to 17. The confirmation card fixed two silent states: a failed validation no longer just greys out Approve but states the reason and offers "Ask the assistant to fix this plan", and an expired confirmation renders the whole card as no longer valid with disabled buttons and a stated reason. Includes the [long-form context guide](docs/features/draft-context-budget.md), the [workflow audit repairs](docs/audits/workflow-audit-2026-10-01.md), and the [security audit receipt](docs/audits/security-audit-2026-10-03.md). The Release supports Windows, macOS and Linux x64; the DSH plugin remains in v1.2.0, and npm publication remains out of scope.
 
-[Download v1.3.21](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.3.21) · [Start your first chapter in three minutes](docs/quickstart/README.md) · [Story direction guide](docs/features/story-direction-adjustment.md) · [Install the DSH plugin](plugins/inkweaver-dsh/README.md) · [Ask a question or report a problem](https://github.com/shuishuipingan/InkWeaver/issues/new/choose) · [Join the discussion](https://github.com/shuishuipingan/InkWeaver/discussions)
+[Download v1.3.22](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.3.22) · [Start your first chapter in three minutes](docs/quickstart/README.md) · [Story direction guide](docs/features/story-direction-adjustment.md) · [Install the DSH plugin](plugins/inkweaver-dsh/README.md) · [Ask a question or report a problem](https://github.com/shuishuipingan/InkWeaver/issues/new/choose) · [Join the discussion](https://github.com/shuishuipingan/InkWeaver/discussions)
 
 ![InkWeaver welcome screen](docs/assets/inkweaver-welcome.png)
 
@@ -164,33 +164,33 @@ inkweaver-mac-arm64-<version>-installer.dmg
 inkweaver-mac-x64-<version>-installer.dmg
 ```
 
-The current macOS installers do not have a Developer ID signature and are not notarized. Download only from the [formal v1.3.21 Release](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.3.21) and follow the operating system's first-launch confirmation. The desktop Release contains 13 assets for Windows x64, macOS Apple Silicon, macOS Intel, and Linux x64; the DSH plugin tarball remains in the v1.2.0 Release.
+The current macOS installers do not have a Developer ID signature and are not notarized. Download only from the [formal v1.3.22 Release](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.3.22) and follow the operating system's first-launch confirmation. The desktop Release contains 13 assets for Windows x64, macOS Apple Silicon, macOS Intel, and Linux x64; the DSH plugin tarball remains in the v1.2.0 Release.
 
 ### Linux x64
 
-The v1.3.21 Linux packages are built for x64. Qualification tests cover Ubuntu 22.04, Debian 13, and Fedora 44; this does not claim compatibility for other distributions or Linux ARM64. Packages are built in an Ubuntu 22.04 environment with glibc 2.35, and qualification verifies that packaged binaries do not require a glibc symbol newer than 2.35.
+The v1.3.22 Linux packages are built for x64. Qualification tests cover Ubuntu 22.04, Debian 13, and Fedora 44; this does not claim compatibility for other distributions or Linux ARM64. Packages are built in an Ubuntu 22.04 environment with glibc 2.35, and qualification verifies that packaged binaries do not require a glibc symbol newer than 2.35.
 
-Download these files and their matching SHA-256 sidecars from the [formal v1.3.21 Release](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.3.21):
+Download these files and their matching SHA-256 sidecars from the [formal v1.3.22 Release](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.3.22):
 
-    inkweaver-linux-x64-1.3.21.AppImage
-    inkweaver-linux-x64-1.3.21.deb
-    inkweaver-linux-x64-1.3.21.rpm
+    inkweaver-linux-x64-1.3.22.AppImage
+    inkweaver-linux-x64-1.3.22.deb
+    inkweaver-linux-x64-1.3.22.rpm
 
 The AppImage launches directly when FUSE is available. Without FUSE, use its built-in extraction mode:
 
-    chmod +x inkweaver-linux-x64-1.3.21.AppImage
-    ./inkweaver-linux-x64-1.3.21.AppImage --appimage-extract-and-run
+    chmod +x inkweaver-linux-x64-1.3.22.AppImage
+    ./inkweaver-linux-x64-1.3.22.AppImage --appimage-extract-and-run
 
 AppImage uses the user namespace sandbox and requires the system to allow unprivileged user namespaces. If system policy disables this capability, use the corresponding deb/rpm installer.
 
 Install the deb package on Ubuntu/Debian or the rpm package on Fedora:
 
-    sudo apt install ./inkweaver-linux-x64-1.3.21.deb
-    sudo dnf install ./inkweaver-linux-x64-1.3.21.rpm
+    sudo apt install ./inkweaver-linux-x64-1.3.22.deb
+    sudo dnf install ./inkweaver-linux-x64-1.3.22.rpm
 
 Linux packages are unsigned. Verify the matching checksum file in the same directory before installation, for example:
 
-    sha256sum -c inkweaver-linux-x64-1.3.21.deb.sha256
+    sha256sum -c inkweaver-linux-x64-1.3.22.deb.sha256
 
 ## DeepSeek Harness plugin
 

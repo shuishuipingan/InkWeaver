@@ -2,6 +2,34 @@
 
 本文件按用户可见行为记录变更。桌面版本不发布 npm；DSH 插件沿用已发布的 `1.2.0` 包。`1.2.0` 已从同一源码 commit 完成工程验收、三平台资产回读和正式 Release；`1.1.0` 的历史 Release 收据保留在 `docs/upgrade/`，不与 1.2.0 混用。
 
+## 1.3.22 — 2026-10-07
+
+### 新增
+
+- AI 写作助手现在能读取创作状态，不只是设定。新增 6 个只读工具：审稿意见（read_reviews）、叙事线索与伏笔（read_narrative_threads）、章节交接（read_chapter_handoff）、知情边界（read_knowledge_events）、连续性工作单（read_story_continuity）、修订提案（read_revision_proposals）。此前“这章审稿发现了什么”“伏笔进度如何”“上一章结尾是什么状态”“谁在第 N 章知道了这个秘密”助手都答不了；默认只返回作者已确认的记录，候选需显式要求并逐条标注。只读工具总数由 11 个增至 17 个。
+
+### 修复
+
+- 修复助手确认卡片“点了没反应”的两种哑状态：变更计划校验未通过时「批准执行」只是变灰、没有一句说明；确认已经失效（生成超时或被取消后等待回调已被清理）时卡片仍留在界面上，三个按钮点击都毫无反应。现在前者显示具体校验未通过原因，后者整张卡显示为已失效、按钮禁用并说明原因；校验未通过时另提供「请助手修正此计划」，把错误原因回注给同一会话由助手重新提交，不再让作者卡在死路上。
+
+### 发布
+
+- 保持 Windows、macOS、Linux x64 同提交发布。Linux 文件为 inkweaver-linux-x64-1.3.22.AppImage、inkweaver-linux-x64-1.3.22.deb、inkweaver-linux-x64-1.3.22.rpm 及 SHA-256；运行资格覆盖 Ubuntu 22.04、Debian 13、Fedora 44，glibc 2.35 基线及 --appimage-extract-and-run 检查继续有效，包未签名。
+
+## 1.3.22 — 2026-10-07 (English)
+
+### Added
+
+- The AI writing assistant can now read your creative state, not just the settings. Six new read-only tools: review findings (read_reviews), narrative threads and foreshadowing (read_narrative_threads), chapter handoffs (read_chapter_handoff), knowledge boundaries (read_knowledge_events), story-continuity sheets (read_story_continuity), and revision proposals (read_revision_proposals). Questions such as “what did the review find in this chapter”, “how far along is each thread”, “what state did the previous chapter end in”, or “who learned this secret in chapter N” previously had no answer. Author-confirmed records are returned by default, while candidates must be requested explicitly and are labelled one by one. The read-only tool count grows from 11 to 17.
+
+### Fixed
+
+- Fixed two silent states where the assistant's confirmation card “did nothing when clicked”: when a change plan failed validation, the Approve action merely greyed out with no explanation, and when a confirmation had expired (the generation timed out or was cancelled and its pending callback had been cleared) the card stayed on screen while all three buttons did nothing. A failed validation now shows the specific reason, an expired confirmation renders the whole card as no longer valid with disabled buttons and a stated reason, and a failed validation additionally offers “Ask the assistant to fix this plan”, which feeds the reason back into the same session so the assistant resubmits instead of leaving the author stuck.
+
+### Release
+
+- Continues Windows, macOS and Linux x64 same-commit releases. Linux packages: inkweaver-linux-x64-1.3.22.AppImage, inkweaver-linux-x64-1.3.22.deb, inkweaver-linux-x64-1.3.22.rpm with SHA-256. Qualification covers Ubuntu 22.04, Debian 13, Fedora 44, the glibc 2.35 baseline and --appimage-extract-and-run. Linux packages are unsigned.
+
 ## 1.3.21 — 2026-10-06
 
 ### 新增
