@@ -764,9 +764,9 @@ function registerBuiltinSkills(registry: SkillRegistryImpl): void {
 
 ## 工作流
 1. 用 read_architecture 与 read_project_state 读现有世界设定与写作风格，用 read_characters 读现有角色名单与别名，避免与既有设定冲突或重复建档。
-2. 逐条分流，并在动手前把分流结果念给作者：
-   - **角色** → propose_new_characters（新增角色，每项至少 name 与 role）
-   - **势力 / 组织 / 阵营** → propose_change_plan 的 architecture 条目（写入世界观正文）。不要把它们塞进角色表：角色卡只有「当前位置 / 阵营」一个字段，装不下组织设定。
+2. **第一步先给每一项分类**：这是**角色**，还是**势力 / 组织 / 阵营**？分类结果在动手前念给作者：
+   - **角色** → propose_new_characters（新增角色，每项至少 name 与 role）。**每个 name 只能是单个角色的名字**：多人并列（例如「沈瑶光、鹿鸣」）必须拆成多个 character——工具会拒绝含「、，,;；」或「甲和乙」形态的合并名。
+   - **势力 / 组织 / 阵营** → propose_change_plan 的 architecture 条目（写入世界观正文）。**禁止把势力作为 character 提交**：工具会拦「势力形态」的名字并给出指引；角色卡只有「当前位置 / 阵营」一个字段，装不下组织设定。
 3. 作者只给了一句话的，按已有架构与人设补全其余档案字段（外貌、性格、背景、能力、动机、关系、角色弧），但不得编造与既有设定冲突的事实；拿不准的字段留空，不要瞎填。
 4. 用 analyze_change_impact 评估这次建档会牵动哪些既有内容（例如新势力与已定稿事实的关系）；必要时用 read_narrative_threads 看新角色是否落在既有线索上。
 5. 提交：角色走 propose_new_characters（一次最多 12 名，超出分批）；势力与世界观调整走 propose_change_plan。两者都需要作者在确认卡片批准后才写入。
@@ -776,6 +776,7 @@ function registerBuiltinSkills(registry: SkillRegistryImpl): void {
 - 重名要提示：与现有角色名或别名相同时不要静默覆盖，改名后重新提交（工具会指名冲突的那一个）。
 - 本技能只做**新增与补全**：不要顺手改动既有角色或架构的其它字段；要改已有实体请明确改用联动修改。
 - 势力若作者要求「能单独查阅」，建议把它作为规划资料提出，不要擅自新建实体类型。
+- 势力 / 组织 / 阵营一律不进角色表：工具层会直接拒绝「仙盟的祭局推动者」这类名字，不要试图绕过（包括用 allow_faction_entries 硬塞——那是留给作者确认的极端例外）。
 - 一批里既有角色又有势力时分开提交：角色走角色通道、势力走架构通道，不要混在一个计划里。`,
     },
   ]

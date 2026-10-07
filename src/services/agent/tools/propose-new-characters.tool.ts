@@ -15,6 +15,8 @@ import {
 } from '../../../shared/character-roster'
 import { assertAgentProjectCurrent, requireAgentProject } from './project-context'
 import { readList, readRecord } from './read-record.helpers'
+// 规则只有一份：多人名与势力形态的检测住在 shared，工具层只负责把它包成可读错误 + 豁免开关。
+import { inspectCharacterName } from '../../../shared/character-name-guards'
 
 /** 一次提案最多新增多少名角色。 */
 export const NEW_CHARACTER_MAX = 12
@@ -57,14 +59,32 @@ function readRelationships(value: unknown): CharacterRosterRelationship[] {
 }
 
 type ParsedCharacter = { ok: true; entry: CharacterRosterEntry } | { ok: false; error: string }
-
-/** 只接收作者/模型给得出的档案字段；currentState 一律不接收（状态只能由定稿推进产生）。 */
-export function parseNewCharacter(raw: unknown, index: number): ParsedCharacter {
+/**
+ * 只接收作者/模型给得出的档案字段；currentState 一律不接收（状态只能由定稿推进产生）。
+ * 默认拒绝「多个名字合并成一个 name」（那是同名合并卡的根因）；options.allowMultiName
+ * 是给「单个角色名确实含分隔符」留的显式豁免出口，作者确认后才用。
+ */
+export function parseNewCharacter(
+  raw: unknown,
+  index: number,
+  options: { allowMultiName?: boolean } = {},
+): ParsedCharacter {
   const record = readRecord(raw)
   const label = '第 ' + (index + 1) + ' 个角色'
   const name = typeof record.name === 'string' ? record.name.trim() : ''
   if (!name) return { ok: false, error: label + '缺少 name。' }
   if (name.length > NAME_MAX) return { ok: false, error: label + '的 name 过长（上限 ' + NAME_MAX + ' 字符）。' }
+  if (!options.allowMultiName) {
+    const multiName = inspectCharacterName(name).multiName
+    if (multiName) {
+      return {
+        ok: false,
+        error: label + '的 name「' + name + '」看起来是多个角色：检测到分隔符「' + multiName.separators.join('、') + '」，'
+          + '请把每个角色作为 characters 数组的单独一项提交（一次最多 ' + NEW_CHARACTER_MAX + ' 个），'
+          + '而不是把多个名字合并在一个 name 里；如果这确实是一个角色的名字，请让作者确认后用 allow_multi_name=true 重试。',
+      }
+    }
+  }
   if (typeof record.role !== 'string' || !record.role.trim()) {
     return { ok: false, error: label + '「' + name + '」缺少 role（可用：protagonist / antagonist / supporting / minor，或中文「主角/反派/配角/龙套」）。' }
   }
@@ -108,7 +128,11 @@ export function occupiedNames(entries: ReadonlyArray<Record<string, unknown>>): 
 
 export const proposeNewCharactersTool = buildAgentTool({
   name: 'propose_new_characters',
-  description: '批量新增角色：提交 1-12 名新角色的档案，应用会合并进现有名单，必须由作者在确认卡片批准后才写入。**新增角色用本工具**；修改已有角色请改用 propose_change_plan（它明确不接受新角色）。提交的是完整快照（现有角色 + 新增），带乐观锁；不要臆造 currentState（当前位置/境界/状态由定稿推进产生），拿不准的字段留空。',
+  description: '批量新增角色：提交 1-12 名新角色的档案，应用会合并进现有名单，必须由作者在确认卡片批准后才写入。'
+    + '**每个 name 必须是单个角色的名字**：把多个角色并列（如「沈瑶光、鹿鸣」）会被拒绝，请拆成 characters 数组的多项。'
+    + '**势力/组织不是角色**：这类内容请用 propose_change_plan 的 architecture 条目写进世界观。'
+    + '**新增角色用本工具**；修改已有角色请改用 propose_change_plan（它明确不接受新角色）。'
+    + '提交的是完整快照（现有角色 + 新增），带乐观锁；不要臆造 currentState（当前位置/境界/状态由定稿推进产生），拿不准的字段留空。',
   source: 'builtin',
   inputSchema: {
     type: 'object',
@@ -118,6 +142,8 @@ export const proposeNewCharactersTool = buildAgentTool({
         description: '要新增的角色数组（1-12 个）。每项至少给 name 与 role，其余字段按已有架构与人设补全，拿不准就留空。',
       },
       summary: { type: 'string', description: '一句话说明这批新增的用途（会随提案展示给作者）' },
+      allow_multi_name: { type: 'boolean', description: '仅当作者确认某个 name 确实含分隔符（单个角色的正式名号）时才传 true；默认 false 会把含「、，,;；」或「甲和乙」形态的名字判为合并卡并拒绝' },
+      allow_faction_entries: { type: 'boolean', description: '仅当作者确认要把势力/组织建成角色时才传 true；默认 false 会拒绝「势力形态」的名字并指引改用 propose_change_plan 的 architecture 条目' },
     },
     required: ['characters'],
   },
@@ -131,10 +157,22 @@ export const proposeNewCharactersTool = buildAgentTool({
     if (rawCharacters.length > NEW_CHARACTER_MAX) {
       return { success: false, content: '', error: '一次最多新增 ' + NEW_CHARACTER_MAX + ' 名角色（收到 ' + rawCharacters.length + ' 名），请分批提交。' }
     }
+    const allowMultiName = args.allow_multi_name === true
+    const allowFactionEntries = args.allow_faction_entries === true
     const parsed: CharacterRosterEntry[] = []
     for (let index = 0; index < rawCharacters.length; index += 1) {
-      const result = parseNewCharacter(rawCharacters[index], index)
+      const result = parseNewCharacter(rawCharacters[index], index, { allowMultiName })
       if (!result.ok) return { success: false, content: '', error: '参数校验失败：' + result.error }
+      // 势力分流强制：势力 / 组织不是角色，提示词说了不算，工具层在这里拦。
+      if (!allowFactionEntries && inspectCharacterName(result.entry.name).factionLike === true) {
+        return {
+          success: false,
+          content: '',
+          error: '参数校验失败：第 ' + (index + 1) + ' 个角色的 name「' + result.entry.name + '」看起来是势力 / 组织而非单个角色。'
+            + '势力应写入架构世界观（用 propose_change_plan 的 architecture 条目）；'
+            + '如果确实要建属于该势力的具体角色，请给出角色名；若作者确认要建为角色，可用 allow_faction_entries=true 重试。',
+        }
+      }
       parsed.push(result.entry)
     }
     // 批内自检：同一批里不允许出现同一个名字。

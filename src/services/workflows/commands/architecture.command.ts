@@ -17,6 +17,8 @@ import {
 import { characterArchitecturePrompts, promptLanguageText } from '../../prompt-language'
 import { decodeJsonObjectCandidate, stripThinkingTags } from '../workflow-utils'
 import { StructuredContractDiagnostic } from '../../../shared/structured-contract-diagnostic'
+// 规则只有一份：与 agent 工具共用 shared 的检测，解码器只把它包成结构化诊断。
+import { inspectCharacterName } from '../../../shared/character-name-guards'
 import type { NovelConfig, ProjectSessionContext } from '../../../shared/ipc-channels'
 import type { WritingLanguage } from '../../../shared/writing-language'
 import {
@@ -304,6 +306,9 @@ function decodeCharacterIdentityManifestCandidate(candidate: string): CharacterI
   decoded.forEach((slot, index) => {
     if (seenSlotIds.has(slot.slotId)) throw new StructuredContractDiagnostic('duplicate_item', `slots[${index}].slotId`)
     if (seenNames.has(slot.name)) throw new StructuredContractDiagnostic('duplicate_item', `slots[${index}].name`)
+    // 多个角色写进一个 slot（「沈瑶光、鹿鸣、谢无尘」）必须在解码阶段拒绝：
+    // 否则 detail 阶段会照着一个 slotId 生成「五人混合」的资料，正是用户看到的合并卡。
+    if (inspectCharacterName(slot.name).multiName) throw new StructuredContractDiagnostic('invalid_value', `slots[${index}].name`)
     seenSlotIds.set(slot.slotId, index)
     seenNames.set(slot.name, index)
   })

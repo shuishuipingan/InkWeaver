@@ -78,7 +78,8 @@ ${context}
 - facets[].kind 只能取：stance（立场 / 阵营冲突）、emotion（情感）、dependency（依赖 / 把柄 / 利益绑定）、knowledge（知情差异：谁知道什么、误以为什么）、history（历史：旧恩旧怨、前史事件）。
 - 每条 facet 的 text 必须能指回上下文里已给出的事实；拿不准就**省略这条 facet**，不要写「待确认」「未知」「暂无」这类占位。
 - 想表达同一对角色的多个维度时，写进这条 relations 的 facets，**不要**拆成多条 relations。
-- 势力（门派 / 组织 / 阵营 / 家族）不是独立实体：为每个角色在 factionEdges 里给出 0–3 条 {"faction":"仙盟","stance":"名义归属，暗中怀疑"}；只写上下文里有依据的势力，没有就省略该字段。`,
+- **name 必须是单个角色的名字**：如果上下文把多个角色并列（例如「沈瑶光、鹿鸣」），必须拆成多个 slot，每人一个——把多个名字合并在一个 name 里会被拒绝（含「、，,;；」或「甲和乙」形态即视为多人合并）。
+- 势力（门派 / 组织 / 阵营 / 家族）不是独立实体：为每个角色在 factionEdges 里给出 0–3 条 {"faction":"仙盟","stance":"名义归属，暗中怀疑"}；只写上下文里有依据的势力，没有就省略该字段。**势力本身不是角色**，不要为组织单独建 slot。`,
     detailTask: input => `【角色详情上下文】
 ${input.context}
 
@@ -118,7 +119,8 @@ A relationship is not one sentence but several dimensions: alignment conflict, e
 - facets[].kind must be one of: stance (alignment or camp conflict), emotion, dependency (leverage or binding interest), knowledge (who knows or wrongly believes what), history (old debts, grudges, earlier events).
 - Every facet text must trace back to facts already present in the context. If you cannot ground it, omit that facet — never write placeholders such as "to be confirmed", "unknown", or "n/a".
 - Put extra dimensions of the same pair inside that relation's facets instead of repeating the target in several relations.
-- Factions (sects, organizations, camps, houses) are not entities: give each character 0–3 factionEdges shaped {"faction":"Jade Sect","stance":"nominally aligned, privately doubtful"}. Include only factions the context supports; omit the field when there are none.`,
+- **Each name must be a single character.** If the context lists several characters together (for example "Shen Yaoguang, Lu Ming"), split them into separate slots — one per character. A name containing separators (、 ， , ; ；) or the 甲和乙 pattern is rejected as a merged entry.
+- Factions (sects, organizations, camps, houses) are not entities: give each character 0–3 factionEdges shaped {"faction":"Jade Sect","stance":"nominally aligned, privately doubtful"}. Include only factions the context supports; omit the field when there are none. **A faction is never itself a character** — do not create a slot for an organization.`,
     detailTask: input => `[Character-detail context]
 ${input.context}
 
