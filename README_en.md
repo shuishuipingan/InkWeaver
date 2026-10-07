@@ -4,15 +4,15 @@
 
 InkWeaver is a local-first desktop workspace for long-form fiction. It brings project settings, characters, worldbuilding, chapter blueprints, prose, review, revision, and finalization into a traceable writing chain while keeping the author in control of every durable change.
 
-Current version: **v1.3.29**
+Current version: **v1.3.30**
 
 [Long-form context selection and budget guide](docs/features/draft-context-budget.md)
 
 > **Turn a long novel into one continuously developing story.** InkWeaver is a local-first AI writing workspace that connects story premises, character state, chapter blueprints, candidate drafts, evidence-backed review, and author-approved finalization into one traceable writing loop.
 
-Version 1.3.29 fixes two paths. Chapter-outline generation can now cover a whole book in one run: it previously combined four separate conservative ceilings — 5 chapters per batch, a fixed output budget, a session window pinned at 10 minutes, and an application-level cap of 32 calls — so 180 chapters could not finish, and even a 50-chapter single task was rejected under the old values. Batches now hold 12 chapters, the output budget is derived from the batch size, the session window scales with the number of batches, and the limits rise to 512 calls and a 240-chapter single-task range; 180 chapters can be generated in one run, anything beyond 240 chapters gets split-run guidance before work starts, and failure messages carry progress such as "X of Y chapters generated, Z remaining". The character relationship graph now supports multi-faceted relationships: each pair previously held a single sentence, which made several characters look as if they shared one graph, whereas a pair can now carry 2-4 relationships along different dimensions (allegiance, emotion, dependence, knowledge, history), visible one by one on the character card and preserved on save. Characters can also carry 0-3 stances toward specific factions with supporting evidence, generation requires evidence for every entry and omits what it cannot support, the parsing layer enforces de-duplication, and existing project data remains fully compatible. Includes the [long-form context guide](docs/features/draft-context-budget.md), the [workflow audit repairs](docs/audits/workflow-audit-2026-10-01.md), and the [security audit receipt](docs/audits/security-audit-2026-10-03.md). The Release supports Windows, macOS and Linux x64; the DSH plugin remains in v1.2.0, and npm publication remains out of scope.
+Version 1.3.30 fixes multi-faceted relationships and faction stances from character-architecture generation being lost on save. Both kinds of data were visible in the generated result and then disappeared — faction stances had no column on the characters table and were not recognized by the submit and merge paths, while multi-faceted relationships were stripped by the relationship normalizer. Both are now stored and read back in full, existing project databases gain the field automatically when opened, and regenerating the architecture no longer erases stances and facets that are already there. Faction stances now have their own section on the character card, one row per entry shown as faction — stance, supporting add, edit, and remove, and surviving a save-and-reload round trip (factions are not relationship-graph nodes, since they are not characters). Character-roster entries and the relationship interface also gained compile-time field checks, so adding a field to either interface without updating the write path is caught at compile time instead of after the data has already disappeared. Includes the [long-form context guide](docs/features/draft-context-budget.md), the [workflow audit repairs](docs/audits/workflow-audit-2026-10-01.md), and the [security audit receipt](docs/audits/security-audit-2026-10-03.md). The Release supports Windows, macOS and Linux x64; the DSH plugin remains in v1.2.0, and npm publication remains out of scope.
 
-[Download v1.3.29](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.3.29) · [Start your first chapter in three minutes](docs/quickstart/README.md) · [Story direction guide](docs/features/story-direction-adjustment.md) · [Install the DSH plugin](plugins/inkweaver-dsh/README.md) · [Ask a question or report a problem](https://github.com/shuishuipingan/InkWeaver/issues/new/choose) · [Join the discussion](https://github.com/shuishuipingan/InkWeaver/discussions)
+[Download v1.3.30](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.3.30) · [Start your first chapter in three minutes](docs/quickstart/README.md) · [Story direction guide](docs/features/story-direction-adjustment.md) · [Install the DSH plugin](plugins/inkweaver-dsh/README.md) · [Ask a question or report a problem](https://github.com/shuishuipingan/InkWeaver/issues/new/choose) · [Join the discussion](https://github.com/shuishuipingan/InkWeaver/discussions)
 
 ![InkWeaver welcome screen](docs/assets/inkweaver-welcome.png)
 
@@ -164,33 +164,33 @@ inkweaver-mac-arm64-<version>-installer.dmg
 inkweaver-mac-x64-<version>-installer.dmg
 ```
 
-The current macOS installers do not have a Developer ID signature and are not notarized. Download only from the [formal v1.3.29 Release](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.3.29) and follow the operating system's first-launch confirmation. The desktop Release contains 13 assets for Windows x64, macOS Apple Silicon, macOS Intel, and Linux x64; the DSH plugin tarball remains in the v1.2.0 Release.
+The current macOS installers do not have a Developer ID signature and are not notarized. Download only from the [formal v1.3.30 Release](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.3.30) and follow the operating system's first-launch confirmation. The desktop Release contains 13 assets for Windows x64, macOS Apple Silicon, macOS Intel, and Linux x64; the DSH plugin tarball remains in the v1.2.0 Release.
 
 ### Linux x64
 
-The v1.3.29 Linux packages are built for x64. Qualification tests cover Ubuntu 22.04, Debian 13, and Fedora 44; this does not claim compatibility for other distributions or Linux ARM64. Packages are built in an Ubuntu 22.04 environment with glibc 2.35, and qualification verifies that packaged binaries do not require a glibc symbol newer than 2.35.
+The v1.3.30 Linux packages are built for x64. Qualification tests cover Ubuntu 22.04, Debian 13, and Fedora 44; this does not claim compatibility for other distributions or Linux ARM64. Packages are built in an Ubuntu 22.04 environment with glibc 2.35, and qualification verifies that packaged binaries do not require a glibc symbol newer than 2.35.
 
-Download these files and their matching SHA-256 sidecars from the [formal v1.3.29 Release](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.3.29):
+Download these files and their matching SHA-256 sidecars from the [formal v1.3.30 Release](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.3.30):
 
-    inkweaver-linux-x64-1.3.29.AppImage
-    inkweaver-linux-x64-1.3.29.deb
-    inkweaver-linux-x64-1.3.29.rpm
+    inkweaver-linux-x64-1.3.30.AppImage
+    inkweaver-linux-x64-1.3.30.deb
+    inkweaver-linux-x64-1.3.30.rpm
 
 The AppImage launches directly when FUSE is available. Without FUSE, use its built-in extraction mode:
 
-    chmod +x inkweaver-linux-x64-1.3.29.AppImage
-    ./inkweaver-linux-x64-1.3.29.AppImage --appimage-extract-and-run
+    chmod +x inkweaver-linux-x64-1.3.30.AppImage
+    ./inkweaver-linux-x64-1.3.30.AppImage --appimage-extract-and-run
 
 AppImage uses the user namespace sandbox and requires the system to allow unprivileged user namespaces. If system policy disables this capability, use the corresponding deb/rpm installer.
 
 Install the deb package on Ubuntu/Debian or the rpm package on Fedora:
 
-    sudo apt install ./inkweaver-linux-x64-1.3.29.deb
-    sudo dnf install ./inkweaver-linux-x64-1.3.29.rpm
+    sudo apt install ./inkweaver-linux-x64-1.3.30.deb
+    sudo dnf install ./inkweaver-linux-x64-1.3.30.rpm
 
 Linux packages are unsigned. Verify the matching checksum file in the same directory before installation, for example:
 
-    sha256sum -c inkweaver-linux-x64-1.3.29.deb.sha256
+    sha256sum -c inkweaver-linux-x64-1.3.30.deb.sha256
 
 ## DeepSeek Harness plugin
 

@@ -2,6 +2,30 @@
 
 本文件按用户可见行为记录变更。桌面版本不发布 npm；DSH 插件沿用已发布的 `1.2.0` 包。`1.2.0` 已从同一源码 commit 完成工程验收、三平台资产回读和正式 Release；`1.1.0` 的历史 Release 收据保留在 `docs/upgrade/`，不与 1.2.0 混用。
 
+## 1.3.30 — 2026-10-07
+
+### 修复
+
+- 角色架构生成的多面关系与势力立场保存后不再丢失：此前这两类数据能在生成结果里看到，保存后却会消失（势力立场在角色表没有对应字段、提交与合并环节的逐字段白名单不认识它；多面关系被关系规范化过滤掉）。现在两类数据都完整落库并可读回，旧项目库在打开时自动补齐字段；重新生成架构时，已经存在的势力立场与多面关系不会被抹掉。
+- 势力立场在角色卡上可见、可编辑：角色卡新增“势力立场”区块，每行显示「势力 — 立场」，可以增删改，保存往返不丢失。势力不作为关系图的节点（它不是角色）。
+- 减少同类问题再次发生：角色名单条目与关系接口新增编译期字段校验，将来给这两个接口新增字段而写入侧没有跟进时，会在编译阶段被发现，而不是等用户发现数据消失。
+
+### 发布
+
+- 保持 Windows、macOS、Linux x64 同提交发布。Linux 文件为 inkweaver-linux-x64-1.3.30.AppImage、inkweaver-linux-x64-1.3.30.deb、inkweaver-linux-x64-1.3.30.rpm 及 SHA-256；运行资格覆盖 Ubuntu 22.04、Debian 13、Fedora 44，glibc 2.35 基线及 --appimage-extract-and-run 检查继续有效，包未签名。
+
+## 1.3.30 — 2026-10-07 (English)
+
+### Fixed
+
+- Multi-faceted relationships and faction stances from character-architecture generation are no longer lost on save: both kinds of data were visible in the generated result and then disappeared after saving (faction stances had no column on the characters table and were not recognized by the per-field allow-lists in the submit and merge paths, while multi-faceted relationships were stripped by the relationship normalizer). Both are now stored and read back in full, existing project databases gain the field automatically when opened, and regenerating the architecture no longer erases stances and facets that are already there.
+- Faction stances are visible and editable on the character card: a “faction stances” section lists one row per entry as faction — stance, supports adding, editing, and removing, and survives a save-and-reload round trip. Factions are not added as relationship-graph nodes, since they are not characters.
+- Reducing recurrences of the same problem: character-roster entries and the relationship interface now carry compile-time field checks, so adding a field to either interface without updating the write path is caught at compile time instead of waiting for a user to notice that data disappeared.
+
+### Release
+
+- Continues Windows, macOS and Linux x64 same-commit releases. Linux packages: inkweaver-linux-x64-1.3.30.AppImage, inkweaver-linux-x64-1.3.30.deb, inkweaver-linux-x64-1.3.30.rpm with SHA-256. Qualification covers Ubuntu 22.04, Debian 13, Fedora 44, the glibc 2.35 baseline and --appimage-extract-and-run. Linux packages are unsigned.
+
 ## 1.3.29 — 2026-10-07
 
 ### 修复
