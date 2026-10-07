@@ -2,6 +2,38 @@
 
 本文件按用户可见行为记录变更。桌面版本不发布 npm；DSH 插件沿用已发布的 `1.2.0` 包。`1.2.0` 已从同一源码 commit 完成工程验收、三平台资产回读和正式 Release；`1.1.0` 的历史 Release 收据保留在 `docs/upgrade/`，不与 1.2.0 混用。
 
+## 1.4.0 — 2026-10-07
+
+### 新增
+
+- 生成章节蓝图时可以引入新角色，系统会自动为它们建立角色档案。此前蓝图里出现的角色几乎都是已有角色，配角与阶段性人物基本不会被创造出来；现在生成蓝图时明确允许配角、反派、阶段性对手以及承担具体功能的小人物首次登场，并要求使用真实姓名（不使用“路人甲”这类无名占位，真正无名的背景人物不入列），且必须在本章有实际作用。
+- 蓝图里出现的新角色会自动进入角色名单，并由模型根据蓝图上下文补齐外貌、性格、背景、能力、动机、弧光等资料；定位按出场章节数推导（3 章及以上为配角，1-2 章为次要角色）。补档只填空字段，绝不覆盖作者已经写好的内容；补档失败不会影响已经生成的蓝图。
+
+### 修复
+
+- 此前自动建立但一直没有资料的角色卡，会在下次生成蓝图时一并补全。
+- 多人合并名与势力形态的名字不再被误建为角色卡。
+
+### 发布
+
+- 保持 Windows、macOS、Linux x64 同提交发布。Linux 文件为 inkweaver-linux-x64-1.4.0.AppImage、inkweaver-linux-x64-1.4.0.deb、inkweaver-linux-x64-1.4.0.rpm 及 SHA-256；运行资格覆盖 Ubuntu 22.04、Debian 13、Fedora 44，glibc 2.35 基线及 --appimage-extract-and-run 检查继续有效，包未签名。
+
+## 1.4.0 — 2026-10-07 (English)
+
+### Added
+
+- Chapter-blueprint generation can now introduce new characters, and the app creates character profiles for them automatically. Blueprints previously featured almost only existing characters, so supporting players and short-lived opponents were rarely created at all; generation now explicitly allows supporting characters, antagonists, temporary rivals, and small functional roles to appear for the first time, requires real names (no placeholder labels such as “passer-by”, and genuinely unnamed background figures are left out), and requires each introduced character to do something concrete in that chapter.
+- A new character found in a blueprint is added to the roster automatically, and the model fills in appearance, personality, background, abilities, motivation, and arc from the blueprint context; the role is derived from the number of chapters the character appears in (three or more chapters makes a supporting role, one to two makes a minor role). Filling only writes into empty fields and never overwrites what you have already written, and a failed fill does not affect the blueprint that was generated.
+
+### Fixed
+
+- Character cards that were created automatically earlier but never received any details are filled in the next time a blueprint is generated.
+- Names that combine several characters, and names shaped like a faction, are no longer mistakenly created as character cards.
+
+### Release
+
+- Continues Windows, macOS and Linux x64 same-commit releases. Linux packages: inkweaver-linux-x64-1.4.0.AppImage, inkweaver-linux-x64-1.4.0.deb, inkweaver-linux-x64-1.4.0.rpm with SHA-256. Qualification covers Ubuntu 22.04, Debian 13, Fedora 44, the glibc 2.35 baseline and --appimage-extract-and-run. Linux packages are unsigned.
+
 ## 1.3.31 — 2026-10-07
 
 ### 修复
