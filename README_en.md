@@ -4,15 +4,15 @@
 
 InkWeaver is a local-first desktop workspace for long-form fiction. It brings project settings, characters, worldbuilding, chapter blueprints, prose, review, revision, and finalization into a traceable writing chain while keeping the author in control of every durable change.
 
-Current version: **v1.4.0**
+Current version: **v1.4.1**
 
 [Long-form context selection and budget guide](docs/features/draft-context-budget.md)
 
 > **Turn a long novel into one continuously developing story.** InkWeaver is a local-first AI writing workspace that connects story premises, character state, chapter blueprints, candidate drafts, evidence-backed review, and author-approved finalization into one traceable writing loop.
 
-Version 1.4.0 lets blueprint generation introduce new characters and file profiles for them automatically. Blueprints previously featured almost only existing characters, so supporting players and short-lived opponents were rarely created at all; generation now explicitly allows supporting characters, antagonists, temporary rivals, and small functional roles to appear for the first time, requires real names and concrete work in that chapter, and leaves out genuinely unnamed background figures. A new character found in a blueprint is added to the roster automatically, and the model fills in appearance, personality, background, abilities, motivation, and arc from the blueprint context, with the role derived from how many chapters the character appears in (three or more makes a supporting role, one to two makes a minor one). Filling only writes into empty fields and never overwrites what you have already written, and a failed fill does not affect the generated blueprint. Character cards created automatically earlier but left without details are filled in the next time a blueprint is generated, and names that combine several characters or look like a faction are no longer mistakenly created as character cards. Includes the [long-form context guide](docs/features/draft-context-budget.md), the [workflow audit repairs](docs/audits/workflow-audit-2026-10-01.md), and the [security audit receipt](docs/audits/security-audit-2026-10-03.md). The Release supports Windows, macOS and Linux x64; the DSH plugin remains in v1.2.0, and npm publication remains out of scope.
+Version 1.4.1 fixes an entire chapter-blueprint run failing after a single abnormal model response. A 160-chapter run used to stop at chapter 73 (batch 7) with "structured generation did not complete normally: unknown; 72 of 160 chapters generated", even though the first six batches each succeeded on their very first call and batch 7's output was comparable in volume to the others rather than truncated — the system gave up on the whole run after one attempt. The causes were that the blueprint path never enabled the abnormal-termination recovery channel already present in the code (the novel-import path has it on) and that the recovery budget was counted once per whole run, far too little for a run of a dozen to twenty batches lasting over half an hour. Each batch now has its own recovery opportunity (an automatic retry, or a retry with that batch split in half), sub-batches receive no extra allowance so retries cannot cascade, the absolute ceiling still bounds the total, and only complete, contract-conforming responses are accepted. A test-design problem was fixed as well: some tests used to add this switch to the contract themselves while asserting, which is why "the mechanism was verified but production never enabled it" went unnoticed, and switches of this kind are now named constants that both the command and the tests reference. Includes the [long-form context guide](docs/features/draft-context-budget.md), the [workflow audit repairs](docs/audits/workflow-audit-2026-10-01.md), and the [security audit receipt](docs/audits/security-audit-2026-10-03.md). The Release supports Windows, macOS and Linux x64; the DSH plugin remains in v1.2.0, and npm publication remains out of scope.
 
-[Download v1.4.0](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.4.0) · [Start your first chapter in three minutes](docs/quickstart/README.md) · [Story direction guide](docs/features/story-direction-adjustment.md) · [Install the DSH plugin](plugins/inkweaver-dsh/README.md) · [Ask a question or report a problem](https://github.com/shuishuipingan/InkWeaver/issues/new/choose) · [Join the discussion](https://github.com/shuishuipingan/InkWeaver/discussions)
+[Download v1.4.1](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.4.1) · [Start your first chapter in three minutes](docs/quickstart/README.md) · [Story direction guide](docs/features/story-direction-adjustment.md) · [Install the DSH plugin](plugins/inkweaver-dsh/README.md) · [Ask a question or report a problem](https://github.com/shuishuipingan/InkWeaver/issues/new/choose) · [Join the discussion](https://github.com/shuishuipingan/InkWeaver/discussions)
 
 ![InkWeaver welcome screen](docs/assets/inkweaver-welcome.png)
 
@@ -164,33 +164,33 @@ inkweaver-mac-arm64-<version>-installer.dmg
 inkweaver-mac-x64-<version>-installer.dmg
 ```
 
-The current macOS installers do not have a Developer ID signature and are not notarized. Download only from the [formal v1.4.0 Release](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.4.0) and follow the operating system's first-launch confirmation. The desktop Release contains 13 assets for Windows x64, macOS Apple Silicon, macOS Intel, and Linux x64; the DSH plugin tarball remains in the v1.2.0 Release.
+The current macOS installers do not have a Developer ID signature and are not notarized. Download only from the [formal v1.4.1 Release](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.4.1) and follow the operating system's first-launch confirmation. The desktop Release contains 13 assets for Windows x64, macOS Apple Silicon, macOS Intel, and Linux x64; the DSH plugin tarball remains in the v1.2.0 Release.
 
 ### Linux x64
 
-The v1.4.0 Linux packages are built for x64. Qualification tests cover Ubuntu 22.04, Debian 13, and Fedora 44; this does not claim compatibility for other distributions or Linux ARM64. Packages are built in an Ubuntu 22.04 environment with glibc 2.35, and qualification verifies that packaged binaries do not require a glibc symbol newer than 2.35.
+The v1.4.1 Linux packages are built for x64. Qualification tests cover Ubuntu 22.04, Debian 13, and Fedora 44; this does not claim compatibility for other distributions or Linux ARM64. Packages are built in an Ubuntu 22.04 environment with glibc 2.35, and qualification verifies that packaged binaries do not require a glibc symbol newer than 2.35.
 
-Download these files and their matching SHA-256 sidecars from the [formal v1.4.0 Release](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.4.0):
+Download these files and their matching SHA-256 sidecars from the [formal v1.4.1 Release](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.4.1):
 
-    inkweaver-linux-x64-1.4.0.AppImage
-    inkweaver-linux-x64-1.4.0.deb
-    inkweaver-linux-x64-1.4.0.rpm
+    inkweaver-linux-x64-1.4.1.AppImage
+    inkweaver-linux-x64-1.4.1.deb
+    inkweaver-linux-x64-1.4.1.rpm
 
 The AppImage launches directly when FUSE is available. Without FUSE, use its built-in extraction mode:
 
-    chmod +x inkweaver-linux-x64-1.4.0.AppImage
-    ./inkweaver-linux-x64-1.4.0.AppImage --appimage-extract-and-run
+    chmod +x inkweaver-linux-x64-1.4.1.AppImage
+    ./inkweaver-linux-x64-1.4.1.AppImage --appimage-extract-and-run
 
 AppImage uses the user namespace sandbox and requires the system to allow unprivileged user namespaces. If system policy disables this capability, use the corresponding deb/rpm installer.
 
 Install the deb package on Ubuntu/Debian or the rpm package on Fedora:
 
-    sudo apt install ./inkweaver-linux-x64-1.4.0.deb
-    sudo dnf install ./inkweaver-linux-x64-1.4.0.rpm
+    sudo apt install ./inkweaver-linux-x64-1.4.1.deb
+    sudo dnf install ./inkweaver-linux-x64-1.4.1.rpm
 
 Linux packages are unsigned. Verify the matching checksum file in the same directory before installation, for example:
 
-    sha256sum -c inkweaver-linux-x64-1.4.0.deb.sha256
+    sha256sum -c inkweaver-linux-x64-1.4.1.deb.sha256
 
 ## DeepSeek Harness plugin
 

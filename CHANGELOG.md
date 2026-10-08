@@ -2,6 +2,30 @@
 
 本文件按用户可见行为记录变更。桌面版本不发布 npm；DSH 插件沿用已发布的 `1.2.0` 包。`1.2.0` 已从同一源码 commit 完成工程验收、三平台资产回读和正式 Release；`1.1.0` 的历史 Release 收据保留在 `docs/upgrade/`，不与 1.2.0 混用。
 
+## 1.4.1 — 2026-10-08
+
+### 修复
+
+- 生成章节蓝图时，某一次模型响应异常结束不再让整轮失败：此前 160 章蓝图跑到第 73 章（第 7 批）时会报“结构化生成未正常完成：unknown；已生成 72/160 章”，而前 6 批都是第一次调用就成功的——第 7 批的流式响应异常结束（输出量与其它批次同量级，并非被截断），系统一次就放弃了整轮。根因有两处：蓝图生成这条路径从未开启代码里早已内置的“异常结束恢复通道”（导入小说那条路径一直是开着的）；而且恢复额度按“整轮一次”计算，对十几到二十批、半小时以上的长跑远远不够。
+- 现在每个批次各自拥有一次恢复机会（自动重试，或把该批对半拆分后重试）；拆分出的子批不额外获得额度，以避免级联重试，总量仍由绝对上限兜底。并且只接受完整且符合合同的响应，不完整的输出不会被当成成功。
+- 另修一处测试设计问题：此前有测试在断言时自己给合同补上这个开关，导致“机制被验证过、生产却没打开”这件事长期没有被发现；现在这类开关已提取为具名常量，命令与测试引用同一份。
+
+### 发布
+
+- 保持 Windows、macOS、Linux x64 同提交发布。Linux 文件为 inkweaver-linux-x64-1.4.1.AppImage、inkweaver-linux-x64-1.4.1.deb、inkweaver-linux-x64-1.4.1.rpm 及 SHA-256；运行资格覆盖 Ubuntu 22.04、Debian 13、Fedora 44，glibc 2.35 基线及 --appimage-extract-and-run 检查继续有效，包未签名。
+
+## 1.4.1 — 2026-10-08 (English)
+
+### Fixed
+
+- A single abnormal model response no longer fails an entire chapter-blueprint run: a 160-chapter run previously stopped at chapter 73 (batch 7) with “structured generation did not complete normally: unknown; 72 of 160 chapters generated”, even though the first six batches each succeeded on their very first call — batch 7's streaming response ended abnormally (with an output volume comparable to the other batches, so it was not truncated), and the system gave up on the whole run after one attempt. There were two causes: the blueprint path never enabled the abnormal-termination recovery channel that already existed in the code (the novel-import path has it on), and the recovery budget was counted once per whole run, which is far too little for a run of a dozen to twenty batches lasting over half an hour.
+- Each batch now has its own recovery opportunity (an automatic retry, or a retry with that batch split in half); sub-batches created by a split do not receive an extra allowance, which avoids cascading retries, while the absolute ceiling still bounds the total. Only complete, contract-conforming responses are accepted, and an incomplete output is never treated as success.
+- A test-design problem was fixed as well: some tests used to add this switch to the contract themselves while asserting, which is why “the mechanism was verified but production never enabled it” went unnoticed for so long; switches of this kind are now named constants that both the command and the tests reference.
+
+### Release
+
+- Continues Windows, macOS and Linux x64 same-commit releases. Linux packages: inkweaver-linux-x64-1.4.1.AppImage, inkweaver-linux-x64-1.4.1.deb, inkweaver-linux-x64-1.4.1.rpm with SHA-256. Qualification covers Ubuntu 22.04, Debian 13, Fedora 44, the glibc 2.35 baseline and --appimage-extract-and-run. Linux packages are unsigned.
+
 ## 1.4.0 — 2026-10-07
 
 ### 新增
