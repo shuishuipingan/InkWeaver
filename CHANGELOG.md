@@ -2,6 +2,30 @@
 
 本文件按用户可见行为记录变更。桌面版本不发布 npm；DSH 插件沿用已发布的 `1.2.0` 包。`1.2.0` 已从同一源码 commit 完成工程验收、三平台资产回读和正式 Release；`1.1.0` 的历史 Release 收据保留在 `docs/upgrade/`，不与 1.2.0 混用。
 
+## 1.4.3 — 2026-10-08
+
+### 优化
+
+- 架构阶段会产出一套有名有姓的力量体系：此前生成的修仙架构在规则层已经比较丰富（灵脉回流、因果成线、裂隙法则、金手指机制都写清楚了），但没有名录——除了主角自己那一级，全篇没有境界阶梯，也没有任何具名的功法、招式、法宝、丹药、阵法；结果是下游两处只能泛泛而谈：角色档案的能力写成“精通剑道、阵法、封印”这类没有专名的表述，章节战斗只剩“一剑断因”这类笼统动作。
+- 现在当题材涉及修炼、异能、灵异规则或战斗体系时，世界观构建会额外产出三部分：等级阶梯（5-9 级有序的等级名称，每级一句定位，不允许只写主角那一级）、具名条目（功法、招式、法宝、丹药、阵法或该题材的对应物各给具体名称，并标注归属势力、适用人群与用途）、命名风格（写明这套体系如何命名，供后续章节沿用），并明确告知这些名字会被角色档案与后续每一章直接引用，必须自洽、具体、可复述。非超常题材（都市、悬疑、现实）改用该题材自己的分级与专名，例如职称序列、装备型号、机构层级，不强加仙侠词汇。
+- 角色档案的能力字段要求写出体系内的具体名称（主修功法、所属等级、擅长招式或法器），以作者已经给出的名字为准；体系里没有对应条目时，不临时编造与体系风格不符的名字。
+
+### 发布
+
+- 保持 Windows、macOS、Linux x64 同提交发布。Linux 文件为 inkweaver-linux-x64-1.4.3.AppImage、inkweaver-linux-x64-1.4.3.deb、inkweaver-linux-x64-1.4.3.rpm 及 SHA-256；运行资格覆盖 Ubuntu 22.04、Debian 13、Fedora 44，glibc 2.35 基线及 --appimage-extract-and-run 检查继续有效，包未签名。
+
+## 1.4.3 — 2026-10-08 (English)
+
+### Improved
+
+- The architecture stage now produces a power system with actual names: generated cultivation architectures were already reasonably rich at the rules level (spiritual-vein reflow, causality as threads, rift laws, and the protagonist's advantage were all spelled out), but there was no directory — beyond the protagonist's own single tier the book had no cultivation ladder at all, and no named techniques, moves, artifacts, pills, or formations. Downstream, that left two places talking only in generalities: character abilities read as un-named phrases such as being skilled in swordplay, formations, and sealing, and chapter combat was reduced to vague actions.
+- When the genre involves cultivation, powers, supernatural rules, or a combat system, worldbuilding now additionally produces three things: a tier ladder (5-9 ordered tier names, each with a one-line positioning, never just the protagonist's tier), named entries (specific names for techniques, moves, artifacts, pills, and formations, or that genre's equivalents, each marked with which faction, which practitioners, and what purpose), and a naming style (stating how the system names things so later chapters can follow it), together with an explicit statement that these names will be referenced directly by character profiles and by every later chapter and must be self-consistent, specific, and repeatable. Non-supernatural genres (urban, mystery, realist) use their own tiers and proper nouns instead — job-title ladders, equipment designations, institutional levels — and are not given xianxia vocabulary.
+- The ability field of a character profile now asks for concrete names from the system (primary technique, tier, signature moves or artifacts), takes the names the author has already given as authoritative, and does not invent names that clash with the system's style when no matching entry exists.
+
+### Release
+
+- Continues Windows, macOS and Linux x64 same-commit releases. Linux packages: inkweaver-linux-x64-1.4.3.AppImage, inkweaver-linux-x64-1.4.3.deb, inkweaver-linux-x64-1.4.3.rpm with SHA-256. Qualification covers Ubuntu 22.04, Debian 13, Fedora 44, the glibc 2.35 baseline and --appimage-extract-and-run. Linux packages are unsigned.
+
 ## 1.4.2 — 2026-10-08
 
 ### 修复
