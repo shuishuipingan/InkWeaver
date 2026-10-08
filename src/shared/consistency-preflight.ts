@@ -299,7 +299,9 @@ export function mergeConsistencyFindingsIntoReview(
 export function findMissingCharacterStateFindings(
   projections: readonly FinalizedContinuityProjection[],
   blueprint: BlueprintForPreflight,
-  exemptions: readonly ConsistencyExemption[] = [],
+  // 必填：漏传必须是编译错误。带默认值会把「忘了传」降级成静默的不过滤——
+  // 那正是 task-132 那个缺陷的形状（同一套语义在两处被实现成不同形状）。
+  exemptions: readonly ConsistencyExemption[],
 ): ConsistencyFinding[] {
   // 与 findBlueprintContinuityRisks 同一语义：只认未撤销的豁免。
   // 少了这一步，「保存安排」会写库却从不被读取——线索原样重现，作者看到的就是「点了没反应」。

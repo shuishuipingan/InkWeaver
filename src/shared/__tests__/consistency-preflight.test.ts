@@ -309,6 +309,7 @@ describe('findBlueprintContinuityRisks', () => {
   })
 
   it('reports information-insufficient state for a blueprint character without finalized facts', () => {
+    // 豁免参数是必填的：这里显式传空数组，表示调用方明确不豁免任何线索。
     const findings = findMissingCharacterStateFindings(projection, {
       chapterNumber: 2,
       title: '新人登场',
@@ -319,7 +320,7 @@ describe('findBlueprintContinuityRisks', () => {
       suspenseHook: '',
       userGuidance: '',
       notes: '',
-    })
+    }, [])
     expect(findings).toHaveLength(2)
     expect(findings.every(finding => finding.certainty === 'insufficient' && finding.severity === 'warning')).toBe(true)
     expect(findings.some(finding => finding.issue.zhCN.includes('苏遥') && finding.issue.enUS.includes('苏遥'))).toBe(true)
@@ -335,11 +336,10 @@ describe('findBlueprintContinuityRisks', () => {
     expect(findings.map(finding => finding.stableFactKey)).toEqual(['missing:state:林岚', 'missing:state:苏遥'])
   })
 
-  it('keeps the previous behaviour when no exemptions are passed', () => {
-    const omitted = findMissingCharacterStateFindings(projection, missingStateBlueprint())
+  it('treats an explicitly empty exemption list as no exemptions', () => {
+    // 语义保留（不豁免时线索照旧全出），只是从「靠默认值」改成显式表达。
     const empty = findMissingCharacterStateFindings(projection, missingStateBlueprint(), [])
-    expect(omitted.map(finding => finding.stableFactKey)).toEqual(['missing:state:林岚', 'missing:state:苏遥'])
-    expect(empty.map(finding => finding.stableFactKey)).toEqual(omitted.map(finding => finding.stableFactKey))
+    expect(empty.map(finding => finding.stableFactKey)).toEqual(['missing:state:林岚', 'missing:state:苏遥'])
   })
 
 })
