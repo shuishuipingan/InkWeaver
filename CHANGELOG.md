@@ -2,6 +2,28 @@
 
 本文件按用户可见行为记录变更。桌面版本不发布 npm；DSH 插件沿用已发布的 `1.2.0` 包。`1.2.0` 已从同一源码 commit 完成工程验收、三平台资产回读和正式 Release；`1.1.0` 的历史 Release 收据保留在 `docs/upgrade/`，不与 1.2.0 混用。
 
+## 1.4.8 — 2026-10-09
+
+### 修复
+
+- 写稿前的「缺少当前状态证据」提示不再对首次登场的角色报出：此前只写到第 1 章、批量创作第 2-5 章时，第 3、4 章会各弹出一条「[信息不足] 缺少当前状态证据 · 蓝图安排‘赵阔’出场…」，属于纯噪音——这条检查的文案自己就写着“需要补充状态或说明这是首次出场”，已经承认“首次出场”是合法情况，却仍要求作者逐条手动确认，于是任何新角色第一次登场都必然产生一条只要求“确认它是新的”的提示。
+- 现在该提示只在“本应有记录、却没有”时才报：角色必须在更早的已定稿章节里出场过，而本章没有适用的状态记录。首次登场不再报；已经出场过、状态缺失的情况仍然报。判据只认已经写下的章节（同一批次里还没写的下一章不算），因此赵阔在第 3、4 章的两条提示都不会再出现。
+
+### 发布
+
+- 保持 Windows、macOS、Linux x64 同提交发布。Linux 文件为 inkweaver-linux-x64-1.4.8.AppImage、inkweaver-linux-x64-1.4.8.deb、inkweaver-linux-x64-1.4.8.rpm 及 SHA-256；运行资格覆盖 Ubuntu 22.04、Debian 13、Fedora 44，glibc 2.35 基线及 --appimage-extract-and-run 检查继续有效，包未签名。
+
+## 1.4.8 — 2026-10-09 (English)
+
+### Fixed
+
+- The pre-writing “missing current-state evidence” notice is no longer raised for characters making their first appearance: with only chapter 1 written, a batch run of chapters 2-5 produced one such notice for chapter 3 and another for chapter 4, which was pure noise — the notice's own wording says the author should supply the state or state that this is a first appearance, so it already treats a first appearance as legitimate, yet still required a manual confirmation for every one, and a new character's first appearance therefore always produced a notice asking only that the author confirm the character is new.
+- The notice is now raised only when a record should exist and does not: the character must have appeared in an earlier finalized chapter while the current chapter has no applicable state record. First appearances are no longer reported, while a character that has appeared before and is missing its state still is. The test only counts chapters that have actually been written (a later chapter in the same batch does not count), so neither of the two notices for chapters 3 and 4 appears.
+
+### Release
+
+- Continues Windows, macOS and Linux x64 same-commit releases. Linux packages: inkweaver-linux-x64-1.4.8.AppImage, inkweaver-linux-x64-1.4.8.deb, inkweaver-linux-x64-1.4.8.rpm with SHA-256. Qualification covers Ubuntu 22.04, Debian 13, Fedora 44, the glibc 2.35 baseline and --appimage-extract-and-run. Linux packages are unsigned.
+
 ## 1.4.7 — 2026-10-08
 
 ### 修复
