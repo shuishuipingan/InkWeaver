@@ -338,6 +338,28 @@ describe('chapter writing model selectors', () => {
     expect(consistencyExemptions).toEqual([])
   })
 
+  it('explains why writing did not start when the same findings block it twice', async () => {
+    // 角色在当前章节没有任何已定稿状态事实 → 产生「缺少当前状态证据」线索（用户现场那两条的形态）。
+    continuityProjections = []
+    consistencyExemptions = []
+    await act(async () => {
+      root?.render(<ChapterCreationDialog isOpen onClose={vi.fn()} prefill={{
+        chapterNumber: 1, title: '首次登场', role: '发展', purpose: '苏倦登场', characters: '苏倦', keyEvents: '苏倦出现',
+      }} />)
+    })
+
+    await act(async () => page.getByRole('button', { name: '开始创作' }).click())
+    // 第一次被拦下就必须说清原因（原缺陷在这里静默 return，用户只会认为按钮坏了）。
+    await expect.element(page.getByText(/仍有 1 条一致性线索未处理/)).toBeVisible()
+    await expect.element(page.getByText(/这些线索未处理时，「开始创作」不会继续/)).toBeVisible()
+    expect(startWorkflow).not.toHaveBeenCalled()
+
+    // 再点一次仍然不开始，但屏幕上依然有明确原因——不是「点了没反应」。
+    await act(async () => page.getByRole('button', { name: '开始创作' }).click())
+    await expect.element(page.getByText(/仍有 1 条一致性线索未处理/)).toBeVisible()
+    expect(startWorkflow).not.toHaveBeenCalled()
+  })
+
   it('still starts direct writing when consistency evidence cannot be read', async () => {
     continuityProjectionReadError = new Error('projection unavailable')
     await act(async () => {

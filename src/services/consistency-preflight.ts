@@ -21,7 +21,7 @@ export async function readConsistencyPreflight(
     )
     return [
       ...findBlueprintContinuityRisks(projections, blueprint, exemptions),
-      ...findMissingCharacterStateFindings(projections, blueprint),
+      ...findMissingCharacterStateFindings(projections, blueprint, exemptions),
     ]
   }))).flat()
   return { findings, exemptions }

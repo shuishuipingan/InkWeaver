@@ -110,6 +110,8 @@ function ChapterCreationDialogSession({ isOpen, onClose, prefill }: Props) {
   const [loadedFromHistory, setLoadedFromHistory] = useState(false)
   const [loadedFromBlueprint, setLoadedFromBlueprint] = useState(false)
   const [guardError, setGuardError] = useState<string | null>(null)
+  // 每次因「线索未处理」拦下「开始创作」就自增：面板据此把自身滚进视野，避免静默无反应。
+  const [preflightBlockAttempt, setPreflightBlockAttempt] = useState(0)
   const [authorityError, setAuthorityError] = useState<string | null>(null)
   const [authorityLoading, setAuthorityLoading] = useState(false)
   const [consistencyPreflight, setConsistencyPreflight] = useState<ConsistencyPreflightResult | null>(null)
@@ -350,7 +352,15 @@ function ChapterCreationDialogSession({ isOpen, onClose, prefill }: Props) {
         }])
         if (!isProjectSessionCurrent(projectSession)) return
         setConsistencyPreflight(preflight)
-        if (preflight.findings.length > 0) return
+        if (preflight.findings.length > 0) {
+          // 原来这里直接 return，屏幕上没有任何变化——用户只会认为按钮坏了。
+          setGuardError(text(
+            `仍有 ${preflight.findings.length} 条一致性线索未处理：请逐条「保存安排」或按建议修改，或选择「仅本次忽略并继续」。`,
+            `${preflight.findings.length} continuity finding(s) are still unresolved. Save an arrangement or apply the suggestion for each, or choose "Ignore once and continue".`,
+          ))
+          setPreflightBlockAttempt(attempt => attempt + 1)
+          return
+        }
       } catch {
         if (!isProjectSessionCurrent(projectSession)) return
         addLog('info', text(
@@ -557,6 +567,7 @@ function ChapterCreationDialogSession({ isOpen, onClose, prefill }: Props) {
                 exemptions={consistencyPreflight.exemptions}
                 onFixAndRerun={() => void handleStart(false)}
                 onIgnoreOnce={() => void handleStart(true)}
+                scrollRequest={preflightBlockAttempt}
                 onSave={async (stableFactKey, reason) => {
                   const session = captureProjectSession(useProjectStore.getState().currentProject)
                   if (!session) return

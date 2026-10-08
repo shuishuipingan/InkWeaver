@@ -1,6 +1,12 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { findBlueprintContinuityRisks, findMissingCharacterStateFindings, mergeConsistencyFindingsIntoReview } from '../consistency-preflight'
+
+// 服务层的接线也要有护栏：豁免从 IPC 读出来后必须真的被传进去，
+// 否则「保存安排」会写库却从不被读取——这正是「开始创作点不动」的成因。
+const ipcMock = vi.hoisted(() => ({ invokeWithProjectSession: vi.fn() }))
+vi.mock('../../services/ipc-client', () => ({ ipc: ipcMock }))
+import { readConsistencyPreflight } from '../../services/consistency-preflight'
 
 describe('findBlueprintContinuityRisks', () => {
   const projection = [{
@@ -319,4 +325,60 @@ describe('findBlueprintContinuityRisks', () => {
     expect(findings.some(finding => finding.issue.zhCN.includes('苏遥') && finding.issue.enUS.includes('苏遥'))).toBe(true)
   })
 
+  it('suppresses the missing-state finding once an active exemption covers its stable key', () => {
+    const findings = findMissingCharacterStateFindings(projection, missingStateBlueprint(), [exemption()])
+    expect(findings.map(finding => finding.stableFactKey)).toEqual(['missing:state:林岚'])
+  })
+
+  it('brings the finding back when the exemption is revoked', () => {
+    const findings = findMissingCharacterStateFindings(projection, missingStateBlueprint(), [exemption({ revoked: true })])
+    expect(findings.map(finding => finding.stableFactKey)).toEqual(['missing:state:林岚', 'missing:state:苏遥'])
+  })
+
+  it('keeps the previous behaviour when no exemptions are passed', () => {
+    const omitted = findMissingCharacterStateFindings(projection, missingStateBlueprint())
+    const empty = findMissingCharacterStateFindings(projection, missingStateBlueprint(), [])
+    expect(omitted.map(finding => finding.stableFactKey)).toEqual(['missing:state:林岚', 'missing:state:苏遥'])
+    expect(empty.map(finding => finding.stableFactKey)).toEqual(omitted.map(finding => finding.stableFactKey))
+  })
+
+})
+
+function missingStateBlueprint() {
+  return {
+    chapterNumber: 2,
+    title: '新人登场',
+    role: '发展',
+    purpose: '苏遥首次出现在车站',
+    keyEvents: '苏遥走进车站。',
+    characters: ['林岚', '苏遥'],
+    suspenseHook: '',
+    userGuidance: '',
+    notes: '',
+  }
+}
+
+function exemption(overrides: Record<string, unknown> = {}) {
+  return {
+    stableFactKey: 'missing:state:苏遥',
+    reason: '首次出场',
+    revoked: false,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    ...overrides,
+  } as never
+}
+
+describe('readConsistencyPreflight wiring', () => {
+  it('feeds stored exemptions into the missing-state rule', async () => {
+    ipcMock.invokeWithProjectSession.mockImplementation(async (_session: unknown, channel: string) => {
+      if (channel === 'db:consistency-exemption-list') return [exemption()]
+      if (channel === 'db:continuity-list-before') return []
+      return []
+    })
+    const result = await readConsistencyPreflight(
+      { projectId: 'p', leaseId: 'l', projectPath: 'C:\\novels\\p' } as never,
+      [missingStateBlueprint()] as never,
+    )
+    expect(result.findings.map(finding => finding.stableFactKey)).toEqual(['missing:state:林岚'])
+  })
 })

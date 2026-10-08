@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { RotateCcw, ShieldAlert } from 'lucide-react'
 
 import type { ConsistencyExemption, ConsistencyFinding } from '../../shared/consistency-preflight'
@@ -14,18 +14,27 @@ interface Props {
   onFixAndRerun: () => void
   onSave: (stableFactKey: string, reason: string) => Promise<void>
   onRevoke: (stableFactKey: string) => Promise<void>
+  /** 「开始创作」因未处理线索被拦下时自增；面板据此把自己滚进视野。 */
+  scrollRequest?: number
 }
 
 export default function ConsistencyPreflightPanel({
-  findings, exemptions, disabled, onIgnoreOnce, onFixAndRerun, onSave, onRevoke,
+  findings, exemptions, disabled, onIgnoreOnce, onFixAndRerun, onSave, onRevoke, scrollRequest,
 }: Props) {
   const locale = useLocaleStore(state => state.locale)
   const text = useLocaleStore(state => state.text)
   const [reasons, setReasons] = useState<Record<string, string>>({})
   const activeExemptions = exemptions.filter(exemption => !exemption.revoked)
+  const containerRef = useRef<HTMLElement | null>(null)
+
+  useEffect(() => {
+    if (!scrollRequest) return
+    // 「开始创作」被这些线索挡下时，把面板带到视野里，让作者看得见为什么没开始。
+    containerRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  }, [scrollRequest])
 
   return (
-    <section aria-label={text('一致性预检', 'Consistency preflight')} className="rounded-md border px-3 py-3 space-y-3" style={{ borderColor: 'var(--color-warning)' }}>
+    <section ref={containerRef} aria-label={text('一致性预检', 'Consistency preflight')} className="rounded-md border px-3 py-3 space-y-3" style={{ borderColor: 'var(--color-warning)' }}>
       {findings.length > 0 && <div className="flex items-start gap-2">
         <ShieldAlert size={16} className="mt-0.5 flex-shrink-0" style={{ color: 'var(--color-warning)' }} aria-hidden="true" />
         <div>
@@ -71,6 +80,9 @@ export default function ConsistencyPreflightPanel({
           ))}
         </details>
       )}
+      {findings.length > 0 && <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+        {text('这些线索未处理时，「开始创作」不会继续：可逐条保存安排，或选择仅本次忽略并继续。', 'While these findings are unresolved, “Start writing” will not continue: save an arrangement for each, or ignore them once and continue.')}
+      </p>}
       {findings.length > 0 && <div className="flex justify-end gap-2">
         <Button variant="outline" disabled={disabled} onClick={onFixAndRerun}>{text('修改后重检', 'Fix and rerun')}</Button>
         <Button variant="ai" disabled={disabled} onClick={onIgnoreOnce}>{text('仅本次忽略并继续', 'Ignore once and continue')}</Button>

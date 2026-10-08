@@ -299,7 +299,13 @@ export function mergeConsistencyFindingsIntoReview(
 export function findMissingCharacterStateFindings(
   projections: readonly FinalizedContinuityProjection[],
   blueprint: BlueprintForPreflight,
+  exemptions: readonly ConsistencyExemption[] = [],
 ): ConsistencyFinding[] {
+  // 与 findBlueprintContinuityRisks 同一语义：只认未撤销的豁免。
+  // 少了这一步，「保存安排」会写库却从不被读取——线索原样重现，作者看到的就是「点了没反应」。
+  const activeExemptions = new Set(
+    exemptions.filter(exemption => !exemption.revoked).map(exemption => exemption.stableFactKey),
+  )
   const known = new Set<string>()
   for (const projection of projections) {
     for (const fact of projection.facts ?? []) {
@@ -312,6 +318,7 @@ export function findMissingCharacterStateFindings(
   const uniqueCharacters = [...new Set(characters)]
   return uniqueCharacters
     .filter(character => !known.has(character))
+    .filter(character => !activeExemptions.has(`missing:state:${character}`))
     .map(character => ({
       stableFactKey: `missing:state:${character}`,
       severity: 'warning' as const,
