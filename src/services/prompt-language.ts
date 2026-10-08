@@ -64,6 +64,7 @@ const CHARACTER_ARCHITECTURE_PROMPTS: Readonly<Record<WritingLanguage, Character
     detailContract: `【不可变角色详情 JSON 合同】
 只输出 {"entries":[...]}。每项必须包含 slotId、name、role、gender、age、appearance、personality、background、abilities、motivation、arc、notes、currentState。
 currentState 必填，必须包含 location、powerLevel、physicalState、mentalState、keyItems、recentEvents、updatedAtChapter；updatedAtChapter 必须是非负整数。
+abilities 必须写体系内的具体名称：主修功法 / 所属等级 / 擅长招式或法器；不要写“精通剑道”“擅长术法”这类无专名表述。以作者已给的名字为准，不得与架构中的名称冲突；体系里没有对应条目时不要临时编造与体系风格不符的名字。
 keyItems 可为非空字符串或非空字符串数组；recentEvents 可为非空字符串或非空字符串数组。数组每项必须是非空字符串，不得混入数字、对象或 null；没有内容时使用字符串“无”，不得输出空数组。
 禁止输出 relationships、schemaVersion、角色图谱 Markdown、解释、代码围栏或思考过程。`,
     manifestTask: (context, minimum, maximum) => `【身份规划上下文】
@@ -105,6 +106,7 @@ appearance/personality/abilities/motivation/arc/notes 各不超过 300 字符；
     detailContract: `[Immutable character-detail JSON contract]
 Output {"entries":[...]} only. Every entry must contain slotId, name, role, gender, age, appearance, personality, background, abilities, motivation, arc, notes, and currentState.
 currentState is required and must contain location, powerLevel, physicalState, mentalState, keyItems, recentEvents, and a non-negative integer updatedAtChapter.
+abilities must use concrete names from the world's power system: the primary technique, the current tier, and the signature moves or artifacts. Never write generic phrases such as "skilled in swordsmanship". Follow the names the author already established, never contradict the architecture, and do not invent names that break the system's naming style.
 keyItems and recentEvents may each be a non-empty string or an array of non-empty strings. Use the string "none" when empty; never output an empty array.
 Do not output relationships, schemaVersion, a rendered character map, explanations, code fences, or reasoning.`,
     manifestTask: (context, minimum, maximum) => `[Identity-planning context]
@@ -257,7 +259,7 @@ Return exactly one JSON object with "schemaVersion":1 and "entries":[...]. Every
 - Project-wide writing guidance: {{global_guidance}}
 
 [Deliverable]
-Build three connected dimensions, each with a concrete source of conflict:
+Build the dimensions below, each with a concrete source of conflict — the first three apply to every genre, and dimension 4 only when the genre involves cultivation, powers, supernatural rules, or a combat system:
 
 1. Core rules and exploitable asymmetry
 - Define the rules that govern power, technology, institutions, or the supernatural.
@@ -270,6 +272,13 @@ Build three connected dimensions, each with a concrete source of conflict:
 3. Hidden history and deep crisis
 - Define the ultimate disaster or central mystery behind the world.
 - Connect a taboo, historical lie, or suppressed truth directly to the protagonist's fate.
+
+4. Named power system — required when the genre involves cultivation, powers, supernatural rules, or a combat system
+- Tier ladder: an ordered list of five to nine tier names from low to high, each with a one-line standing. Never give only the protagonist tier.
+- Named entries: concrete names for techniques, moves, artifacts, pills, and formations (or this genre's equivalents), each labelled with its owner — which faction, which kind of practitioner, and what it is used for.
+- Naming style: state how this system names things (for example, "techniques are named after celestial bodies or swords") so later chapters stay consistent.
+- These names are cited directly by character profiles and by every later chapter, so they must be specific, self-consistent, and repeatable; never write placeholders such as "some technique".
+- For genres without the supernatural (urban, mystery, realism), use that genre's own tiers and proper nouns (job grades, equipment models, institution levels, professional terms) instead of xianxia vocabulary.
 
 [Requirements]
 1. Every setting must support the core appeal of {{genre}} and be usable in scenes.
