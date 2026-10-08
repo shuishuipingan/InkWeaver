@@ -2,6 +2,28 @@
 
 本文件按用户可见行为记录变更。桌面版本不发布 npm；DSH 插件沿用已发布的 `1.2.0` 包。`1.2.0` 已从同一源码 commit 完成工程验收、三平台资产回读和正式 Release；`1.1.0` 的历史 Release 收据保留在 `docs/upgrade/`，不与 1.2.0 混用。
 
+## 1.4.6 — 2026-10-08
+
+### 修复
+
+- 写稿确认框的「保存安排」对“缺少当前状态证据”这类一致性提示不再无效：此前逐条填写安排并点击「保存安排」后，面板会显示“已保存安排”，但点击「开始创作」没有任何反应。原因是代码里有两处查找一致性提示，其中一处会读取作者保存的安排并据此过滤，而另一处（正是产出这类提示的那处）根本没有读取这份记录；于是安排虽然确实写入了数据库，重新检查时却被忽略，同样的提示再次出现，而「开始创作」的判据是“只要还有未处理的提示就不开始”，界面上便毫无变化。
+- 现在该类提示同样会尊重作者保存的安排（未撤销才生效，撤销后提示重新出现）；并且当「开始创作」因为仍有未处理提示而没有开始时，界面会明确写出原因（例如“仍有 N 条一致性线索未处理…”）并把提示区滚入视野，不会再出现“点了没反应”这种无法判断的情况。同一条路径上的「修改后重检」也一并如此。
+
+### 发布
+
+- 保持 Windows、macOS、Linux x64 同提交发布。Linux 文件为 inkweaver-linux-x64-1.4.6.AppImage、inkweaver-linux-x64-1.4.6.deb、inkweaver-linux-x64-1.4.6.rpm 及 SHA-256；运行资格覆盖 Ubuntu 22.04、Debian 13、Fedora 44，glibc 2.35 基线及 --appimage-extract-and-run 检查继续有效，包未签名。
+
+## 1.4.6 — 2026-10-08 (English)
+
+### Fixed
+
+- “Save arrangement” in the pre-writing confirmation dialog is no longer ineffective for consistency notices such as “insufficient information: missing current-state evidence”: after filling in an arrangement for each notice and clicking save, the panel reported the arrangements as saved, yet clicking “Start writing” did nothing. The code looked up consistency notices in two places, one of which read the author's saved arrangements and filtered accordingly while the other — the one producing this kind of notice — never read that record at all, so an arrangement was genuinely written to the database and then ignored on re-check, the same notices came back, and since “Start writing” refuses whenever any notice is unhandled the interface simply did not change.
+- These notices now respect the arrangements the author saved as well (an arrangement holds until it is withdrawn, after which the notice returns); and when “Start writing” does not proceed because notices are still unhandled, the interface states the reason outright (for example, a number of consistency clues remain unhandled) and scrolls the notice area into view, so a click never again appears to do nothing. “Re-check after editing” on the same path behaves the same way.
+
+### Release
+
+- Continues Windows, macOS and Linux x64 same-commit releases. Linux packages: inkweaver-linux-x64-1.4.6.AppImage, inkweaver-linux-x64-1.4.6.deb, inkweaver-linux-x64-1.4.6.rpm with SHA-256. Qualification covers Ubuntu 22.04, Debian 13, Fedora 44, the glibc 2.35 baseline and --appimage-extract-and-run. Linux packages are unsigned.
+
 ## 1.4.5 — 2026-10-08
 
 ### 修复

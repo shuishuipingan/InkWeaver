@@ -4,15 +4,15 @@
 
 织墨 InkWeaver 是一款面向长篇小说创作的本地优先桌面工作台。它把项目设定、角色、世界观、章节蓝图、正文、审稿、修订与定稿组织成可追溯的创作链，让作者在保留最终决定权的前提下使用自己选择的 AI 模型。
 
-当前版本：**v1.4.5**
+当前版本：**v1.4.6**
 
 [长篇写作的资料选择与预算说明](docs/features/draft-context-budget.md)
 
 > **把一本长篇小说写成会持续发展的整体。** InkWeaver 是本地优先的 AI 小说创作工作台：它把故事设定、角色状态、章节蓝图、候选草稿、证据化审稿和作者定稿串成一条可追溯的连续写作链。
 
-v1.4.5 修复角色卡保存与删除在名单被后台更新后失败、并报出误导提示的问题，同时让角色图谱标出反派。此前连续 8 次保存或删除角色全部失败，界面只显示“角色删除失败：项目可能已切换，请刷新后重试”，真实原因是版本号过期——打开角色页时名单是第 5 版，蓝图生成两次把它推到第 7 版，而页面仍用第 5 版提交；提示还把版本过期说成项目切换，把排查方向引到了用户自己的操作上。现在遇到版本过期会先自动读取最新版本、并只按“用户的改动”合并后重试一次，只应用你实际做出的新增、修改与删除，后台新增的角色一个都不会被带走；合并无法安全进行时给出准确提示（“角色名单已被后台更新，请刷新后重试”）并保留编辑内容，版本过期、项目切换与其它失败三类各有准确文案。英文界面下角色身份清单的提示词也不再混入中文字符。优化方面：架构生成的角色图谱不再把敌对方一律塞进“配角 / 龙套”——此前 56 个角色里一个反派都没有（16 配角 + 39 龙套），而仙盟、太虚宫、魔庭三方与渊天魔尊、幽煞等明确的敌对方人物全被归为配角或龙套；现在有明确对立面的故事必须把敌对方核心人物标为反派（通常 1-3 人，存在多个敌对势力时各给一个代表）。保留此前的[长篇写作资料选择说明](docs/features/draft-context-budget.md)、[工作流审计修复](docs/audits/workflow-audit-2026-10-01.md)与[安全审计收据](docs/audits/security-audit-2026-10-03.md)。同一 Release 提供 Windows、macOS 和 Linux x64；DSH 插件沿用 v1.2.0，不发布 npm。
+v1.4.6 修复写稿确认框里「保存安排」对“缺少当前状态证据”这类一致性提示无效、导致「开始创作」点了没反应的问题。此前逐条填写安排并保存后，面板显示“已保存安排”，但点击「开始创作」没有任何反应：代码里有两处查找一致性提示，其中一处会读取保存的安排并据此过滤，另一处（正是产出这类提示的那处）根本没有读取这份记录，于是安排虽然确实写入了数据库，重新检查时却被忽略，同样的提示再次出现，而「开始创作」的判据是“只要还有未处理的提示就不开始”。现在该类提示同样会尊重你保存的安排（未撤销才生效，撤销后提示重新出现）；并且当「开始创作」因为仍有未处理提示而没有开始时，界面会明确写出原因（例如“仍有 N 条一致性线索未处理…”）并把提示区滚入视野，不会再出现“点了没反应”这种无法判断的情况；同一条路径上的「修改后重检」也一并如此。保留此前的[长篇写作资料选择说明](docs/features/draft-context-budget.md)、[工作流审计修复](docs/audits/workflow-audit-2026-10-01.md)与[安全审计收据](docs/audits/security-audit-2026-10-03.md)。同一 Release 提供 Windows、macOS 和 Linux x64；DSH 插件沿用 v1.2.0，不发布 npm。
 
-[下载 v1.4.5](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.4.5) · [三分钟开始第一章](docs/quickstart/README.md) · [全书方向调整指南](docs/features/story-direction-adjustment.md) · [安装 DSH 插件](plugins/inkweaver-dsh/README.md) · [提交问题或建议](https://github.com/shuishuipingan/InkWeaver/issues/new/choose) · [参与讨论](https://github.com/shuishuipingan/InkWeaver/discussions)
+[下载 v1.4.6](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.4.6) · [三分钟开始第一章](docs/quickstart/README.md) · [全书方向调整指南](docs/features/story-direction-adjustment.md) · [安装 DSH 插件](plugins/inkweaver-dsh/README.md) · [提交问题或建议](https://github.com/shuishuipingan/InkWeaver/issues/new/choose) · [参与讨论](https://github.com/shuishuipingan/InkWeaver/discussions)
 
 ![InkWeaver 欢迎页](docs/assets/inkweaver-welcome.png)
 
@@ -160,33 +160,33 @@ inkweaver-mac-arm64-<版本号>-installer.dmg
 inkweaver-mac-x64-<版本号>-installer.dmg
 ```
 
-当前 macOS 安装包未代码签名（未使用 Developer ID 签名）且未公证。请只从[正式 v1.4.5 Release](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.4.5)下载，并按系统安全提示确认首次打开。桌面 Release 共 13 项资产，覆盖 Windows x64、macOS Apple Silicon、macOS Intel 和 Linux x64；DSH 插件 tarball 保留在 v1.2.0 Release。
+当前 macOS 安装包未代码签名（未使用 Developer ID 签名）且未公证。请只从[正式 v1.4.6 Release](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.4.6)下载，并按系统安全提示确认首次打开。桌面 Release 共 13 项资产，覆盖 Windows x64、macOS Apple Silicon、macOS Intel 和 Linux x64；DSH 插件 tarball 保留在 v1.2.0 Release。
 
 ### Linux x64
 
-v1.4.5 Linux 资产仅以 x64 构建。本次资格验证使用 Ubuntu 22.04、Debian 13 和 Fedora 44；不据此声明其他发行版或 Linux ARM64 已验证。包以 Ubuntu 22.04 的 glibc 2.35 环境构建，资格记录会检查打包文件所需的最高 glibc 符号版本不高于 2.35。
+v1.4.6 Linux 资产仅以 x64 构建。本次资格验证使用 Ubuntu 22.04、Debian 13 和 Fedora 44；不据此声明其他发行版或 Linux ARM64 已验证。包以 Ubuntu 22.04 的 glibc 2.35 环境构建，资格记录会检查打包文件所需的最高 glibc 符号版本不高于 2.35。
 
-从[正式 v1.4.5 Release](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.4.5)下载对应文件及各自的 SHA-256 校验文件：
+从[正式 v1.4.6 Release](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.4.6)下载对应文件及各自的 SHA-256 校验文件：
 
-    inkweaver-linux-x64-1.4.5.AppImage
-    inkweaver-linux-x64-1.4.5.deb
-    inkweaver-linux-x64-1.4.5.rpm
+    inkweaver-linux-x64-1.4.6.AppImage
+    inkweaver-linux-x64-1.4.6.deb
+    inkweaver-linux-x64-1.4.6.rpm
 
 AppImage 在 FUSE 可用时可直接启动。若系统没有 FUSE，可用内置提取运行模式：
 
-    chmod +x inkweaver-linux-x64-1.4.5.AppImage
-    ./inkweaver-linux-x64-1.4.5.AppImage --appimage-extract-and-run
+    chmod +x inkweaver-linux-x64-1.4.6.AppImage
+    ./inkweaver-linux-x64-1.4.6.AppImage --appimage-extract-and-run
 
 AppImage 使用用户命名空间 sandbox，系统需允许普通用户创建用户命名空间。若系统策略禁用了此能力，请使用对应的 deb/rpm 安装包。
 
 Ubuntu/Debian 可安装 deb，Fedora 可安装 rpm：
 
-    sudo apt install ./inkweaver-linux-x64-1.4.5.deb
-    sudo dnf install ./inkweaver-linux-x64-1.4.5.rpm
+    sudo apt install ./inkweaver-linux-x64-1.4.6.deb
+    sudo dnf install ./inkweaver-linux-x64-1.4.6.rpm
 
 Linux 安装包未签名。下载后先在同一目录核对对应校验文件，例如：
 
-    sha256sum -c inkweaver-linux-x64-1.4.5.deb.sha256
+    sha256sum -c inkweaver-linux-x64-1.4.6.deb.sha256
 
 ## DeepSeek Harness 插件
 
