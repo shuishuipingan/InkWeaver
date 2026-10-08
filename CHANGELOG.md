@@ -2,6 +2,38 @@
 
 本文件按用户可见行为记录变更。桌面版本不发布 npm；DSH 插件沿用已发布的 `1.2.0` 包。`1.2.0` 已从同一源码 commit 完成工程验收、三平台资产回读和正式 Release；`1.1.0` 的历史 Release 收据保留在 `docs/upgrade/`，不与 1.2.0 混用。
 
+## 1.4.2 — 2026-10-08
+
+### 修复
+
+- 自动建档角色的资料此前 100% 没有被填充：重新生成 160 章蓝图后系统会正确建立新角色卡（例如一次 57 张），但每张卡的外貌、性格、背景、能力、动机、弧光全是空的。原因是补档步骤使用了已经被释放的生成会话（补档调用写在生成窗口之外），每次必然在几毫秒内失败；而“补档失败不影响蓝图”的兜底设计把这次失败完全静默，用户只看到一张张空卡。
+- 现在补档在自己的生成窗口里执行（有独立预算），并在同一轮内循环分批（每批 12 名、单轮最多 60 名），不再需要反复重新生成才能补完积压；失败时会给出可察觉的提示，并说明再次生成会自动重试；诊断信息改用稳定的错误码，不再写入可能内嵌接口密钥的原始消息。
+
+### 优化
+
+- 章节名改为可读性优先：此前生成的章节名是“星枷守炉”“裂炉碎妄”这类四字文言压缩短语，像对联或词牌，读不出这一章发生了什么；现在要求一眼看懂核心事件、冲突或爽点，口语化、动作化、悬念式的写法都可以，并明确不要堆生僻字、强凑对仗或用典。
+- 修仙、玄幻等题材会主动创造成体系的设定物：此前功法、招式、法宝、丹药、阵法没有具体名称，战斗只有“一剑断因”“剑破天柱”这类笼统说法；现在涉及修炼、异能或战斗体系时会主动创造并命名这些元素，命名要具体可复述，并在实战场景里写清谁用了什么、结果或代价，同时沿用既有名称而不是每章换同义词；都市、悬疑、现实题材改用该题材自己的专名，不强加武侠词汇。
+
+### 发布
+
+- 保持 Windows、macOS、Linux x64 同提交发布。Linux 文件为 inkweaver-linux-x64-1.4.2.AppImage、inkweaver-linux-x64-1.4.2.deb、inkweaver-linux-x64-1.4.2.rpm 及 SHA-256；运行资格覆盖 Ubuntu 22.04、Debian 13、Fedora 44，glibc 2.35 基线及 --appimage-extract-and-run 检查继续有效，包未签名。
+
+## 1.4.2 — 2026-10-08 (English)
+
+### Fixed
+
+- Character details for automatically created profiles were never filled in: regenerating a 160-chapter blueprint did create the new character cards correctly (57 of them in one run), but every card's appearance, personality, background, abilities, motivation, and arc were empty. The fill step used a generation session that had already been released (the call sat outside the generation window), so it always failed within milliseconds, and the “a failed fill does not affect the blueprint” fallback kept that failure completely silent, leaving the user with nothing but blank cards.
+- Filling now runs inside its own generation window with a dedicated budget and loops in batches within one run (12 characters per batch, up to 60 per run), so a backlog no longer needs repeated regeneration; a failure surfaces a noticeable notice explaining that the next generation retries automatically, and diagnostics use stable error codes instead of raw messages that could embed an API key.
+
+### Improved
+
+- Chapter titles now prioritise readability: generated titles used to be compressed four-character literary phrases that read like couplets or tune patterns and said nothing about what happens in the chapter; they must now make the core event, conflict, or payoff clear at a glance, and colloquial, action-oriented, or suspense-style wording is all acceptable, with an explicit instruction not to pile up rare characters, force parallelism, or lean on allusion.
+- Cultivation and xianxia-style genres now actively create a coherent set of named building blocks: techniques, moves, artifacts, pills, and formations previously had no concrete names and combat was described vaguely; writing that involves cultivation, powers, or a combat system now creates and names these elements, keeps the names specific and repeatable, states in actual scenes who used what and with what result or cost, and reuses established names instead of inventing synonyms each chapter, while urban, mystery, and realist genres use their own vocabulary rather than being given martial-arts terms.
+
+### Release
+
+- Continues Windows, macOS and Linux x64 same-commit releases. Linux packages: inkweaver-linux-x64-1.4.2.AppImage, inkweaver-linux-x64-1.4.2.deb, inkweaver-linux-x64-1.4.2.rpm with SHA-256. Qualification covers Ubuntu 22.04, Debian 13, Fedora 44, the glibc 2.35 baseline and --appimage-extract-and-run. Linux packages are unsigned.
+
 ## 1.4.1 — 2026-10-08
 
 ### 修复
