@@ -2,6 +2,38 @@
 
 本文件按用户可见行为记录变更。桌面版本不发布 npm；DSH 插件沿用已发布的 `1.2.0` 包。`1.2.0` 已从同一源码 commit 完成工程验收、三平台资产回读和正式 Release；`1.1.0` 的历史 Release 收据保留在 `docs/upgrade/`，不与 1.2.0 混用。
 
+## 1.4.5 — 2026-10-08
+
+### 修复
+
+- 角色卡的保存与删除在名单被后台更新过之后不再失败，也不再给出误导的提示：此前连续 8 次保存或删除角色全部失败，界面只显示“角色删除失败：项目可能已切换，请刷新后重试”。真实原因是版本号过期——打开角色页时名单是第 5 版，之后蓝图生成两次把名单推到了第 7 版，而页面仍用第 5 版提交，于是每一次都被拒绝；提示还把“版本过期”说成“项目可能已切换”，让人以为是自己的操作或项目出了问题。
+- 现在遇到版本过期会先自动读取最新版本，并只按“用户的改动”合并后重试一次——只应用用户实际做出的新增、修改与删除，后台新增的角色一个都不会被带走；若合并无法安全进行，会给出准确提示（“角色名单已被后台更新，请刷新后重试”）并保留编辑内容。版本过期、项目切换与其它失败三类现在各有准确文案，不再混为一谈。
+- 英文界面下角色身份清单的提示词不再混入中文字符（顿号、全角分号等）：原因是“英文模板不得出现中文字符”的检查此前只覆盖了另外两处、漏了这一处。
+
+### 优化
+
+- 架构生成的角色图谱不再把敌对方一律塞进“配角 / 龙套”：此前 56 个角色里一个反派都没有（16 个配角与 39 个龙套），而故事里仙盟、太虚宫、魔庭三方以及渊天魔尊、幽煞等明确的敌对方人物全被归为配角或龙套。现在要求有明确对立面的故事必须把敌对方核心人物标为反派（通常 1-3 人，存在多个敌对势力时各给一个代表），不要用“龙套”兜底所有非主要角色。
+
+### 发布
+
+- 保持 Windows、macOS、Linux x64 同提交发布。Linux 文件为 inkweaver-linux-x64-1.4.5.AppImage、inkweaver-linux-x64-1.4.5.deb、inkweaver-linux-x64-1.4.5.rpm 及 SHA-256；运行资格覆盖 Ubuntu 22.04、Debian 13、Fedora 44，glibc 2.35 基线及 --appimage-extract-and-run 检查继续有效，包未签名。
+
+## 1.4.5 — 2026-10-08 (English)
+
+### Fixed
+
+- Saving and deleting character cards no longer fail after the roster has been updated in the background, and the message is no longer misleading: eight consecutive save or delete attempts all failed and the interface only said “character deletion failed: the project may have been switched, refresh and try again”. The real cause was a stale revision — the roster was at revision 5 when the character page was opened, blueprint generation then pushed it to revision 7, and the page kept submitting revision 5, so every attempt was rejected; the message also described a stale revision as “the project may have been switched”, sending the user looking at their own actions instead.
+- A stale revision now triggers an automatic read of the latest roster and a single retry that merges only the user's own changes — the additions, edits, and deletions the user actually made — so characters created in the background are never carried away; when a merge cannot be done safely it says so accurately (“the character roster has been updated in the background, refresh and try again”) and keeps the edited content. Stale revision, project switch, and other failures now each have their own accurate message instead of being conflated.
+- Prompts for the character identity list no longer mix Chinese characters (enumeration commas, full-width semicolons, and the like) into the English interface: the check that English templates contain no Chinese characters had covered two other places and missed this one.
+
+### Improved
+
+- The character graph produced by architecture generation no longer files every opposing side under “supporting” or “extra”: a run with 56 characters produced not a single antagonist (16 supporting and 39 extras), while the story's three factions and clearly opposing figures such as Yuan Tian Mozun and You Sha were all classified as supporting or extras. A story with an explicit opposing side must now mark its core opponents as antagonists (typically one to three, with one representative per hostile faction when there are several), and “extra” is no longer used as the fallback for every non-major character.
+
+### Release
+
+- Continues Windows, macOS and Linux x64 same-commit releases. Linux packages: inkweaver-linux-x64-1.4.5.AppImage, inkweaver-linux-x64-1.4.5.deb, inkweaver-linux-x64-1.4.5.rpm with SHA-256. Qualification covers Ubuntu 22.04, Debian 13, Fedora 44, the glibc 2.35 baseline and --appimage-extract-and-run. Linux packages are unsigned.
+
 ## 1.4.4 — 2026-10-08
 
 ### 修复

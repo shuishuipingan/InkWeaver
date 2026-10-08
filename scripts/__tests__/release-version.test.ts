@@ -1,10 +1,10 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
-describe('v1.4.4 release metadata', () => {
+describe('v1.4.5 release metadata', () => {
   it('uses the release version in package metadata', () => {
     const pkg = JSON.parse(readFileSync('package.json', 'utf8')) as { version: string }
-    expect(pkg.version).toBe('1.4.4')
+    expect(pkg.version).toBe('1.4.5')
   })
 
   it('resolves the release tag and exact thirteen-asset contract from the package version', () => {
@@ -13,21 +13,21 @@ describe('v1.4.4 release metadata', () => {
       releaseAssets: Array<{ name: string }>
     }
 
-    expect(`v${pkg.version}`).toBe('v1.4.4')
+    expect(`v${pkg.version}`).toBe('v1.4.5')
     expect(profile.releaseAssets.map(({ name }) => name.replaceAll('{version}', pkg.version))).toEqual([
-      'inkweaver-setup-1.4.4.exe',
-      'inkweaver-setup-1.4.4.exe.blockmap',
+      'inkweaver-setup-1.4.5.exe',
+      'inkweaver-setup-1.4.5.exe.blockmap',
       'latest.yml',
-      'inkweaver-mac-arm64-1.4.4-installer.dmg',
-      'inkweaver-mac-arm64-1.4.4-installer.dmg.sha256',
-      'inkweaver-mac-x64-1.4.4-installer.dmg',
-      'inkweaver-mac-x64-1.4.4-installer.dmg.sha256',
-      'inkweaver-linux-x64-1.4.4.AppImage',
-      'inkweaver-linux-x64-1.4.4.AppImage.sha256',
-      'inkweaver-linux-x64-1.4.4.deb',
-      'inkweaver-linux-x64-1.4.4.deb.sha256',
-      'inkweaver-linux-x64-1.4.4.rpm',
-      'inkweaver-linux-x64-1.4.4.rpm.sha256',
+      'inkweaver-mac-arm64-1.4.5-installer.dmg',
+      'inkweaver-mac-arm64-1.4.5-installer.dmg.sha256',
+      'inkweaver-mac-x64-1.4.5-installer.dmg',
+      'inkweaver-mac-x64-1.4.5-installer.dmg.sha256',
+      'inkweaver-linux-x64-1.4.5.AppImage',
+      'inkweaver-linux-x64-1.4.5.AppImage.sha256',
+      'inkweaver-linux-x64-1.4.5.deb',
+      'inkweaver-linux-x64-1.4.5.deb.sha256',
+      'inkweaver-linux-x64-1.4.5.rpm',
+      'inkweaver-linux-x64-1.4.5.rpm.sha256',
     ])
   })
 
@@ -111,9 +111,9 @@ describe('v1.4.4 release metadata', () => {
     const changelog = readFileSync('CHANGELOG.md', 'utf8')
     for (const source of [quickstart, changelog]) {
       for (const expected of [
-        'inkweaver-linux-x64-1.4.4.AppImage',
-        'inkweaver-linux-x64-1.4.4.deb',
-        'inkweaver-linux-x64-1.4.4.rpm',
+        'inkweaver-linux-x64-1.4.5.AppImage',
+        'inkweaver-linux-x64-1.4.5.deb',
+        'inkweaver-linux-x64-1.4.5.rpm',
         'Ubuntu 22.04', 'Debian 13', 'Fedora 44', 'glibc 2.35',
         '--appimage-extract-and-run',
       ]) expect(source).toContain(expected)
