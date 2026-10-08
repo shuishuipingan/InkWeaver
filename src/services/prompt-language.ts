@@ -330,6 +330,16 @@ Produce a complete outline made of structural turning points rather than chapter
 3. Give every chapter a material event change; do not add filler or chronological bookkeeping.
 4. End every chapter with a concrete variable that creates forward pressure.
 
+[Chapter titles]
+- Readability first: the reader must see at once what happens in this chapter (who does what, what changes, what it costs). Colloquial, action-driven, or cliffhanger-style titles are welcome; literary polish is not the goal.
+- Never pad with rare characters, forced parallelism, or allusion: four-syllable phrases that hide the event ("Frost Lock Vein", "Cracked Furnace Shattered Delusion") are unacceptable; plain ones ("I Stole My Master's Sword", "The Furnace Blew Up") are what we want.
+- Keep the existing limits: 4-12 characters, no book-title marks, quotes, punctuation, chapter numbers, "Title:" prefixes, or subtitles, and never a plot summary.
+
+[Named techniques and artifacts]
+- When the genre involves cultivation, powers, or a combat system, invent and name concrete techniques, moves, artifacts, pills, formations, realms, or rules. Names must be specific and repeatable (carrier + move name, e.g. "Listening Snow Sword, Third Form: Severing Cause"), and combat must state who used what and with what result or cost — never just "he struck out a palm" or "she used her ultimate move".
+- Reuse the established names of anything already introduced; never mint synonyms chapter by chapter. New ones must serve the event or the character, not pad the list. Put this content in keyEvents / purpose / suspenseHook.
+- For genres without cultivation or the supernatural (urban, mystery, realism), use that genre own concrete proper nouns (professional terms, institutions, tools, rules) and never impose wuxia or xianxia vocabulary.
+
 [New characters]
 - New characters may debut in any chapter: supporting roles, antagonists, arc opponents, and small functional figures (shopkeeper, steward, message disciple, guard).
 - Give them a real full name and list them in characters; never use unnamed placeholders such as "some disciple" or "a man in black", and do not list unnamed background figures at all.
@@ -365,6 +375,16 @@ Return JSON only, with no Markdown, preface, analysis, plan, code fence, or reas
 3. Resolve or intensify relevant open threats and planted clues.
 4. Give every chapter a material event change; do not add filler.
 5. Return exactly one JSON object with a blueprints array and no analysis, plan, explanation, Markdown, or code fence.
+
+[Chapter titles]
+- Readability first: the reader must see at once what happens in this chapter (who does what, what changes, what it costs). Colloquial, action-driven, or cliffhanger-style titles are welcome; literary polish is not the goal.
+- Never pad with rare characters, forced parallelism, or allusion: four-syllable phrases that hide the event ("Frost Lock Vein", "Cracked Furnace Shattered Delusion") are unacceptable; plain ones ("I Stole My Master's Sword", "The Furnace Blew Up") are what we want.
+- Keep the existing limits: 4-12 characters, no book-title marks, quotes, punctuation, chapter numbers, "Title:" prefixes, or subtitles, and never a plot summary.
+
+[Named techniques and artifacts]
+- When the genre involves cultivation, powers, or a combat system, invent and name concrete techniques, moves, artifacts, pills, formations, realms, or rules. Names must be specific and repeatable (carrier + move name, e.g. "Listening Snow Sword, Third Form: Severing Cause"), and combat must state who used what and with what result or cost — never just "he struck out a palm" or "she used her ultimate move".
+- Reuse the established names of anything already introduced; never mint synonyms chapter by chapter. New ones must serve the event or the character, not pad the list. Put this content in keyEvents / purpose / suspenseHook.
+- For genres without cultivation or the supernatural (urban, mystery, realism), use that genre own concrete proper nouns (professional terms, institutions, tools, rules) and never impose wuxia or xianxia vocabulary.
 
 [New characters]
 - New characters may debut in any chapter: supporting roles, antagonists, arc opponents, and small functional figures (shopkeeper, steward, message disciple, guard).
@@ -623,6 +643,8 @@ The runtime appends the authoritative immutable JSON contract. Follow that contr
 3. Describe this chapter's narrative function, immediate goal, causal events, and final hook concisely.
 4. The runtime appends the final immutable JSON contract; follow it over any alternative schema.
 5. characters lists the characters who actually act in this chapter. A character first appearing here is welcome: keep their real full name and the system creates their profile automatically — never use unnamed placeholders.
+6. title: readability first — 4-12 characters naming what actually happens in this chapter. Four-syllable phrases that hide the event ("Frost Lock Vein", "Cracked Furnace Shattered Delusion") are unacceptable; plain ones ("I Stole My Master's Sword", "The Furnace Blew Up") are what we want. No rare-character padding, forced parallelism, allusion, book-title marks, quotes, chapter numbers, or "Title:" prefixes, and never a plot summary.
+7. When the genre involves cultivation, powers, or a combat system, put the concrete names of techniques, moves, artifacts, pills, or formations from the manuscript into keyEvents (who used what, with what result or cost) and reuse them as written. For genres without the supernatural, use that genre own proper nouns and never impose wuxia or xianxia vocabulary.
 
 Output JSON only, with no Markdown, explanation, or reasoning.`,
   },

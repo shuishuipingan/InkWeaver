@@ -8,7 +8,11 @@ import {
   type GenerationSession,
   type GenerationTask,
 } from '../../../generation/generation-harness'
-import type { GenerationRuntime } from '../../../generation/generation-runtime'
+import {
+  createGenerationRuntime,
+  type GenerationRuntime,
+  type GenerationRuntimeEnvironment,
+} from '../../../generation/generation-runtime'
 import {
   DirectoryPostCommitCancellationError,
   DirectoryPostCommitSyncError,
@@ -815,7 +819,8 @@ describe('GenerateDirectoryCommand', () => {
       { range: [1, 1], purpose: 'chapter-blueprint-directory:compact-single:chapter-1' },
       { range: [2, 2], purpose: 'chapter-blueprint-directory' },
     ])
-    expect(createRuntime).toHaveBeenCalledOnce()
+    // 行为变更：补档需要自己的生成窗口（execute 是一次性的），所以这里会开两个 runtime。
+    expect(createRuntime).toHaveBeenCalledTimes(2)
     expect(invoke.mock.calls.filter(([channel]) => channel === 'db:blueprint-commit-range'))
       .toHaveLength(1)
   })
@@ -1442,5 +1447,113 @@ describe('GenerateDirectoryCommand', () => {
     expect(createRuntime).toHaveBeenCalledWith(expect.objectContaining({
       budget: expect.objectContaining({ deadlineMs: 4_500_000, maxAttempts: 376 }),
     }))
+    // 补档必须跑在**自己活着的窗口**里：runtime.execute 是一次性的（回调返回即释放租约），
+    // 复用蓝图那个已关闭的会话会在本地被拒（生产上表现为 6 毫秒失败）。
+    // 判别力：把补档移回蓝图回调之外/复用旧会话 → 这里只会有一个 runtime，断言必红。
+    expect(createRuntime).toHaveBeenCalledTimes(2)
+  })
+
+  it('补档走真实生成运行时：会话有效、内容真的到达提供方（一次性租约语义）', async () => {
+    const AUTO_CARD = '新登场角色'
+    const openLeases = new Set<string>()
+    const providerCalls: Array<{ purpose: string; accepted: boolean }> = []
+    let leaseSeq = 0
+    // 假 environment，但体现**真实的一次性语义**：窗口关闭后租约即失效（close 之后再 complete 必被拒）。
+    const environment: GenerationRuntimeEnvironment = {
+      snapshotDefaultModelId: () => 'model-a',
+      beginModelExecution: async () => {
+        leaseSeq += 1
+        const leaseId = 'lease-' + leaseSeq
+        openLeases.add(leaseId)
+        return {
+          leaseId, modelId: 'model-a', provider: 'custom', protocol: 'openai',
+          modelName: 'model-a-v1', modelRevision: 'a'.repeat(64), endpointFingerprint: 'b'.repeat(64),
+          capabilityEvidence: {
+            source: { contextWindowTokens: 'unknown', maxOutputTokens: 'legacy-profile', featureFlags: 'unknown' },
+            subjectFingerprint: 'c'.repeat(64),
+            contextWindowTokens: 16_384, maxOutputTokens: 4096,
+            reasoning: false, structuredOutput: true, usage: true,
+          },
+          createdAt: 1000, expiresAt: 61_000,
+        }
+      },
+      completeWithLease: async request => {
+        const accepted = openLeases.has(request.leaseId)
+        providerCalls.push({ purpose: String(request.purpose), accepted })
+        if (!accepted) {
+          const error = new Error('模型执行租约无效或已关闭') as Error & { code?: string }
+          error.code = 'MODEL_EXECUTION_LEASE_INVALID'
+          throw error
+        }
+        if (String(request.purpose).includes('character-profiles')) {
+          return {
+            content: JSON.stringify({ profiles: [{ name: AUTO_CARD, appearance: '灰袍', personality: '冷' }] }),
+            finishReason: 'stop',
+          }
+        }
+        const prompt = request.messages.map(message => message.content).join('\n')
+        const range = /第(\d+)章到第(\d+)章/u.exec(prompt)
+        const chapter = range ? Number(range[1]) : 1
+        return {
+          content: JSON.stringify({
+            blueprints: [{
+              chapterNumber: chapter, title: '第' + chapter + '章', role: '推进',
+              purpose: '引入新角色', keyEvents: AUTO_CARD + '登场', suspenseHook: '留下悬念',
+              characters: [AUTO_CARD], relationships: [],
+            }],
+          }),
+          finishReason: 'stop',
+        }
+      },
+      closeModelExecution: async leaseId => { openLeases.delete(leaseId) },
+    }
+
+    const committed: unknown[] = []
+    stubIpcInvoke((channel, ...args) => {
+      if (channel === 'db:character-roster-read') {
+        return {
+          status: 'ready',
+          revision: 1,
+          entries: [{
+            name: AUTO_CARD, role: 'minor', gender: '', age: '', appearance: '', personality: '',
+            background: '', abilities: '', motivation: '', arc: '', relationships: [],
+            notes: '自动候选来源：章节蓝图（第1章）',
+          }],
+        }
+      }
+      if (channel === 'db:character-roster-commit') {
+        committed.push(args[0])
+        return { success: true, revision: 2 }
+      }
+      // 角色候选同步在本用例里不参与断言：给它一个空输入的待处理操作，让它立即成功。
+      if (channel === 'db:blueprint-character-sync-list-pending') return []
+      if (channel === 'db:blueprint-character-sync-get') {
+        return { operationId: 'sync-op-1', status: 'pending', characterSyncInput: [] }
+      }
+      if (channel === 'db:blueprint-character-sync-complete') {
+        return {
+          success: true,
+          operation: {
+            operationId: 'sync-op-1',
+            status: 'completed',
+            completionReceipt: { operationId: 'sync-op-1', createdCharacters: [], updatedCharacters: [] },
+          },
+        }
+      }
+      return successfulCommitHandler()(channel, ...args)
+    })
+
+    const command = new GenerateDirectoryCommand(
+      { mode: 'full', count: 1 },
+      { ...projectSnapshot, novelConfig: { ...projectSnapshot.novelConfig, totalChapters: 1 } },
+      { createRuntime: options => createGenerationRuntime(options, environment) },
+    )
+
+    await command.execute({ step: {}, context: workflowContext(), callbacks: stepCallbacks() })
+
+    const enrichmentCalls = providerCalls.filter(call => call.purpose.includes('character-profiles'))
+    expect(enrichmentCalls).toHaveLength(1)
+    expect(enrichmentCalls[0]?.accepted).toBe(true)
+    expect(committed.some(payload => JSON.stringify(payload ?? '').includes('灰袍'))).toBe(true)
   })
 })

@@ -16,7 +16,7 @@ vi.mock('../../ipc-client', () => ({
 
 import {
   BLUEPRINT_AUTO_CARD_SOURCE_MARKER,
-  MAX_ENRICHMENT_CHARACTERS,
+  MAX_ENRICHMENT_TOTAL_CHARACTERS,
   buildEnrichmentDigest,
   decodeEnrichmentProfiles,
   enrichBlueprintCharacterProfiles,
@@ -205,7 +205,8 @@ describe('空卡档案填充', () => {
   })
 
   it('超过上限时只处理前 N 个并报告剩余', async () => {
-    const many = Array.from({ length: MAX_ENRICHMENT_CHARACTERS + 3 }, (_, index) => entry({ name: `角色${index}` }))
+    // 单轮上限 60 名、每批 12 名：多出的部分留到下一轮
+    const many = Array.from({ length: MAX_ENRICHMENT_TOTAL_CHARACTERS + 5 }, (_, index) => entry({ name: `角色${index}` }))
     const commit = vi.fn(async () => ({ success: true }))
     mocks.invokeWithProjectSession.mockImplementation(async (_session, channel) => {
       if (channel === 'db:character-roster-read') return { status: 'ready', revision: 5, entries: many }
@@ -220,8 +221,8 @@ describe('空卡档案填充', () => {
       }),
     })
 
-    expect(outcome.enriched).toHaveLength(MAX_ENRICHMENT_CHARACTERS)
-    expect(outcome.deferredForLimit).toBe(3)
+    expect(outcome.enriched).toHaveLength(MAX_ENRICHMENT_TOTAL_CHARACTERS)
+    expect(outcome.deferredForLimit).toBe(5)
   })
 })
 

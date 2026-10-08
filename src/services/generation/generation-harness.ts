@@ -926,7 +926,12 @@ export function createGenerationHarness(dependencies: {
               }),
               terminationPromise,
             ])
-          } catch {
+          } catch (error) {
+            // 曾经的裸 catch 把提供方的真实拒绝原因整个丢掉，统一报成"模型请求失败。"——
+            // 一次生产事故因此只能靠读租约生命周期才定位得到（会话已被释放 vs 真的网络失败）。
+            // 只透出**稳定 code**，不透出消息原文：provider 的错误里可能内嵌凭据
+            // （既有测试就在断言"错误消息不得包含 key"）。
+            const underlyingCode = (error as { code?: unknown } | undefined)?.code
             const cancellationCode = termination === 'cancelled'
               ? 'CANCELLED'
               : termination === 'deadline'
@@ -938,7 +943,9 @@ export function createGenerationHarness(dependencies: {
                 ? '生成请求已取消。'
                 : cancellationCode === 'DEADLINE_EXHAUSTED'
                   ? '生成请求超过会话截止时间。'
-                  : '模型请求失败。',
+                  : typeof underlyingCode === 'string' && underlyingCode
+                    ? `模型请求失败（${underlyingCode}）。`
+                    : '模型请求失败。',
               attemptReceipt(
                 task.purpose,
                 attempt,

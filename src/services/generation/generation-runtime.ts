@@ -153,7 +153,11 @@ function createDefaultEnvironment(): GenerationRuntimeEnvironment {
     completeWithLease(request) {
       const frozenModelId = leaseModels.get(request.leaseId)
       if (!frozenModelId) {
-        return Promise.reject(new Error('模型执行租约无效或已关闭'))
+        // 带上稳定的 code：上层会把 code 透出到错误消息里做判别（见 harness），
+        // 但**不能**透出消息原文 —— provider 的错误里可能内嵌 API key。
+        const leaseError = new Error('模型执行租约无效或已关闭') as Error & { code?: string }
+        leaseError.code = 'MODEL_EXECUTION_LEASE_INVALID'
+        return Promise.reject(leaseError)
       }
       const llmStore = useLLMStore.getState()
       return new Promise<ProviderCompletion>((resolve, reject) => {

@@ -18,8 +18,14 @@ import { stripThinkingTags } from './workflow-utils'
 
 /** 自动建档的来源标记前缀（完整形式是「自动候选来源：章节蓝图（第N、M章）」）。 */
 export const BLUEPRINT_AUTO_CARD_SOURCE_MARKER = '自动候选来源：章节蓝图'
-/** 单轮最多补几个角色；超出的下一轮再补（挑选判据幂等）。 */
+/** 单次模型调用最多处理几个角色（控制单个请求的上下文规模）。 */
 export const MAX_ENRICHMENT_CHARACTERS = 12
+/**
+ * 单轮补档的总量上限（5 批 × 12）。用户积压过 57 张自动建档的空卡，
+ * 每轮只补 12 名意味着他要重新生成 5 轮蓝图才能补完 —— 这不是"能用"的形态，
+ * 所以在同一轮内循环分批直到没有候选或触及这个上限；上限本身由绝对墙兜底。
+ */
+export const MAX_ENRICHMENT_TOTAL_CHARACTERS = 60
 /** 每个角色最多引用几章蓝图事实。 */
 export const MAX_ENRICHMENT_CHAPTERS_PER_CHARACTER = 8
 const MAX_DIGEST_FIELD_CHARS = 200
@@ -201,8 +207,44 @@ export async function enrichBlueprintCharacterProfiles(deps: EnrichmentDeps): Pr
     const all = selectEnrichmentCandidates(entries, deps.blueprints)
     if (all.length === 0) return { enriched: [], deferredForLimit: 0 }
 
-    const selected = all.slice(0, MAX_ENRICHMENT_CHARACTERS)
-    const deferredForLimit = all.length - selected.length
+    // 同一轮内循环分批：每批都是独立的请求上下文（不把 57 个角色的出场章节塞进一次调用），
+    // 每批独立提交，失败的批次不回滚已成功的批次。总量由 MAX_ENRICHMENT_TOTAL_CHARACTERS
+    // 与调用方给这次窗口的预算（调用次数/时长）共同兜底。
+    const enriched: string[] = []
+    let batchError: string | undefined
+    const budget = Math.min(all.length, MAX_ENRICHMENT_TOTAL_CHARACTERS)
+    for (let start = 0; start < budget; start += MAX_ENRICHMENT_CHARACTERS) {
+      const batchOutcome = await enrichOneBatch(deps, all.slice(start, start + MAX_ENRICHMENT_CHARACTERS))
+      if (batchOutcome.error) {
+        batchError = batchOutcome.error
+        break
+      }
+      enriched.push(...batchOutcome.enriched)
+    }
+    return {
+      enriched,
+      deferredForLimit: all.length - enriched.length,
+      ...(batchError ? { error: batchError } : {}),
+    }
+  } catch (error) {
+    return { enriched: [], deferredForLimit: 0, error: String(error) }
+  }
+}
+
+/** 处理一批角色：各自独立的读快照 → 一次调用 → 一次提交。 */
+async function enrichOneBatch(
+  deps: EnrichmentDeps,
+  selected: readonly EnrichmentCandidate[],
+): Promise<{ enriched: string[]; error?: string }> {
+  try {
+    // 每批都重新读快照：上一批的提交推进了 revision，用旧 revision 会被仓储拒绝。
+    const roster = await ipc.invokeWithProjectSession(
+      deps.projectSession,
+      'db:character-roster-read',
+      deps.expectedProjectPath,
+    )
+    const entries = (roster.entries ?? []) as CharacterRosterEntry[]
+
     deps.log(deps.uiText(
       `正在为 ${selected.length} 名新角色生成档案…`,
       `Generating profiles for ${selected.length} new characters…`,
@@ -215,7 +257,7 @@ export async function enrichBlueprintCharacterProfiles(deps: EnrichmentDeps): Pr
     const content = await deps.generate({ systemPrompt, prompt, purpose: 'blueprint-character-profiles' })
     const profiles = decodeEnrichmentProfiles(content)
     if (profiles.size === 0) {
-      return { enriched: [], deferredForLimit, error: '模型未返回可用的角色档案' }
+      return { enriched: [], error: '模型未返回可用的角色档案' }
     }
 
     // 只填旧值为空的字段：这里与仓储的 fill-empty 是同一口径，双重保险。
@@ -236,7 +278,7 @@ export async function enrichBlueprintCharacterProfiles(deps: EnrichmentDeps): Pr
       }
       if (changed) updated.push(next)
     }
-    if (updated.length === 0) return { enriched: [], deferredForLimit }
+    if (updated.length === 0) return { enriched: [] }
 
     const commit = await ipc.invokeWithProjectSession(
       deps.projectSession,
@@ -252,10 +294,10 @@ export async function enrichBlueprintCharacterProfiles(deps: EnrichmentDeps): Pr
       deps.expectedProjectPath,
     )
     if (!commit?.success) {
-      return { enriched: [], deferredForLimit, error: String(commit?.error ?? '提交角色档案失败') }
+      return { enriched: [], error: String(commit?.error ?? '提交角色档案失败') }
     }
-    return { enriched: updated.map(entry => entry.name), deferredForLimit }
+    return { enriched: updated.map(entry => entry.name) }
   } catch (error) {
-    return { enriched: [], deferredForLimit: 0, error: String(error) }
+    return { enriched: [], error: String(error) }
   }
 }
