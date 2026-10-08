@@ -34,7 +34,6 @@ import {
 import { createStructuredBatchExecutor, type StructuredBatchContract } from '../structured-batch-executor'
 import { formatPromptBudgetCompactionNotice } from '../../generation/prompt-budget-failure'
 import {
-  DRAFT_CONTEXT_INPUT_LIMIT,
   UNKNOWN_CONTEXT_INPUT_LIMIT,
 } from '../../../shared/adaptive-prompt-budget'
 
@@ -803,7 +802,8 @@ export class GenerateCharactersCommand extends BaseWorkflowCommand<string> {
         reasoningStage: 'planning',
         promptBudget: {
           limitUtf8Bytes: MAX_CHARACTER_STRUCTURED_CONTEXT_UTF8_BYTES,
-          adaptive: { maxInputTokens: DRAFT_CONTEXT_INPUT_LIMIT, unknownInputTokens: UNKNOWN_CONTEXT_INPUT_LIMIT },
+          // 不设意图上限：输入上限由模型上下文推导（见 adaptive-prompt-budget）。
+        adaptive: { unknownInputTokens: UNKNOWN_CONTEXT_INPUT_LIMIT },
           sections: [
             {
               sectionName: 'system-instructions',
@@ -867,7 +867,8 @@ export class GenerateCharactersCommand extends BaseWorkflowCommand<string> {
           ],
           promptBudget: {
             limitUtf8Bytes: fixedDetailRequestBytes + MAX_CHARACTER_STRUCTURED_CONTEXT_UTF8_BYTES,
-            adaptive: { maxInputTokens: DRAFT_CONTEXT_INPUT_LIMIT, unknownInputTokens: UNKNOWN_CONTEXT_INPUT_LIMIT },
+            // 不设意图上限：输入上限由模型上下文推导（见 adaptive-prompt-budget）。
+        adaptive: { unknownInputTokens: UNKNOWN_CONTEXT_INPUT_LIMIT },
             sections: [
               {
                 sectionName: 'system-instructions',

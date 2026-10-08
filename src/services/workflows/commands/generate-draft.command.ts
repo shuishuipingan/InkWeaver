@@ -10,7 +10,7 @@ import type { DraftMeta } from '../../../../electron/repositories/draft-reposito
 import { planDraftCharacterContext } from '../../draft-character-context'
 import { applyContextBudgetReceipt, type ContextBudgetBinding } from '../../../shared/context-budget-receipt'
 import { cachedContextSummary } from '../../context-summary-cache'
-import { DRAFT_CONTEXT_INPUT_LIMIT, UNKNOWN_CONTEXT_INPUT_LIMIT, draftOutputReservation } from '../../../shared/adaptive-prompt-budget'
+import { UNKNOWN_CONTEXT_INPUT_LIMIT, draftOutputReservation } from '../../../shared/adaptive-prompt-budget'
 import type { ProjectSessionContext } from '../../../shared/ipc-channels'
 import { requireWorkflowProjectSession, workflowWritingLanguage, workflowUiText } from '../workflow-project-session'
 import {
@@ -218,7 +218,8 @@ function promptBudgetSectionsForDraft(input: {
 
   return {
     limitUtf8Bytes: MAX_DRAFT_PROMPT_UTF8_BYTES,
-    adaptive: { maxInputTokens: DRAFT_CONTEXT_INPUT_LIMIT, unknownInputTokens: UNKNOWN_CONTEXT_INPUT_LIMIT },
+    // 不设意图上限：输入上限由模型上下文推导（见 adaptive-prompt-budget）。
+        adaptive: { unknownInputTokens: UNKNOWN_CONTEXT_INPUT_LIMIT },
     sections: locatedSections
       .sort((left, right) => left.section.messageIndex - right.section.messageIndex || left.start - right.start)
       .map(({ section }) => section),

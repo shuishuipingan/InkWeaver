@@ -21,7 +21,7 @@ export interface PromptBudgetSection {
 
 export interface PromptBudgetPolicy {
   limitUtf8Bytes: number
-  adaptive?: { maxInputTokens: number; unknownInputTokens: number }
+  adaptive?: { /** 可选的额外收紧；不传则由模型上下文推导。 */ maxInputTokens?: number; unknownInputTokens: number }
   sections: readonly PromptBudgetSection[]
 }
 

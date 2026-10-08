@@ -30,7 +30,6 @@ import {
 } from '../blueprint-character-enrichment'
 import { stripThinkingTags } from '../workflow-utils'
 import {
-  DRAFT_CONTEXT_INPUT_LIMIT,
   UNKNOWN_CONTEXT_INPUT_LIMIT,
 } from '../../../shared/adaptive-prompt-budget'
 import { requireWorkflowProjectSession, workflowUiText, workflowWritingLanguage } from '../workflow-project-session'
@@ -219,7 +218,8 @@ function buildCompactBlueprintTask(input: {
     ],
     promptBudget: {
       limitUtf8Bytes: COMPACT_BLUEPRINT_PROMPT_MAX_UTF8_BYTES,
-      adaptive: { maxInputTokens: DRAFT_CONTEXT_INPUT_LIMIT, unknownInputTokens: UNKNOWN_CONTEXT_INPUT_LIMIT },
+      // 不设意图上限：输入上限由模型上下文推导（见 adaptive-prompt-budget）。
+        adaptive: { unknownInputTokens: UNKNOWN_CONTEXT_INPUT_LIMIT },
       sections: [
         { sectionName: 'system-instructions', messageIndex: 0, finalText: systemRole },
         factSection('target-chapter', 'targetChapterNumber'),

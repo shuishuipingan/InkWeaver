@@ -6,7 +6,6 @@ import { useLocaleStore } from '../../../../stores/locale-store'
 import type { StepCallbacks, WorkflowContext } from '../../../../stores/workflow-store'
 import type { CharacterRosterEntry, CharacterRosterSnapshot } from '../../../../shared/character-roster'
 import {
-  DRAFT_CONTEXT_INPUT_LIMIT,
   UNKNOWN_CONTEXT_INPUT_LIMIT,
   resolveAdaptivePromptBudget,
 } from '../../../../shared/adaptive-prompt-budget'
@@ -794,7 +793,7 @@ describe('GenerateCharactersCommand structured roster seam', () => {
           // 只为推导自适应上限；这两个字段不参与本断言。
           limitUtf8Bytes: 0,
           sections: [],
-          adaptive: { maxInputTokens: DRAFT_CONTEXT_INPUT_LIMIT, unknownInputTokens: UNKNOWN_CONTEXT_INPUT_LIMIT },
+          adaptive: { unknownInputTokens: UNKNOWN_CONTEXT_INPUT_LIMIT },
         },
         null,
         0,

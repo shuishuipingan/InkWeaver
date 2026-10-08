@@ -65,6 +65,15 @@ export interface UpdateServiceOptions {
   now?: () => Date
 }
 
+/**
+ * 自动复查的最小间隔（4 小时）。
+ *
+ * 旧实现是"每个自然日只查一次"：当天启动过一次之后，无论作者开着应用工作多久都不会
+ * 再自动发现新版本 —— 于是"我们发版、他拿不到、继续在旧版上撞同一个问题"。
+ * 现在按"距上次检查是否超过这个间隔"判定，运行期间也会周期性复查。
+ */
+export const AUTOMATIC_CHECK_INTERVAL_MS = 4 * 60 * 60_000
+
 function localCalendarDate(now: Date): string {
   const year = now.getFullYear()
   const month = String(now.getMonth() + 1).padStart(2, '0')
@@ -254,9 +263,13 @@ export class UpdateService {
     const now = this.now()
     const today = localCalendarDate(now)
     const preferences = this.readPreferences()
-    // 无法读取或保存检查日期时，不自动联网，避免每次重启都绕过“每天一次”的上限。
+    // 无法读取或保存检查日期时，不自动联网，避免每次重启都绕过节流。
     if (!preferences) return this.response({ success: false, checked: false })
-    if (preferences.lastAutomaticCheckDate === today) {
+    // 节流改为**间隔**判定：距上次检查不足 AUTOMATIC_CHECK_INTERVAL_MS 才跳过。
+    // 用 lastCheckedAt（自动/手动检查都写它）而不是"自然日"，是为了让运行期间也能复查；
+    // 日界字段仍照写以兼容旧偏好数据，但不再参与判定。
+    const lastCheckedAt = preferences.lastCheckedAt ? Date.parse(preferences.lastCheckedAt) : Number.NaN
+    if (Number.isFinite(lastCheckedAt) && now.getTime() - lastCheckedAt < AUTOMATIC_CHECK_INTERVAL_MS) {
       return this.response({ success: true, checked: false })
     }
 

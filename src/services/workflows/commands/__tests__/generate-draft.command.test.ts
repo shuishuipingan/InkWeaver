@@ -420,7 +420,9 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
       charactersArch: 'IMPORTED-WHOLE-ROSTER', blueprints: [{ chapterNumber: 1, title: '参考章', keyEvents: '', notes: '参考书主角获得神王力量' }] })
     await command.execute({ step: {}, context, callbacks })
     const task = runtime.complete.mock.calls[0]![0] as GenerationTask
-    expect(task.promptBudget?.adaptive).toMatchObject({ maxInputTokens: 96_000 })
+    // 新语义：不再有固定的意图上限（96_000 那个天花板已删除），输入上限由模型上下文推导。
+    expect(task.promptBudget?.adaptive).toMatchObject({ unknownInputTokens: 16_384 })
+    expect(task.promptBudget?.adaptive).not.toHaveProperty('maxInputTokens')
     expect(task.promptBudget?.sections.find(section => section.sectionName === 'core-cast')?.degradation).toBeUndefined()
     expect(task.messages[1]!.content).toContain('不得杀人')
     expect(task.messages[1]!.content).toContain('左眼有伤')

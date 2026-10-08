@@ -3,6 +3,7 @@ import {
   PromptBudgetExceededError,
 } from './generation-harness'
 import type { PromptBudgetReport } from '../../shared/prompt-budget'
+import { CONTEXT_TOKEN_RESERVE } from '../../shared/adaptive-prompt-budget'
 
 export const PROMPT_BUDGET_FAILURE_CODE = 'prompt_budget_exhausted' as const
 
@@ -71,9 +72,26 @@ export function formatAdaptivePromptBudgetNotice(report: PromptBudgetReport, loc
 export function formatPromptBudgetFailure(report: PromptBudgetReport, locale: Locale): string {
   if (report.limitInputTokens !== undefined) {
     const protectedNames = [...new Set(report.protectedSections ?? [])].map(name => sectionLabel(name, locale)).join(locale === 'zh-CN' ? '、' : ', ')
+    const limit = formatInteger(report.limitInputTokens, locale)
+    const capacity = report.capacityKnown && report.contextWindowTokens != null
+      ? formatInteger(report.contextWindowTokens, locale)
+      : locale === 'zh-CN' ? '未知' : 'unknown'
+    // 区分两种超限，别再让 1M 上下文的用户去"换更大的模型"：
+    //  · 上限 < 窗口 − 输出预留 − 余量 → 是**应用侧**的输入上限在挡（换模型没用）；
+    //  · 否则 → 才是真的被**模型容量**挡住（这时才建议换模型）。
+    const limitedByApplication = report.capacityKnown
+      && report.contextWindowTokens != null
+      && report.contextWindowTokens - report.reservedOutputTokens - CONTEXT_TOKEN_RESERVE > report.limitInputTokens
+    const remedy = locale === 'zh-CN'
+      ? (limitedByApplication
+        ? `本次可用输入上限 ${limit} Tokens 来自应用侧预算（模型上下文 ${capacity} 足够大，换模型不会改善）：请精简核心说明或缩小本章范围。`
+        : `模型上下文 ${capacity} 不足：请使用更大上下文的模型、缩小本章范围或精简核心说明。`)
+      : (limitedByApplication
+        ? `The ${limit}-token input ceiling is an application-side budget (the model context of ${capacity} is already larger, so switching models will not help): simplify core descriptions or narrow this chapter.`
+        : `The model context of ${capacity} is insufficient: use a larger-context model, narrow this chapter, or simplify core descriptions.`)
     return locale === 'zh-CN'
-      ? `${formatAdaptivePromptBudgetNotice(report, locale)} 必保资料无法完整容纳，已阻止模型请求。保护区段：${protectedNames}。${report.capacityKnown ? '' : '模型上下文容量未知，请在模型设置中确认容量。'}请使用已确认的大容量模型、调整本章范围或精简核心说明。结果码：${report.errorCode}。`
-      : `${formatAdaptivePromptBudgetNotice(report, locale)} Required material cannot fit; the request was blocked. Protected sections: ${protectedNames}. ${report.capacityKnown ? '' : 'Confirm the model context capacity in settings. '}Use a confirmed larger-capacity model, narrow this chapter, or simplify core descriptions. Code: ${report.errorCode}.`
+      ? `${formatAdaptivePromptBudgetNotice(report, locale)} 必保资料无法完整容纳，已阻止模型请求。保护区段：${protectedNames}。${report.capacityKnown ? '' : '模型上下文容量未知，请在模型设置中确认容量后再试。'}${remedy}结果码：${report.errorCode}。`
+      : `${formatAdaptivePromptBudgetNotice(report, locale)} Required material cannot fit; the request was blocked. Protected sections: ${protectedNames}. ${report.capacityKnown ? '' : 'Confirm the model context capacity in settings, then retry. '}${remedy} Code: ${report.errorCode}.`
   }
   const contributors = [...report.sections]
     .sort((left, right) => right.utf8Bytes - left.utf8Bytes)

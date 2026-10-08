@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
 import {
-  DRAFT_CONTEXT_INPUT_LIMIT,
   UNKNOWN_CONTEXT_INPUT_LIMIT,
   draftOutputReservation,
   estimatePromptTokens,
@@ -46,7 +45,7 @@ describe('架构链路自适应预算（用户场景）', () => {
   // 与 architecture.command.ts 的回退值/契约参数一致。
   const architecturePolicy = {
     limitUtf8Bytes: 24_000,
-    adaptive: { maxInputTokens: DRAFT_CONTEXT_INPUT_LIMIT, unknownInputTokens: UNKNOWN_CONTEXT_INPUT_LIMIT },
+    adaptive: { unknownInputTokens: UNKNOWN_CONTEXT_INPUT_LIMIT },
     sections: [],
   }
 
@@ -99,10 +98,21 @@ describe('架构链路自适应预算（用户场景）', () => {
     const verdict = harnessVerdict(architecturePolicy, scenarioMessages, scenarioContext)
 
     expect(verdict.errorCode).toBe('OK')
-    // 预算按模型能力算：min(96,000, 1,000,000 − 32,768 − 512) = 96,000 tokens。
-    expect(verdict.limitInputTokens).toBe(96_000)
+    // 预算按模型能力算：1,000,000 − 32,768 − 512 = 966,720 tokens。
+    // （旧实现把它夹在固定天花板 96,000 上——1M 的模型也只能发 96k，正是这次要修掉的。）
+    expect(verdict.limitInputTokens).toBe(966_720)
     expect(verdict.estimatedInputTokens).toBeLessThanOrEqual(verdict.limitInputTokens)
     expect(verdict.limitUtf8Bytes).toBeGreaterThan(scenarioTotalBytes)
+  })
+
+  it('小窗口模型仍然有界：扣掉输出预留与协议余量，不挤没输出空间', () => {
+    // 夹具默认按 1M 窗口预留 32,768 输出；小窗口场景要连带把输出预留压到 16,384。
+    const smallContext = { ...scenarioContext, contextWindowTokens: 32_768, reservedOutputTokens: 16_384 }
+    const verdict = harnessVerdict(architecturePolicy, scenarioMessages, smallContext)
+
+    // 32,768 − 16,384(输出预留) − 512(协议余量) = 15,872：显著低于窗口，输出空间被保住。
+    expect(verdict.limitInputTokens).toBe(15_872)
+    expect(verdict.limitInputTokens).toBeLessThan(32_768 - 16_384)
   })
 
   it('判别力：同一夹具走旧实现（固定 24,000 字节、无 adaptive）必然超限', () => {

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { AUTOMATIC_CHECK_INTERVAL_MS } from '../update-service'
 
 import {
   UpdateService,
@@ -275,6 +276,8 @@ describe('UpdateService', () => {
   it('recovers a remembered release without pretending the prior-process installer is ready', async () => {
     const updater = new FakeUpdater({ updateInfo: { version: '0.2.6' } })
     const preferences = createPreferencesStore({
+      // 语义变更：节流从"自然日一次"改成"距上次检查不足 4 小时"，用 lastCheckedAt 表达节流窗口。
+      lastCheckedAt: '2026-07-25T00:30:00.000Z',
       lastAutomaticCheckDate: '2026-07-25',
       availableUpdate: { version: '0.2.6', releaseName: 'v0.2.6' },
     })
@@ -648,5 +651,28 @@ describe('UpdateService', () => {
 
     expect(result).toMatchObject({ success: false, error: { code: 'DOWNLOAD_FAILED' } })
     expect(JSON.stringify(result)).not.toContain('download URL')
+  })
+  it('运行期间按间隔复查：同一天内越过间隔仍会再检查（日界节流已被取代）', async () => {
+    let nowMs = Date.parse('2026-07-25T01:00:00.000Z')
+    // 不返回可用更新：否则首次检查会触发下载，后续检查会被"已有下载"短路，测不到节流本身。
+    const updater = new FakeUpdater({})
+    const preferences = createPreferencesStore()
+    const service = new UpdateService({
+      updater, currentVersion: '0.2.5', isPackaged: true, preferences,
+      now: () => new Date(nowMs),
+    })
+
+    await service.checkAutomatically()
+    expect(updater.checkCalls).toBe(1)
+
+    // ③ 间隔内不重复检查
+    nowMs += AUTOMATIC_CHECK_INTERVAL_MS - 60_000
+    await service.checkAutomatically()
+    expect(updater.checkCalls).toBe(1)
+
+    // ② 仍在同一个自然日，但已越过间隔 → 必须再检查一次（旧实现会在这里短路）
+    nowMs += 120_000
+    await service.checkAutomatically()
+    expect(updater.checkCalls).toBe(2)
   })
 })
