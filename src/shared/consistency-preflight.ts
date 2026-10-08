@@ -320,9 +320,14 @@ export function findMissingCharacterStateFindings(
   const uniqueCharacters = [...new Set(characters)]
   return uniqueCharacters
     .filter(character => !known.has(character))
+    // 键里必须带章节：同一角色在不同章节各有一条线索，少了章节号两条会撞成同一个 React key，
+    // 面板在重复 key 下的协调是未定义的——用户看到的就是「线索越积越多」。
+    .filter(character => !activeExemptions.has(`missing:state:${blueprint.chapterNumber}:${character}`))
+    // 兼容改键之前保存的旧格式：`missing:state:<角色>` 视为覆盖该角色的所有章节（与今天行为一致）。
     .filter(character => !activeExemptions.has(`missing:state:${character}`))
+
     .map(character => ({
-      stableFactKey: `missing:state:${character}`,
+      stableFactKey: `missing:state:${blueprint.chapterNumber}:${character}`,
       severity: 'warning' as const,
       certainty: 'insufficient' as const,
       sourceChapter: blueprint.chapterNumber,

@@ -328,21 +328,58 @@ describe('findBlueprintContinuityRisks', () => {
 
   it('suppresses the missing-state finding once an active exemption covers its stable key', () => {
     const findings = findMissingCharacterStateFindings(projection, missingStateBlueprint(), [exemption()])
-    expect(findings.map(finding => finding.stableFactKey)).toEqual(['missing:state:林岚'])
+    expect(findings.map(finding => finding.stableFactKey)).toEqual(['missing:state:2:林岚'])
   })
 
   it('brings the finding back when the exemption is revoked', () => {
     const findings = findMissingCharacterStateFindings(projection, missingStateBlueprint(), [exemption({ revoked: true })])
-    expect(findings.map(finding => finding.stableFactKey)).toEqual(['missing:state:林岚', 'missing:state:苏遥'])
+    expect(findings.map(finding => finding.stableFactKey)).toEqual(['missing:state:2:林岚', 'missing:state:2:苏遥'])
+  })
+
+  it('gives the same character distinct keys in different chapters', () => {
+    const third = findMissingCharacterStateFindings(projection, blueprintAt(3, ['赵阔']), [])
+    const fourth = findMissingCharacterStateFindings(projection, blueprintAt(4, ['赵阔']), [])
+    expect(third[0]!.stableFactKey).toBe('missing:state:3:赵阔')
+    expect(fourth[0]!.stableFactKey).toBe('missing:state:4:赵阔')
+    // 撞键会让面板出现重复 React key，用户看到的就是「线索越积越多」。
+    expect(third[0]!.stableFactKey).not.toBe(fourth[0]!.stableFactKey)
+  })
+
+  it('keeps legacy role-only exemptions working for every chapter', () => {
+    const legacy = [{ stableFactKey: 'missing:state:赵阔', reason: '改键前保存的安排', revoked: false }] as never
+    expect(findMissingCharacterStateFindings(projection, blueprintAt(3, ['赵阔']), legacy)).toEqual([])
+    expect(findMissingCharacterStateFindings(projection, blueprintAt(4, ['赵阔']), legacy)).toEqual([])
+  })
+
+  it('scopes a chapter-qualified exemption to its own chapter only', () => {
+    const scoped = [{ stableFactKey: 'missing:state:3:赵阔', reason: '首次出场', revoked: false }] as never
+    expect(findMissingCharacterStateFindings(projection, blueprintAt(3, ['赵阔']), scoped)).toEqual([])
+    const fourth = findMissingCharacterStateFindings(projection, blueprintAt(4, ['赵阔']), scoped)
+    expect(fourth).toHaveLength(1)
+    expect(fourth[0]!.stableFactKey).toBe('missing:state:4:赵阔')
   })
 
   it('treats an explicitly empty exemption list as no exemptions', () => {
     // 语义保留（不豁免时线索照旧全出），只是从「靠默认值」改成显式表达。
     const empty = findMissingCharacterStateFindings(projection, missingStateBlueprint(), [])
-    expect(empty.map(finding => finding.stableFactKey)).toEqual(['missing:state:林岚', 'missing:state:苏遥'])
+    expect(empty.map(finding => finding.stableFactKey)).toEqual(['missing:state:2:林岚', 'missing:state:2:苏遥'])
   })
 
 })
+
+function blueprintAt(chapterNumber: number, characters: string[]) {
+  return {
+    chapterNumber,
+    title: '第' + chapterNumber + '章',
+    role: '发展',
+    purpose: '',
+    keyEvents: '',
+    characters,
+    suspenseHook: '',
+    userGuidance: '',
+    notes: '',
+  }
+}
 
 function missingStateBlueprint() {
   return {
@@ -360,7 +397,7 @@ function missingStateBlueprint() {
 
 function exemption(overrides: Record<string, unknown> = {}) {
   return {
-    stableFactKey: 'missing:state:苏遥',
+    stableFactKey: 'missing:state:2:苏遥',
     reason: '首次出场',
     revoked: false,
     createdAt: '2026-01-01T00:00:00.000Z',
@@ -379,6 +416,6 @@ describe('readConsistencyPreflight wiring', () => {
       { projectId: 'p', leaseId: 'l', projectPath: 'C:\\novels\\p' } as never,
       [missingStateBlueprint()] as never,
     )
-    expect(result.findings.map(finding => finding.stableFactKey)).toEqual(['missing:state:林岚'])
+    expect(result.findings.map(finding => finding.stableFactKey)).toEqual(['missing:state:2:林岚'])
   })
 })
