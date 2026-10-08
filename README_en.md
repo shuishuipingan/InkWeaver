@@ -4,15 +4,15 @@
 
 InkWeaver is a local-first desktop workspace for long-form fiction. It brings project settings, characters, worldbuilding, chapter blueprints, prose, review, revision, and finalization into a traceable writing chain while keeping the author in control of every durable change.
 
-Current version: **v1.4.3**
+Current version: **v1.4.4**
 
 [Long-form context selection and budget guide](docs/features/draft-context-budget.md)
 
 > **Turn a long novel into one continuously developing story.** InkWeaver is a local-first AI writing workspace that connects story premises, character state, chapter blueprints, candidate drafts, evidence-backed review, and author-approved finalization into one traceable writing loop.
 
-Version 1.4.3 has the architecture stage produce a power system with actual names. Generated cultivation architectures were already reasonably rich at the rules level (spiritual-vein reflow, causality as threads, rift laws, and the protagonist's advantage were all spelled out), but there was no directory — beyond the protagonist's own single tier there was no cultivation ladder at all and no named techniques, moves, artifacts, pills, or formations, so downstream text could only speak in generalities: character abilities read as un-named phrases like being skilled in swordplay, formations, and sealing, and chapter combat was reduced to vague actions. When the genre involves cultivation, powers, supernatural rules, or a combat system, worldbuilding now additionally produces a tier ladder (5-9 ordered tier names, each with a one-line positioning), named entries (specific names for techniques, moves, artifacts, pills, and formations, each marked with its faction and purpose), and a naming style that later chapters follow, together with an explicit statement that these names are referenced directly by character profiles and every later chapter; non-supernatural genres use their own tiers and proper nouns instead — job-title ladders, equipment designations, institutional levels — rather than being given xianxia vocabulary. The ability field of a character profile also asks for concrete names from the system (primary technique, tier, signature moves or artifacts), takes the names the author has already given as authoritative, and does not invent names when no matching entry exists. Includes the [long-form context guide](docs/features/draft-context-budget.md), the [workflow audit repairs](docs/audits/workflow-audit-2026-10-01.md), and the [security audit receipt](docs/audits/security-audit-2026-10-03.md). The Release supports Windows, macOS and Linux x64; the DSH plugin remains in v1.2.0, and npm publication remains out of scope.
+Version 1.4.4 fixes large-context models being blocked by a fixed input ceiling and makes update checks repeat while the app is running. The app carried a fixed ceiling of 96,000, so no single input could exceed it whatever the model's context size; a model with a 1,000,000-token context showed an estimated input of 121,749 against a limit of 96,000 in the pre-writing budget and blocked the request while suggesting a large-capacity model — the one already in use. That fixed value is gone and the limit is now derived from the model (usable input per request = model context − output reservation − protocol margin), with the model's own window providing the bound and no absolute ceiling imposed any more; with the same live numbers the limit moves from 96,000 to 966,720 and a 121,749-token input is sent normally, while models with an unknown capacity still use a conservative budget (16,384) and small-window models have the output reservation deducted too so output space is never squeezed away. The message now distinguishes an application-side budget (changing models will not help) from a genuine model-capacity limit. Update checking used to run at most once per calendar day and only at startup, so a release published the same day was never seen — after installing 1.4.1, neither 1.4.2 nor 1.4.3 was discovered; checking is now throttled by interval (four hours) and repeats while the app runs, keeping the existing throttle, serial queue, failure degradation, and "the user decides once a release is found" behaviour without ever downloading or installing automatically. Includes the [long-form context guide](docs/features/draft-context-budget.md), the [workflow audit repairs](docs/audits/workflow-audit-2026-10-01.md), and the [security audit receipt](docs/audits/security-audit-2026-10-03.md). The Release supports Windows, macOS and Linux x64; the DSH plugin remains in v1.2.0, and npm publication remains out of scope.
 
-[Download v1.4.3](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.4.3) · [Start your first chapter in three minutes](docs/quickstart/README.md) · [Story direction guide](docs/features/story-direction-adjustment.md) · [Install the DSH plugin](plugins/inkweaver-dsh/README.md) · [Ask a question or report a problem](https://github.com/shuishuipingan/InkWeaver/issues/new/choose) · [Join the discussion](https://github.com/shuishuipingan/InkWeaver/discussions)
+[Download v1.4.4](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.4.4) · [Start your first chapter in three minutes](docs/quickstart/README.md) · [Story direction guide](docs/features/story-direction-adjustment.md) · [Install the DSH plugin](plugins/inkweaver-dsh/README.md) · [Ask a question or report a problem](https://github.com/shuishuipingan/InkWeaver/issues/new/choose) · [Join the discussion](https://github.com/shuishuipingan/InkWeaver/discussions)
 
 ![InkWeaver welcome screen](docs/assets/inkweaver-welcome.png)
 
@@ -164,33 +164,33 @@ inkweaver-mac-arm64-<version>-installer.dmg
 inkweaver-mac-x64-<version>-installer.dmg
 ```
 
-The current macOS installers do not have a Developer ID signature and are not notarized. Download only from the [formal v1.4.3 Release](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.4.3) and follow the operating system's first-launch confirmation. The desktop Release contains 13 assets for Windows x64, macOS Apple Silicon, macOS Intel, and Linux x64; the DSH plugin tarball remains in the v1.2.0 Release.
+The current macOS installers do not have a Developer ID signature and are not notarized. Download only from the [formal v1.4.4 Release](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.4.4) and follow the operating system's first-launch confirmation. The desktop Release contains 13 assets for Windows x64, macOS Apple Silicon, macOS Intel, and Linux x64; the DSH plugin tarball remains in the v1.2.0 Release.
 
 ### Linux x64
 
-The v1.4.3 Linux packages are built for x64. Qualification tests cover Ubuntu 22.04, Debian 13, and Fedora 44; this does not claim compatibility for other distributions or Linux ARM64. Packages are built in an Ubuntu 22.04 environment with glibc 2.35, and qualification verifies that packaged binaries do not require a glibc symbol newer than 2.35.
+The v1.4.4 Linux packages are built for x64. Qualification tests cover Ubuntu 22.04, Debian 13, and Fedora 44; this does not claim compatibility for other distributions or Linux ARM64. Packages are built in an Ubuntu 22.04 environment with glibc 2.35, and qualification verifies that packaged binaries do not require a glibc symbol newer than 2.35.
 
-Download these files and their matching SHA-256 sidecars from the [formal v1.4.3 Release](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.4.3):
+Download these files and their matching SHA-256 sidecars from the [formal v1.4.4 Release](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.4.4):
 
-    inkweaver-linux-x64-1.4.3.AppImage
-    inkweaver-linux-x64-1.4.3.deb
-    inkweaver-linux-x64-1.4.3.rpm
+    inkweaver-linux-x64-1.4.4.AppImage
+    inkweaver-linux-x64-1.4.4.deb
+    inkweaver-linux-x64-1.4.4.rpm
 
 The AppImage launches directly when FUSE is available. Without FUSE, use its built-in extraction mode:
 
-    chmod +x inkweaver-linux-x64-1.4.3.AppImage
-    ./inkweaver-linux-x64-1.4.3.AppImage --appimage-extract-and-run
+    chmod +x inkweaver-linux-x64-1.4.4.AppImage
+    ./inkweaver-linux-x64-1.4.4.AppImage --appimage-extract-and-run
 
 AppImage uses the user namespace sandbox and requires the system to allow unprivileged user namespaces. If system policy disables this capability, use the corresponding deb/rpm installer.
 
 Install the deb package on Ubuntu/Debian or the rpm package on Fedora:
 
-    sudo apt install ./inkweaver-linux-x64-1.4.3.deb
-    sudo dnf install ./inkweaver-linux-x64-1.4.3.rpm
+    sudo apt install ./inkweaver-linux-x64-1.4.4.deb
+    sudo dnf install ./inkweaver-linux-x64-1.4.4.rpm
 
 Linux packages are unsigned. Verify the matching checksum file in the same directory before installation, for example:
 
-    sha256sum -c inkweaver-linux-x64-1.4.3.deb.sha256
+    sha256sum -c inkweaver-linux-x64-1.4.4.deb.sha256
 
 ## DeepSeek Harness plugin
 

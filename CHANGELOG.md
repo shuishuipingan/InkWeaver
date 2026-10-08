@@ -2,6 +2,38 @@
 
 本文件按用户可见行为记录变更。桌面版本不发布 npm；DSH 插件沿用已发布的 `1.2.0` 包。`1.2.0` 已从同一源码 commit 完成工程验收、三平台资产回读和正式 Release；`1.1.0` 的历史 Release 收据保留在 `docs/upgrade/`，不与 1.2.0 混用。
 
+## 1.4.4 — 2026-10-08
+
+### 修复
+
+- 大上下文模型不再被一个固定的输入上限拦住：此前应用内有一个固定天花板 96,000——无论模型上下文多大，单次输入都不许超过它，于是上下文为 1,000,000 的模型在写前预算里显示“估算输入 121,749/96,000 Tokens”并阻止请求，还提示使用已确认的大容量模型，而用户用的正是大容量模型；校验层把这个值当成硬上限，想调大都调不了。
+- 现在删除该固定值，改为按模型能力推导：单次可用输入 = 模型上下文 − 输出预留 − 协议余量。有界性由模型窗口本身保证，不再设任何绝对上限（否则只是换一个更大的魔数，同类问题还会再来）。同一现场数字下的限额从 96,000 变为 966,720，121,749 的输入可以正常发送；容量未知的模型仍走保守预算（16,384），小窗口模型同样扣掉输出预留，不会把输出空间挤没。
+- 同时修正提示文案：被应用侧上限挡住时会说明这是应用侧预算、换模型不会改善；只有确实被模型容量挡住时，才建议更换模型。
+
+### 优化
+
+- 运行期间会周期性复查更新：此前自动检查更新是“每个自然日最多一次、且只在启动时检查”，因此当天发布的新版本拿不到——用户装了 1.4.1 之后，1.4.2 与 1.4.3 都没有被发现，只能在旧版本上反复撞已经修好的问题。现在改为按间隔节流（4 小时）并在运行期间周期复查；节流、串行队列、失败降级以及“发现新版本后由用户决定”这些既有行为都保留，也不会自动下载安装。
+
+### 发布
+
+- 保持 Windows、macOS、Linux x64 同提交发布。Linux 文件为 inkweaver-linux-x64-1.4.4.AppImage、inkweaver-linux-x64-1.4.4.deb、inkweaver-linux-x64-1.4.4.rpm 及 SHA-256；运行资格覆盖 Ubuntu 22.04、Debian 13、Fedora 44，glibc 2.35 基线及 --appimage-extract-and-run 检查继续有效，包未签名。
+
+## 1.4.4 — 2026-10-08 (English)
+
+### Fixed
+
+- Large-context models are no longer blocked by a fixed input ceiling: the app carried a fixed ceiling of 96,000, so no single input could exceed it whatever the model's context size, and a model with a 1,000,000-token context showed an estimated input of 121,749 against a limit of 96,000 in the pre-writing budget and blocked the request while suggesting a model with a confirmed large capacity — the one the user was already running. The validation layer treated the value as a hard limit, so it could not even be raised.
+- That fixed value is gone and the limit is now derived from the model: usable input per request = model context − output reservation − protocol margin. The model's own window provides the bound, and no absolute ceiling is imposed any more (keeping one would only replace it with a larger magic number and the same class of problem would return). With the same live numbers the limit moves from 96,000 to 966,720 and a 121,749-token input is sent normally; models with an unknown capacity still use a conservative budget (16,384), and small-window models have the output reservation deducted too, so output space is never squeezed away.
+- The message was corrected as well: when the block comes from the application-side budget it says so and explains that changing models will not help, and only a genuine model-capacity limit suggests switching models.
+
+### Improved
+
+- Update checks now repeat while the app is running: automatic update checking used to run at most once per calendar day and only at startup, so a release published the same day was never seen — after installing 1.4.1 a user never discovered 1.4.2 or 1.4.3 and kept hitting problems that were already fixed. Checking is now throttled by interval (four hours) and repeats while the app runs; the existing throttle, serial queue, failure degradation, and “the user decides once a release is found” behaviour all remain, and nothing is downloaded or installed automatically.
+
+### Release
+
+- Continues Windows, macOS and Linux x64 same-commit releases. Linux packages: inkweaver-linux-x64-1.4.4.AppImage, inkweaver-linux-x64-1.4.4.deb, inkweaver-linux-x64-1.4.4.rpm with SHA-256. Qualification covers Ubuntu 22.04, Debian 13, Fedora 44, the glibc 2.35 baseline and --appimage-extract-and-run. Linux packages are unsigned.
+
 ## 1.4.3 — 2026-10-08
 
 ### 优化

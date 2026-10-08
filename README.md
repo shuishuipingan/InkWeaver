@@ -4,15 +4,15 @@
 
 织墨 InkWeaver 是一款面向长篇小说创作的本地优先桌面工作台。它把项目设定、角色、世界观、章节蓝图、正文、审稿、修订与定稿组织成可追溯的创作链，让作者在保留最终决定权的前提下使用自己选择的 AI 模型。
 
-当前版本：**v1.4.3**
+当前版本：**v1.4.4**
 
 [长篇写作的资料选择与预算说明](docs/features/draft-context-budget.md)
 
 > **把一本长篇小说写成会持续发展的整体。** InkWeaver 是本地优先的 AI 小说创作工作台：它把故事设定、角色状态、章节蓝图、候选草稿、证据化审稿和作者定稿串成一条可追溯的连续写作链。
 
-v1.4.3 让架构阶段产出一套有名有姓的力量体系。此前生成的修仙架构在规则层已经比较丰富（灵脉回流、因果成线、裂隙法则、金手指机制都写清楚了），但没有名录——除了主角自己那一级，全篇没有境界阶梯，也没有任何具名的功法、招式、法宝、丹药、阵法；于是下游只能泛泛而谈：角色档案的能力写成“精通剑道、阵法、封印”这类没有专名的表述，章节战斗只剩“一剑断因”这类笼统动作。现在当题材涉及修炼、异能、灵异规则或战斗体系时，世界观构建会额外产出等级阶梯（5-9 级有序名称、每级一句定位）、具名条目（功法/招式/法宝/丹药/阵法各给具体名称并标注归属势力与用途）以及命名风格（写明体系如何命名，供后续章节沿用），并明确这些名字会被角色档案与后续每一章直接引用；非超常题材改用该题材自己的分级与专名（职称序列、装备型号、机构层级等），不强加仙侠词汇。角色档案的能力字段也要求写出体系内的具体名称（主修功法、所属等级、擅长招式或法器），以作者已经给出的名字为准，体系里没有对应条目不临时编造。保留此前的[长篇写作资料选择说明](docs/features/draft-context-budget.md)、[工作流审计修复](docs/audits/workflow-audit-2026-10-01.md)与[安全审计收据](docs/audits/security-audit-2026-10-03.md)。同一 Release 提供 Windows、macOS 和 Linux x64；DSH 插件沿用 v1.2.0，不发布 npm。
+v1.4.4 修复大上下文模型被固定输入上限拦住的问题，并让运行期间周期性复查更新。此前应用内有一个固定天花板 96,000：无论模型上下文多大，单次输入都不许超过它，于是上下文 1,000,000 的模型在写前预算里显示“估算输入 121,749/96,000 Tokens”并阻止请求，还建议更换大容量模型——而用户用的正是大容量模型。现在该固定值被删除，改为按模型能力推导（单次可用输入 = 模型上下文 − 输出预留 − 协议余量），有界性由模型窗口本身保证、不再设任何绝对上限；同一现场数字下的限额从 96,000 变为 966,720，121,749 的输入可以正常发送，容量未知的模型仍走保守预算（16,384），小窗口模型同样扣掉输出预留、不会把输出空间挤没。提示文案也一并修正：被应用侧预算挡住时会说明这是应用侧预算、换模型不会改善，只有确实被模型容量挡住才建议换模型。更新检查方面：此前是“每个自然日最多一次、且只在启动时检查”，当天发布的新版本拿不到——装了 1.4.1 之后 1.4.2 与 1.4.3 都没有被发现；现在改为按间隔节流（4 小时）并在运行期间周期复查，节流、串行队列、失败降级与“发现后由用户决定”都保留，也不会自动下载安装。保留此前的[长篇写作资料选择说明](docs/features/draft-context-budget.md)、[工作流审计修复](docs/audits/workflow-audit-2026-10-01.md)与[安全审计收据](docs/audits/security-audit-2026-10-03.md)。同一 Release 提供 Windows、macOS 和 Linux x64；DSH 插件沿用 v1.2.0，不发布 npm。
 
-[下载 v1.4.3](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.4.3) · [三分钟开始第一章](docs/quickstart/README.md) · [全书方向调整指南](docs/features/story-direction-adjustment.md) · [安装 DSH 插件](plugins/inkweaver-dsh/README.md) · [提交问题或建议](https://github.com/shuishuipingan/InkWeaver/issues/new/choose) · [参与讨论](https://github.com/shuishuipingan/InkWeaver/discussions)
+[下载 v1.4.4](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.4.4) · [三分钟开始第一章](docs/quickstart/README.md) · [全书方向调整指南](docs/features/story-direction-adjustment.md) · [安装 DSH 插件](plugins/inkweaver-dsh/README.md) · [提交问题或建议](https://github.com/shuishuipingan/InkWeaver/issues/new/choose) · [参与讨论](https://github.com/shuishuipingan/InkWeaver/discussions)
 
 ![InkWeaver 欢迎页](docs/assets/inkweaver-welcome.png)
 
@@ -160,33 +160,33 @@ inkweaver-mac-arm64-<版本号>-installer.dmg
 inkweaver-mac-x64-<版本号>-installer.dmg
 ```
 
-当前 macOS 安装包未代码签名（未使用 Developer ID 签名）且未公证。请只从[正式 v1.4.3 Release](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.4.3)下载，并按系统安全提示确认首次打开。桌面 Release 共 13 项资产，覆盖 Windows x64、macOS Apple Silicon、macOS Intel 和 Linux x64；DSH 插件 tarball 保留在 v1.2.0 Release。
+当前 macOS 安装包未代码签名（未使用 Developer ID 签名）且未公证。请只从[正式 v1.4.4 Release](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.4.4)下载，并按系统安全提示确认首次打开。桌面 Release 共 13 项资产，覆盖 Windows x64、macOS Apple Silicon、macOS Intel 和 Linux x64；DSH 插件 tarball 保留在 v1.2.0 Release。
 
 ### Linux x64
 
-v1.4.3 Linux 资产仅以 x64 构建。本次资格验证使用 Ubuntu 22.04、Debian 13 和 Fedora 44；不据此声明其他发行版或 Linux ARM64 已验证。包以 Ubuntu 22.04 的 glibc 2.35 环境构建，资格记录会检查打包文件所需的最高 glibc 符号版本不高于 2.35。
+v1.4.4 Linux 资产仅以 x64 构建。本次资格验证使用 Ubuntu 22.04、Debian 13 和 Fedora 44；不据此声明其他发行版或 Linux ARM64 已验证。包以 Ubuntu 22.04 的 glibc 2.35 环境构建，资格记录会检查打包文件所需的最高 glibc 符号版本不高于 2.35。
 
-从[正式 v1.4.3 Release](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.4.3)下载对应文件及各自的 SHA-256 校验文件：
+从[正式 v1.4.4 Release](https://github.com/shuishuipingan/InkWeaver/releases/tag/v1.4.4)下载对应文件及各自的 SHA-256 校验文件：
 
-    inkweaver-linux-x64-1.4.3.AppImage
-    inkweaver-linux-x64-1.4.3.deb
-    inkweaver-linux-x64-1.4.3.rpm
+    inkweaver-linux-x64-1.4.4.AppImage
+    inkweaver-linux-x64-1.4.4.deb
+    inkweaver-linux-x64-1.4.4.rpm
 
 AppImage 在 FUSE 可用时可直接启动。若系统没有 FUSE，可用内置提取运行模式：
 
-    chmod +x inkweaver-linux-x64-1.4.3.AppImage
-    ./inkweaver-linux-x64-1.4.3.AppImage --appimage-extract-and-run
+    chmod +x inkweaver-linux-x64-1.4.4.AppImage
+    ./inkweaver-linux-x64-1.4.4.AppImage --appimage-extract-and-run
 
 AppImage 使用用户命名空间 sandbox，系统需允许普通用户创建用户命名空间。若系统策略禁用了此能力，请使用对应的 deb/rpm 安装包。
 
 Ubuntu/Debian 可安装 deb，Fedora 可安装 rpm：
 
-    sudo apt install ./inkweaver-linux-x64-1.4.3.deb
-    sudo dnf install ./inkweaver-linux-x64-1.4.3.rpm
+    sudo apt install ./inkweaver-linux-x64-1.4.4.deb
+    sudo dnf install ./inkweaver-linux-x64-1.4.4.rpm
 
 Linux 安装包未签名。下载后先在同一目录核对对应校验文件，例如：
 
-    sha256sum -c inkweaver-linux-x64-1.4.3.deb.sha256
+    sha256sum -c inkweaver-linux-x64-1.4.4.deb.sha256
 
 ## DeepSeek Harness 插件
 
