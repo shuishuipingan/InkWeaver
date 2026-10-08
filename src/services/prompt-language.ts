@@ -73,6 +73,11 @@ ${context}
 【身份清单合同】
 只输出 {"slots":[...]}，角色数量必须为 ${minimum}–${maximum}。每项必须含 slotId、name、role、narrativeDuty、relations；relations 每项含 targetSlotId、relation，可含 facets；slotId/name 必须唯一，role 仅 protagonist/antagonist/supporting/minor，且恰好一个 protagonist；关系只能引用本清单其他 slotId，且同一个 targetSlotId 只出现一次。
 
+【定位词表要用全】
+- 有明确对立面的故事，**必须把敌对方的核心人物标为 antagonist**（通常 1–3 人；有多个敌对势力时，每个势力的代表人物各给一个），不要一律塞进 supporting/minor。
+- supporting 用于主角阵营与中立方的次要角色；minor 用于戏份少的功能性人物（只出场一两次的传讯者、店家等）。**不要用 minor 兜底所有非主要角色**。
+- 若故事确实不存在敌对方（纯日常等题材），可以不出现 antagonist，但那必须是有意为之。
+
 【多面关系与势力合同】
 **关系不是一句话，是多个维度**：同一对角色之间可以同时存在立场冲突、情感、依赖、知情差异与历史。
 - 每对**主要角色**（主角 ↔ 主要配角 / 对手）必须给出 2–4 条 facets，至少覆盖 stance（立场）与 emotion（情感）；次要角色对给 1–2 条即可，不要为凑数而写。
@@ -115,13 +120,18 @@ ${context}
 [Identity manifest contract]
 Output {"slots":[...]} only, with ${minimum}–${maximum} characters. Every item must contain slotId, name, role, narrativeDuty, and relations; every relation must contain targetSlotId and relation and may contain facets. slotId and name must be unique. role must be protagonist, antagonist, supporting, or minor, with exactly one protagonist. Relationships may reference only another slotId in this manifest, and each targetSlotId may appear only once.
 
+[Use the full role vocabulary]
+- When the story has an explicit opposing side, **its core figures must be marked antagonist** (usually 1–3; with several hostile factions, give one representative per faction) instead of being filed under supporting or minor.
+- supporting is for secondary characters on the protagonist's side and in neutral camps; minor is for low-screen-time functional figures (a messenger or shopkeeper who appears once or twice). **Never use minor as a fallback for every non-lead character**.
+- If the story genuinely has no opposing side (pure slice-of-life, for example), antagonist may be absent — but that must be a deliberate choice.
+
 [Multi-facet and faction contract]
 A relationship is not one sentence but several dimensions: alignment conflict, emotion, dependency, knowledge gaps, and history can coexist between the same two characters.
 - For every major pair (protagonist vs. main supporting character or antagonist) provide 2–4 facets covering at least stance and emotion; minor pairs need 1–2 only. Never pad to hit a count.
 - facets[].kind must be one of: stance (alignment or camp conflict), emotion, dependency (leverage or binding interest), knowledge (who knows or wrongly believes what), history (old debts, grudges, earlier events).
 - Every facet text must trace back to facts already present in the context. If you cannot ground it, omit that facet — never write placeholders such as "to be confirmed", "unknown", or "n/a".
 - Put extra dimensions of the same pair inside that relation's facets instead of repeating the target in several relations.
-- **Each name must be a single character.** If the context lists several characters together (for example "Shen Yaoguang, Lu Ming"), split them into separate slots — one per character. A name containing separators (、 ， , ; ；) or the 甲和乙 pattern is rejected as a merged entry.
+- **Each name must be a single character.** If the context lists several characters together (for example "Shen Yaoguang, Lu Ming"), split them into separate slots — one per character. A name joining two names with a separator (a comma, a full-width comma, a semicolon, or the word for "and") is rejected as a merged entry.
 - Factions (sects, organizations, camps, houses) are not entities: give each character 0–3 factionEdges shaped {"faction":"Jade Sect","stance":"nominally aligned, privately doubtful"}. Include only factions the context supports; omit the field when there are none. **A faction is never itself a character** — do not create a slot for an organization.`,
     detailTask: input => `[Character-detail context]
 ${input.context}

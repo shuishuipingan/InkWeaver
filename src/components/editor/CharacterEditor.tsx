@@ -7,6 +7,7 @@ import { confirm } from '../ui/Confirm'
 import {
   useCharacterStore,
   EMPTY_STATE,
+  characterMutationFailureCode,
   type CharacterCard,
   type CharacterCurrentState,
 } from '../../stores/character-store'
@@ -36,6 +37,24 @@ import {
  * 角色卡编辑器 — 纯编辑区域（角色列表已移至侧栏）
  * 从 character-store 读取选中角色，仅渲染编辑表单。
  */
+/** 三类失败各自的准确文案：版本冲突曾被误报成「项目已切换」。 */
+export function characterMutationFailureText(
+  code: 'revision-conflict' | 'project-session-invalid' | 'other',
+  message: string,
+  text: (zh: string, en: string) => string,
+): string {
+  if (code === 'revision-conflict') {
+    return text(
+      '角色名单已被后台更新（版本冲突），自动重试没有成功；请刷新后重试。',
+      'The character roster was updated in the background (revision conflict) and the automatic retry did not succeed. Refresh and try again.',
+    )
+  }
+  if (code === 'project-session-invalid') {
+    return text('项目已切换，请刷新后重试。', 'The project has changed; refresh and try again.')
+  }
+  return text('角色操作失败：' + message, 'Character operation failed: ' + message)
+}
+
 export default function CharacterEditor({ projectKey }: { projectKey: string }) {
   const currentProject = useProjectStore(s => s.currentProject)
   const addLog = useWorkflowStore(s => s.addLog)
@@ -48,7 +67,7 @@ export default function CharacterEditor({ projectKey }: { projectKey: string }) 
   const identityBusy = useCharacterStore(s => s.identityBusy)
   const renameCharacter = useCharacterStore(s => s.renameCharacter)
   const updateField = useCharacterStore(s => s.updateField)
-  const deleteCharacter = useCharacterStore(s => s.deleteCharacter)
+  const deleteCharacterWithReason = useCharacterStore(s => s.deleteCharacterWithReason)
   const clearAllCharacters = useCharacterStore(s => s.clearAllCharacters)
   const saveAll = useCharacterStore(s => s.saveAll)
   const [viewMode, setViewMode] = useState<'edit' | 'state' | 'graph'>('edit')
@@ -98,16 +117,11 @@ export default function CharacterEditor({ projectKey }: { projectKey: string }) 
       { title: text('删除角色', 'Delete character'), confirmText: text('删除', 'Delete'), danger: true }
     )
     if (!ok || !isProjectSessionCurrent(projectSession)) return
-    const deleted = await deleteCharacter(selectedCard.name, projectKey)
+    const deletion = await deleteCharacterWithReason(selectedCard.name, projectKey)
     if (!isProjectSessionCurrent(projectSession)) return
-    if (!deleted) {
-      addLog(
-        'error',
-        text(
-          '角色删除失败：项目可能已切换，请刷新后重试',
-          'Could not delete the character. The project may have changed; refresh and try again.',
-        ),
-      )
+    if (!deletion.ok) {
+      // 按真实原因分别提示：版本冲突 ≠ 项目切换 ≠ 其它失败。
+      addLog('error', characterMutationFailureText(deletion.code, deletion.message, text))
     }
   }
 
@@ -120,7 +134,12 @@ export default function CharacterEditor({ projectKey }: { projectKey: string }) 
       addLog('info', text(`已保存 ${characters.length} 个角色卡`, `Saved ${characters.length} character cards`))
     } catch (error) {
       if (!isProjectSessionCurrent(projectSession)) return
-      addLog('error', text(`角色卡保存失败：${error}`, 'Could not save character cards.'))
+      // 保存失败同样按真实原因分类：版本冲突会说清楚是"被后台更新"，不误报项目切换。
+      addLog('error', characterMutationFailureText(
+        characterMutationFailureCode(error),
+        String((error as { message?: string } | undefined)?.message ?? error),
+        text,
+      ))
     }
   }
 

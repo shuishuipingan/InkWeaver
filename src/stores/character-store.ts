@@ -162,6 +162,95 @@ function currentCharacterProjectSession(
   return projectSession
 }
 
+/**
+ * 把用户的**实际改动**合并到最新名册上（三方合并：基线 / 用户当前 / 最新）。
+ *
+ * 为什么不能直接重放用户快照：manual_edit 提交的是完整名单，请求里没有的角色**等于被删除**
+ * （主进程 resolveManualEntries 就是这么用的）。用户界面持有的是旧快照（例：8 张），
+ * 后台工作流可能已经把它推到 56 张 —— 直接重放会删掉那 48 张新角色。
+ *
+ * 规则：
+ *  · 用户**新增**（基线里没有）→ 追加到最新名册（名字撞车时按"修改"处理）；
+ *  · 用户**修改**（与基线不同）→ 在最新名册里按名字替换；若该角色在最新名册里已不存在 → **不安全**，不提交；
+ *  · 用户**删除**（基线里有、当前没有）→ 从最新名册移除；
+ *  · 用户**没碰过**的 → 保留最新名册的版本（后台的新增与改动都不动）。
+ */
+export type CharacterMergeResult =
+  | { ok: true; cards: CharacterCard[] }
+  | { ok: false; reason: 'no-baseline' | 'edited-character-missing'; message: string }
+
+export function mergeCharacterChangesOntoLatest(
+  baseline: readonly CharacterCard[] | null,
+  current: readonly CharacterCard[],
+  latest: readonly CharacterCard[],
+): CharacterMergeResult {
+  if (baseline === null) {
+    return { ok: false, reason: 'no-baseline', message: '角色名单已被后台更新，请刷新后重试' }
+  }
+  const baselineByName = new Map(baseline.map(card => [card.name, card]))
+  const currentByName = new Map(current.map(card => [card.name, card]))
+  const latestByName = new Map(latest.map(card => [card.name, card]))
+  const merged = new Map(latestByName)
+
+  // 新增与修改
+  for (const [name, card] of currentByName) {
+    const base = baselineByName.get(name)
+    if (!base) {
+      merged.set(name, card)
+      continue
+    }
+    if (JSON.stringify(base) === JSON.stringify(card)) continue // 未触碰 → 保留最新的
+    if (!latestByName.has(name)) {
+      return {
+        ok: false,
+        reason: 'edited-character-missing',
+        message: `角色「${name}」已被后台更新或改名，请刷新后重试`,
+      }
+    }
+    merged.set(name, card)
+  }
+
+  // 用户明确删除的（基线里有、当前没有）
+  for (const name of baselineByName.keys()) {
+    if (!currentByName.has(name)) merged.delete(name)
+  }
+
+  return { ok: true, cards: [...merged.values()] }
+}
+
+/** 角色增删改的失败分类：组件按它渲染准确文案，而不是一句"项目可能已切换"。 */
+export type CharacterMutationFailureCode = 'revision-conflict' | 'project-session-invalid' | 'other'
+
+export type CharacterMutationResult =
+  | { ok: true }
+  | { ok: false; code: CharacterMutationFailureCode; message: string }
+
+export class CharacterMutationError extends Error {
+  constructor(readonly code: CharacterMutationFailureCode, message: string) {
+    super(message)
+    this.name = 'CharacterMutationError'
+  }
+}
+
+/**
+ * 把主进程的真实原因归类。
+ *
+ * 注意：主进程仓储的冲突判定（"revision 已过期，已拒绝覆盖"）是**正确的防线**，
+ * 这里只识别它的文案，绝不改判定语义。
+ */
+export function characterMutationFailureCode(error: unknown): CharacterMutationFailureCode {
+  if (error instanceof CharacterMutationError) return error.code
+  const message = String((error as { message?: string } | undefined)?.message ?? error ?? '')
+  if (/revision\s*已过期/u.test(message)) return 'revision-conflict'
+  if (/项目会话|项目已切换|租约/u.test(message)) return 'project-session-invalid'
+  return 'other'
+}
+
+function isRevisionConflict(error: unknown): boolean {
+  const message = String((error as { message?: string } | undefined)?.message ?? error ?? '')
+  return /revision\s*已过期/u.test(message)
+}
+
 function isCharacterProjectSessionCurrent(projectSession: ProjectSessionContext): boolean {
   return sameProjectSessionContext(
     projectSession,
@@ -205,6 +294,8 @@ interface CharacterState {
   dataProjectSession: ProjectSessionContext | null
   /** 当前角色卡来自的 roster revision；所有保存都必须带回这一乐观并发令牌。 */
   rosterRevision: number | null
+  /** 上次成功读取/保存时的名册快照：冲突自愈做三方合并要用它算"用户到底改了什么"。 */
+  rosterBaseline: CharacterCard[] | null
   loadingProjectKey: string | null
   loadingProjectSession: ProjectSessionContext | null
   lastError: string | null
@@ -219,6 +310,12 @@ interface CharacterState {
     projectPath?: string,
     expectedProjectSession?: ProjectSessionContext,
   ) => Promise<boolean>
+  /** 与 deleteCharacter 同一逻辑，但返回可判别的失败原因（组件据此渲染准确文案）。 */
+  deleteCharacterWithReason: (
+    name: string,
+    projectPath?: string,
+    expectedProjectSession?: ProjectSessionContext,
+  ) => Promise<CharacterMutationResult>
   clearAllCharacters: (
     projectPath?: string,
     expectedProjectSession?: ProjectSessionContext,
@@ -256,6 +353,7 @@ export const useCharacterStore = create<CharacterState>()((set, get) => ({
   dataProjectKey: null,
   dataProjectSession: null,
   rosterRevision: null,
+  rosterBaseline: null,
   loadingProjectKey: null,
   loadingProjectSession: null,
   lastError: null,
@@ -273,6 +371,7 @@ export const useCharacterStore = create<CharacterState>()((set, get) => ({
         dataProjectKey: null,
         dataProjectSession: null,
         rosterRevision: null,
+  rosterBaseline: null,
         loadingProjectKey: requestedProjectKey,
         loadingProjectSession: projectSession,
         lastError: null,
@@ -344,6 +443,8 @@ export const useCharacterStore = create<CharacterState>()((set, get) => ({
         dataProjectKey: requestedProjectKey,
         dataProjectSession: projectSession,
         rosterRevision: roster.revision,
+        // 基线用"用户看到的卡"，这样"改没改过"的对比和他看到的完全一致。
+        rosterBaseline: visibleCards,
         loadingProjectKey: null,
         loadingProjectSession: null,
         lastError: null,
@@ -363,6 +464,7 @@ export const useCharacterStore = create<CharacterState>()((set, get) => ({
         dataProjectKey: requestedProjectKey,
         dataProjectSession: projectSession,
         rosterRevision: null,
+  rosterBaseline: null,
         loadingProjectKey: null,
         loadingProjectSession: null,
         lastError: error instanceof Error ? error.message : String(error),
@@ -385,6 +487,7 @@ export const useCharacterStore = create<CharacterState>()((set, get) => ({
       dataProjectKey: null,
       dataProjectSession: null,
       rosterRevision: null,
+  rosterBaseline: null,
       loadingProjectKey: projectPath,
       loadingProjectSession: null,
       lastError: null,
@@ -402,6 +505,7 @@ export const useCharacterStore = create<CharacterState>()((set, get) => ({
       dataProjectKey: null,
       dataProjectSession: null,
       rosterRevision: null,
+  rosterBaseline: null,
       loadingProjectKey: null,
       loadingProjectSession: null,
       lastError: null,
@@ -451,21 +555,27 @@ export const useCharacterStore = create<CharacterState>()((set, get) => ({
     ))
   },
 
-  deleteCharacter: (name, projectPath, expectedProjectSession) => {
+  deleteCharacter: async (name, projectPath, expectedProjectSession) => (
+    (await get().deleteCharacterWithReason(name, projectPath, expectedProjectSession)).ok
+  ),
+
+  deleteCharacterWithReason: async (name, projectPath, expectedProjectSession) => {
     const projectSession = currentCharacterProjectSession(projectPath, expectedProjectSession)
-    if (!projectSession) return Promise.resolve(false)
+    if (!projectSession) return { ok: false, code: 'project-session-invalid', message: '项目已切换，已取消删除' }
     if (
       characterIdentityMutationInFlight
       && sameProjectSessionContext(characterIdentityMutationInFlight.projectSession, projectSession)
-    ) return Promise.resolve(false)
+    ) return { ok: false, code: 'other', message: '角色身份操作正在进行，请稍后再删除' }
     const projectKey = projectSession.projectPath
     if (
       !sameProjectSessionContext(get().dataProjectSession, projectSession)
       || get().loadingProjectSession !== null
       || get().lastError !== null
-    ) return Promise.resolve(false)
+    ) return { ok: false, code: 'project-session-invalid', message: '项目已切换，已取消删除' }
     const { characters } = get()
-    if (!characters.some(card => card.name === name)) return Promise.resolve(false)
+    if (!characters.some(card => card.name === name)) {
+      return { ok: false, code: 'other', message: '角色不存在，可能已被删除，请刷新后重试' }
+    }
     const ledger = readCharacterDraftLedger(projectKey)
     const renames = getCharacterDraftRenames(ledger, projectKey)
     const remaining = removeFirstCharacterNamed(characters, name)
@@ -484,10 +594,21 @@ export const useCharacterStore = create<CharacterState>()((set, get) => ({
     persistCharacterDraftLedger(nextLedger)
 
     // 删除同样是完整手工名单保存：由 roster seam 在一次事务中清理关系、
-    // 蓝图引用、投影、revision 与 receipt。失败时草稿仍在本地可重试。
-    return get().saveAll(projectKey, projectSession, 'delete')
-      .then(() => isCharacterProjectSessionCurrent(projectSession))
-      .catch(() => false)
+    // 蓝图引用、投影、revision 与 receipt。失败时草稿仍在本地可重试；
+    // 版本冲突的自愈（重载版本 + 重试一次）在 saveAll 里统一处理。
+    try {
+      await get().saveAll(projectKey, projectSession, 'delete')
+    } catch (error) {
+      return {
+        ok: false,
+        code: characterMutationFailureCode(error),
+        message: String((error as { message?: string } | undefined)?.message ?? error ?? '角色删除失败'),
+      }
+    }
+    if (!isCharacterProjectSessionCurrent(projectSession)) {
+      return { ok: false, code: 'project-session-invalid', message: '项目已切换，删除结果未确认' }
+    }
+    return { ok: true }
   },
 
   clearAllCharacters: (projectPath, expectedProjectSession) => {
@@ -716,26 +837,63 @@ export const useCharacterStore = create<CharacterState>()((set, get) => ({
     const saveKind: SessionOperation<void>['kind'] = operationKind
       ?? (savedRenames.length > 0 ? 'rename' : 'save')
 
+    let mergedCards: CharacterCard[] | null = null
+    const commitOnce = (expected: number) => ipc.invokeWithProjectSession(
+      projectSession,
+      'db:character-roster-commit',
+      {
+        operationId: `manual-character-save-${randomUUID()}`,
+        expectedRevision: expected,
+        schemaVersion: 1,
+        intent: 'manual_edit',
+        entries: characterRosterEntriesFromCards(mergedCards ?? savedCharacters),
+        ...(savedRenames.length > 0 ? { renames: savedRenames } : {}),
+        // 拆书仿写式整体改名：备注、动态状态、关系证据与知情事件也要换名。
+        ...(options?.fullIdentityRename ? { fullIdentityRename: true } : {}),
+      },
+      projectKey,
+    )
+    // 主进程按这份 name→id 映射把"作者手写的自由文本关系"保持在原位。
+
     const save = async () => {
       // 角色主键改名、删除、蓝图结构化引用、角色图谱、revision 和 receipt
       // 都由主进程 roster seam 在同一事务内完成。
-      const result = await ipc.invokeWithProjectSession(
-        projectSession,
-        'db:character-roster-commit',
-        {
-          operationId: `manual-character-save-${randomUUID()}`,
-          expectedRevision,
-          schemaVersion: 1,
-          intent: 'manual_edit',
-          entries: characterRosterEntriesFromCards(savedCharacters),
-          ...(savedRenames.length > 0 ? { renames: savedRenames } : {}),
-          // 拆书仿写式整体改名：备注、动态状态、关系证据与知情事件也要换名。
-          ...(options?.fullIdentityRename ? { fullIdentityRename: true } : {}),
-        },
-        projectKey,
-      )
+      let result = await commitOnce(expectedRevision)
+      if (!result.success && isRevisionConflict(result.error)) {
+        // 名册已被后台工作流（蓝图同步/架构生成/定稿推进）推到新版本 —— 界面手上的
+        // 乐观锁必然过期，导致"每一次"手动保存都被拒。这里自愈：**只读一次真实版本**
+        // （不调用 loadCharacters，避免覆盖用户正在编辑的内容），用同一份意图重试**一次**。
+        if (!isCharacterProjectSessionCurrent(projectSession)) {
+          throw new CharacterMutationError('project-session-invalid', '项目已切换，已取消保存')
+        }
+        const latest = await ipc.invokeWithProjectSession(
+          projectSession,
+          'db:character-roster-read',
+          projectKey,
+        )
+        const refreshedRevision = typeof latest?.revision === 'number' ? latest.revision : null
+        if (refreshedRevision === null) {
+          throw new CharacterMutationError('revision-conflict', '角色名单已被后台更新，请重试')
+        }
+        // **三方合并**再提交：只把用户真正改过的三类改动（新增/修改/删除）应用到最新名册上。
+        // 直接重放旧快照会把后台新增的角色删掉（manual_edit 的语义是"请求里没有的即删除"）。
+        const latestCards = Array.isArray(latest?.entries)
+          ? (latest.entries as Parameters<typeof characterCardFromRosterEntry>[0][]).map(characterCardFromRosterEntry)
+          : []
+        const mergeResult = mergeCharacterChangesOntoLatest(
+          get().rosterBaseline,
+          savedCharacters,
+          latestCards,
+        )
+        if (!mergeResult.ok) {
+          throw new CharacterMutationError('revision-conflict', mergeResult.message)
+        }
+        mergedCards = mergeResult.cards
+        result = await commitOnce(refreshedRevision)
+      }
       if (!result.success || !result.receipt) {
-        throw new Error(result.error ?? '角色卡保存失败')
+        const message = String(result.error ?? '角色卡保存失败')
+        throw new CharacterMutationError(characterMutationFailureCode(new Error(message)), message)
       }
       if (!isCharacterProjectSessionCurrent(projectSession)) return
       const savedRosterCards = result.receipt.snapshot.entries.map(characterCardFromRosterEntry)
