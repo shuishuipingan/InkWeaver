@@ -339,8 +339,14 @@ describe('chapter writing model selectors', () => {
   })
 
   it('explains why writing did not start when the same findings block it twice', async () => {
-    // 角色在当前章节没有任何已定稿状态事实 → 产生「缺少当前状态证据」线索（用户现场那两条的形态）。
-    continuityProjections = []
+    // 苏倦在第 1 章已出场（该章状态只在第 1 章有效），本章（第 3 章）又没有适用状态 →
+    // 「本应有记录却没有」，于是产生「缺少当前状态证据」线索（用户现场那两条的形态）。
+    // 该 mock 下已定稿的最后一章是第 0 章（authoritativeNextChapter - 1）：
+    // 苏倦此前出场过，但那条状态只在自己那章有效，本章（第 1 章）没有适用状态。
+    continuityProjections = [{
+      draftId: 0, chapterNumber: 0, chapterTitle: '前章', chapterNotes: '',
+      facts: [{ category: 'character-state', entities: ['苏倦'], statement: '苏倦此前已有状态。', sourceChapter: 0, validFromChapter: 0, validUntilChapter: 0, evidence: '苏倦的定稿证据。' }],
+    }]
     consistencyExemptions = []
     await act(async () => {
       root?.render(<ChapterCreationDialog isOpen onClose={vi.fn()} prefill={{

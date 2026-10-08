@@ -310,7 +310,7 @@ describe('findBlueprintContinuityRisks', () => {
 
   it('reports information-insufficient state for a blueprint character without finalized facts', () => {
     // 豁免参数是必填的：这里显式传空数组，表示调用方明确不豁免任何线索。
-    const findings = findMissingCharacterStateFindings(projection, {
+    const findings = findMissingCharacterStateFindings(earlierChapter(1, ['林岚', '苏遥']) as never, {
       chapterNumber: 2,
       title: '新人登场',
       role: '发展',
@@ -327,18 +327,35 @@ describe('findBlueprintContinuityRisks', () => {
   })
 
   it('suppresses the missing-state finding once an active exemption covers its stable key', () => {
-    const findings = findMissingCharacterStateFindings(projection, missingStateBlueprint(), [exemption()])
+    const findings = findMissingCharacterStateFindings(earlierChapter(1, ['林岚', '苏遥']) as never, missingStateBlueprint(), [exemption()])
     expect(findings.map(finding => finding.stableFactKey)).toEqual(['missing:state:2:林岚'])
   })
 
   it('brings the finding back when the exemption is revoked', () => {
-    const findings = findMissingCharacterStateFindings(projection, missingStateBlueprint(), [exemption({ revoked: true })])
+    const findings = findMissingCharacterStateFindings(earlierChapter(1, ['林岚', '苏遥']) as never, missingStateBlueprint(), [exemption({ revoked: true })])
     expect(findings.map(finding => finding.stableFactKey)).toEqual(['missing:state:2:林岚', 'missing:state:2:苏遥'])
   })
 
+  it('stays silent for a character whose first appearance is this chapter', () => {
+    // 用户现场：仅第 1 章已定稿（角色 [苏倦, 明镜]）；批量第 2–5 章；赵阔只出现在第 3、4 章蓝图。
+    const finalized = earlierChapter(1, ['苏倦', '明镜']) as never
+    const third = findMissingCharacterStateFindings(finalized, blueprintAt(3, ['苏倦', '赵阔']) as never, [])
+    const fourth = findMissingCharacterStateFindings(finalized, blueprintAt(4, ['苏倦', '赵阔']) as never, [])
+    // 赵阔是首次登场：没有"本应有记录却没有"的证据，两章都不该报。
+    expect(third.some(finding => finding.stableFactKey.endsWith(':赵阔'))).toBe(false)
+    expect(fourth.some(finding => finding.stableFactKey.endsWith(':赵阔'))).toBe(false)
+    // 苏倦此前已出场、本章又没有适用状态 → 仍报（这才是这条规则的意义）。
+    expect(third.map(finding => finding.stableFactKey)).toEqual(['missing:state:3:苏倦'])
+  })
+
+  it('still reports a character who appeared in an earlier finalized chapter', () => {
+    const findings = findMissingCharacterStateFindings(earlierChapter(1, ['林岚']) as never, blueprintAt(3, ['林岚']) as never, [])
+    expect(findings.map(finding => finding.stableFactKey)).toEqual(['missing:state:3:林岚'])
+  })
+
   it('gives the same character distinct keys in different chapters', () => {
-    const third = findMissingCharacterStateFindings(projection, blueprintAt(3, ['赵阔']), [])
-    const fourth = findMissingCharacterStateFindings(projection, blueprintAt(4, ['赵阔']), [])
+    const third = findMissingCharacterStateFindings(earlierChapter(1, ['赵阔']) as never, blueprintAt(3, ['赵阔']), [])
+    const fourth = findMissingCharacterStateFindings(earlierChapter(1, ['赵阔']) as never, blueprintAt(4, ['赵阔']), [])
     expect(third[0]!.stableFactKey).toBe('missing:state:3:赵阔')
     expect(fourth[0]!.stableFactKey).toBe('missing:state:4:赵阔')
     // 撞键会让面板出现重复 React key，用户看到的就是「线索越积越多」。
@@ -347,25 +364,47 @@ describe('findBlueprintContinuityRisks', () => {
 
   it('keeps legacy role-only exemptions working for every chapter', () => {
     const legacy = [{ stableFactKey: 'missing:state:赵阔', reason: '改键前保存的安排', revoked: false }] as never
-    expect(findMissingCharacterStateFindings(projection, blueprintAt(3, ['赵阔']), legacy)).toEqual([])
-    expect(findMissingCharacterStateFindings(projection, blueprintAt(4, ['赵阔']), legacy)).toEqual([])
+    expect(findMissingCharacterStateFindings(earlierChapter(1, ['赵阔']) as never, blueprintAt(3, ['赵阔']), legacy)).toEqual([])
+    expect(findMissingCharacterStateFindings(earlierChapter(1, ['赵阔']) as never, blueprintAt(4, ['赵阔']), legacy)).toEqual([])
   })
 
   it('scopes a chapter-qualified exemption to its own chapter only', () => {
     const scoped = [{ stableFactKey: 'missing:state:3:赵阔', reason: '首次出场', revoked: false }] as never
-    expect(findMissingCharacterStateFindings(projection, blueprintAt(3, ['赵阔']), scoped)).toEqual([])
-    const fourth = findMissingCharacterStateFindings(projection, blueprintAt(4, ['赵阔']), scoped)
+    expect(findMissingCharacterStateFindings(earlierChapter(1, ['赵阔']) as never, blueprintAt(3, ['赵阔']), scoped)).toEqual([])
+    const fourth = findMissingCharacterStateFindings(earlierChapter(1, ['赵阔']) as never, blueprintAt(4, ['赵阔']), scoped)
     expect(fourth).toHaveLength(1)
     expect(fourth[0]!.stableFactKey).toBe('missing:state:4:赵阔')
   })
 
   it('treats an explicitly empty exemption list as no exemptions', () => {
     // 语义保留（不豁免时线索照旧全出），只是从「靠默认值」改成显式表达。
-    const empty = findMissingCharacterStateFindings(projection, missingStateBlueprint(), [])
+    const empty = findMissingCharacterStateFindings(earlierChapter(1, ['林岚', '苏遥']) as never, missingStateBlueprint(), [])
     expect(empty.map(finding => finding.stableFactKey)).toEqual(['missing:state:2:林岚', 'missing:state:2:苏遥'])
   })
 
 })
+
+/**
+ * 更早的已定稿章节：里面的状态事实只在该章有效（validUntilChapter = 自己），
+ * 于是本章找不到适用状态，但"该角色此前出场过"成立 —— 正是需要提醒的情形。
+ */
+function earlierChapter(chapterNumber: number, characters: string[]) {
+  return [{
+    draftId: chapterNumber,
+    chapterNumber,
+    chapterTitle: '第' + chapterNumber + '章',
+    chapterNotes: '',
+    facts: characters.map(character => ({
+      category: 'character-state' as const,
+      entities: [character],
+      statement: character + '在第' + chapterNumber + '章已有状态。',
+      sourceChapter: chapterNumber,
+      validFromChapter: chapterNumber,
+      validUntilChapter: chapterNumber,
+      evidence: character + '的定稿证据。',
+    })),
+  }]
+}
 
 function blueprintAt(chapterNumber: number, characters: string[]) {
   return {
@@ -409,7 +448,7 @@ describe('readConsistencyPreflight wiring', () => {
   it('feeds stored exemptions into the missing-state rule', async () => {
     ipcMock.invokeWithProjectSession.mockImplementation(async (_session: unknown, channel: string) => {
       if (channel === 'db:consistency-exemption-list') return [exemption()]
-      if (channel === 'db:continuity-list-before') return []
+      if (channel === 'db:continuity-list-before') return earlierChapter(1, ['林岚', '苏遥'])
       return []
     })
     const result = await readConsistencyPreflight(

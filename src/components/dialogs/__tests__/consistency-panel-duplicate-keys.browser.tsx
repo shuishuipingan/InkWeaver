@@ -17,9 +17,32 @@ import ConsistencyPreflightPanel from '../ConsistencyPreflightPanel'
 let root: Root | undefined
 let container: HTMLDivElement | undefined
 
+/**
+ * 更早的已定稿章节：让这些角色「此前出场过」（事实只在自己那章有效），
+ * 否则在「首次登场不报」的判据下根本不会产生线索，这条用例就失去意义。
+ */
+function earlierFinalized(characters: string[]) {
+  return [{
+    draftId: 1,
+    chapterNumber: 1,
+    chapterTitle: '第1章',
+    chapterNotes: '',
+    facts: characters.map(character => ({
+      category: 'character-state' as const,
+      entities: [character],
+      statement: character + '已有状态。',
+      sourceChapter: 1,
+      validFromChapter: 1,
+      validUntilChapter: 1,
+      evidence: character + '的定稿证据。',
+    })),
+  }]
+}
+
 function preflightFor(chapters: Array<[number, string[]]>): ConsistencyFinding[] {
+  const finalized = earlierFinalized([...new Set(chapters.flatMap(([, characters]) => characters))])
   return chapters.flatMap(([chapterNumber, characters]) => findMissingCharacterStateFindings(
-    [] as never,
+    finalized as never,
     {
       chapterNumber,
       title: '第' + chapterNumber + '章',

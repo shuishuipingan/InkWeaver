@@ -316,16 +316,28 @@ export function findMissingCharacterStateFindings(
       for (const entity of fact.entities.map(normalizedKeyPart)) known.add(entity)
     }
   }
+  // 「此前是否出场过」：只认更早的**已定稿章节**里的实体。
+  // 数据源选函数已有的 finalized 投影，理由：它天然只包含"已经写下的章节"，
+  // 不需要跨层去读 character_state_history 或计划中的蓝图；同批次里还没写的下一章也不算。
+  const seenInEarlierChapters = new Set<string>()
+  for (const projection of projections) {
+    if (!(projection.chapterNumber < blueprint.chapterNumber)) continue
+    for (const fact of projection.facts ?? []) {
+      for (const entity of fact.entities.map(normalizedKeyPart)) seenInEarlierChapters.add(entity)
+    }
+  }
   const characters = blueprint.characters.map(normalizedKeyPart).filter(Boolean)
   const uniqueCharacters = [...new Set(characters)]
   return uniqueCharacters
     .filter(character => !known.has(character))
-    // 键里必须带章节：同一角色在不同章节各有一条线索，少了章节号两条会撞成同一个 React key，
+    // 首次登场不报：这条检查的文案自己就写着「…或说明这是首次出场」，
+    // 对自己明确允许的情况也报，报的就只是噪音。只有"本应有记录却没有"才值得提醒。
+    .filter(character => seenInEarlierChapters.has(character))
+    // 豁免键必须带章节：同一角色在不同章节各有一条线索，少了章节号两条会撞成同一个 React key，
     // 面板在重复 key 下的协调是未定义的——用户看到的就是「线索越积越多」。
     .filter(character => !activeExemptions.has(`missing:state:${blueprint.chapterNumber}:${character}`))
     // 兼容改键之前保存的旧格式：`missing:state:<角色>` 视为覆盖该角色的所有章节（与今天行为一致）。
     .filter(character => !activeExemptions.has(`missing:state:${character}`))
-
     .map(character => ({
       stableFactKey: `missing:state:${blueprint.chapterNumber}:${character}`,
       severity: 'warning' as const,
