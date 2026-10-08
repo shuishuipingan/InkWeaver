@@ -72,6 +72,21 @@ export function planBlueprintGenerationRuns(chapterCount: number): { runs: numbe
   return { runs, chaptersPerRun: Math.ceil(normalized / runs) }
 }
 
+/**
+ * 蓝图结构化批次合同的**恢复类开关**（命令与测试都必须引用这一份）。
+ *
+ * 提取成具名常量的理由是一条真实教训（task-109）：测试若用
+ * `{ ...productionContract, flag: true }` 给自己补开关，就会变成"机制被验证过、
+ * 生产却没打开"—— 用户的 160 章蓝图跑到第 7 批一次 unknown 中断就整轮失败，
+ * 而单测全绿。**不得在测试里 spread 后补开关**，否则这类缺陷会再次被掩盖。
+ */
+export const BLUEPRINT_BATCH_CONTRACT_FLAGS = Object.freeze({
+  /** 输出不合规时缩批重试。 */
+  retryInvalidOutputWithSmallerBatch: true,
+  /** 流式响应异常结束（finishReason=unknown）时允许项级重试/批次对半拆分恢复。 */
+  recoverUnknownFinish: true,
+})
+
 export interface BlueprintGenerationCostPlan {
   chapterCount: number
   semanticBatchCount: number

@@ -40,6 +40,7 @@ export {
   type DirectoryCharacterSyncReceipt,
 } from '../directory-character-sync-recovery'
 import {
+  BLUEPRINT_BATCH_CONTRACT_FLAGS,
   MAX_BLUEPRINT_ITEMS_PER_BATCH,
   MAX_BLUEPRINT_CHAPTERS_PER_TASK,
   planBlueprintGenerationCost,
@@ -332,7 +333,8 @@ export class GenerateDirectoryCommand extends BaseWorkflowCommand<ChapterBluepri
     let deadlineWarningLogged = false
     const droppedRelationshipCountByChapter = new Map<number, number>()
     const contract: StructuredBatchContract<number, ChapterBlueprint> = {
-      retryInvalidOutputWithSmallerBatch: true,
+      // 恢复类开关统一来自具名常量：测试断言的是同一份，杜绝"测试通过而生产没开"。
+      ...BLUEPRINT_BATCH_CONTRACT_FLAGS,
       buildTask: ({ items, validatedPrefix }) => {
         const batchStart = items[0]
         const batchEnd = items.at(-1)

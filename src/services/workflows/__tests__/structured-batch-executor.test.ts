@@ -14,7 +14,7 @@ import {
   type GenerationSession,
   type GenerationTask,
 } from '../../generation/generation-harness'
-import { planBlueprintGenerationCost } from '../blueprint-batch-policy'
+import { BLUEPRINT_BATCH_CONTRACT_FLAGS, planBlueprintGenerationCost } from '../blueprint-batch-policy'
 import { StructuredContractDiagnostic } from '../../../shared/structured-contract-diagnostic'
 
 type Blueprint = {
@@ -35,6 +35,8 @@ function createStructuredBatchExecutor<TInput, TOutput>(dependencies: {
 }
 
 const blueprintContract: StructuredBatchContract<number, Blueprint> = {
+  // 恢复类开关引用**真实生产常量**：测试不再自己补开关，否则会掩盖"生产没打开"。
+  ...BLUEPRINT_BATCH_CONTRACT_FLAGS,
   buildTask: ({ items, validatedPrefix }) => ({
     purpose: 'chapter-blueprints',
     output: 'structured-data',
@@ -841,7 +843,8 @@ describe('StructuredBatchExecutor seam', () => {
     })
     const retryNotice = vi.fn()
     const executor = createStructuredBatchExecutor({
-      contract: { ...blueprintContract, recoverUnknownFinish: true },
+      // 夹具已引用真实常量；这里不再自补开关（补丁会掩盖"生产没打开"）。
+      contract: blueprintContract,
       session: { complete },
       onUnknownFinishRetry: retryNotice,
     })
@@ -861,7 +864,8 @@ describe('StructuredBatchExecutor seam', () => {
       receipt: attemptReceipt(1, 100, 100, 'unknown'),
     }))
     const executor = createStructuredBatchExecutor({
-      contract: { ...blueprintContract, recoverUnknownFinish: true },
+      // 夹具已引用真实常量；这里不再自补开关（补丁会掩盖"生产没打开"）。
+      contract: blueprintContract,
       session: { complete },
     })
 
@@ -896,7 +900,8 @@ describe('StructuredBatchExecutor seam', () => {
     })
     const retryNotice = vi.fn()
     const executor = createStructuredBatchExecutor({
-      contract: { ...blueprintContract, recoverUnknownFinish: true },
+      // 夹具已引用真实常量；这里不再自补开关（补丁会掩盖"生产没打开"）。
+      contract: blueprintContract,
       session: { complete },
       onUnknownFinishRetry: retryNotice,
     })
@@ -924,7 +929,8 @@ describe('StructuredBatchExecutor seam', () => {
       }
     })
     const executor = createStructuredBatchExecutor({
-      contract: { ...blueprintContract, recoverUnknownFinish: true },
+      // 夹具已引用真实常量；这里不再自补开关（补丁会掩盖"生产没打开"）。
+      contract: blueprintContract,
       session: { complete },
     })
 

@@ -20,6 +20,7 @@ import {
 } from '../workflow-project-session'
 import { promptLanguageText } from '../../prompt-language'
 import { createStructuredBatchExecutor, type StructuredBatchContract } from '../structured-batch-executor'
+import { BLUEPRINT_BATCH_CONTRACT_FLAGS } from '../blueprint-batch-policy'
 import type { ChapterBlueprint } from '../directory-workflow'
 import { retryDirectoryCharacterSync } from '../directory-character-sync-recovery'
 import { runtimeLog } from '../../runtime-log'
@@ -861,8 +862,8 @@ export class InferBlueprintsPerChapterCommand extends BaseWorkflowCommand<void> 
     let activeChapterNumbers: number[] = []
     const droppedRelationshipCountByChapter = new Map<number, number>()
     const contract: StructuredBatchContract<ImportedChapter, ChapterBlueprint> = {
-      retryInvalidOutputWithSmallerBatch: true,
-      recoverUnknownFinish: true,
+      // 与蓝图生成共用同一份恢复开关常量（值原本就是 true/true，行为不变）。
+      ...BLUEPRINT_BATCH_CONTRACT_FLAGS,
       buildTask: ({ items, validatedPrefix }) => {
         activeChapterNumbers = items.map(item => item.number)
         const source = items.map(chapter => promptLanguageText(

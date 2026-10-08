@@ -691,6 +691,12 @@ export function createStructuredBatchExecutor<TInput, TOutput>(dependencies: {
       try {
         const maxBatchItems = input.limits.maxBatchItems
         for (let offset = 0; offset < input.items.length; offset += maxBatchItems) {
+          // 恢复额度**每个顶层批次重置一次**：14–20 批的长跑里，偶发的一次 unknown 中断
+          // 不该打死整轮（旧实现是执行器实例级，整轮只有一次）。
+          // 拆分出的子批不额外获得额度（executeBatchResilient 递归里不复位），
+          // 因此不会出现 12→6+6→3+3… 的级联重试。
+          // 总量仍由绝对墙兜底：GENERATION_ABSOLUTE_BUDGET_LIMITS（512 次调用 / 120 分钟）。
+          unknownFinishRecoveryUsed = false
           await executeBatchResilient(input.items.slice(offset, offset + maxBatchItems))
         }
         return { ok: true, items: validated, receipt }
