@@ -2,6 +2,30 @@
 
 本文件按用户可见行为记录变更。桌面版本不发布 npm；DSH 插件沿用已发布的 `1.2.0` 包。`1.2.0` 已从同一源码 commit 完成工程验收、三平台资产回读和正式 Release；`1.1.0` 的历史 Release 收据保留在 `docs/upgrade/`，不与 1.2.0 混用。
 
+## 1.4.7 — 2026-10-08
+
+### 修复
+
+- 一致性提示不再在列表里越积越多，也不再跨章节连带生效：此前写稿确认框里出现过 5 条一模一样的“[信息不足] 缺少当前状态证据 · 蓝图安排‘赵阔’出场…”（其中 4 条标“来源：第 3 章”、1 条标“来源：第 4 章”），而按数据只应该有 2 条（赵阔分别在第 3、4 章出场）；每保存一次安排，屏幕上的重复就多一截。根因是这类提示的身份标识里不含章节号，同一角色在不同章节的两条提示标识完全相同；列表渲染要求每条有唯一标识，重复标识下的渲染结果未定义，因此只会在反复刷新时累积（初次显示是正确的）。
+- 同一根因还带来两个现象：同一角色的两个输入框会互相串值；为某一章保存的安排会连带把该角色在其它章节的提示一并静默掉。
+- 现在提示身份带上章节，与代码里同类规则保持一致；**已经保存的安排继续生效**——旧格式被视为覆盖该角色所有章节，与原先行为一致，也不修改任何已有数据；同一角色在不同章节的提示可以各自独立确认。
+
+### 发布
+
+- 保持 Windows、macOS、Linux x64 同提交发布。Linux 文件为 inkweaver-linux-x64-1.4.7.AppImage、inkweaver-linux-x64-1.4.7.deb、inkweaver-linux-x64-1.4.7.rpm 及 SHA-256；运行资格覆盖 Ubuntu 22.04、Debian 13、Fedora 44，glibc 2.35 基线及 --appimage-extract-and-run 检查继续有效，包未签名。
+
+## 1.4.7 — 2026-10-08 (English)
+
+### Fixed
+
+- Consistency notices no longer pile up in the list, and no longer take effect across chapters: the pre-writing confirmation dialog showed five identical “[insufficient information] missing current-state evidence · blueprint places ‘Zhao Kuo’…” notices (four marked source: chapter 3, one marked source: chapter 4) when the data only warranted two, since the character appears in chapters 3 and 4; each saved arrangement added another stretch of duplicates. The cause was that these notices carried no chapter in their identity, so two notices about the same character in different chapters had exactly the same identifier — and since the list requires a unique identifier per row, rendering under duplicates is undefined, which is why they accumulated only on repeated refreshes while the first render was correct.
+- The same cause produced two further symptoms: two inputs for the same character filled in each other's values, and an arrangement saved for one chapter silently dismissed that character's notices in other chapters as well.
+- Notices now carry the chapter in their identity, matching how the equivalent rules already work elsewhere in the code; arrangements you have already saved keep working — the old format is treated as covering every chapter of that character, exactly as before, and no existing data is modified — and the same character's notices in different chapters can now be confirmed independently.
+
+### Release
+
+- Continues Windows, macOS and Linux x64 same-commit releases. Linux packages: inkweaver-linux-x64-1.4.7.AppImage, inkweaver-linux-x64-1.4.7.deb, inkweaver-linux-x64-1.4.7.rpm with SHA-256. Qualification covers Ubuntu 22.04, Debian 13, Fedora 44, the glibc 2.35 baseline and --appimage-extract-and-run. Linux packages are unsigned.
+
 ## 1.4.6 — 2026-10-08
 
 ### 修复
